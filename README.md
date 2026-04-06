@@ -1,7 +1,11 @@
+![Open Source](https://badgen.net/badge/open/source/)
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)
 # WebTerm/3270
 
 A web-based IBM 3270 terminal emulator with a Node.js WebSocket bridge, macro engine, and AI Copilot assistant.
-
+## I hope you find this useful and although, I could probally refine this and make money on it, I am leaving it open-source for all you Big-Iron admins out there.
+## If you feel so inclined to buy me a coffee for all my work you can CashApp me $britleywren
 ---
 
 ## What it is
