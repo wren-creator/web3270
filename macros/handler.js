@@ -48,10 +48,10 @@ const MacroStore  = require('./store');
 const logger      = require('../logger');
 
 class MacroHandler {
-  constructor(session, ws, wsId) {
+  constructor(session, ws, wsId, sharedStore = null) {
     this.wsId    = wsId;
     this.ws      = ws;
-    this.store   = new MacroStore();
+    this.store   = sharedStore || new MacroStore();
     this.engine  = new MacroEngine(session, this.store);
 
     this._wireEngineEvents();
