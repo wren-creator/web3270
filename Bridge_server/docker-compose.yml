@@ -48,18 +48,18 @@ services:
       # Use :992 + TLS=true for encrypted connections (recommended).
       # Use :23  + TLS=false for plain TN3270.
 
-      PROD01_HOST: "mainframe.corp.com"
-      PROD01_PORT: "992"
+      VM01: "10.80.7.136"
+      PROD01_PORT: "2323"
       PROD01_TLS:  "true"
       PROD01_LU:   ""                # Leave blank to let host assign
 
-      DEV02_HOST:  "dev-mf.corp.com"
-      DEV02_PORT:  "23"
-      DEV02_TLS:   "false"
+      VM02:  "10.80.7.214"
+      DEV02_PORT:  "2323"
+      DEV02_TLS:   "true"
 
-      QA01_HOST:   "qa-mf.corp.com"
+      VM03:   "10.80.7.137"
       QA01_PORT:   "23"
-      QA01_TLS:    "false"
+      QA01_TLS:    "true"
 
       # Default terminal model and EBCDIC code page
       DEFAULT_MODEL:    "3278-2"     # 3278-2=80x24, 3278-5=132x27
