@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>WebTerm/3270</title>
+<title>WebTerm/3270 — Production</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
 
@@ -924,7 +924,6 @@ input[type="range"]::-webkit-slider-thumb {
       <button class="t-btn" style="color:var(--t-red);border-color:#3a1010">SysReq</button>
       <button class="t-btn">Clear</button>
       <div class="t-spacer"></div>
-      <button class="t-btn" onclick="cycleScreen()" style="color:var(--accent-amber);border-color:#3a2a10">⟳ Demo</button>
     </div>
     <div class="screen-wrapper">
       <div class="t3270-screen" id="terminal" onclick="termClick(event)"></div>
@@ -1155,8 +1154,30 @@ input[type="range"]::-webkit-slider-thumb {
 
 <script>
 // ══════════════════════════════════════════════════════════════════
-//  TERMINAL SCREENS
+//  PRODUCTION CLIENT — connects to ws://localhost:8080
+//  Bridge must be running (Docker Desktop or WSL2)
+//  Demo file: tn3270-client-demo.html  (no bridge needed)
 // ══════════════════════════════════════════════════════════════════
+
+// ── Bridge WebSocket URL ──────────────────────────────────────────
+// Change this if your bridge runs on a different host or port.
+// ws://  = plain WebSocket (bridge on localhost)
+// wss:// = TLS WebSocket  (bridge behind nginx with TLS)
+const BRIDGE_URL = 'ws://localhost:8080';
+
+// ── Per-session WebSocket connections ─────────────────────────────
+// Map of sessionId → { ws, profile, tabEl }
+const sessions  = new Map();
+let   activeSession = null;   // currently visible session id
+let   sessionSeq    = 0;      // incrementing session id
+
+// ── Screen buffer for the active session ──────────────────────────
+// Populated by 'screen' messages from the bridge.
+// Used by Copilot for screen context.
+let   liveScreenText = '';
+let   cursorRow = 0, cursorCol = 0;
+
+// Fallback screens array (only used before first real screen arrives)
 const screens = [
   { label:'ISPF Primary', rows:[
     {t:'                        ISPF Primary Option Menu',c:'field-title'},
@@ -1383,8 +1404,7 @@ function hideConnectModal() { document.getElementById('connectModal').classList.
 document.getElementById('connectModal').addEventListener('click', e => { if (e.target === e.currentTarget) hideConnectModal(); });
 
 // ══════════════════════════════════════════════════════════════════
-//  LPAR PROFILES  — single source of truth
-//  In the real app this is fetched from GET /api/profiles
+//  LPAR PROFILES — update host IPs to match your environment
 // ══════════════════════════════════════════════════════════════════
 const LPAR_PROFILES = [
   { id:'PROD01',  host:'10.x.x.x', port:339, tls:false, type:'TSO',  model:'3278-2', codepage:37 },
@@ -1394,24 +1414,19 @@ const LPAR_PROFILES = [
   { id:'BATCH01', host:'10.x.x.x', port:339, tls:false, type:'JES2', model:'3278-2', codepage:37 },
 ];
 
-// ── LPAR dropdown toggle ───────────────────────────────────────────
+// ── LPAR dropdown ──────────────────────────────────────────────────
 function toggleLparDropdown() {
   const btn  = document.getElementById('lparDropdownBtn');
   const menu = document.getElementById('lparDropdownMenu');
   const open = menu.classList.toggle('open');
   btn.classList.toggle('open', open);
 }
-
 function closeLparDropdown() {
   document.getElementById('lparDropdownBtn').classList.remove('open');
   document.getElementById('lparDropdownMenu').classList.remove('open');
 }
-
-// Close dropdown when clicking outside
 document.addEventListener('click', e => {
-  if (!document.getElementById('lparDropdown').contains(e.target)) {
-    closeLparDropdown();
-  }
+  if (!document.getElementById('lparDropdown').contains(e.target)) closeLparDropdown();
 });
 
 // ── Connect to a named LPAR profile ───────────────────────────────
@@ -1419,89 +1434,480 @@ function connectLpar(name) {
   closeLparDropdown();
   const profile = LPAR_PROFILES.find(p => p.id === name);
   if (!profile) return;
-  simulateConnect(profile);
+  openSession(profile);
 }
 
-function simulateConnect(profileOrName) {
-  const profile = typeof profileOrName === 'string'
-    ? LPAR_PROFILES.find(p => p.id === profileOrName) || { id: profileOrName }
-    : profileOrName;
-
-  const name = profile.id;
+// ── Open a new WebSocket session to the bridge ────────────────────
+function openSession(profile) {
   hideConnectModal();
 
+  const sid   = ++sessionSeq;
+  const name  = profile.id || 'Session ' + sid;
+
+  setConnStatus(name, 'connecting');
+
+  let ws;
+  try {
+    ws = new WebSocket(BRIDGE_URL);
+  } catch (e) {
+    setConnStatus(name, 'error', 'Cannot reach bridge at ' + BRIDGE_URL);
+    showBridgeError(e.message);
+    return;
+  }
+
+  ws.onopen = () => {
+    // First message must be the connect request
+    ws.send(JSON.stringify({
+      type:     'connect',
+      host:     profile.host,
+      port:     profile.port,
+      tls:      profile.tls     ?? false,
+      luName:   profile.luName  ?? null,
+      model:    profile.model   ?? '3278-2',
+      codepage: profile.codepage ?? 37,
+    }));
+  };
+
+  ws.onmessage = event => {
+    let msg;
+    try { msg = JSON.parse(event.data); } catch { return; }
+    handleBridgeMsg(sid, msg);
+  };
+
+  ws.onerror = () => {
+    setConnStatus(name, 'error');
+    showBridgeError(
+      `Could not connect to bridge at ${BRIDGE_URL}.\n\n` +
+      `Make sure Docker Desktop is running and the bridge container is up:\n` +
+      `  docker compose ps\n` +
+      `  docker compose logs tn3270-bridge`
+    );
+  };
+
+  ws.onclose = () => {
+    if (sessions.has(sid)) {
+      setConnStatus(name, 'disconnected');
+      updateSessionDot(sid, 'disconnected');
+    }
+  };
+
+  // Register the session
+  const tabEl = addSessionTab(name, profile.type || 'TSO', sid);
+  sessions.set(sid, { ws, profile, tabEl, name });
+  activateSession(sid);
+}
+
+// ── Handle messages from the bridge ───────────────────────────────
+function handleBridgeMsg(sid, msg) {
+  const session = sessions.get(sid);
+  if (!session) return;
+
+  switch (msg.type) {
+
+    case 'status':
+      if (msg.state === 'connected') {
+        setConnStatus(session.name, 'connected');
+        updateSessionDot(sid, 'connected');
+        // Update OIA LU field if negotiated LU was returned
+        if (msg.lu) {
+          document.querySelector('.oia-bar')
+            ?.querySelectorAll('.oia-field')[1]
+            ?.querySelector('.oia-val')
+            ?.textContent === msg.lu;
+        }
+      } else if (msg.state === 'disconnected') {
+        setConnStatus(session.name, 'disconnected');
+        updateSessionDot(sid, 'disconnected');
+      } else if (msg.state === 'connecting') {
+        setConnStatus(session.name, 'connecting');
+      }
+      break;
+
+    case 'screen':
+      if (sid === activeSession) renderLiveScreen(msg);
+      // Always update live text for Copilot context
+      if (sid === activeSession) {
+        liveScreenText = screenToText(msg);
+        cursorRow = msg.cursorRow ?? 0;
+        cursorCol = msg.cursorCol ?? 0;
+      }
+      break;
+
+    case 'oia':
+      if (sid === activeSession) updateOIA(msg);
+      break;
+
+    case 'copilot.provider':
+      document.querySelector('.copilot-subtitle')
+        && (document.querySelector('.copilot-subtitle').textContent =
+          `${msg.name} · ${msg.model}`);
+      break;
+
+    case 'copilot.reply':
+      handleCopilotReply(msg.content);
+      break;
+
+    case 'copilot.error':
+      handleCopilotReply('⚠ Copilot error: ' + msg.message);
+      break;
+
+    case 'macro.started':
+    case 'macro.completed':
+    case 'macro.failed':
+    case 'macro.progress':
+      // Route to macro UI if implemented
+      break;
+
+    case 'error':
+      showBridgeError('Bridge error: ' + msg.message);
+      break;
+  }
+}
+
+// ── Render a live screen from the bridge ──────────────────────────
+function renderLiveScreen(screenData) {
+  const term = document.getElementById('terminal');
+  term.innerHTML = '';
+
+  const rows = screenData.rows || [];
+  rows.forEach((row, ri) => {
+    const rowEl = document.createElement('div');
+    rowEl.className = 'screen-row';
+
+    const cells = Array.isArray(row) ? row : [];
+    const numCols = screenData.cols || 80;
+
+    for (let ci = 0; ci < numCols; ci++) {
+      const cell  = cells[ci] || { char: ' ' };
+      const cellEl = document.createElement('span');
+      cellEl.className = 'screen-cell';
+      cellEl.textContent = cell.char && cell.char !== '\x00' ? cell.char : ' ';
+
+      if (ri === (screenData.cursorRow ?? 0) && ci === (screenData.cursorCol ?? 0)) {
+        cellEl.classList.add('cursor-cell');
+      } else if (cell.fa !== undefined) {
+        const isProtected = !!(cell.fa & 0x20);
+        const intensity   = (cell.fa & 0x0C) >> 2;
+        if (isProtected && intensity === 3)      cellEl.classList.add('field-error');
+        else if (isProtected && intensity === 2) cellEl.classList.add('field-dim');
+        else if (isProtected)                    cellEl.classList.add('field-protected');
+        else                                     cellEl.classList.add('field-label');
+      }
+
+      rowEl.appendChild(cellEl);
+    }
+
+    term.appendChild(rowEl);
+  });
+
+  document.getElementById('oiaRow').textContent =
+    String((screenData.cursorRow ?? 0) + 1).padStart(2, '0');
+  document.getElementById('oiaCol').textContent =
+    String((screenData.cursorCol ?? 0) + 1).padStart(2, '0');
+}
+
+// Convert a screen message to plain text for Copilot context
+function screenToText(screenData) {
+  return (screenData.rows || [])
+    .map(row => (Array.isArray(row) ? row : [])
+      .map(c => c.char && c.char !== '\x00' ? c.char : ' ')
+      .join(''))
+    .join('\n');
+}
+
+// ── OIA updates ───────────────────────────────────────────────────
+function updateOIA(oia) {
+  const mode = document.getElementById('oiaMode');
+  if (oia.kbdLocked) {
+    mode.textContent = 'X SYSTEM';
+    mode.className   = 'oia-val amber';
+  } else {
+    mode.textContent = 'READY';
+    mode.className   = 'oia-val blue';
+  }
+}
+
+// ── Send keys to bridge ───────────────────────────────────────────
+function sendKey(aid, fields = []) {
+  const session = sessions.get(activeSession);
+  if (!session || session.ws.readyState !== WebSocket.OPEN) return;
+  session.ws.send(JSON.stringify({ type: 'key', aid, fields }));
+}
+
+function sendType(row, col, text) {
+  const session = sessions.get(activeSession);
+  if (!session || session.ws.readyState !== WebSocket.OPEN) return;
+  session.ws.send(JSON.stringify({ type: 'type', row, col, text }));
+}
+
+// ── Keyboard handler ──────────────────────────────────────────────
+const AID_MAP = {
+  'Enter':'ENTER','Escape':'PA1',
+  'F1':'PF1','F2':'PF2','F3':'PF3','F4':'PF4','F5':'PF5','F6':'PF6',
+  'F7':'PF7','F8':'PF8','F9':'PF9','F10':'PF10','F11':'PF11','F12':'PF12',
+  'F13':'PF13','F14':'PF14','F15':'PF15','F16':'PF16',
+  'F17':'PF17','F18':'PF18','F19':'PF19','F20':'PF20',
+  'F21':'PF21','F22':'PF22','F23':'PF23','F24':'PF24',
+};
+
+document.addEventListener('keydown', e => {
+  // UI shortcuts (always active)
+  if (e.ctrlKey && e.key === 'k') {
+    e.preventDefault();
+    const copilotTabBtn = document.querySelector('.copilot-tab');
+    if (document.getElementById('rightPanel').classList.contains('hidden'))
+      document.getElementById('rightPanel').classList.remove('hidden');
+    switchPanelTab(copilotTabBtn, 'Copilot');
+    document.getElementById('copilot-input').focus();
+    return;
+  }
+  if (e.ctrlKey && e.key === 'b') {
+    e.preventDefault();
+    document.getElementById('sidebar').classList.toggle('collapsed');
+    return;
+  }
+
+  // Don't capture keys when focused on text inputs or textareas
+  const tag = document.activeElement?.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+  // AID keys — send to bridge
+  if (AID_MAP[e.key]) {
+    e.preventDefault();
+    sendKey(AID_MAP[e.key]);
+    return;
+  }
+
+  // Printable characters — send to bridge as type-at-cursor
+  if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+    sendType(cursorRow, cursorCol, e.key);
+    return;
+  }
+
+  // Backspace
+  if (e.key === 'Backspace') {
+    e.preventDefault();
+    sendType(cursorRow, Math.max(0, cursorCol - 1), ' ');
+    return;
+  }
+});
+
+// ── PF toolbar buttons ────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.t-btn.pf').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const txt = btn.textContent.trim();
+      const match = txt.match(/^(PF\d+|PA\d+)/);
+      if (match) sendKey(match[1]);
+    });
+  });
+  document.querySelector('.t-btn[title="Clear"]')
+    ?.addEventListener('click', () => sendKey('CLEAR'));
+  document.querySelector('.t-btn[title="SysReq"]')
+    ?.addEventListener('click', () => sendKey('SYSREQ'));
+  document.querySelector('.t-btn[title="PA1"]')
+    ?.addEventListener('click', () => sendKey('PA1'));
+  document.querySelector('.t-btn[title="PA2"]')
+    ?.addEventListener('click', () => sendKey('PA2'));
+});
+
+// ── Connection status helpers ─────────────────────────────────────
+function setConnStatus(name, state, detail) {
   const dot  = document.getElementById('mainConnDot');
   const txt  = document.getElementById('connStatusText');
   const mode = document.getElementById('oiaMode');
 
-  dot.className  = 'conn-dot connecting';
-  txt.textContent = name + ' · Connecting…';
-  txt.style.color = 'var(--accent-amber)';
-  mode.textContent = 'CONNECTING';
-  mode.className   = 'oia-val amber';
-
-  setTimeout(() => {
-    dot.className   = 'conn-dot';
-    txt.textContent = name + ' · Connected';
-    txt.style.color = 'var(--accent-green)';
-    mode.textContent = 'READY';
-    mode.className   = 'oia-val blue';
-
-    // Add a new session tab for the connected LPAR
-    addSessionTab(name, profile.type || 'TSO');
-
-    // Show the logon screen
-    currentScreen = 1; renderScreen();
-
-    // In the real app, send the connect message to the bridge:
-    // ws.send(JSON.stringify({ type:'connect', host:profile.host,
-    //   port:profile.port, tls:profile.tls,
-    //   model:profile.model, codepage:profile.codepage }));
-  }, 1800);
+  const states = {
+    connected:    { dotClass:'conn-dot',                 color:'var(--accent-green)', modeText:'READY',        modeClass:'oia-val blue'  },
+    connecting:   { dotClass:'conn-dot connecting',      color:'var(--accent-amber)', modeText:'CONNECTING',   modeClass:'oia-val amber' },
+    disconnected: { dotClass:'conn-dot disconnected',    color:'var(--text-muted)',   modeText:'DISCONNECTED', modeClass:'oia-val'       },
+    error:        { dotClass:'conn-dot disconnected',    color:'var(--t-red)',        modeText:'ERROR',        modeClass:'oia-val'       },
+  };
+  const s = states[state] || states.disconnected;
+  dot.className   = s.dotClass;
+  txt.textContent = name + (state === 'connecting' ? ' · Connecting…' : state === 'connected' ? ' · Connected' : state === 'error' ? ' · Error' : ' · Disconnected');
+  txt.style.color = s.color;
+  mode.textContent = s.modeText;
+  mode.className   = s.modeClass;
 }
 
-// ── Dynamically add a session tab ─────────────────────────────────
-function closeTab(e, closeBtn) {
-  e.stopPropagation();
-  const tab  = closeBtn.closest('.session-tab');
-  const tabs = document.querySelector('.session-tabs');
-  const all  = [...tabs.querySelectorAll('.session-tab')];
-  const idx  = all.indexOf(tab);
-  tab.remove();
-  // Activate adjacent tab
-  const remaining = [...tabs.querySelectorAll('.session-tab')];
-  if (remaining.length) {
-    switchTab(remaining[Math.max(0, idx - 1)]);
-  }
+function updateSessionDot(sid, state) {
+  const session = sessions.get(sid);
+  if (!session?.tabEl) return;
+  const dot = session.tabEl.querySelector('.tab-dot');
+  if (!dot) return;
+  const colors = { connected:'#33ff66', connecting:'#ffaa00', disconnected:'#555', error:'#ff4444' };
+  const c = colors[state] || '#555';
+  dot.style.background = c;
+  dot.style.boxShadow  = state === 'connected' ? `0 0 4px ${c}` : 'none';
 }
-  const tabs = document.querySelector('.session-tabs');
+
+// ── Bridge error overlay ──────────────────────────────────────────
+function showBridgeError(msg) {
+  // Show a non-blocking toast on the terminal instead of alert()
+  const term = document.getElementById('terminal');
+  const toast = document.createElement('div');
+  toast.style.cssText = `
+    position:absolute;top:8px;left:50%;transform:translateX(-50%);
+    background:#1a0a0a;border:1px solid var(--t-red);border-radius:4px;
+    padding:8px 16px;font-size:11px;color:var(--t-red);z-index:50;
+    font-family:'IBM Plex Mono',monospace;white-space:pre;max-width:90%;
+    text-align:center;box-shadow:0 4px 20px rgba(0,0,0,0.6)`;
+  toast.textContent = msg;
+  term.style.position = 'relative';
+  term.appendChild(toast);
+  setTimeout(() => toast.remove(), 8000);
+}
+
+// ── Session tabs ──────────────────────────────────────────────────
+function addSessionTab(name, type, sid) {
+  const tabs  = document.querySelector('.session-tabs');
   const addBtn = tabs.querySelector('.tab-add');
 
-  // Don't duplicate if already open
+  // Switch to existing tab if already open
   const existing = [...tabs.querySelectorAll('.session-tab')]
-    .find(t => t.textContent.includes(name));
-  if (existing) { switchTab(existing); return; }
+    .find(t => t.dataset.sid === String(sid));
+  if (existing) { activateTabEl(existing, sid); return existing; }
 
-  const colors = ['#33ff66','#4488cc','#ffaa00','#ff66cc','#00ffdd'];
+  const colors = ['#33ff66','#4488cc','#ffaa00','#ff66cc','#00ffdd','#aa88ff'];
   const color  = colors[tabs.querySelectorAll('.session-tab').length % colors.length];
 
   const tab = document.createElement('div');
-  tab.className = 'session-tab';
+  tab.className    = 'session-tab';
+  tab.dataset.sid  = sid;
   tab.innerHTML = `
-    <div class="tab-dot" style="background:${color};box-shadow:0 0 4px ${color}"></div>
-    ${name} · ${type}
-    <span class="tab-close" onclick="closeTab(event,this)">×</span>`;
-  tab.onclick = () => switchTab(tab);
+    <div class="tab-dot" style="background:#ffaa00;box-shadow:0 0 4px #ffaa00"></div>
+    ${esc(name)} · ${esc(type)}
+    <span class="tab-close" onclick="closeSessionTab(event,this)">×</span>`;
+  tab.onclick = () => activateTabEl(tab, sid);
   tabs.insertBefore(tab, addBtn);
-  switchTab(tab);
+  return tab;
+}
+
+function activateTabEl(tabEl, sid) {
+  document.querySelectorAll('.session-tab').forEach(t => t.classList.remove('active'));
+  tabEl.classList.add('active');
+  activateSession(sid);
+}
+
+function activateSession(sid) {
+  activeSession = sid;
+  const session = sessions.get(sid);
+  if (!session) return;
+  setConnStatus(session.name,
+    session.ws.readyState === WebSocket.OPEN ? 'connected' : 'disconnected');
+  // Clear terminal until bridge sends a screen
+  if (session.ws.readyState !== WebSocket.OPEN) {
+    document.getElementById('terminal').innerHTML = '';
+  }
+}
+
+function closeSessionTab(e, closeBtn) {
+  e.stopPropagation();
+  const tab  = closeBtn.closest('.session-tab');
+  const sid  = Number(tab.dataset.sid);
+  const tabs = document.querySelector('.session-tabs');
+  const all  = [...tabs.querySelectorAll('.session-tab')];
+  const idx  = all.indexOf(tab);
+
+  // Close the WebSocket
+  const session = sessions.get(sid);
+  if (session) {
+    session.ws.send(JSON.stringify({ type: 'disconnect' }));
+    session.ws.close();
+    sessions.delete(sid);
+  }
+
+  tab.remove();
+  const remaining = [...tabs.querySelectorAll('.session-tab')];
+  if (remaining.length) {
+    const next = remaining[Math.max(0, idx - 1)];
+    activateTabEl(next, Number(next.dataset.sid));
+  } else {
+    activeSession = null;
+    document.getElementById('terminal').innerHTML = '';
+    setConnStatus('', 'disconnected');
+  }
+}
+
+// Keep the old switchTab for pre-existing static tabs
+function switchTab(el) {
+  document.querySelectorAll('.session-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  COPILOT
+//  SETTINGS
 // ══════════════════════════════════════════════════════════════════
-let chatHistory  = [];
+function setFontSize(v) {
+  document.getElementById('fontSizeLabel').textContent = v;
+  document.getElementById('terminal').style.fontSize = v + 'px';
+}
+
+const themes = {
+  green: { bg:'#000810', fg:'#33ff66', prot:'#6699ff' },
+  blue:  { bg:'#00060f', fg:'#7799ff', prot:'#aaccff' },
+  amber: { bg:'#080400', fg:'#ffaa00', prot:'#ff8800' },
+  white: { bg:'#0a0a0a', fg:'#e8e8e8', prot:'#aaaacc' },
+  teal:  { bg:'#001010', fg:'#00ffdd', prot:'#66ddff' },
+};
+function setTheme(name, el) {
+  document.querySelectorAll('.theme-swatch').forEach(s => s.classList.remove('active'));
+  el.classList.add('active');
+  const t = themes[name];
+  document.documentElement.style.setProperty('--t-bg', t.bg);
+  document.documentElement.style.setProperty('--t-green', t.fg);
+  document.documentElement.style.setProperty('--t-blue', t.prot);
+  document.getElementById('terminal').style.color = t.fg;
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  PANEL / TAB SWITCHING
+// ══════════════════════════════════════════════════════════════════
+function switchPanelTab(el, name) {
+  document.querySelectorAll('.panel-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.querySelectorAll('.panel-content').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel' + name).classList.add('active');
+}
+function toggleRightPanel() {
+  document.getElementById('rightPanel').classList.toggle('hidden');
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  MODAL — manual connect
+// ══════════════════════════════════════════════════════════════════
+function showConnectModal() { document.getElementById('connectModal').classList.remove('hidden'); }
+function hideConnectModal() { document.getElementById('connectModal').classList.add('hidden'); }
+document.getElementById('connectModal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) hideConnectModal();
+});
+
+// Manual connect form submit
+document.querySelector('#connectModal .btn-primary')
+  ?.addEventListener('click', () => {
+    const body  = document.querySelector('#connectModal .modal-body');
+    const host  = body.querySelector('input[placeholder="10.x.x.x"]')?.value?.trim();
+    const port  = parseInt(body.querySelector('input[type="number"]')?.value || '339', 10);
+    const name  = body.querySelector('input[placeholder="My LPAR"]')?.value?.trim() || host;
+    const lu    = body.querySelector('input[placeholder="LU3A0001"]')?.value?.trim() || null;
+    const sec   = body.querySelector('select')?.value || '';
+    const tls   = sec.toLowerCase().includes('tls');
+    if (!host) { alert('Please enter a hostname or IP address.'); return; }
+    openSession({ id: name || host, host, port, tls, luName: lu, type:'TSO', model:'3278-2', codepage:37 });
+  });
+
+// ══════════════════════════════════════════════════════════════════
+//  COPILOT — routes through bridge when connected, direct API fallback
+// ══════════════════════════════════════════════════════════════════
+let chatHistory   = [];
 let includeScreen = true;
 let isStreaming   = false;
+
+function getCurrentScreenText() {
+  // Use live screen text if bridge is connected, otherwise empty
+  return liveScreenText;
+}
 
 function buildSystemPrompt() {
   let sys = `You are a helpful assistant embedded in WebTerm/3270, a modern web-based IBM mainframe terminal emulator.
@@ -1519,9 +1925,8 @@ When generating macros, output them as valid JSON:
 
 Be concise and use IBM mainframe terminology. Reference row/column positions when discussing screen fields.`;
 
-  if (includeScreen) {
-    const txt = getCurrentScreenText();
-    if (txt) sys += `\n\n--- CURRENT 3270 SCREEN (${screens[currentScreen].label}) ---\n${txt}\n--- END SCREEN ---\n\nThe user is looking at this screen right now.`;
+  if (includeScreen && liveScreenText) {
+    sys += `\n\n--- CURRENT 3270 SCREEN ---\n${liveScreenText}\n--- END SCREEN ---\n\nThe user is looking at this screen right now.`;
   }
   return sys;
 }
@@ -1544,24 +1949,40 @@ async function sendCopilotMessage(override) {
   document.getElementById('sendBtn').disabled = true;
 
   try {
+    // Route through bridge if connected, so API key stays server-side
+    const session = sessions.get(activeSession);
+    if (session && session.ws.readyState === WebSocket.OPEN) {
+      // Bridge handles the API call — response comes back as copilot.reply
+      session.ws.send(JSON.stringify({
+        type:         'copilot.chat',
+        systemPrompt: buildSystemPrompt(),
+        messages:     chatHistory,
+      }));
+      // Response handled in handleBridgeMsg → handleCopilotReply
+      // Remove typing indicator when reply arrives (done in handleCopilotReply)
+      typingEl.id = 'copilot-typing';
+      isStreaming = true; // keep locked until reply arrives
+      return; // don't re-enable button here — handleCopilotReply does it
+    }
+
+    // Fallback: direct Anthropic API call (requires ANTHROPIC_API_KEY in browser)
+    // Only used when bridge is not connected
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model:      'claude-sonnet-4-20250514',
         max_tokens: 1000,
-        system: buildSystemPrompt(),
-        messages: chatHistory,
+        system:     buildSystemPrompt(),
+        messages:   chatHistory,
       }),
     });
 
     typingEl.remove();
-
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.error?.message || `API error ${res.status}`);
     }
-
     const data  = await res.json();
     const reply = data.content.filter(b => b.type === 'text').map(b => b.text).join('');
     chatHistory.push({ role: 'assistant', content: reply });
@@ -1576,9 +1997,20 @@ async function sendCopilotMessage(override) {
   }
 }
 
+// Called when bridge sends copilot.reply
+function handleCopilotReply(content) {
+  const typingEl = document.getElementById('copilot-typing');
+  if (typingEl) typingEl.remove();
+  chatHistory.push({ role: 'assistant', content });
+  appendAssistantMsg(content);
+  isStreaming = false;
+  document.getElementById('sendBtn').disabled = false;
+}
+
 function quickPrompt(text) {
-  // Switch to copilot tab first
   const copilotTabBtn = document.querySelector('.copilot-tab');
+  if (document.getElementById('rightPanel').classList.contains('hidden'))
+    document.getElementById('rightPanel').classList.remove('hidden');
   switchPanelTab(copilotTabBtn, 'Copilot');
   sendCopilotMessage(text);
 }
@@ -1591,7 +2023,7 @@ function appendUserMsg(text) {
     <div class="msg-avatar">you</div>
     <div class="msg-body">
       <div class="msg-role">You</div>
-      ${includeScreen ? ctxBlock() : ''}
+      ${includeScreen && liveScreenText ? ctxBlock() : ''}
       <div class="msg-content">${esc(text)}</div>
     </div>`;
   chat.appendChild(div);
@@ -1610,7 +2042,6 @@ function appendAssistantMsg(raw) {
     </div>`;
   chat.appendChild(div);
 
-  // Detect macro JSON and add action card
   const m = raw.match(/```json\s*(\{[\s\S]*?"steps"[\s\S]*?\})\s*```/);
   if (m) {
     try {
@@ -1619,7 +2050,7 @@ function appendAssistantMsg(raw) {
       card.className = 'macro-card';
       card.innerHTML = `
         <div class="macro-card-title">⚡ Macro · ${esc(macro.name || 'Untitled')}</div>
-        <div style="font-size:10px;color:var(--text-dim)">${macro.steps?.length||0} steps${macro.description ? ' · '+esc(macro.description):''}</div>
+        <div style="font-size:10px;color:var(--text-dim)">${macro.steps?.length||0} steps</div>
         <div class="macro-card-actions">
           <button class="macro-card-btn primary" onclick='saveMacro(${escAttr(JSON.stringify(macro))})'>Save to Engine</button>
           <button class="macro-card-btn" onclick='dlMacro(${escAttr(JSON.stringify(macro))})'>⬇ JSON</button>
@@ -1664,10 +2095,10 @@ function appendErrorMsg(msg) {
 
 function ctxBlock() {
   const id   = 'ctx-' + Date.now();
-  const text = getCurrentScreenText().slice(0, 500);
+  const text = liveScreenText.slice(0, 500);
   return `<div class="context-block">
     <div class="context-block-header" onclick="toggleCtx('${id}')">
-      <span>⬡ ${screens[currentScreen].label}</span><span id="${id}-c">▼</span>
+      <span>⬡ Live screen</span><span id="${id}-c">▼</span>
     </div>
     <div class="context-block-body collapsed" id="${id}">${esc(text)}</div>
   </div>`;
@@ -1684,16 +2115,13 @@ function toggleContextPreview() {
   const blocks = document.querySelectorAll('.context-block-body');
   if (blocks.length) { const l = blocks[blocks.length-1]; l.classList.remove('collapsed'); l.scrollIntoView({behavior:'smooth'}); }
 }
-
 function toggleScreenCtx() {
   includeScreen = !includeScreen;
   document.getElementById('screenCtxMini').classList.toggle('off', !includeScreen);
 }
-
 function copilotKeydown(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendCopilotMessage(); }
 }
-
 function copilotResize(el) {
   el.style.height = 'auto';
   el.style.height = Math.min(el.scrollHeight, 90) + 'px';
@@ -1702,10 +2130,14 @@ function copilotResize(el) {
 }
 
 function saveMacro(macro) {
-  // In real app: ws.send(JSON.stringify({ type:'macro.save', macro }))
-  alert(`"${macro.name}" would be saved to the macro engine.\n(Wire up the WebSocket in the real app.)`);
+  const session = sessions.get(activeSession);
+  if (session && session.ws.readyState === WebSocket.OPEN) {
+    session.ws.send(JSON.stringify({ type: 'macro.save', macro }));
+    alert(`Macro "${macro.name}" sent to engine.`);
+  } else {
+    dlMacro(macro); // fallback — download if not connected
+  }
 }
-
 function dlMacro(macro) {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([JSON.stringify(macro, null, 2)], {type:'application/json'}));
@@ -1720,22 +2152,28 @@ function renderMd(text) {
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\n/g, '<br>');
 }
-
 function esc(s) {
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 function escAttr(s) { return s.replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 
 // ══════════════════════════════════════════════════════════════════
-//  CLOCK
+//  CLOCK + INIT
 // ══════════════════════════════════════════════════════════════════
-function tick() { document.getElementById('oiaTime').textContent = new Date().toLocaleTimeString('en-US',{hour12:false}); }
+function tick() {
+  document.getElementById('oiaTime').textContent =
+    new Date().toLocaleTimeString('en-US', {hour12:false});
+}
 setInterval(tick, 1000); tick();
 
-// ══════════════════════════════════════════════════════════════════
-//  INIT
-// ══════════════════════════════════════════════════════════════════
-renderScreen();
+// Start with a blank terminal — bridge will send the first screen
+document.getElementById('terminal').innerHTML = '';
+document.getElementById('oiaMode').textContent = 'NOT CONNECTED';
+document.getElementById('oiaMode').className   = 'oia-val';
+document.getElementById('connStatusText').textContent = 'Not connected';
+document.getElementById('connStatusText').style.color = 'var(--text-muted)';
+document.getElementById('mainConnDot').className = 'conn-dot disconnected';
+
 </script>
 </body>
 </html>
