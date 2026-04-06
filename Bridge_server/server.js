@@ -1,24 +1,22 @@
 /**
- * WebTerm/3270 — Node.js WebSocket Bridge
+ * WebTerm/3270 — Node.js WebSocket Bridge + Static File Server
  * ─────────────────────────────────────────────────────────────────
- * Sits between the browser-based 3270 UI and a real mainframe.
- * Each browser session opens a WebSocket; the bridge opens a
- * corresponding raw TCP socket to the host:port of the LPAR,
- * forwards bytes in both directions, and handles TN3270E option
- * negotiation.
+ * Serves the browser client over HTTP AND handles WebSocket
+ * connections on the same port (8080).
+ *
+ *   http://localhost:8080          → tn3270-client.html  (production)
+ *   http://localhost:8080/demo     → tn3270-client-demo.html
+ *   ws://localhost:8080            → WebSocket bridge
  *
  * Architecture:
  *
- *   Browser (WebSocket) ──► Bridge (this file) ──► Mainframe TCP
- *       JSON frames      ◄──   raw TN3270(E)    ◄──  EBCDIC bytes
- *
- * Usage:
- *   node server.js                    # uses config.js defaults
- *   PORT=8080 node server.js          # override listen port
+ *   Browser (HTTP) ──► http://localhost:8080  ──► static HTML/CSS/JS
+ *   Browser (WS)   ──► ws://localhost:8080    ──► Mainframe TCP :339
  */
 
 'use strict';
 
+const http       = require('http');
 const WebSocket  = require('ws');
 const net        = require('net');
 const tls        = require('tls');
@@ -26,19 +24,68 @@ const fs         = require('fs');
 const path       = require('path');
 const { EventEmitter } = require('events');
 
-const config     = require('./config');
+const config        = require('./config');
 const Tn3270Session = require('./tn3270/session');
-const Ebcdic     = require('./tn3270/ebcdic');
-const logger     = require('./logger');
+const Ebcdic        = require('./tn3270/ebcdic');
+const logger        = require('./logger');
 
-// ── WebSocket server ───────────────────────────────────────────────
-const wss = new WebSocket.Server({
-  port: config.bridge.port,
-  // Optionally add TLS here for browser → bridge leg too:
-  // server: https.createServer({ key, cert })
+const PUBLIC_DIR = path.join(__dirname, 'public');
+
+// ── MIME types for static files ────────────────────────────────────
+const MIME = {
+  '.html': 'text/html; charset=utf-8',
+  '.css':  'text/css',
+  '.js':   'application/javascript',
+  '.json': 'application/json',
+  '.ico':  'image/x-icon',
+  '.png':  'image/png',
+  '.svg':  'image/svg+xml',
+};
+
+// ── HTTP server — serves the public/ folder ────────────────────────
+const httpServer = http.createServer((req, res) => {
+  // Route /demo to the demo file, everything else to production client
+  let filename;
+  if (req.url === '/demo' || req.url === '/demo.html') {
+    filename = 'tn3270-client-demo.html';
+  } else if (req.url === '/copilot' || req.url === '/copilot.html') {
+    filename = 'copilot-panel-standalone.html';
+  } else {
+    // Default: serve production client for / and any unrecognised path
+    filename = 'tn3270-client.html';
+  }
+
+  const filePath = path.join(PUBLIC_DIR, filename);
+  const ext      = path.extname(filePath);
+  const mime     = MIME[ext] || 'text/plain';
+
+  fs.readFile(filePath, (err, data) => {
+    if (err) {
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      res.end(`Not found: ${filename}`);
+      return;
+    }
+    res.writeHead(200, {
+      'Content-Type':  mime,
+      'Cache-Control': 'no-cache',         // always serve fresh during development
+    });
+    res.end(data);
+  });
 });
 
-logger.info(`WebTerm/3270 bridge listening on ws://0.0.0.0:${config.bridge.port}`);
+// ── WebSocket server — shares the same HTTP server and port ───────
+const wss = new WebSocket.Server({ server: httpServer });
+
+// Start listening
+httpServer.listen(config.bridge.port, '0.0.0.0', () => {
+  logger.info('─────────────────────────────────────────────────────');
+  logger.info(`  WebTerm/3270 bridge ready`);
+  logger.info(`  Client (production) → http://localhost:${config.bridge.port}`);
+  logger.info(`  Client (demo)       → http://localhost:${config.bridge.port}/demo`);
+  logger.info(`  WebSocket bridge    → ws://localhost:${config.bridge.port}`);
+  logger.info('─────────────────────────────────────────────────────');
+});
+
 
 // Track all active sessions  {wsId → Tn3270Session}
 const sessions = new Map();
