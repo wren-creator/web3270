@@ -59,10 +59,20 @@ module.exports = {
    */
   profiles: [
     {
-      id:       'prod01',
-      name:     'PROD01',
-      host:     process.env.PROD01_HOST  || 'mainframe.corp.com',
-      port:     parseInt(process.env.PROD01_PORT  || '992', 10),
+      id:        'mock',
+      name:      process.env.MOCK_NAME || 'Demo LPAR',
+      host:      process.env.MOCK_HOST || '127.0.0.1',
+      port:      parseInt(process.env.MOCK_PORT || '3270', 10),
+      tls:       false,
+      type:      process.env.MOCK_TYPE || 'TSO',
+      model:     '3278-2',
+      codepage:  37,
+    },  
+    {
+      id:       'VM01',
+      name:     'VM01',
+      host:     process.env.PROD01_HOST  || '10.80.7.136',
+      port:     parseInt(process.env.PROD01_PORT  || '2323', 10),
       tls:      (process.env.PROD01_TLS  || 'true') === 'true',
       luName:   process.env.PROD01_LU    || null,
       model:    process.env.PROD01_MODEL || '3278-2',
