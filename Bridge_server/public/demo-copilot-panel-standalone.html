@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>WebTerm/3270 — Copilot Panel (standalone component)</title>
+<style>
+/*
+ * This file is a STANDALONE DEMO of the Copilot panel.
+ * In the real app, paste the <style> into the main CSS,
+ * the <div id="copilot-panel"> into the right sidebar,
+ * and the <script> into the main JS (after the terminal code).
+ *
+ * The panel calls the Anthropic API directly from the browser,
+ * injecting the current 3270 screen text as context.
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+
+:root {
+  --bg-primary:   #0a0d12;
+  --bg-secondary: #0f1420;
+  --bg-panel:     #131825;
+  --bg-elevated:  #1a2133;
+  --border:       #1e2d45;
+  --border-bright:#2a3f5f;
+  --accent-blue:  #2d7dd2;
+  --accent-cyan:  #00d4ff;
+  --accent-green: #00ff88;
+  --accent-amber: #ffb800;
+  --text-primary: #c8d8f0;
+  --text-dim:     #5a7a9a;
+  --text-muted:   #3a5070;
+  --t-green:      #33ff66;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'IBM Plex Sans', sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  height: 100vh;
+  display: flex;
+  align-items: stretch;
+  padding: 16px;
+  gap: 16px;
+}
+
+/* ── Simulated terminal (left, for demo context) ── */
+.demo-terminal {
+  flex: 1;
+  background: #000810;
+  border: 1px solid #0d2510;
+  border-radius: 4px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  color: #33ff66;
+  padding: 12px;
+  white-space: pre;
+  line-height: 1.45;
+  overflow: hidden;
+  position: relative;
+  box-shadow: 0 0 40px rgba(0,100,50,0.1), inset 0 0 60px rgba(0,0,0,0.4);
+  max-width: 600px;
+}
+.demo-terminal::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.04) 2px, rgba(0,0,0,0.04) 4px);
+  pointer-events: none;
+}
+.demo-screen-label {
+  position: absolute;
+  top: 8px; right: 10px;
+  font-size: 9px;
+  color: var(--text-muted);
+  letter-spacing: 0.1em;
+}
+
+/* ── COPILOT PANEL ── */
+#copilot-panel {
+  width: 360px;
+  min-width: 360px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.copilot-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+  flex-shrink: 0;
+}
+
+.copilot-logo {
+  width: 28px; height: 28px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #1a3a5c, #0d5f8f);
+  border: 1px solid #2a5f8f;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px;
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+}
+.copilot-logo::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.1), transparent);
+}
+
+.copilot-title-group { flex: 1; }
+.copilot-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.02em;
+}
+.copilot-subtitle {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+
+.context-badge {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 9px;
+  font-family: 'IBM Plex Mono', monospace;
+  color: var(--accent-green);
+  background: rgba(0,255,136,0.07);
+  border: 1px solid rgba(0,255,136,0.2);
+  padding: 3px 7px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.context-badge:hover { background: rgba(0,255,136,0.12); }
+.context-dot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--accent-green);
+  animation: ctxPulse 2s infinite;
+}
+@keyframes ctxPulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+/* ── Quick prompts ── */
+.quick-prompts {
+  display: flex;
+  gap: 5px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+.quick-prompts::-webkit-scrollbar { display: none; }
+
+.qp-btn {
+  font-size: 10px;
+  font-family: 'IBM Plex Sans', sans-serif;
+  padding: 4px 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-bright);
+  color: var(--text-dim);
+  border-radius: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+.qp-btn:hover {
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+  background: rgba(0,212,255,0.05);
+}
+
+/* ── Chat area ── */
+.chat-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  scroll-behavior: smooth;
+}
+.chat-area::-webkit-scrollbar { width: 4px; }
+.chat-area::-webkit-scrollbar-track { background: transparent; }
+.chat-area::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 2px; }
+
+/* ── Messages ── */
+.msg {
+  display: flex;
+  gap: 8px;
+  animation: msgIn 0.2s ease;
+}
+@keyframes msgIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+
+.msg-avatar {
+  width: 24px; height: 24px;
+  border-radius: 5px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.msg.user .msg-avatar {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-bright);
+  color: var(--text-dim);
+}
+.msg.assistant .msg-avatar {
+  background: linear-gradient(135deg, #1a3a5c, #0d5f8f);
+  border: 1px solid #2a5f8f;
+  color: var(--accent-cyan);
+}
+
+.msg-body { flex: 1; min-width: 0; }
+
+.msg-role {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.msg.user     .msg-role { color: var(--text-muted); }
+.msg.assistant .msg-role { color: var(--accent-cyan); }
+
+.msg-content {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-primary);
+}
+.msg.user .msg-content {
+  color: var(--text-dim);
+}
+
+/* Inline code in responses */
+.msg-content code {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-bright);
+  padding: 0 4px;
+  border-radius: 2px;
+  color: var(--accent-amber);
+}
+
+/* Code blocks */
+.msg-content pre {
+  background: #060c14;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent-blue);
+  border-radius: 3px;
+  padding: 10px 12px;
+  margin: 8px 0;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: var(--t-green);
+  overflow-x: auto;
+  line-height: 1.5;
+  white-space: pre;
+}
+
+/* Context panel (collapsible screen dump) */
+.context-block {
+  background: #060c10;
+  border: 1px solid var(--border);
+  border-left: 3px solid rgba(0,255,136,0.3);
+  border-radius: 3px;
+  margin-bottom: 6px;
+  overflow: hidden;
+}
+.context-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 10px;
+  font-size: 9px;
+  font-family: 'IBM Plex Mono', monospace;
+  color: var(--accent-green);
+  cursor: pointer;
+  user-select: none;
+}
+.context-block-body {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9.5px;
+  color: #2a7a40;
+  padding: 8px 10px;
+  white-space: pre;
+  overflow-x: auto;
+  max-height: 120px;
+  overflow-y: auto;
+  line-height: 1.3;
+  border-top: 1px solid var(--border);
+}
+.context-block-body.collapsed { display: none; }
+
+/* Typing indicator */
+.typing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 0;
+}
+.typing-dot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--accent-cyan);
+  animation: typingBounce 1.2s infinite;
+}
+.typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-dot:nth-child(3) { animation-delay: 0.4s; }
+@keyframes typingBounce {
+  0%,60%,100% { transform: translateY(0); opacity:0.4; }
+  30% { transform: translateY(-4px); opacity:1; }
+}
+
+/* Macro suggestion card */
+.macro-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-bright);
+  border-radius: 4px;
+  padding: 10px 12px;
+  margin-top: 8px;
+  font-size: 11px;
+}
+.macro-card-title {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent-amber);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+}
+.macro-card-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.macro-card-btn {
+  font-size: 10px;
+  padding: 3px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  border: 1px solid var(--border-bright);
+  background: var(--bg-panel);
+  color: var(--text-dim);
+  transition: all 0.15s;
+  font-family: 'IBM Plex Sans', sans-serif;
+}
+.macro-card-btn.primary { background: var(--accent-blue); border-color: var(--accent-blue); color: white; }
+.macro-card-btn:hover:not(.primary) { border-color: var(--accent-blue); color: var(--text-primary); }
+
+/* ── Empty state ── */
+.chat-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px;
+  color: var(--text-muted);
+}
+.chat-empty-icon {
+  font-size: 32px;
+  margin-bottom: 12px;
+  opacity: 0.5;
+}
+.chat-empty-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+.chat-empty-body { font-size: 11px; line-height: 1.7; }
+
+/* ── Input area ── */
+.input-area {
+  border-top: 1px solid var(--border);
+  padding: 10px 12px;
+  background: var(--bg-secondary);
+  flex-shrink: 0;
+}
+
+.input-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.input-wrap {
+  flex: 1;
+  position: relative;
+}
+
+#copilot-input {
+  width: 100%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-bright);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 12px;
+  padding: 8px 10px;
+  resize: none;
+  outline: none;
+  line-height: 1.5;
+  max-height: 100px;
+  overflow-y: auto;
+  transition: border-color 0.15s;
+}
+#copilot-input:focus { border-color: var(--accent-blue); }
+#copilot-input::placeholder { color: var(--text-muted); }
+
+.send-btn {
+  width: 32px; height: 32px;
+  border-radius: 6px;
+  background: var(--accent-blue);
+  border: none;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.15s;
+  font-size: 14px;
+  color: white;
+}
+.send-btn:hover { background: #3a8ee0; }
+.send-btn:disabled { background: var(--bg-elevated); color: var(--text-muted); cursor: default; }
+
+.input-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 9px;
+  color: var(--text-muted);
+}
+.include-screen-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s;
+}
+.include-screen-toggle:hover { color: var(--text-dim); }
+.toggle-mini {
+  width: 24px; height: 12px;
+  background: var(--accent-blue);
+  border-radius: 6px;
+  position: relative;
+  transition: background 0.2s;
+}
+.toggle-mini.off { background: var(--border); }
+.toggle-mini::after {
+  content: '';
+  position: absolute;
+  top: 2px; left: 2px;
+  width: 8px; height: 8px;
+  background: white;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+.toggle-mini.off::after { transform: none; }
+.toggle-mini:not(.off)::after { transform: translateX(12px); }
+</style>
+</head>
+<body>
+
+<!-- SIMULATED TERMINAL (demo only) -->
+<div class="demo-terminal" id="demoTerminal">
+                    I B M    z / O S    S y s t e m
+                         TSO/E LOGON
+
+  Enter LOGON parameters below:              RACF LOGON parameters:
+
+  Userid  ===> JSMITH               Group   ===>
+  Password===>                       Appl ID ===>
+  Procedure==> TSOPROC              Acct Nmbr===> CORP01
+  Size    ===> 4096                 Perform  ===>
+  Command ===>
+
+   Enter an 'S' before each option desired below:
+                  -Nomail         -Nonotice       -Reconnect
+
+   PF1/PF13 ==> Help   PF3/PF15 ==> Logoff   PA1 ==> Attention
+
+  ISPF Buffer Pool used this session: 1,048,576 bytes
+
+***
+<span class="demo-screen-label">CURRENT SCREEN</span></div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  COPILOT PANEL  — paste into right sidebar in main app     -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<div id="copilot-panel">
+
+  <!-- Header -->
+  <div class="copilot-header">
+    <div class="copilot-logo">⬡</div>
+    <div class="copilot-title-group">
+      <div class="copilot-title">3270 Copilot</div>
+      <div class="copilot-subtitle">AI assistant · screen-aware</div>
+    </div>
+    <div class="context-badge" onclick="toggleContextPreview()" title="Screen context is active">
+      <div class="context-dot"></div>
+      SCREEN CTX
+    </div>
+  </div>
+
+  <!-- Quick prompts -->
+  <div class="quick-prompts">
+    <button class="qp-btn" onclick="quickPrompt('Explain what this screen is showing me')">Explain screen</button>
+    <button class="qp-btn" onclick="quickPrompt('What are my options from here? List the PF keys and what they do')">PF keys</button>
+    <button class="qp-btn" onclick="quickPrompt('What should I type here and what does each field mean?')">Field help</button>
+    <button class="qp-btn" onclick="quickPrompt('Generate a macro JSON to automate this screen interaction')">→ Macro</button>
+    <button class="qp-btn" onclick="quickPrompt('I see an error. What does it mean and how do I fix it?')">Error help</button>
+    <button class="qp-btn" onclick="quickPrompt('Write me JCL that will...')">Write JCL</button>
+  </div>
+
+  <!-- Chat messages -->
+  <div class="chat-area" id="chatArea">
+    <div class="chat-empty" id="chatEmpty">
+      <div class="chat-empty-icon">⬡</div>
+      <div class="chat-empty-title">3270 Copilot</div>
+      <div class="chat-empty-body">
+        Ask anything about the current screen,<br>
+        TSO/ISPF navigation, JCL, REXX,<br>
+        error codes, or macro generation.<br><br>
+        <span style="color:var(--accent-green);font-size:10px">● Screen context is active</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Input -->
+  <div class="input-area">
+    <div class="input-row">
+      <div class="input-wrap">
+        <textarea
+          id="copilot-input"
+          rows="1"
+          placeholder="Ask about this screen, JCL, errors, macros…"
+          onkeydown="inputKeydown(event)"
+          oninput="autoResize(this)"
+        ></textarea>
+      </div>
+      <button class="send-btn" id="sendBtn" onclick="sendMessage()">↑</button>
+    </div>
+    <div class="input-footer">
+      <div class="include-screen-toggle" onclick="toggleScreenContext()" id="screenCtxToggle">
+        <div class="toggle-mini" id="screenCtxMini"></div>
+        Include screen content
+      </div>
+      <span id="charCount" style="font-family:'IBM Plex Mono',monospace"></span>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────
+let chatHistory      = [];   // [{role, content}]  passed to API
+let includeScreen    = true;
+let isStreaming      = false;
+let contextCollapsed = {};   // track which context blocks are open
+
+// ── In the real app, this comes from the live terminal buffer.
+// Here we read the demo terminal div.
+function getCurrentScreenText() {
+  const el = document.getElementById('demoTerminal');
+  return el ? el.innerText.replace(/CURRENT SCREEN\s*$/, '').trimEnd() : '';
+}
+
+// ── System prompt injected into every API call ─────────────────────
+function buildSystemPrompt() {
+  let sys = `You are a helpful assistant embedded in WebTerm/3270, a web-based IBM mainframe terminal emulator.
+You help users navigate TSO, ISPF, SDSF, JES2, CICS, and other z/OS subsystems.
+You can help with: JCL, REXX, CLIST, ISPF panels, error messages, dataset management, job submission, and macro generation.
+
+When generating macros, output them as valid JSON matching this schema:
+{ "name": "...", "description": "...", "steps": [
+  { "op": "wait",   "condition": "text", "row": N, "col": N, "text": "..." },
+  { "op": "type",   "row": N, "col": N, "text": "..." },
+  { "op": "aid",    "aid": "ENTER|PF1..PF24|PA1|PA2|CLEAR" },
+  { "op": "wait",   "condition": "unlock" },
+  { "op": "comment","text": "..." }
+]}
+
+Be concise. Use IBM terminology. When referencing screen fields, give row/column coordinates if you know them.`;
+
+  if (includeScreen) {
+    const screen = getCurrentScreenText();
+    if (screen) {
+      sys += `\n\n--- CURRENT 3270 SCREEN ---\n${screen}\n--- END SCREEN ---\n\nThe user is looking at this screen right now. Reference it in your answers.`;
+    }
+  }
+
+  return sys;
+}
+
+// ── Send a message ─────────────────────────────────────────────────
+async function sendMessage(overrideText) {
+  if (isStreaming) return;
+
+  const input = document.getElementById('copilot-input');
+  const text  = (overrideText ?? input.value).trim();
+  if (!text) return;
+
+  input.value = '';
+  autoResize(input);
+  hideEmpty();
+
+  // Add user message to UI
+  appendUserMessage(text);
+  chatHistory.push({ role: 'user', content: text });
+
+  // Show typing indicator
+  const typingEl = appendTyping();
+
+  isStreaming = true;
+  document.getElementById('sendBtn').disabled = true;
+
+  try {
+    const systemPrompt = buildSystemPrompt();
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model:      'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        system:     systemPrompt,
+        messages:   chatHistory,
+      }),
+    });
+
+    typingEl.remove();
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error?.message || `API error ${response.status}`);
+    }
+
+    const data = await response.json();
+    const reply = data.content
+      .filter(b => b.type === 'text')
+      .map(b => b.text)
+      .join('');
+
+    chatHistory.push({ role: 'assistant', content: reply });
+    appendAssistantMessage(reply);
+
+  } catch (err) {
+    typingEl.remove();
+    appendError(err.message);
+  } finally {
+    isStreaming = false;
+    document.getElementById('sendBtn').disabled = false;
+  }
+}
+
+function quickPrompt(text) {
+  document.getElementById('copilot-input').value = text;
+  sendMessage(text);
+}
+
+// ── DOM helpers ────────────────────────────────────────────────────
+
+function hideEmpty() {
+  const el = document.getElementById('chatEmpty');
+  if (el) el.style.display = 'none';
+}
+
+function appendUserMessage(text) {
+  const chat = document.getElementById('chatArea');
+  const div  = document.createElement('div');
+  div.className = 'msg user';
+  div.innerHTML = `
+    <div class="msg-avatar">you</div>
+    <div class="msg-body">
+      <div class="msg-role">You</div>
+      ${includeScreen ? contextBlock(getCurrentScreenText()) : ''}
+      <div class="msg-content">${escHtml(text)}</div>
+    </div>`;
+  chat.appendChild(div);
+  scrollChat();
+}
+
+function appendAssistantMessage(raw) {
+  const chat = document.getElementById('chatArea');
+  const div  = document.createElement('div');
+  div.className = 'msg assistant';
+  div.innerHTML = `
+    <div class="msg-avatar">⬡</div>
+    <div class="msg-body">
+      <div class="msg-role">Copilot</div>
+      <div class="msg-content">${renderMarkdown(raw)}</div>
+    </div>`;
+  chat.appendChild(div);
+
+  // If response contains a macro JSON block, show action card
+  const macroMatch = raw.match(/```json\s*(\{[\s\S]*?"steps"[\s\S]*?\})\s*```/);
+  if (macroMatch) {
+    try {
+      const macro = JSON.parse(macroMatch[1]);
+      appendMacroCard(div, macro);
+    } catch { /* not valid JSON */ }
+  }
+
+  scrollChat();
+}
+
+function contextBlock(screenText) {
+  if (!screenText || !includeScreen) return '';
+  const id = 'ctx-' + Date.now();
+  return `
+    <div class="context-block">
+      <div class="context-block-header" onclick="toggleCtx('${id}')">
+        <span>⬡ Screen context attached</span>
+        <span id="${id}-chevron">▼</span>
+      </div>
+      <div class="context-block-body collapsed" id="${id}">
+${escHtml(screenText.slice(0, 600))}${screenText.length > 600 ? '\n…' : ''}
+      </div>
+    </div>`;
+}
+
+function toggleCtx(id) {
+  const body = document.getElementById(id);
+  const chev = document.getElementById(id + '-chevron');
+  if (!body) return;
+  const collapsed = body.classList.toggle('collapsed');
+  if (chev) chev.textContent = collapsed ? '▼' : '▲';
+}
+
+function appendMacroCard(parentEl, macro) {
+  const card = document.createElement('div');
+  card.className = 'macro-card';
+  card.innerHTML = `
+    <div class="macro-card-title">⚡ Macro generated: ${escHtml(macro.name || 'Untitled')}</div>
+    <div style="font-size:11px;color:var(--text-dim)">${macro.steps?.length || 0} steps · ${escHtml(macro.description || '')}</div>
+    <div class="macro-card-actions">
+      <button class="macro-card-btn primary" onclick="saveMacroToEngine(${escAttr(JSON.stringify(macro))})">Save to Macro Engine</button>
+      <button class="macro-card-btn" onclick="downloadMacro(${escAttr(JSON.stringify(macro))})">⬇ Download JSON</button>
+    </div>`;
+  parentEl.querySelector('.msg-body').appendChild(card);
+}
+
+function appendTyping() {
+  const chat = document.getElementById('chatArea');
+  const div  = document.createElement('div');
+  div.className = 'msg assistant';
+  div.innerHTML = `
+    <div class="msg-avatar">⬡</div>
+    <div class="msg-body">
+      <div class="msg-role">Copilot</div>
+      <div class="typing-indicator">
+        <div class="typing-dot"></div>
+        <div class="typing-dot"></div>
+        <div class="typing-dot"></div>
+      </div>
+    </div>`;
+  chat.appendChild(div);
+  scrollChat();
+  return div;
+}
+
+function appendError(message) {
+  const chat = document.getElementById('chatArea');
+  const div  = document.createElement('div');
+  div.className = 'msg assistant';
+  div.innerHTML = `
+    <div class="msg-avatar">⬡</div>
+    <div class="msg-body">
+      <div class="msg-role" style="color:var(--t-red)">Error</div>
+      <div class="msg-content" style="color:var(--text-dim);font-size:11px">${escHtml(message)}</div>
+    </div>`;
+  chat.appendChild(div);
+  scrollChat();
+}
+
+function scrollChat() {
+  const chat = document.getElementById('chatArea');
+  chat.scrollTop = chat.scrollHeight;
+}
+
+// ── Markdown-ish renderer (minimal, no deps) ──────────────────────
+function renderMarkdown(text) {
+  return text
+    // Code blocks
+    .replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) =>
+      `<pre>${escHtml(code.trim())}</pre>`)
+    // Inline code
+    .replace(/`([^`]+)`/g, (_, code) => `<code>${escHtml(code)}</code>`)
+    // Bold
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    // Line breaks
+    .replace(/\n/g, '<br>');
+}
+
+// ── Macro actions ─────────────────────────────────────────────────
+function saveMacroToEngine(macro) {
+  // In the real app: ws.send(JSON.stringify({ type: 'macro.save', macro }))
+  alert(`Macro "${macro.name}" would be saved to the engine.\n(Wire up the WebSocket in the real app.)`);
+}
+
+function downloadMacro(macro) {
+  const blob = new Blob([JSON.stringify(macro, null, 2)], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url;
+  a.download = `${(macro.name || 'macro').replace(/[^a-z0-9]/gi, '_')}.macro.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── Screen context toggle ─────────────────────────────────────────
+function toggleScreenContext() {
+  includeScreen = !includeScreen;
+  const mini = document.getElementById('screenCtxMini');
+  mini.classList.toggle('off', !includeScreen);
+}
+
+function toggleContextPreview() {
+  // Scroll to latest context block
+  const blocks = document.querySelectorAll('.context-block-body');
+  if (blocks.length) {
+    const last = blocks[blocks.length - 1];
+    last.classList.remove('collapsed');
+    last.scrollIntoView({ behavior: 'smooth' });
+  }
+}
+
+// ── Input helpers ─────────────────────────────────────────────────
+function inputKeydown(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+}
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 100) + 'px';
+  const count = el.value.length;
+  document.getElementById('charCount').textContent = count > 0 ? `${count}` : '';
+}
+
+// ── Utils ─────────────────────────────────────────────────────────
+function escHtml(str) {
+  return String(str).replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+function escAttr(str) {
+  return str.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+</script>
+</body>
+</html>

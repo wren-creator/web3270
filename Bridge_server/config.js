@@ -58,6 +58,16 @@ module.exports = {
    *   8023 — common alternative / proxy port
    */
   profiles: [
+   {
+     id:       'mock',
+     name:     process.env.MOCK_NAME || 'Demo LPAR',
+     host:     process.env.MOCK_HOST || '127.0.0.1',
+     port:     parseInt(process.env.MOCK_PORT || '3270', 10),
+     tls:      false,
+     type:     process.env.MOCK_TYPE || 'TSO',
+     model:    '3278-2',
+     codepage: 37,
+    },
     {
       id:        'mock',
       name:      process.env.MOCK_NAME || 'Demo LPAR',
