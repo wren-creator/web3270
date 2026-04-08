@@ -155,12 +155,13 @@ body {
   top: calc(100% + 6px);
   right: 0;
   min-width: 260px;
+  max-height: 400px;
+  overflow-y: auto;
   background: var(--bg-panel);
   border: 1px solid var(--border-bright);
   border-radius: 5px;
   box-shadow: 0 12px 40px rgba(0,0,0,0.6);
   z-index: 200;
-  overflow: hidden;
   animation: dropIn 0.15s ease;
 }
 .lpar-dropdown-menu.open { display: block; }
@@ -863,7 +864,7 @@ input[type="range"]::-webkit-slider-thumb {
     <span class="tab-close">×</span>
   </div>
   <div class="tab-dot" style="background:#4488cc;box-shadow:0 0 4px #4488cc"></div>-->
-  Add 3270 session
+  3270 sessions
   <div class="tab-add" onclick="showConnectModal()">＋</div>
 </div>
 
@@ -874,7 +875,7 @@ input[type="range"]::-webkit-slider-thumb {
   <div class="sidebar" id="sidebar">
     <div class="sidebar-section">
       <div class="sidebar-header">LPAR Profiles <span class="sidebar-header-btn" onclick="showConnectModal()">＋</span></div>
-      <div id="sidebarLparList" style="padding:4px 0 8px">
+      <div id="sidebarLparList" style="padding:4px 0 8px; max-height:200px; overflow-y:auto;">
       </div>
     </div>
     <div class="sidebar-section">
