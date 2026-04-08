@@ -14,7 +14,10 @@ services:
     environment:
       BRIDGE_PORT: "8081"
       LOG_LEVEL: "debug"
-      BRIDGE_VERIFY_TLS: "true"
+        # Set this if you are using non-self signed cert.
+        # BRIDGE_VERIFY_TLS: "true"
+        # Set this is you are using a self-signed cert.
+      BRIDGE_VERIFY_TLS: "false"
       BRIDGE_SOCKET_TIMEOUT_MS: "300000"
       BRIDGE_MAX_SESSIONS: "50"
       
