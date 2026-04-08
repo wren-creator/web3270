@@ -358,9 +358,9 @@ docker compose build
 You should see output ending in:
 
 ```
-=> exporting to image
-=> => writing image sha256:...
-=> => naming to docker.io/library/tn3270-bridge
+[+] up 0/2
+ - Image bridge_server-tn3270-bridge Building                                                                       2.2s
+ - Image bridge_server-mock-lpar     Building  
 ```
 
 The image is now built locally. You only need to rebuild if `server.js`, `config.js`, or `package.json` change.
@@ -374,6 +374,15 @@ The image is now built locally. You only need to rebuild if `server.js`, `config
 docker compose up -d
 ```
 
+You should now see.
+
+```
+[+] up 3/3
+ ✔ Network bridge_server_tn3270-net Created                                                                         0.0s
+ ✔ Container mock-lpar              Started                                                                         0.4s
+ ✔ Container tn3270-bridge          Started
+```
+
 Verify it started cleanly:
 
 ```powershell
@@ -383,25 +392,47 @@ docker compose logs
 You should see:
 
 ```
-tn3270-bridge  | 2024-xx-xx [INFO ] WebTerm/3270 bridge listening on ws://0.0.0.0:8080
+tn3270-bridge  | 2026-04-08T10:49:13.410Z [INFO ] ─────────────────────────────────────────────────────
+mock-lpar      | 2026-04-08T10:49:13.342Z [INFO ] ─────────────────────────────────────────────────────
+tn3270-bridge  | 2026-04-08T10:49:13.412Z [INFO ]   WebTerm/3270 bridge ready
+tn3270-bridge  | 2026-04-08T10:49:13.412Z [INFO ]   Client (production) → http://localhost:8081
+mock-lpar      | 2026-04-08T10:49:13.348Z [INFO ]   WebTerm/3270 Mock LPAR Daemon
+mock-lpar      | 2026-04-08T10:49:13.348Z [INFO ]   Listening on  tcp://0.0.0.0:3270
+mock-lpar      | 2026-04-08T10:49:13.348Z [INFO ]   System ID     DEMOSYS
+mock-lpar      | 2026-04-08T10:49:13.348Z [INFO ]   LU Name       MOCKLU01
+mock-lpar      | 2026-04-08T10:49:13.348Z [INFO ]   Protocol      TN3270E + classic TN3270 fallback
+mock-lpar      | 2026-04-08T10:49:13.349Z [INFO ]   Screens       Logon → ISPF → Edit / SDSF
+mock-lpar      | 2026-04-08T10:49:13.349Z [INFO ] ─────────────────────────────────────────────────────
+mock-lpar      | 2026-04-08T10:49:13.349Z [INFO ]   Connect the bridge: MOCK_HOST=127.0.0.1 MOCK_PORT=3270
+mock-lpar      | 2026-04-08T10:49:13.349Z [INFO ]   Or add to .env:     PROD01_HOST=127.0.0.1 PROD01_PORT=3270
+mock-lpar      | 2026-04-08T10:49:13.349Z [INFO ] ─────────────────────────────────────────────────────
+tn3270-bridge  | 2026-04-08T10:49:13.412Z [INFO ]   Client (demo)       → http://localhost:8081/demo
+tn3270-bridge  | 2026-04-08T10:49:13.412Z [INFO ]   WebSocket bridge    → ws://localhost:8081
+tn3270-bridge  | 2026-04-08T10:49:13.412Z [INFO ] ─────────────────────────────────────────────────────
 ```
 
-Check it is healthy:
+Check the status
 
 ```powershell
 docker compose ps
 ```
 
-The `STATUS` column should show `running (healthy)`.
+you should see the following.
+
+```
+NAME            IMAGE                         COMMAND                  SERVICE         CREATED         STATUS                     PORTS
+mock-lpar       bridge_server-mock-lpar       "docker-entrypoint.s…"   mock-lpar       2 minutes ago   Up 2 minutes               3270/tcp
+tn3270-bridge   bridge_server-tn3270-bridge   "docker-entrypoint.s…"   tn3270-bridge   2 minutes ago   Up 2 minutes (unhealthy)   0.0.0.0:8081->8081/tcp, [::]:8081->8081/tcp
+```
 
 ---
 
 ## Step 6 · Open the client in your browser
 
-Open the client HTML file in any browser:
+Navigate to the following address in your browser, setting the port to what you set.
 
 ```
-C:\tools\tn3270-bridge\public\tn3270-client.html
+http://localhost:8081
 ```
 
 Click **⊕ Connect to LPAR**, select your LPAR, and connect.
