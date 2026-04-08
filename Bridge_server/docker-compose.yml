@@ -13,30 +13,11 @@ services:
 
     environment:
       BRIDGE_PORT: "8081"
-      LOG_LEVEL: "info"
+      LOG_LEVEL: "debug"
       BRIDGE_VERIFY_TLS: "true"
       BRIDGE_SOCKET_TIMEOUT_MS: "300000"
       BRIDGE_MAX_SESSIONS: "50"
       
-      # ── Mock LPAR profile ─────────────────────────────────────────
-      MOCK_HOST: "mock-lpar"     # Docker service name — resolves on internal network
-      MOCK_PORT: "3270"
-      MOCK_NAME: "Demo LPAR"
-      MOCK_TYPE: "TSO"
-      
-      # Real LPAR profiles  update with your actual values
-      PROD01_HOST: "10.80.7.136"
-      PROD01_PORT: "2323"
-      PROD01_TLS: "true"
-      PROD01_LU: ""
-
-      DEV02_HOST:  "dev-mf.corp.com [dev-mf.corp.com]"
-      DEV02_PORT:  "2323"
-      DEV02_TLS:   "true"
-
-      QA01_HOST:   "qa-mf.corp.com [qa-mf.corp.com]"
-      QA01_PORT:   "23"
-      QA01_TLS:    "false"
 
       DEFAULT_MODEL:    "3278-2"
       DEFAULT_CODEPAGE: "37"
@@ -67,7 +48,7 @@ services:
       MOCK_PORT:  "3270"
       MOCK_SYSID: "DEMOSYS"
       MOCK_LU:    "MOCKLU01"
-      LOG_LEVEL:  "info"
+      LOG_LEVEL:  "debug"
 
     networks:
       - tn3270-net

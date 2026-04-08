@@ -462,6 +462,7 @@ input[type="range"] {
   -webkit-appearance: none; background: var(--border);
   height: 3px; border-radius: 2px; outline: none; width: 100%; padding: 0; border: none;
 }
+
 input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none; width: 12px; height: 12px;
   border-radius: 50%; background: var(--accent-blue); cursor: pointer;
@@ -812,7 +813,7 @@ input[type="range"]::-webkit-slider-thumb {
           <div class="lpar-menu-info">
             <div class="lpar-menu-name">QA01</div>
             <div class="lpar-menu-meta">10.x.x.x · :339 · TSO &nbsp;<span class="lpar-menu-status-text offline">○ Offline</span></div>
-          </div>
+	  </div> 
           <div class="lpar-menu-connect">Connect</div>
         </div>
 
@@ -846,8 +847,8 @@ input[type="range"]::-webkit-slider-thumb {
 
 <!-- SESSION TABS -->
 <div class="session-tabs">
-  <div class="session-tab active" onclick="switchTab(this)">
-    <div class="tab-dot" style="background:#33ff66;box-shadow:0 0 4px #33ff66"></div>
+	<!--<div class="session-tab active" onclick="switchTab(this)">
+     <div class="tab-dot" style="background:#33ff66;box-shadow:0 0 4px #33ff66"></div>
     PROD01 · TSO
     <span class="tab-close">×</span>
   </div>
@@ -858,9 +859,11 @@ input[type="range"]::-webkit-slider-thumb {
   </div>
   <div class="session-tab" onclick="switchTab(this)">
     <div class="tab-dot" style="background:#555"></div>
-    QA01 · Offline
+    QA01 · Offline Add 3270 session
     <span class="tab-close">×</span>
   </div>
+  <div class="tab-dot" style="background:#4488cc;box-shadow:0 0 4px #4488cc"></div>-->
+  Add 3270 session
   <div class="tab-add" onclick="showConnectModal()">＋</div>
 </div>
 
@@ -1104,25 +1107,7 @@ input[type="range"]::-webkit-slider-thumb {
     <div class="modal-body">
       <div style="margin-bottom:14px">
         <div class="setting-label" style="margin-bottom:8px">Saved Profiles</div>
-        <div class="profile-item">
-          <div><div class="profile-name">PROD01</div><div class="profile-host">10.x.x.x:339</div></div>
-          <button class="profile-connect-btn" onclick="connectLpar('PROD01')">Connect</button>
-        </div>
-        <div class="profile-item">
-          <div><div class="profile-name">DEV02</div><div class="profile-host">10.x.x.x:339</div></div>
-          <button class="profile-connect-btn" onclick="connectLpar('DEV02')">Connect</button>
-        </div>
-        <div class="profile-item">
-          <div><div class="profile-name">DR-PROD</div><div class="profile-host">10.x.x.x:339</div></div>
-          <button class="profile-connect-btn" onclick="connectLpar('DR-PROD')">Connect</button>
-        </div>
-        <div class="profile-item">
-          <div><div class="profile-name">QA01</div><div class="profile-host">10.x.x.x:339</div></div>
-          <button class="profile-connect-btn" onclick="connectLpar('QA01')">Connect</button>
-        </div>
-        <div class="profile-item">
-          <div><div class="profile-name">BATCH01</div><div class="profile-host">10.x.x.x:339</div></div>
-          <button class="profile-connect-btn" onclick="connectLpar('BATCH01')">Connect</button>
+	<div id=modalProfileList:></div>
         </div>
       </div>
       <hr style="border-color:var(--border);margin:16px 0">
@@ -1149,7 +1134,7 @@ input[type="range"]::-webkit-slider-thumb {
 
 <script>
 // ══════════════════════════════════════════════════════════════════
-//  PRODUCTION CLIENT — connects to ws://localhost:8080
+//  PRODUCTION CLIENT — connects to ws://localhost:8081
 //  Bridge must be running (Docker Desktop or WSL2)
 //  Demo file: tn3270-client-demo.html  (no bridge needed)
 // ══════════════════════════════════════════════════════════════════
@@ -1158,7 +1143,7 @@ input[type="range"]::-webkit-slider-thumb {
 // Change this if your bridge runs on a different host or port.
 // ws://  = plain WebSocket (bridge on localhost)
 // wss:// = TLS WebSocket  (bridge behind nginx with TLS)
-const BRIDGE_URL = 'ws://localhost:8080';
+const BRIDGE_URL = 'ws://localhost:8081';
 
 // ── Per-session WebSocket connections ─────────────────────────────
 // Map of sessionId → { ws, profile, tabEl }
@@ -1281,7 +1266,7 @@ const screens = [
 ];
 
 let currentScreen = 0;
-let cursorRow = 2, cursorCol = 13;
+cursorRow = 2, cursorCol = 13;
 
 function renderScreen() {
   const scr  = screens[currentScreen];
@@ -1421,9 +1406,6 @@ async function loadProfiles() {
     if (window.location.protocol === 'file:') {
       // File mode — use hardcoded fallback for demo purposes
       LPAR_PROFILES = [
-        { id:'PROD01', name:'PROD01', host:'10.x.x.x', port:339, tls:false, type:'TSO',  model:'3278-2', codepage:37 },
-        { id:'DEV02',  name:'DEV02',  host:'10.x.x.x', port:339, tls:false, type:'TSO',  model:'3278-2', codepage:37 },
-        { id:'QA01',   name:'QA01',   host:'10.x.x.x', port:339, tls:false, type:'TSO',  model:'3278-2', codepage:37 },
       ];
     } else {
       const res = await fetch('/api/profiles');
@@ -1872,8 +1854,7 @@ function addSessionTab(name, type, sid) {
   const tab = document.createElement('div');
   tab.className    = 'session-tab';
   tab.dataset.sid  = sid;
-  tab.innerHTML = `
-    <div class="tab-dot" style="background:#ffaa00;box-shadow:0 0 4px #ffaa00"></div>
+  tab.innerHTML = `<div class="tab-dot" style="background:#ffaa00;box-shadow:0 0 4px #ffaa00"></div>
     ${esc(name)} · ${esc(type)}
     <span class="tab-close" onclick="closeSessionTab(event,this)">×</span>`;
   tab.onclick = () => activateTabEl(tab, sid);
@@ -1935,328 +1916,13 @@ function switchTab(el) {
 
 // ══════════════════════════════════════════════════════════════════
 //  SETTINGS
-// ══════════════════════════════════════════════════════════════════
-function setFontSize(v) {
-  document.getElementById('fontSizeLabel').textContent = v;
-  document.getElementById('terminal').style.fontSize = v + 'px';
-}
 
-const themes = {
-  green: { bg:'#000810', fg:'#33ff66', prot:'#6699ff' },
-  blue:  { bg:'#00060f', fg:'#7799ff', prot:'#aaccff' },
-  amber: { bg:'#080400', fg:'#ffaa00', prot:'#ff8800' },
-  white: { bg:'#0a0a0a', fg:'#e8e8e8', prot:'#aaaacc' },
-  teal:  { bg:'#001010', fg:'#00ffdd', prot:'#66ddff' },
-};
-function setTheme(name, el) {
-  document.querySelectorAll('.theme-swatch').forEach(s => s.classList.remove('active'));
-  el.classList.add('active');
-  const t = themes[name];
-  document.documentElement.style.setProperty('--t-bg', t.bg);
-  document.documentElement.style.setProperty('--t-green', t.fg);
-  document.documentElement.style.setProperty('--t-blue', t.prot);
-  document.getElementById('terminal').style.color = t.fg;
-}
-
-// ══════════════════════════════════════════════════════════════════
-//  PANEL / TAB SWITCHING
-// ══════════════════════════════════════════════════════════════════
-function switchPanelTab(el, name) {
-  document.querySelectorAll('.panel-tab').forEach(t => t.classList.remove('active'));
-  el.classList.add('active');
-  document.querySelectorAll('.panel-content').forEach(p => p.classList.remove('active'));
-  document.getElementById('panel' + name).classList.add('active');
-}
-function toggleRightPanel() {
-  document.getElementById('rightPanel').classList.toggle('hidden');
-}
-
-// ══════════════════════════════════════════════════════════════════
-//  MODAL — manual connect
-// ══════════════════════════════════════════════════════════════════
-function showConnectModal() { document.getElementById('connectModal').classList.remove('hidden'); }
-function hideConnectModal() { document.getElementById('connectModal').classList.add('hidden'); }
-document.getElementById('connectModal').addEventListener('click', e => {
-  if (e.target === e.currentTarget) hideConnectModal();
-});
-
-// Manual connect form submit
-document.querySelector('#connectModal .btn-primary')
-  ?.addEventListener('click', () => {
-    const body  = document.querySelector('#connectModal .modal-body');
-    const host  = body.querySelector('input[placeholder="10.x.x.x"]')?.value?.trim();
-    const port  = parseInt(body.querySelector('input[type="number"]')?.value || '339', 10);
-    const name  = body.querySelector('input[placeholder="My LPAR"]')?.value?.trim() || host;
-    const lu    = body.querySelector('input[placeholder="LU3A0001"]')?.value?.trim() || null;
-    const sec   = body.querySelector('select')?.value || '';
-    const tls   = sec.toLowerCase().includes('tls');
-    if (!host) { alert('Please enter a hostname or IP address.'); return; }
-    openSession({ id: name || host, host, port, tls, luName: lu, type:'TSO', model:'3278-2', codepage:37 });
-  });
-
-// ══════════════════════════════════════════════════════════════════
-//  COPILOT — routes through bridge when connected, direct API fallback
-// ══════════════════════════════════════════════════════════════════
-let chatHistory   = [];
-let includeScreen = true;
-let isStreaming   = false;
-
-function getCurrentScreenText() {
-  // Use live screen text if bridge is connected, otherwise empty
-  return liveScreenText;
-}
-
-function buildSystemPrompt() {
-  let sys = `You are a helpful assistant embedded in WebTerm/3270, a modern web-based IBM mainframe terminal emulator.
-You help users work with TSO, ISPF, SDSF, JES2, CICS, and z/OS subsystems.
-You can help with: screen navigation, JCL, REXX, CLIST, ISPF panels, error messages, dataset management, and macro generation.
-
-When generating macros, output them as valid JSON:
-{ "name": "...", "description": "...", "steps": [
-  { "op": "wait",    "condition": "text", "row": N, "col": N, "text": "..." },
-  { "op": "type",    "row": N, "col": N, "text": "..." },
-  { "op": "aid",     "aid": "ENTER|PF1..PF24|PA1|PA2|CLEAR" },
-  { "op": "wait",    "condition": "unlock" },
-  { "op": "comment", "text": "..." }
-]}
-
-Be concise and use IBM mainframe terminology. Reference row/column positions when discussing screen fields.`;
-
-  if (includeScreen && liveScreenText) {
-    sys += `\n\n--- CURRENT 3270 SCREEN ---\n${liveScreenText}\n--- END SCREEN ---\n\nThe user is looking at this screen right now.`;
-  }
-  return sys;
-}
-
-async function sendCopilotMessage(override) {
-  if (isStreaming) return;
-  const input = document.getElementById('copilot-input');
-  const text  = (override ?? input.value).trim();
-  if (!text) return;
-
-  input.value = '';
-  copilotResize(input);
-  document.getElementById('chatEmpty').style.display = 'none';
-
-  appendUserMsg(text);
-  chatHistory.push({ role: 'user', content: text });
-
-  const typingEl = appendTyping();
-  isStreaming = true;
-  document.getElementById('sendBtn').disabled = true;
-
-  try {
-    // Route through bridge if connected, so API key stays server-side
-    const session = sessions.get(activeSession);
-    if (session && session.ws.readyState === WebSocket.OPEN) {
-      // Bridge handles the API call — response comes back as copilot.reply
-      session.ws.send(JSON.stringify({
-        type:         'copilot.chat',
-        systemPrompt: buildSystemPrompt(),
-        messages:     chatHistory,
-      }));
-      // Response handled in handleBridgeMsg → handleCopilotReply
-      // Remove typing indicator when reply arrives (done in handleCopilotReply)
-      typingEl.id = 'copilot-typing';
-      isStreaming = true; // keep locked until reply arrives
-      return; // don't re-enable button here — handleCopilotReply does it
-    }
-
-    // Fallback: direct Anthropic API call (requires ANTHROPIC_API_KEY in browser)
-    // Only used when bridge is not connected
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model:      'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        system:     buildSystemPrompt(),
-        messages:   chatHistory,
-      }),
-    });
-
-    typingEl.remove();
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error?.message || `API error ${res.status}`);
-    }
-    const data  = await res.json();
-    const reply = data.content.filter(b => b.type === 'text').map(b => b.text).join('');
-    chatHistory.push({ role: 'assistant', content: reply });
-    appendAssistantMsg(reply);
-
-  } catch (err) {
-    typingEl.remove();
-    appendErrorMsg(err.message);
-  } finally {
-    isStreaming = false;
-    document.getElementById('sendBtn').disabled = false;
-  }
-}
-
-// Called when bridge sends copilot.reply
-function handleCopilotReply(content) {
-  const typingEl = document.getElementById('copilot-typing');
-  if (typingEl) typingEl.remove();
-  chatHistory.push({ role: 'assistant', content });
-  appendAssistantMsg(content);
-  isStreaming = false;
-  document.getElementById('sendBtn').disabled = false;
-}
-
-function quickPrompt(text) {
-  const copilotTabBtn = document.querySelector('.copilot-tab');
-  if (document.getElementById('rightPanel').classList.contains('hidden'))
-    document.getElementById('rightPanel').classList.remove('hidden');
-  switchPanelTab(copilotTabBtn, 'Copilot');
-  sendCopilotMessage(text);
-}
-
-function appendUserMsg(text) {
-  const chat = document.getElementById('chatArea');
-  const div  = document.createElement('div');
-  div.className = 'msg user';
-  div.innerHTML = `
-    <div class="msg-avatar">you</div>
-    <div class="msg-body">
-      <div class="msg-role">You</div>
-      ${includeScreen && liveScreenText ? ctxBlock() : ''}
-      <div class="msg-content">${esc(text)}</div>
-    </div>`;
-  chat.appendChild(div);
-  chat.scrollTop = chat.scrollHeight;
-}
-
-function appendAssistantMsg(raw) {
-  const chat = document.getElementById('chatArea');
-  const div  = document.createElement('div');
-  div.className = 'msg assistant';
-  div.innerHTML = `
-    <div class="msg-avatar">⬡</div>
-    <div class="msg-body">
-      <div class="msg-role">Copilot</div>
-      <div class="msg-content">${renderMd(raw)}</div>
-    </div>`;
-  chat.appendChild(div);
-
-  const m = raw.match(/```json\s*(\{[\s\S]*?"steps"[\s\S]*?\})\s*```/);
-  if (m) {
-    try {
-      const macro = JSON.parse(m[1]);
-      const card  = document.createElement('div');
-      card.className = 'macro-card';
-      card.innerHTML = `
-        <div class="macro-card-title">⚡ Macro · ${esc(macro.name || 'Untitled')}</div>
-        <div style="font-size:10px;color:var(--text-dim)">${macro.steps?.length||0} steps</div>
-        <div class="macro-card-actions">
-          <button class="macro-card-btn primary" onclick='saveMacro(${escAttr(JSON.stringify(macro))})'>Save to Engine</button>
-          <button class="macro-card-btn" onclick='dlMacro(${escAttr(JSON.stringify(macro))})'>⬇ JSON</button>
-        </div>`;
-      div.querySelector('.msg-body').appendChild(card);
-    } catch {}
-  }
-
-  chat.scrollTop = chat.scrollHeight;
-}
-
-function appendTyping() {
-  const chat = document.getElementById('chatArea');
-  const div  = document.createElement('div');
-  div.className = 'msg assistant';
-  div.innerHTML = `
-    <div class="msg-avatar">⬡</div>
-    <div class="msg-body">
-      <div class="msg-role">Copilot</div>
-      <div class="typing-indicator">
-        <div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>
-      </div>
-    </div>`;
-  chat.appendChild(div);
-  chat.scrollTop = chat.scrollHeight;
-  return div;
-}
-
-function appendErrorMsg(msg) {
-  const chat = document.getElementById('chatArea');
-  const div  = document.createElement('div');
-  div.className = 'msg assistant';
-  div.innerHTML = `
-    <div class="msg-avatar">⬡</div>
-    <div class="msg-body">
-      <div class="msg-role" style="color:var(--t-red)">Error</div>
-      <div class="msg-content" style="color:var(--text-dim);font-size:11px">${esc(msg)}</div>
-    </div>`;
-  chat.appendChild(div);
-  chat.scrollTop = chat.scrollHeight;
-}
-
-function ctxBlock() {
-  const id   = 'ctx-' + Date.now();
-  const text = liveScreenText.slice(0, 500);
-  return `<div class="context-block">
-    <div class="context-block-header" onclick="toggleCtx('${id}')">
-      <span>⬡ Live screen</span><span id="${id}-c">▼</span>
-    </div>
-    <div class="context-block-body collapsed" id="${id}">${esc(text)}</div>
-  </div>`;
-}
-
-function toggleCtx(id) {
-  const b = document.getElementById(id), c = document.getElementById(id+'-c');
-  if (!b) return;
-  const col = b.classList.toggle('collapsed');
-  if (c) c.textContent = col ? '▼' : '▲';
-}
-
-function toggleContextPreview() {
-  const blocks = document.querySelectorAll('.context-block-body');
-  if (blocks.length) { const l = blocks[blocks.length-1]; l.classList.remove('collapsed'); l.scrollIntoView({behavior:'smooth'}); }
-}
-function toggleScreenCtx() {
-  includeScreen = !includeScreen;
-  document.getElementById('screenCtxMini').classList.toggle('off', !includeScreen);
-}
-function copilotKeydown(e) {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendCopilotMessage(); }
-}
-function copilotResize(el) {
-  el.style.height = 'auto';
-  el.style.height = Math.min(el.scrollHeight, 90) + 'px';
-  const n = el.value.length;
-  document.getElementById('charCount').textContent = n > 0 ? n : '';
-}
-
-function saveMacro(macro) {
-  const session = sessions.get(activeSession);
-  if (session && session.ws.readyState === WebSocket.OPEN) {
-    session.ws.send(JSON.stringify({ type: 'macro.save', macro }));
-    alert(`Macro "${macro.name}" sent to engine.`);
-  } else {
-    dlMacro(macro); // fallback — download if not connected
-  }
-}
-function dlMacro(macro) {
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([JSON.stringify(macro, null, 2)], {type:'application/json'}));
-  a.download = (macro.name||'macro').replace(/[^a-z0-9]/gi,'_') + '.macro.json';
-  a.click();
-}
-
-function renderMd(text) {
-  return text
-    .replace(/```(\w*)\n?([\s\S]*?)```/g, (_,l,c) => `<pre>${esc(c.trim())}</pre>`)
-    .replace(/`([^`]+)`/g, (_,c) => `<code>${esc(c)}</code>`)
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\n/g, '<br>');
-}
-function esc(s) {
-  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function escAttr(s) { return s.replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 
-// ══════════════════════════════════════════════════════════════════
+// ════════════════════════════════════
 //  CLOCK + INIT
-// ══════════════════════════════════════════════════════════════════
+// ════════════════════════════════════
 function tick() {
   document.getElementById('oiaTime').textContent =
     new Date().toLocaleTimeString('en-US', {hour12:false});
