@@ -7,6 +7,36 @@
 
 'use strict';
 
+const fs   = require('fs');
+const path = require('path');
+
+// ── Load LPAR profiles from lpars.txt ─────────────────────────────
+function loadLparFile() {
+  const filePath = path.join(__dirname, 'lpars.txt');
+  if (!fs.existsSync(filePath)) {
+    console.warn('[config] lpars.txt not found — no profiles loaded');
+    return [];
+  }
+
+  return fs.readFileSync(filePath, 'utf8')
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line && !line.startsWith('#'))
+    .map(line => {
+      const [id, name, host, port, tls, type] = line.split(',').map(s => s.trim());
+      return {
+        id:       id,
+        name:     name || id.toUpperCase(),
+        host:     host || id,
+        port:     parseInt(port || '23', 10),
+        tls:      (tls || 'false') === 'true',
+        type:     (type || 'TSO').toUpperCase(),
+        model:    '3278-2',
+        codepage: 37,
+      };
+    });
+}
+
 module.exports = {
   bridge: {
     /** Port the WebSocket server listens on (browser connects here) */
@@ -47,68 +77,12 @@ module.exports = {
   },
 
   /**
-   * Predefined LPAR connection profiles.
-   * The bridge exposes these via GET /api/profiles so the frontend
-   * can populate its "saved sessions" list without hardcoding them.
-   *
-   * Each profile can define its own port — there is no single fixed port.
-   * Common ports:
-   *   23   — plain TN3270 (telnet, no encryption)
-   *   992  — TN3270 over TLS  (RFC 2355 + TLS)
-   *   8023 — common alternative / proxy port
+   * LPAR connection profiles — loaded from lpars.txt at startup.
+   * Format (one per line):  id, name, host/IP, port, tls, type
+   * Example:  cdsctv01, CDSCTV01, 10.80.1.1, 23, false, TSO
+   * Lines starting with # are treated as comments.
    */
-  profiles: [
-   {
-     id:       'mock',
-     name:     process.env.MOCK_NAME || 'Demo LPAR',
-     host:     process.env.MOCK_HOST || '127.0.0.1',
-     port:     parseInt(process.env.MOCK_PORT || '3270', 10),
-     tls:      false,
-     type:     process.env.MOCK_TYPE || 'TSO',
-     model:    '3278-2',
-     codepage: 37,
-    },
-    {
-      id:        'mock',
-      name:      process.env.MOCK_NAME || 'Demo LPAR',
-      host:      process.env.MOCK_HOST || '127.0.0.1',
-      port:      parseInt(process.env.MOCK_PORT || '3270', 10),
-      tls:       false,
-      type:      process.env.MOCK_TYPE || 'TSO',
-      model:     '3278-2',
-      codepage:  37,
-    },  
-    {
-      id:       'VM01',
-      name:     'VM01',
-      host:     process.env.PROD01_HOST  || '10.80.7.136',
-      port:     parseInt(process.env.PROD01_PORT  || '2323', 10),
-      tls:      (process.env.PROD01_TLS  || 'true') === 'true',
-      luName:   process.env.PROD01_LU    || null,
-      model:    process.env.PROD01_MODEL || '3278-2',
-      codepage: parseInt(process.env.PROD01_CP    || '37',  10),
-    },
-    {
-      id:       'dev02',
-      name:     'DEV02',
-      host:     process.env.DEV02_HOST   || 'dev-mf.corp.com',
-      port:     parseInt(process.env.DEV02_PORT   || '23',  10),
-      tls:      (process.env.DEV02_TLS   || 'false') === 'true',
-      luName:   null,
-      model:    '3278-2',
-      codepage: 37,
-    },
-    {
-      id:       'qa01',
-      name:     'QA01',
-      host:     process.env.QA01_HOST    || 'qa-mf.corp.com',
-      port:     parseInt(process.env.QA01_PORT    || '23',  10),
-      tls:      false,
-      luName:   null,
-      model:    '3278-3',
-      codepage: 37,
-    },
-  ],
+  profiles: loadLparFile(),
 
   logging: {
     /** 'debug' | 'info' | 'warn' | 'error' */
