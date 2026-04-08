@@ -871,12 +871,7 @@ input[type="range"]::-webkit-slider-thumb {
   <div class="sidebar" id="sidebar">
     <div class="sidebar-section">
       <div class="sidebar-header">LPAR Profiles <span class="sidebar-header-btn" onclick="showConnectModal()">＋</span></div>
-      <div style="padding:4px 0 8px">
-        <div class="lpar-item connected" onclick="connectLpar('PROD01')"><div class="lpar-dot on"></div><div class="lpar-name">PROD01</div><div class="lpar-type">TSO</div></div>
-        <div class="lpar-item" onclick="connectLpar('DEV02')"><div class="lpar-dot conn"></div><div class="lpar-name">DEV02</div><div class="lpar-type">CICS</div></div>
-        <div class="lpar-item" onclick="connectLpar('QA01')"><div class="lpar-dot"></div><div class="lpar-name">QA01</div><div class="lpar-type">TSO</div></div>
-        <div class="lpar-item" onclick="connectLpar('DR-PROD')"><div class="lpar-dot"></div><div class="lpar-name">DR-PROD</div><div class="lpar-type">TSO</div></div>
-        <div class="lpar-item" onclick="connectLpar('BATCH01')"><div class="lpar-dot"></div><div class="lpar-name">BATCH01</div><div class="lpar-type">JES2</div></div>
+      <div id="sidebarLparList" style="padding:4px 0 8px">
       </div>
     </div>
     <div class="sidebar-section">
@@ -1477,8 +1472,7 @@ function renderLparDropdown() {
 // ── Render sidebar LPAR list ──────────────────────────────────────
 function renderSidebarLpars() {
   // Find the first sidebar section's list container
-  const container = document.querySelector('.sidebar .lpar-list')
-    || document.querySelector('.sidebar > div:first-child > div:nth-child(2)');
+  const container = document.getElementById('sidebarLparList');
   if (!container) return;
   container.innerHTML = '';
   LPAR_PROFILES.forEach(p => {
