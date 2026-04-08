@@ -181,8 +181,10 @@ class Tn3270Session extends EventEmitter {
     const addr = row * this.cols + col;
     const eb = Ebcdic.fromAscii(text, this.codepage);
     for (let i = 0; i < eb.length && addr + i < this.buffer.length; i++) {
+       	if (this.buffer[addr + i]) {
       this.buffer[addr + i].char = eb[i];
       this.buffer[addr + i].modified = true;
+	}
     }
   }
 
