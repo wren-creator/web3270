@@ -293,35 +293,29 @@ class Tn3270Session extends EventEmitter {
       return;
     }
 
-    if (opt === OPT_BINARY) {
-      if (cmd === DO)   this._send(Buffer.from([IAC, WILL, OPT_BINARY]));
-      if (cmd === WILL) this._send(Buffer.from([IAC, DO,   OPT_BINARY]));
-      return;
-    }
+if (opt === OPT_BINARY) {
+  if (cmd === DO && !this._binaryNegotiated) {
+    this._binaryNegotiated = true;
+    this._send(Buffer.from([IAC, WILL, OPT_BINARY]));
+  }
+  if (cmd === WILL && !this._binaryDoSent) {
+    this._binaryDoSent = true;
+    this._send(Buffer.from([IAC, DO, OPT_BINARY]));
+  }
+  return;
+}
 
-    if (opt === OPT_EOR) {
-      if (cmd === DO)   this._send(Buffer.from([IAC, WILL, OPT_EOR]));
-      if (cmd === WILL) this._send(Buffer.from([IAC, DO,   OPT_EOR]));
-      return;
-    }
-
-    if (opt === OPT_TTYPE) {
-      // Classic TN3270 terminal type
-      if (cmd === DO) {
-        this._send(Buffer.from([IAC, WILL, OPT_TTYPE]));
-      }
-      if (cmd === SB) {
-        const ttype = `IBM-${this.model}`;
-        const sb = Buffer.from([
-          IAC, SB, OPT_TTYPE, 0x00, // IS
-          ...Buffer.from(ttype),
-          IAC, SE,
-        ]);
-        this._send(sb);
-      }
-      return;
-    }
-
+if (opt === OPT_EOR) {
+  if (cmd === DO && !this._eorNegotiated) {
+    this._eorNegotiated = true;
+    this._send(Buffer.from([IAC, WILL, OPT_EOR]));
+  }
+  if (cmd === WILL && !this._eorDoSent) {
+    this._eorDoSent = true;
+    this._send(Buffer.from([IAC, DO, OPT_EOR]));
+  }
+  return;
+}
     // For anything else we don't support: refuse
     if (cmd === DO)   this._send(Buffer.from([IAC, WONT, opt]));
     if (cmd === WILL) this._send(Buffer.from([IAC, DONT, opt]));
@@ -344,38 +338,54 @@ class Tn3270Session extends EventEmitter {
     this.tn3270eEnabled = false;
   }
 
-  _handleSubneg(data) {
-    const opt = data[0];
-    if (opt === OPT_TN3270E) {
-      const func = data[1];
-      if (func === TN3E_DEVICE_TYPE && data[2] === TN3E_IS) {
-        // IS response: device-type confirmed, LU name follows CONNECT marker
-        this.tn3270eEnabled = true;
-        const connIdx = data.indexOf(TN3E_CONNECT, 3);
-        if (connIdx !== -1) {
-          this.negotiatedLu = data.slice(connIdx + 1).toString('ascii');
-          logger.info(`[ws:${this.wsId}] TN3270E active, LU=${this.negotiatedLu}`);
-        }
-        // Request BIND-IMAGE and RESPONSES functions
-        this._send(Buffer.from([
-          IAC, SB, OPT_TN3270E, TN3E_FUNCTIONS, TN3E_REQUEST,
-          // BIND-IMAGE=0x00, RESPONSES=0x02  (optional, host may accept/reject)
-          0x00, 0x02,
-          IAC, SE,
-        ]));
-      } else if (func === TN3E_DEVICE_TYPE && data[2] === TN3E_REJECT) {
-        logger.warn(`[ws:${this.wsId}] TN3270E device-type rejected`);
-        this._initClassicTn3270();
-      } else if (func === TN3E_FUNCTIONS && data[2] === TN3E_IS) {
-        logger.debug(`[ws:${this.wsId}] TN3270E functions negotiated`);
+_handleSubneg(data) {
+  logger.debug(`[ws:${this.wsId}] Subneg opt=0x${data[0].toString(16)} func=0x${(data[1]||0).toString(16)}`);
+  const opt = data[0];
+  if (opt === OPT_TN3270E) {
+    const func = data[1];
+
+    // Host is requesting our device type — send IS response
+    if (func === TN3E_DEVICE_TYPE && data[2] === TN3E_REQUEST) {
+      const deviceType = `IBM-${this.model}`;
+      const response = [
+        IAC, SB, OPT_TN3270E, TN3E_DEVICE_TYPE, TN3E_IS,
+        ...Buffer.from(deviceType),
+      ];
+      if (this.luName) {
+        response.push(TN3E_CONNECT, ...Buffer.from(this.luName));
       }
+      response.push(IAC, SE);
+      this._send(Buffer.from(response));
+      logger.debug(`[ws:${this.wsId}] Sent DEVICE-TYPE IS ${deviceType}`);
+      return;
     }
 
-    if (opt === OPT_TTYPE && data[1] === 0x01 /* SEND */) {
-      this._handleTelnetOption(SB, OPT_TTYPE);
+    if (func === TN3E_DEVICE_TYPE && data[2] === TN3E_IS) {
+      // IS response: device-type confirmed, LU name follows CONNECT marker
+      this.tn3270eEnabled = true;
+      const connIdx = data.indexOf(TN3E_CONNECT, 3);
+      if (connIdx !== -1) {
+        this.negotiatedLu = data.slice(connIdx + 1).toString('ascii');
+        logger.info(`[ws:${this.wsId}] TN3270E active, LU=${this.negotiatedLu}`);
+      }
+      // Request BIND-IMAGE and RESPONSES functions
+      this._send(Buffer.from([
+        IAC, SB, OPT_TN3270E, TN3E_FUNCTIONS, TN3E_REQUEST,
+        0x00, 0x02,
+        IAC, SE,
+      ]));
+    } else if (func === TN3E_DEVICE_TYPE && data[2] === TN3E_REJECT) {
+      logger.warn(`[ws:${this.wsId}] TN3270E device-type rejected`);
+      this._initClassicTn3270();
+    } else if (func === TN3E_FUNCTIONS && data[2] === TN3E_IS) {
+      logger.debug(`[ws:${this.wsId}] TN3270E functions negotiated`);
     }
   }
 
+  if (opt === OPT_TTYPE && data[1] === 0x01 /* SEND */) {
+    this._handleTelnetOption(SB, OPT_TTYPE);
+  }
+}
   // ── 3270 datastream processing ─────────────────────────────────
 
   _handle3270Record(bytes) {
@@ -490,18 +500,52 @@ class Tn3270Session extends EventEmitter {
     this._emitScreen();
   }
 
-  _processWriteStructuredField(data) {
-    // Structured fields are length-prefixed blocks; handle what we need
-    let i = 0;
-    while (i < data.length) {
-      const len = (data[i] << 8) | data[i + 1];
-      if (len === 0) break;
-      // const sfId = data[i + 2]; // structured field ID — extend as needed
-      i += len;
-    }
-  }
+_processWriteStructuredField(data) {
+  let i = 0;
+  while (i < data.length) {
+    const len = (data[i] << 8) | data[i + 1];
+    if (len === 0) break;
+    const sfId = data[i + 2];
 
-  _eraseAllUnprotected() {
+    // Query (0x01) — host is asking what we support, send Query Reply
+    if (sfId === 0x01) {
+      this._sendQueryReply();
+    }
+
+    i += len;
+  }
+}
+
+_sendQueryReply() {
+  // Minimal Query Reply — Summary saying we support only the basics
+  const reply = Buffer.from([
+    0x88,        // AID — structured field reply
+    0x00, 0x00,  // cursor address (irrelevant)
+    // Query Reply (Summary)
+    0x00, 0x0E,  // length = 14
+    0x81,        // Query Reply
+    0x80,        // Summary
+    0x80,        // Summary reply
+    0x81, 0x84, 0x85, 0x86, 0x87, 0x88, 0x95, 0xA1,
+    // Query Reply (Usable Area)
+    0x00, 0x16,  // length = 22
+    0x81,        // Query Reply
+    0x01,        // Usable Area
+    0x01,        // 12/14-bit addressing
+    0x00,        // variable cells not supported
+    0x00, 0x50,  // width = 80
+    0x00, 0x18,  // height = 24
+    0x01,        // units = mm
+    0x00, 0x00, 0x06, 0x00,
+    0x00, 0x00, 0x06, 0x00,
+    0x00, 0x50,  // columns = 80
+    0x00, 0x18,  // rows = 24
+  ]);
+  this._sendDataRecord(reply);
+  logger.debug(`[ws:${this.wsId}] Sent Query Reply`);
+}
+
+ _eraseAllUnprotected() {
     for (let a = 0; a < this.buffer.length; a++) {
       if (!this._isProtected(a)) {
         this.buffer[a].char    = 0x00;
