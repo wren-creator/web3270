@@ -881,11 +881,11 @@ input[type="range"]::-webkit-slider-thumb {
     <div class="sidebar-section">
       <div class="sidebar-header">Macros <span class="sidebar-header-btn">＋</span></div>
       <div style="padding:4px 0 8px">
-        <div class="macro-item">▶ TSO ISPF Login</div>
+        <!--<div class="macro-item">▶ TSO ISPF Login</div>
         <div class="macro-item">▶ JES Spool Query</div>
         <div class="macro-item">▶ RACF Password Reset</div>
         <div class="macro-item">▶ Submit Batch Job</div>
-        <div class="macro-item">▶ Dataset Allocate</div>
+        <div class="macro-item">▶ Dataset Allocate</div>-->
       </div>
     </div>
     <div class="sidebar-section" style="flex:1">
@@ -1343,6 +1343,8 @@ function toggleRightPanel() {
 
 // Ctrl+K shortcut opens Copilot tab
 document.addEventListener('keydown', e => {
+  // Ignore key repeat
+  if (e.repeat) return;
   if (e.ctrlKey && e.key === 'k') {
     e.preventDefault();
     const copilotTabBtn = document.querySelector('.copilot-tab');

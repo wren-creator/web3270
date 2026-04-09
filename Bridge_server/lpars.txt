@@ -1,5 +1,5 @@
 # MOCK LPAR- to test functionality during testing and demos.
-MOCK_LPAR,Demo LPAR, 127.0.0.1, 3270, false, TSO
+MOCK_LPAR,MOCK LPAR, mock-lpar, 3270, false, TSO
 # Active LPARS
 cdsctv01, CDSCTV01, 10.80.1.1, 23, false, TSO
 cdsctv02, CDSCTV02, 10.80.1.2, 23, false, TSO
