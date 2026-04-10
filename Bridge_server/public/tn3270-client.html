@@ -82,6 +82,59 @@ body {
 }
 .menu-item:hover { background: var(--bg-elevated); color: var(--text-primary); }
 .menu-item.active { color: var(--accent-cyan); }
+.menu-item.open   { background: var(--bg-elevated); color: var(--text-primary); }
+
+/* ── DROPDOWN MENUS ────────────────────────────────────────────── */
+.menu-item { position: relative; }
+
+.menu-dropdown {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 200px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-bright);
+  border-radius: 0 4px 4px 4px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+  z-index: 300;
+  animation: dropIn 0.12s ease;
+  padding: 4px 0;
+}
+.menu-item.open .menu-dropdown { display: block; }
+
+.menu-dd-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 14px;
+  font-size: 12px;
+  color: var(--text-dim);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.1s;
+  gap: 20px;
+}
+.menu-dd-item:hover { background: var(--bg-elevated); color: var(--text-primary); }
+.menu-dd-item.disabled { opacity: 0.35; cursor: default; pointer-events: none; }
+.menu-dd-shortcut {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.menu-dd-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+.menu-dd-label {
+  padding: 5px 14px 3px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
 
 .status-area {
   display: flex;
@@ -768,13 +821,80 @@ input[type="range"]::-webkit-slider-thumb {
 <div class="topbar">
   <div class="logo">WebTerm<span>/3270</span></div>
   <div class="topbar-menu">
-    <div class="menu-item">File</div>
-    <div class="menu-item">Session</div>
-    <div class="menu-item">View</div>
-    <div class="menu-item">Macros</div>
-    <div class="menu-item">Transfer</div>
-    <div class="menu-item active">Tools</div>
-    <div class="menu-item">Help</div>
+
+    <!-- File -->
+    <div class="menu-item" id="menuFile" onclick="toggleMenu('menuFile')">File
+      <div class="menu-dropdown">
+        <div class="menu-dd-item" onclick="showConnectModal()">New Session…<span class="menu-dd-shortcut">Ctrl+T</span></div>
+        <div class="menu-dd-item" id="menuCloseSession" onclick="menuCloseActiveSession()">Close Session<span class="menu-dd-shortcut"></span></div>
+        <div class="menu-dd-sep"></div>
+        <div class="menu-dd-item" onclick="menuCaptureScreen()">Save Screen Capture<span class="menu-dd-shortcut">Ctrl+P</span></div>
+        <div class="menu-dd-sep"></div>
+        <div class="menu-dd-item" onclick="window.close()">Exit</div>
+      </div>
+    </div>
+
+    <!-- Session -->
+    <div class="menu-item" id="menuSession" onclick="toggleMenu('menuSession')">Session
+      <div class="menu-dropdown">
+        <div class="menu-dd-item" id="menuDisconnect" onclick="menuDisconnect()">Disconnect</div>
+        <div class="menu-dd-item" id="menuReconnect"  onclick="menuReconnect()">Reconnect</div>
+        <div class="menu-dd-sep"></div>
+        <div class="menu-dd-item" onclick="menuSessionProperties()">Session Properties…</div>
+      </div>
+    </div>
+
+    <!-- View -->
+    <div class="menu-item" id="menuView" onclick="toggleMenu('menuView')">View
+      <div class="menu-dropdown">
+        <div class="menu-dd-item" onclick="document.getElementById('sidebar').classList.toggle('collapsed')">Toggle Sidebar<span class="menu-dd-shortcut">Ctrl+B</span></div>
+        <div class="menu-dd-item" onclick="toggleRightPanel()">Toggle Panel<span class="menu-dd-shortcut"></span></div>
+        <div class="menu-dd-sep"></div>
+        <div class="menu-dd-item" onclick="menuFontSize(1)">Font Size +</div>
+        <div class="menu-dd-item" onclick="menuFontSize(-1)">Font Size −</div>
+        <div class="menu-dd-item" onclick="menuFontSize(0)">Reset Font Size</div>
+        <div class="menu-dd-sep"></div>
+        <div class="menu-dd-item" onclick="menuFullScreen()">Full Screen<span class="menu-dd-shortcut">F11</span></div>
+      </div>
+    </div>
+
+    <!-- Macros -->
+    <div class="menu-item" id="menuMacros" onclick="toggleMenu('menuMacros')">Macros
+      <div class="menu-dropdown">
+        <div class="menu-dd-item" onclick="showAddMacroModal()">Add Macro…</div>
+        <div class="menu-dd-item" onclick="menuImportMacro()">Import Macro JSON…</div>
+        <div class="menu-dd-sep"></div>
+        <div class="menu-dd-label">Saved Macros</div>
+        <div id="menuMacroList"><div class="menu-dd-item disabled">No macros saved</div></div>
+      </div>
+    </div>
+
+    <!-- Transfer -->
+    <div class="menu-item" id="menuTransfer" onclick="toggleMenu('menuTransfer')">Transfer
+      <div class="menu-dropdown">
+        <div class="menu-dd-item" onclick="menuOpenTransfer()">IND$FILE Transfer…</div>
+      </div>
+    </div>
+
+    <!-- Tools -->
+    <div class="menu-item" id="menuTools" onclick="toggleMenu('menuTools')">Tools
+      <div class="menu-dropdown">
+        <div class="menu-dd-item" onclick="menuOpenPanel('Settings')">Settings<span class="menu-dd-shortcut"></span></div>
+        <div class="menu-dd-item" onclick="menuOpenPanel('Keys')">Key Remapping</div>
+        <div class="menu-dd-sep"></div>
+        <div class="menu-dd-item" onclick="menuOpenCopilot()">⬡ Copilot<span class="menu-dd-shortcut">Ctrl+K</span></div>
+      </div>
+    </div>
+
+    <!-- Help -->
+    <div class="menu-item" id="menuHelp" onclick="toggleMenu('menuHelp')">Help
+      <div class="menu-dropdown">
+        <div class="menu-dd-item" onclick="menuShowShortcuts()">Keyboard Shortcuts</div>
+        <div class="menu-dd-sep"></div>
+        <div class="menu-dd-item" onclick="menuAbout()">About WebTerm/3270</div>
+      </div>
+    </div>
+
   </div>
   <div class="status-area">
     <div class="conn-indicator">
@@ -1651,6 +1771,7 @@ function renderSidebarMacros() {
     item.querySelector('.macro-del-btn').addEventListener('mouseleave', e => e.target.style.opacity='0.7');
     container.appendChild(item);
   });
+  refreshMenuMacroList();
 }
 
 function showAddMacroModal() {
@@ -1993,6 +2114,12 @@ const AID_MAP = {
 
 document.addEventListener('keydown', e => {
   // UI shortcuts (always active)
+  if (e.ctrlKey && e.key === 't') {
+    e.preventDefault();
+    closeAllMenus();
+    showConnectModal();
+    return;
+  }
   if (e.ctrlKey && e.key === 'k') {
     e.preventDefault();
     const copilotTabBtn = document.querySelector('.copilot-tab');
@@ -2181,6 +2308,169 @@ function switchTab(el) {
 
 function esc(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function escAttr(s) { return s.replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+// ══════════════════════════════════════════════════════════════════
+//  MENU BAR
+// ══════════════════════════════════════════════════════════════════
+const MENU_IDS = ['menuFile','menuSession','menuView','menuMacros','menuTransfer','menuTools','menuHelp'];
+
+function toggleMenu(id) {
+  const isOpen = document.getElementById(id).classList.contains('open');
+  closeAllMenus();
+  if (!isOpen) document.getElementById(id).classList.add('open');
+}
+
+function closeAllMenus() {
+  MENU_IDS.forEach(id => document.getElementById(id)?.classList.remove('open'));
+}
+
+// Close on outside click
+document.addEventListener('click', e => {
+  if (!e.target.closest('.menu-item')) closeAllMenus();
+});
+
+// Hover-slide: if any menu is open, hovering another opens it
+document.addEventListener('DOMContentLoaded', () => {
+  MENU_IDS.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('mouseenter', () => {
+      if (document.querySelector('.menu-item.open')) {
+        closeAllMenus();
+        el.classList.add('open');
+      }
+    });
+    // Stop dropdown clicks from closing via the outside-click handler
+    el.querySelector('.menu-dropdown')?.addEventListener('click', e => e.stopPropagation());
+  });
+});
+
+// ── File ──────────────────────────────────────────────────────────
+function menuCloseActiveSession() {
+  closeAllMenus();
+  if (activeSession === null) return;
+  const tab = document.querySelector(`.session-tab[data-sid="${activeSession}"]`);
+  const closeBtn = tab?.querySelector('.tab-close');
+  if (closeBtn) closeSessionTab({ stopPropagation: () => {} }, closeBtn);
+}
+
+let _menuFontSize = 13;
+function menuFontSize(delta) {
+  closeAllMenus();
+  if (delta === 0) { _menuFontSize = 13; }
+  else { _menuFontSize = Math.max(9, Math.min(20, _menuFontSize + delta)); }
+  document.getElementById('terminal').style.fontSize = _menuFontSize + 'px';
+  const lbl = document.getElementById('fontSizeLabel');
+  if (lbl) lbl.textContent = _menuFontSize;
+  const slider = document.querySelector('#panelSettings input[type=range]');
+  if (slider) slider.value = _menuFontSize;
+}
+
+function menuCaptureScreen() {
+  closeAllMenus();
+  const text = getCurrentScreenText();
+  if (!text) return;
+  const blob = new Blob([text], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'screen-' + new Date().toISOString().replace(/[:.]/g, '-') + '.txt';
+  a.click();
+}
+
+function menuFullScreen() {
+  closeAllMenus();
+  if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
+  else document.exitFullscreen?.();
+}
+
+// ── Session ───────────────────────────────────────────────────────
+function menuDisconnect() {
+  closeAllMenus();
+  const session = sessions.get(activeSession);
+  if (!session) return;
+  session.ws.send(JSON.stringify({ type: 'disconnect' }));
+}
+
+function menuReconnect() {
+  closeAllMenus();
+  const session = sessions.get(activeSession);
+  if (!session) return;
+  const profile = session.profile;
+  session.ws.send(JSON.stringify({ type: 'disconnect' }));
+  session.ws.close();
+  setTimeout(() => openSession(profile), 300);
+}
+
+function menuSessionProperties() {
+  closeAllMenus();
+  const session = sessions.get(activeSession);
+  showConnectModal(session?.profile ?? null);
+}
+
+// ── Macros ────────────────────────────────────────────────────────
+function refreshMenuMacroList() {
+  const container = document.getElementById('menuMacroList');
+  if (!container) return;
+  if (!macros || !macros.length) {
+    container.innerHTML = '<div class="menu-dd-item disabled">No macros saved</div>';
+    return;
+  }
+  container.innerHTML = '';
+  macros.forEach((m, idx) => {
+    const item = document.createElement('div');
+    item.className = 'menu-dd-item';
+    item.textContent = '▶ ' + m.name;
+    item.addEventListener('click', () => { closeAllMenus(); runMacro(idx); });
+    container.appendChild(item);
+  });
+}
+
+function menuImportMacro() {
+  closeAllMenus();
+  showAddMacroModal();
+  setTimeout(() => importMacroFromFile(), 150);
+}
+
+// ── Transfer ──────────────────────────────────────────────────────
+function menuOpenTransfer() {
+  closeAllMenus();
+  menuOpenPanel('Xfer');
+}
+
+// ── Tools ─────────────────────────────────────────────────────────
+function menuOpenPanel(name) {
+  closeAllMenus();
+  const rightPanel = document.getElementById('rightPanel');
+  if (rightPanel.classList.contains('hidden')) rightPanel.classList.remove('hidden');
+  const panelIndex = { Settings: 1, Keys: 2, Xfer: 3, Copilot: 4 }[name] || 1;
+  const tab = document.querySelector(`.panel-tab:nth-child(${panelIndex})`);
+  if (tab) switchPanelTab(tab, name);
+}
+
+function menuOpenCopilot() {
+  closeAllMenus();
+  const rightPanel = document.getElementById('rightPanel');
+  if (rightPanel.classList.contains('hidden')) rightPanel.classList.remove('hidden');
+  const tab = document.querySelector('.copilot-tab');
+  if (tab) switchPanelTab(tab, 'Copilot');
+  document.getElementById('copilot-input')?.focus();
+}
+
+// ── Help ──────────────────────────────────────────────────────────
+function menuShowShortcuts() {
+  closeAllMenus();
+  menuOpenPanel('Keys');
+}
+
+function menuAbout() {
+  closeAllMenus();
+  showBridgeError(
+    'WebTerm/3270\n' +
+    'Modern web-based IBM mainframe terminal emulator.\n\n' +
+    'Protocol: TN3270 / TN3270E  (RFC 1576 / RFC 2355)\n' +
+    'Bridge: Node.js WebSocket · Client: HTML5'
+  );
+}
 
 // ════════════════════════════════════
 //  CLOCK + INIT
