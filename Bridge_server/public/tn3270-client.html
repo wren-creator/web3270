@@ -982,7 +982,7 @@ input[type="range"]::-webkit-slider-thumb {
         <div class="setting-label">Connection</div>
         <div class="setting-row"><label>Auto Reconnect</label><div class="toggle on" onclick="this.classList.toggle('on')"></div></div>
         <div class="setting-row"><label>Keep-Alive (s)</label><input type="number" value="30" style="width:60px"></div>
-        <div class="setting-row"><label>TN3270E</label><div class="toggle on" onclick="this.classList.toggle('on')"></div></div>
+        <div class="setting-row"><label>TN3270E</label><div class="toggle" id="tn3270eToggle" onclick="this.classList.toggle('on')"></div></div>
       </div>
     </div>
 
@@ -1712,6 +1712,7 @@ function openSession(profile) {
       luName:   profile.luName  ?? null,
       model:    profile.model   ?? '3278-2',
       codepage: profile.codepage ?? 37,
+      tn3270e:  document.getElementById('tn3270eToggle')?.classList.contains('on') ?? true,
     }));
   };
 
