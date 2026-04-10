@@ -98,6 +98,9 @@ class Tn3270Session extends EventEmitter {
     this.model     = opts.model || '3278-2';
     this.codepage  = opts.codepage || 37;
     this.tlsOpts   = opts.tlsOptions || {};
+    // If false, we refuse TN3270E negotiation and use classic TN3270.
+    // z/VM hosts do not support TN3270E — set this to false for them.
+    this.useTn3270e = opts.useTn3270e ?? true;
 
     // Determine screen dimensions from model
     const dims     = modelDimensions(this.model);
@@ -281,10 +284,16 @@ class Tn3270Session extends EventEmitter {
 
     if (opt === OPT_TN3270E) {
       if (cmd === DO) {
-        // Host wants us to use TN3270E
-        this._send(Buffer.from([IAC, WILL, OPT_TN3270E]));
-        // Initiate device-type request
-        this._sendTn3270eDeviceType();
+        if (!this.useTn3270e) {
+          // Refuse TN3270E — host will fall back to classic TN3270
+          logger.info(`[ws:${this.wsId}] TN3270E disabled — sending WONT TN3270E`);
+          this._send(Buffer.from([IAC, WONT, OPT_TN3270E]));
+          this._initClassicTn3270();
+        } else {
+          // Host wants us to use TN3270E — accept and negotiate
+          this._send(Buffer.from([IAC, WILL, OPT_TN3270E]));
+          this._sendTn3270eDeviceType();
+        }
       } else if (cmd === DONT) {
         // Fall back to classic TN3270
         this._send(Buffer.from([IAC, WONT, OPT_TN3270E]));
