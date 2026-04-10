@@ -982,7 +982,7 @@ input[type="range"]::-webkit-slider-thumb {
         <div class="setting-label">Connection</div>
         <div class="setting-row"><label>Auto Reconnect</label><div class="toggle on" onclick="this.classList.toggle('on')"></div></div>
         <div class="setting-row"><label>Keep-Alive (s)</label><input type="number" value="30" style="width:60px"></div>
-        <div class="setting-row"><label>TN3270E</label><div class="toggle" id="tn3270eToggle" onclick="this.classList.toggle('on')"></div></div>
+        <div class="setting-row"><label>TN3270E</label><span style="font-size:10px;color:var(--text-muted)">Set per session in connect dialog</span></div>
       </div>
     </div>
 
@@ -1128,33 +1128,67 @@ input[type="range"]::-webkit-slider-thumb {
 <div class="modal-overlay hidden" id="connectModal">
   <div class="modal">
     <div class="modal-header">
-      <div class="modal-title">New 3270 Session</div>
+      <div class="modal-title" id="connectModalTitle">New 3270 Session</div>
       <div class="modal-close" onclick="hideConnectModal()">×</div>
     </div>
     <div class="modal-body">
-      <div style="margin-bottom:14px">
-        <div class="setting-label" style="margin-bottom:8px">Saved Profiles</div>
-        <div id="modalProfileList"></div>
+      <div class="form-row">
+        <div class="form-group">
+          <div class="form-label">Session Name</div>
+          <input type="text" id="connName" placeholder="e.g. VM01">
+        </div>
+        <div class="form-group" style="max-width:90px">
+          <div class="form-label">Type</div>
+          <select id="connType">
+            <option value="TSO">TSO</option>
+            <option value="ZVM">z/VM</option>
+            <option value="CICS">CICS</option>
+            <option value="JES2">JES2</option>
+          </select>
         </div>
       </div>
-      <hr style="border-color:var(--border);margin:16px 0">
-      <div class="setting-label" style="margin-bottom:12px">Manual Connection</div>
       <div class="form-row">
-        <div class="form-group"><div class="form-label">Hostname / IP</div><input type="text" placeholder="10.x.x.x"></div>
-        <div class="form-group" style="max-width:80px"><div class="form-label">Port</div><input type="number" value="339"></div>
+        <div class="form-group">
+          <div class="form-label">Hostname / IP</div>
+          <input type="text" id="connHost" placeholder="10.x.x.x or hostname">
+        </div>
+        <div class="form-group" style="max-width:80px">
+          <div class="form-label">Port</div>
+          <input type="number" id="connPort" value="23">
+        </div>
       </div>
       <div class="form-row">
-        <div class="form-group"><div class="form-label">Session Name</div><input type="text" placeholder="My LPAR"></div>
-        <div class="form-group"><div class="form-label">LU Name (opt)</div><input type="text" placeholder="LU3A0001"></div>
+        <div class="form-group">
+          <div class="form-label">LU Name (optional)</div>
+          <input type="text" id="connLu" placeholder="LU3A0001">
+        </div>
+        <div class="form-group" style="max-width:120px">
+          <div class="form-label">Terminal Model</div>
+          <select id="connModel">
+            <option value="3278-2">3278-2 (80×24)</option>
+            <option value="3278-3">3278-3 (80×32)</option>
+            <option value="3278-4" selected>3278-4 (80×43)</option>
+            <option value="3278-5">3278-5 (132×27)</option>
+          </select>
+        </div>
       </div>
-      <div class="form-group"><div class="form-label">Security</div>
-        <select><option selected>None (plain TN3270)</option><option>TLS/SSL (port 992)</option><option>SSH Tunnel</option></select>
+      <div class="form-row" style="align-items:center;gap:16px;margin-bottom:14px">
+        <div class="form-group" style="margin-bottom:0;flex:1">
+          <div class="form-label">Security</div>
+          <select id="connSecurity">
+            <option value="none">None (plain TN3270)</option>
+            <option value="tls">TLS/SSL</option>
+          </select>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;padding-top:16px;flex-shrink:0">
+          <div class="toggle" id="connTn3270eToggle" onclick="this.classList.toggle('on')" title="Enable TN3270E negotiation"></div>
+          <span style="font-size:11px;color:var(--text-dim)">TN3270E</span>
+        </div>
       </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="hideConnectModal()">Cancel</button>
-      <button class="btn btn-secondary">Save Profile</button>
-      <button class="btn btn-primary" onclick="simulateConnect('New')">Connect</button>
+      <button class="btn btn-primary" id="connectModalBtn" onclick="connectFromModal()">Connect</button>
     </div>
   </div>
 </div>
@@ -1418,9 +1452,77 @@ function setTheme(name, el) {
 // ══════════════════════════════════════════════════════════════════
 //  MODAL
 // ══════════════════════════════════════════════════════════════════
-function showConnectModal() { document.getElementById('connectModal').classList.remove('hidden'); }
-function hideConnectModal() { document.getElementById('connectModal').classList.add('hidden'); }
-document.getElementById('connectModal').addEventListener('click', e => { if (e.target === e.currentTarget) hideConnectModal(); });
+// ══════════════════════════════════════════════════════════════════
+//  MODAL — new / edit session
+// ══════════════════════════════════════════════════════════════════
+function showConnectModal(profile) {
+  const modal   = document.getElementById('connectModal');
+  const title   = document.getElementById('connectModalTitle');
+  const btnText = document.getElementById('connectModalBtn');
+
+  if (profile) {
+    // Edit / connect to existing profile — pre-fill fields
+    title.textContent    = 'Connect · ' + esc(profile.name || profile.id);
+    btnText.textContent  = 'Connect';
+    document.getElementById('connName').value     = profile.name || profile.id || '';
+    document.getElementById('connHost').value     = profile.host || '';
+    document.getElementById('connPort').value     = profile.port || 23;
+    document.getElementById('connLu').value       = profile.luName || '';
+    document.getElementById('connType').value     = profile.type || 'TSO';
+    document.getElementById('connModel').value    = profile.model || '3278-4';
+    document.getElementById('connSecurity').value = profile.tls ? 'tls' : 'none';
+    // TN3270E toggle: default OFF for z/VM, ON for others
+    const tn3270e = profile.tn3270e ?? (profile.type !== 'ZVM');
+    document.getElementById('connTn3270eToggle').classList.toggle('on', tn3270e);
+    // Store the profile id so connectFromModal knows this is an edit
+    modal.dataset.profileId = profile.id || '';
+  } else {
+    // New manual session — blank form
+    title.textContent    = 'New 3270 Session';
+    btnText.textContent  = 'Connect';
+    document.getElementById('connName').value     = '';
+    document.getElementById('connHost').value     = '';
+    document.getElementById('connPort').value     = '23';
+    document.getElementById('connLu').value       = '';
+    document.getElementById('connType').value     = 'TSO';
+    document.getElementById('connModel').value    = '3278-4';
+    document.getElementById('connSecurity').value = 'none';
+    document.getElementById('connTn3270eToggle').classList.remove('on');
+    modal.dataset.profileId = '';
+  }
+
+  modal.classList.remove('hidden');
+  setTimeout(() => document.getElementById('connHost').focus(), 50);
+}
+
+function hideConnectModal() {
+  document.getElementById('connectModal').classList.add('hidden');
+}
+
+function connectFromModal() {
+  const host = document.getElementById('connHost').value.trim();
+  if (!host) {
+    document.getElementById('connHost').style.borderColor = 'var(--t-red)';
+    document.getElementById('connHost').focus();
+    return;
+  }
+  document.getElementById('connHost').style.borderColor = '';
+
+  const name    = document.getElementById('connName').value.trim() || host;
+  const port    = parseInt(document.getElementById('connPort').value, 10) || 23;
+  const lu      = document.getElementById('connLu').value.trim() || null;
+  const type    = document.getElementById('connType').value || 'TSO';
+  const model   = document.getElementById('connModel').value || '3278-4';
+  const tls     = document.getElementById('connSecurity').value === 'tls';
+  const tn3270e = document.getElementById('connTn3270eToggle').classList.contains('on');
+
+  openSession({ id: name, name, host, port, tls, luName: lu, type, model, codepage: 37, tn3270e });
+  hideConnectModal();
+}
+
+document.getElementById('connectModal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) hideConnectModal();
+});
 
 // ══════════════════════════════════════════════════════════════════
 //  LPAR PROFILES — loaded from bridge at startup
@@ -1444,7 +1546,6 @@ async function loadProfiles() {
     }
     renderLparDropdown();
     renderSidebarLpars();
-    renderModalProfiles();
   } catch (err) {
     console.warn('Could not load profiles from bridge:', err.message);
   }
@@ -1482,40 +1583,30 @@ function renderLparDropdown() {
 
 // ── Render sidebar LPAR list ──────────────────────────────────────
 function renderSidebarLpars() {
-  // Find the first sidebar section's list container
   const container = document.getElementById('sidebarLparList');
   if (!container) return;
   container.innerHTML = '';
   LPAR_PROFILES.forEach(p => {
     const item = document.createElement('div');
     item.className = 'lpar-item';
+    item.style.justifyContent = 'space-between';
     item.innerHTML = `
       <div class="lpar-dot"></div>
-      <div class="lpar-name">${esc(p.name || p.id)}</div>
-      <div class="lpar-type">${esc(p.type || 'TSO')}</div>`;
-    item.addEventListener('click', () => connectLpar(p.id));
-    container.appendChild(item);
-  });
-}
-
-// ── Render modal profile list ─────────────────────────────────────
-function renderModalProfiles() {
-  const container = document.getElementById('modalProfileList');
-  if (!container) return;
-  container.innerHTML = '';
-  LPAR_PROFILES.forEach(p => {
-    const item = document.createElement('div');
-    item.className = 'profile-item';
-    item.innerHTML = `
-      <div>
-        <div class="profile-name">${esc(p.name || p.id)}</div>
-        <div class="profile-host">${esc(p.host)}:${p.port}${p.tls ? ' · TLS' : ''} · ${esc(p.type||'TSO')}</div>
-      </div>
-      <button class="profile-connect-btn">Connect</button>`;
-    item.querySelector('button').addEventListener('click', () => {
+      <div class="lpar-name" style="flex:1">${esc(p.name || p.id)}</div>
+      <div class="lpar-type">${esc(p.type || 'TSO')}</div>
+      <span title="Edit / Connect" style="font-size:11px;margin-left:6px;color:var(--text-muted);cursor:pointer;opacity:0;transition:opacity 0.15s" class="lpar-edit-btn">✎</span>`;
+    // Click row → connect directly
+    item.addEventListener('click', e => {
+      if (e.target.classList.contains('lpar-edit-btn')) return;
       connectLpar(p.id);
-      hideConnectModal();
     });
+    // Click edit icon → open modal pre-filled
+    item.querySelector('.lpar-edit-btn').addEventListener('click', e => {
+      e.stopPropagation();
+      showConnectModal(p);
+    });
+    item.addEventListener('mouseenter', () => item.querySelector('.lpar-edit-btn').style.opacity = '0.6');
+    item.addEventListener('mouseleave', () => item.querySelector('.lpar-edit-btn').style.opacity = '0');
     container.appendChild(item);
   });
 }
@@ -1708,11 +1799,13 @@ function openSession(profile) {
       type:     'connect',
       host:     profile.host,
       port:     profile.port,
-      tls:      profile.tls     ?? false,
-      luName:   profile.luName  ?? null,
-      model:    profile.model   ?? '3278-2',
+      tls:      profile.tls      ?? false,
+      luName:   profile.luName   ?? null,
+      model:    profile.model    ?? '3278-4',
       codepage: profile.codepage ?? 37,
-      tn3270e:  document.getElementById('tn3270eToggle')?.classList.contains('on') ?? true,
+      // tn3270e comes from the profile (set in lpars.txt or connect modal)
+      // default: OFF for z/VM, ON for everything else
+      tn3270e:  profile.tn3270e  ?? (profile.type !== 'ZVM'),
     }));
   };
 
