@@ -98,8 +98,7 @@ class Tn3270Session extends EventEmitter {
     this.model     = opts.model || '3278-2';
     this.codepage  = opts.codepage || 37;
     this.tlsOpts   = opts.tlsOptions || {};
-    // If false, we refuse TN3270E negotiation and use classic TN3270.
-    // z/VM hosts do not support TN3270E — set this to false for them.
+    // If false, refuse TN3270E and use classic TN3270 (required for z/VM)
     this.useTn3270e = opts.useTn3270e ?? true;
 
     // Determine screen dimensions from model
@@ -285,17 +284,14 @@ class Tn3270Session extends EventEmitter {
     if (opt === OPT_TN3270E) {
       if (cmd === DO) {
         if (!this.useTn3270e) {
-          // Refuse TN3270E — host will fall back to classic TN3270
           logger.info(`[ws:${this.wsId}] TN3270E disabled — sending WONT TN3270E`);
           this._send(Buffer.from([IAC, WONT, OPT_TN3270E]));
           this._initClassicTn3270();
         } else {
-          // Host wants us to use TN3270E — accept and negotiate
           this._send(Buffer.from([IAC, WILL, OPT_TN3270E]));
           this._sendTn3270eDeviceType();
         }
       } else if (cmd === DONT) {
-        // Fall back to classic TN3270
         this._send(Buffer.from([IAC, WONT, OPT_TN3270E]));
         this._initClassicTn3270();
       }
@@ -398,29 +394,34 @@ _handleSubneg(data) {
   // ── 3270 datastream processing ─────────────────────────────────
 
   _handle3270Record(bytes) {
+    logger.debug(`[ws:${this.wsId}] 3270 record: ${bytes.length} bytes, tn3270e=${this.tn3270eEnabled}`);
+
     if (this.tn3270eEnabled) {
-      // TN3270E header is 5 bytes: data-type, request, response, seq(2)
-      // data-type 0x00 = 3270-DATA, 0x05 = BIND-IMAGE, 0x06 = UNBIND
       const dataType = bytes[0];
-      if (dataType !== 0x00) return; // ignore non-data records for now
+      logger.debug(`[ws:${this.wsId}] TN3270E header: data-type=0x${dataType.toString(16)}`);
+      if (dataType !== 0x00) {
+        logger.debug(`[ws:${this.wsId}] Ignoring non-data TN3270E record (type=0x${dataType.toString(16)})`);
+        return;
+      }
       bytes = bytes.slice(5);
     }
 
     const cmd = bytes[0];
+    logger.debug(`[ws:${this.wsId}] 3270 command: 0x${cmd.toString(16)} (${bytes.length} payload bytes)`);
 
     if (cmd === 0xF5 || cmd === 0x7E) {
-      // Write / Erase Write
-      this._processWriteCommand(bytes.slice(1), cmd === 0x7E /* erase */);
+      logger.debug(`[ws:${this.wsId}] ${cmd === 0xF5 ? 'Erase Write' : 'Write'} command`);
+      this._processWriteCommand(bytes.slice(1), cmd === 0x7E);
     } else if (cmd === 0xF1) {
-      // Write Structured Field
+      logger.debug(`[ws:${this.wsId}] Write Structured Field command`);
       this._processWriteStructuredField(bytes.slice(1));
     } else if (cmd === 0xF3) {
-      // Erase All Unprotected
+      logger.debug(`[ws:${this.wsId}] Erase All Unprotected command`);
       this._eraseAllUnprotected();
     } else if (cmd === 0x6F) {
-      // Read Buffer
-      // (host polling — we respond with our buffer)
       this._sendReadBuffer();
+    } else {
+      logger.debug(`[ws:${this.wsId}] Unknown 3270 command: 0x${cmd.toString(16)}`);
     }
   }
 
@@ -587,6 +588,22 @@ _sendQueryReply() {
   _emitScreen() {
     const fields = this._extractFields();
     const rows   = this._bufferToRows();
+
+    // Log non-empty rows and field summary
+    const nonEmptyRows = rows
+      .map((cells, r) => ({ r, text: cells.map(c => c.char || ' ').join('').trimEnd() }))
+      .filter(x => x.text.trim().length > 0);
+    logger.debug(`[ws:${this.wsId}] Screen emit: ${rows.length} rows, ${fields.length} fields, ${nonEmptyRows.length} non-empty rows`);
+    nonEmptyRows.forEach(({ r, text }) => {
+      logger.debug(`[ws:${this.wsId}]   row ${String(r).padStart(2,'0')}: ${text.substring(0, 78)}`);
+    });
+    if (fields.length) {
+      logger.debug(`[ws:${this.wsId}] Fields:`);
+      fields.forEach((f, i) => {
+        logger.debug(`[ws:${this.wsId}]   [${i}] addr=${f.startAddr} prot=${f.protected} content='${f.content.substring(0,40)}'`);
+      });
+    }
+
     this.emit('screen', {
       rows,
       cols: this.cols,
