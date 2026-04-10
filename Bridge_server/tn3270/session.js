@@ -98,8 +98,6 @@ class Tn3270Session extends EventEmitter {
     this.model     = opts.model || '3278-2';
     this.codepage  = opts.codepage || 37;
     this.tlsOpts   = opts.tlsOptions || {};
-    // If false, refuse TN3270E — use classic TN3270 (required for z/VM)
-    this.useTn3270e = opts.useTn3270e ?? true;
 
     // Determine screen dimensions from model
     const dims     = modelDimensions(this.model);
@@ -283,15 +281,12 @@ class Tn3270Session extends EventEmitter {
 
     if (opt === OPT_TN3270E) {
       if (cmd === DO) {
-        if (!this.useTn3270e) {
-          logger.info(`[ws:${this.wsId}] TN3270E disabled — sending WONT TN3270E`);
-          this._send(Buffer.from([IAC, WONT, OPT_TN3270E]));
-          this._initClassicTn3270();
-        } else {
-          this._send(Buffer.from([IAC, WILL, OPT_TN3270E]));
-          this._sendTn3270eDeviceType();
-        }
+        // Host wants us to use TN3270E
+        this._send(Buffer.from([IAC, WILL, OPT_TN3270E]));
+        // Initiate device-type request
+        this._sendTn3270eDeviceType();
       } else if (cmd === DONT) {
+        // Fall back to classic TN3270
         this._send(Buffer.from([IAC, WONT, OPT_TN3270E]));
         this._initClassicTn3270();
       }
@@ -349,6 +344,7 @@ _handleSubneg(data) {
   if (opt === OPT_TN3270E) {
     const func = data[1];
 
+    // Host is requesting our device type — send IS response
     if (func === TN3E_DEVICE_TYPE && data[2] === TN3E_REQUEST) {
       const deviceType = `IBM-${this.model}`;
       const response = [
@@ -360,27 +356,29 @@ _handleSubneg(data) {
       }
       response.push(IAC, SE);
       this._send(Buffer.from(response));
-      logger.info(`[ws:${this.wsId}] TN3270E device-type: sent IS ${deviceType}`);
+      logger.debug(`[ws:${this.wsId}] Sent DEVICE-TYPE IS ${deviceType}`);
       return;
     }
 
     if (func === TN3E_DEVICE_TYPE && data[2] === TN3E_IS) {
+      // IS response: device-type confirmed, LU name follows CONNECT marker
       this.tn3270eEnabled = true;
       const connIdx = data.indexOf(TN3E_CONNECT, 3);
       if (connIdx !== -1) {
         this.negotiatedLu = data.slice(connIdx + 1).toString('ascii');
+        logger.info(`[ws:${this.wsId}] TN3270E active, LU=${this.negotiatedLu}`);
       }
-      logger.info(`[ws:${this.wsId}] TN3270E active — model=${this.model} LU=${this.negotiatedLu || 'any'}`);
+      // Request BIND-IMAGE and RESPONSES functions
       this._send(Buffer.from([
         IAC, SB, OPT_TN3270E, TN3E_FUNCTIONS, TN3E_REQUEST,
         0x00, 0x02,
         IAC, SE,
       ]));
     } else if (func === TN3E_DEVICE_TYPE && data[2] === TN3E_REJECT) {
-      logger.warn(`[ws:${this.wsId}] TN3270E device-type rejected — falling back to classic TN3270`);
+      logger.warn(`[ws:${this.wsId}] TN3270E device-type rejected`);
       this._initClassicTn3270();
     } else if (func === TN3E_FUNCTIONS && data[2] === TN3E_IS) {
-      logger.info(`[ws:${this.wsId}] TN3270E fully negotiated — ready for screen data`);
+      logger.debug(`[ws:${this.wsId}] TN3270E functions negotiated`);
     }
   }
 
@@ -391,7 +389,17 @@ _handleSubneg(data) {
   // ── 3270 datastream processing ─────────────────────────────────
 
   _handle3270Record(bytes) {
-    if (this.tn3270eEnabled) {
+    if (bytes.length === 0) return;
+
+    // Detect TN3270E header: if tn3270eEnabled OR if the first byte looks like
+    // a TN3270E data-type byte (0x00=3270-DATA, 0x05=BIND, 0x06=UNBIND)
+    // and byte[5] looks like a valid 3270 write command (not possible as a raw cmd).
+    // This handles the race where the screen arrives before tn3270eEnabled is set.
+    const looksLikeTn3270E = this.tn3270eEnabled ||
+      (bytes.length > 5 && (bytes[0] === 0x00 || bytes[0] === 0x05 || bytes[0] === 0x06) &&
+       (bytes[5] === 0xF5 || bytes[5] === 0xF1 || bytes[5] === 0x7E || bytes[5] === 0xF3));
+
+    if (looksLikeTn3270E) {
       const dataType = bytes[0];
       if (dataType !== 0x00) {
         logger.debug(`[ws:${this.wsId}] TN3270E non-data record type=0x${dataType.toString(16)} — skipping`);
@@ -413,7 +421,7 @@ _handleSubneg(data) {
     } else if (cmd === 0x6F) {
       this._sendReadBuffer();
     } else {
-      logger.warn(`[ws:${this.wsId}] Unknown 3270 command: 0x${cmd.toString(16)}`);
+      logger.warn(`[ws:${this.wsId}] Unknown 3270 command: 0x${cmd.toString(16)} — record may be misaligned`);
     }
   }
 
@@ -581,26 +589,24 @@ _sendQueryReply() {
     const fields = this._extractFields();
     const rows   = this._bufferToRows();
 
-    // ── INFO-level screen dump — useful for real LPAR debugging ──
     const nonEmpty = rows
       .map((cells, r) => ({ r, text: cells.map(c => c.char || ' ').join('') }))
       .filter(x => x.text.trim().length > 0);
 
-    logger.info(`[ws:${this.wsId}] ── Screen ─────────────────────────── ${nonEmpty.length} rows, ${fields.length} fields, cursor=${Math.floor(this.cursorAddr/this.cols)}:${this.cursorAddr%this.cols}`);
-    nonEmpty.forEach(({ r, text }) => {
-      logger.info(`[ws:${this.wsId}]  ${String(r+1).padStart(2,'0')} │ ${text.substring(0,78)}`);
-    });
-
+    logger.info(`[ws:${this.wsId}] ── Screen ─── ${nonEmpty.length} rows  ${fields.length} fields  cursor=${Math.floor(this.cursorAddr/this.cols)+1}:${this.cursorAddr%this.cols+1}`);
+    nonEmpty.forEach(({ r, text }) =>
+      logger.info(`[ws:${this.wsId}]  ${String(r+1).padStart(2,'0')} │ ${text.substring(0,78)}`)
+    );
     const inputFields = fields.filter(f => !f.protected);
     if (inputFields.length) {
-      logger.info(`[ws:${this.wsId}] ── Input fields (${inputFields.length}) ─────────────────────`);
+      logger.info(`[ws:${this.wsId}] ── Input fields (${inputFields.length})`);
       inputFields.forEach((f, i) => {
         const row = Math.floor(f.startAddr / this.cols) + 1;
-        const col = f.startAddr % this.cols;
-        logger.info(`[ws:${this.wsId}]  [${i}] row=${row} col=${col} addr=${f.startAddr} content='${f.content.substring(0,40)}'`);
+        const col = (f.startAddr % this.cols) + 1;
+        logger.info(`[ws:${this.wsId}]   [${i}] row=${row} col=${col} content='${f.content.substring(0,40)}'`);
       });
     }
-    logger.info(`[ws:${this.wsId}] ────────────────────────────────────────────────────`);
+    logger.info(`[ws:${this.wsId}] ─────────────────────────────────────────────────`);
 
     this.emit('screen', {
       rows,
