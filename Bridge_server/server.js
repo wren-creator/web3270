@@ -116,18 +116,22 @@ wss.on('connection', (ws, req) => {
     const useTls    = params.tls    ?? (port === 992);
     const model     = params.model    || config.defaults.model;
     const codepage  = params.codepage || config.defaults.codepage;
+    // tn3270e: client sends true/false; default true for TSO, but
+    // z/VM sessions send false (set by the UI toggle).
+    const useTn3270e = params.tn3270e ?? true;
 
     if (!host) {
       send(ws, { type: 'error', message: 'Missing required field: host' });
       ws.close(); return;
     }
 
-    logger.info(`[ws:${wsId}] Connecting → ${host}:${port} tls=${useTls} lu=${luName||'any'} model=${model}`);
+    logger.info(`[ws:${wsId}] Connecting → ${host}:${port} tls=${useTls} tn3270e=${useTn3270e} lu=${luName||'any'} model=${model}`);
     send(ws, { type: 'status', state: 'connecting', host, port });
 
     // ── Create TN3270 session ──────────────────────────────────────
     const session = new Tn3270Session({
       wsId, host, port, useTls, luName, model, codepage,
+      useTn3270e,
       tlsOptions: buildTlsOptions(params),
     });
 
