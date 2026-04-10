@@ -98,6 +98,8 @@ class Tn3270Session extends EventEmitter {
     this.model     = opts.model || '3278-2';
     this.codepage  = opts.codepage || 37;
     this.tlsOpts   = opts.tlsOptions || {};
+    // If false, refuse TN3270E — use classic TN3270 (required for z/VM)
+    this.useTn3270e = opts.useTn3270e ?? true;
 
     // Determine screen dimensions from model
     const dims     = modelDimensions(this.model);
@@ -281,12 +283,17 @@ class Tn3270Session extends EventEmitter {
 
     if (opt === OPT_TN3270E) {
       if (cmd === DO) {
-        // Host wants us to use TN3270E
-        this._send(Buffer.from([IAC, WILL, OPT_TN3270E]));
-        // Initiate device-type request
-        this._sendTn3270eDeviceType();
+        if (!this.useTn3270e) {
+          logger.info(`[ws:${this.wsId}] TN3270E disabled — sending WONT TN3270E`);
+          this._send(Buffer.from([IAC, WONT, OPT_TN3270E]));
+          this._initClassicTn3270();
+        } else {
+          // Set tn3270eEnabled NOW — screen data may arrive before FUNCTIONS IS
+          this.tn3270eEnabled = true;
+          this._send(Buffer.from([IAC, WILL, OPT_TN3270E]));
+          this._sendTn3270eDeviceType();
+        }
       } else if (cmd === DONT) {
-        // Fall back to classic TN3270
         this._send(Buffer.from([IAC, WONT, OPT_TN3270E]));
         this._initClassicTn3270();
       }
@@ -391,15 +398,9 @@ _handleSubneg(data) {
   _handle3270Record(bytes) {
     if (bytes.length === 0) return;
 
-    // Detect TN3270E header: if tn3270eEnabled OR if the first byte looks like
-    // a TN3270E data-type byte (0x00=3270-DATA, 0x05=BIND, 0x06=UNBIND)
-    // and byte[5] looks like a valid 3270 write command (not possible as a raw cmd).
-    // This handles the race where the screen arrives before tn3270eEnabled is set.
-    const looksLikeTn3270E = this.tn3270eEnabled ||
-      (bytes.length > 5 && (bytes[0] === 0x00 || bytes[0] === 0x05 || bytes[0] === 0x06) &&
-       (bytes[5] === 0xF5 || bytes[5] === 0xF1 || bytes[5] === 0x7E || bytes[5] === 0xF3));
-
-    if (looksLikeTn3270E) {
+    if (this.tn3270eEnabled) {
+      // TN3270E header: 5 bytes — data-type, request, response, seq(2)
+      // data-type 0x00 = 3270-DATA, 0x05 = BIND-IMAGE, 0x06 = UNBIND
       const dataType = bytes[0];
       if (dataType !== 0x00) {
         logger.debug(`[ws:${this.wsId}] TN3270E non-data record type=0x${dataType.toString(16)} — skipping`);
@@ -408,9 +409,10 @@ _handleSubneg(data) {
       bytes = bytes.slice(5);
     }
 
+    if (bytes.length === 0) return;
     const cmd = bytes[0];
     const cmdNames = { 0xF5:'Erase Write', 0x7E:'Write', 0xF1:'Write Structured Field', 0xF3:'Erase All Unprotected', 0x6F:'Read Buffer' };
-    logger.debug(`[ws:${this.wsId}] 3270 cmd=0x${cmd.toString(16)} (${cmdNames[cmd]||'unknown'}) payload=${bytes.length}b tn3270e=${this.tn3270eEnabled}`);
+    logger.debug(`[ws:${this.wsId}] 3270 cmd=0x${cmd.toString(16)} (${cmdNames[cmd]||'unknown'}) payload=${bytes.length}b`);
 
     if (cmd === 0xF5 || cmd === 0x7E) {
       this._processWriteCommand(bytes.slice(1), cmd === 0x7E);
@@ -421,7 +423,7 @@ _handleSubneg(data) {
     } else if (cmd === 0x6F) {
       this._sendReadBuffer();
     } else {
-      logger.warn(`[ws:${this.wsId}] Unknown 3270 command: 0x${cmd.toString(16)} — record may be misaligned`);
+      logger.warn(`[ws:${this.wsId}] Unknown 3270 command: 0x${cmd.toString(16)}`);
     }
   }
 
