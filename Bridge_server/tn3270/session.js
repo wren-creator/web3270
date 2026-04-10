@@ -98,6 +98,8 @@ class Tn3270Session extends EventEmitter {
     this.model     = opts.model || '3278-2';
     this.codepage  = opts.codepage || 37;
     this.tlsOpts   = opts.tlsOptions || {};
+    // If false, refuse TN3270E — use classic TN3270 (required for z/VM)
+    this.useTn3270e = opts.useTn3270e ?? true;
 
     // Determine screen dimensions from model
     const dims     = modelDimensions(this.model);
@@ -200,27 +202,26 @@ class Tn3270Session extends EventEmitter {
   }
 
   _processBuffer() {
+    // Pull complete Telnet records out of recvBuf
     let i = 0;
     while (i < this.recvBuf.length) {
-      const b = this.recvBuf[i];
-
-      // Non-IAC byte — part of the current 3270 data record, accumulate it
-      if (b !== IAC) {
-        this._accumRecord(b);
+      if (this.recvBuf[i] !== IAC) {
+        // Shouldn't happen in binary mode outside a record, but skip
         i++;
         continue;
       }
 
-      // IAC — need at least one more byte
       const cmd = this.recvBuf[i + 1];
+
       if (cmd === undefined) break; // wait for more data
 
+      // Two-byte commands
       if (cmd === NOP) { i += 2; continue; }
-
       if (cmd === EOR) {
-        // End of 3270 data record — process it
+        // End of 3270 data record — process accumulated data record
+        // (data was collected between IAC EOR markers)
         i += 2;
-        if (this._currentRecord && this._currentRecord.length > 0) {
+        if (this._currentRecord) {
           this._handle3270Record(this._currentRecord);
           this._currentRecord = null;
         }
@@ -236,7 +237,7 @@ class Tn3270Session extends EventEmitter {
         continue;
       }
 
-      // Subnegotiation SB … IAC SE
+      // Subnegotiation SB … SE
       if (cmd === SB) {
         const seIdx = this._findSE(i + 2);
         if (seIdx === -1) break; // wait for more
@@ -246,15 +247,19 @@ class Tn3270Session extends EventEmitter {
         continue;
       }
 
-      // IAC IAC → escaped 0xFF data byte in record
+      // IAC IAC → escaped 0xFF data byte
       if (cmd === IAC) {
         this._accumRecord(0xFF);
         i += 2;
         continue;
       }
 
-      i += 2; // unknown two-byte command, skip
+      i += 2; // unknown, skip
     }
+
+    // Anything left before a IAC EOR that isn't a Telnet command
+    // is 3270 data — accumulate it
+    // (handled via _accumRecord called from above)
 
     this.recvBuf = this.recvBuf.slice(i);
   }
@@ -278,12 +283,15 @@ class Tn3270Session extends EventEmitter {
 
     if (opt === OPT_TN3270E) {
       if (cmd === DO) {
-        // Host wants us to use TN3270E
-        this._send(Buffer.from([IAC, WILL, OPT_TN3270E]));
-        // Initiate device-type request
-        this._sendTn3270eDeviceType();
+        if (!this.useTn3270e) {
+          logger.info(`[ws:${this.wsId}] TN3270E disabled — sending WONT TN3270E`);
+          this._send(Buffer.from([IAC, WONT, OPT_TN3270E]));
+          this._initClassicTn3270();
+        } else {
+          this._send(Buffer.from([IAC, WILL, OPT_TN3270E]));
+          this._sendTn3270eDeviceType();
+        }
       } else if (cmd === DONT) {
-        // Fall back to classic TN3270
         this._send(Buffer.from([IAC, WONT, OPT_TN3270E]));
         this._initClassicTn3270();
       }
@@ -341,7 +349,6 @@ _handleSubneg(data) {
   if (opt === OPT_TN3270E) {
     const func = data[1];
 
-    // Host is requesting our device type — send IS response
     if (func === TN3E_DEVICE_TYPE && data[2] === TN3E_REQUEST) {
       const deviceType = `IBM-${this.model}`;
       const response = [
@@ -353,29 +360,27 @@ _handleSubneg(data) {
       }
       response.push(IAC, SE);
       this._send(Buffer.from(response));
-      logger.debug(`[ws:${this.wsId}] Sent DEVICE-TYPE IS ${deviceType}`);
+      logger.info(`[ws:${this.wsId}] TN3270E device-type: sent IS ${deviceType}`);
       return;
     }
 
     if (func === TN3E_DEVICE_TYPE && data[2] === TN3E_IS) {
-      // IS response: device-type confirmed, LU name follows CONNECT marker
       this.tn3270eEnabled = true;
       const connIdx = data.indexOf(TN3E_CONNECT, 3);
       if (connIdx !== -1) {
         this.negotiatedLu = data.slice(connIdx + 1).toString('ascii');
-        logger.info(`[ws:${this.wsId}] TN3270E active, LU=${this.negotiatedLu}`);
       }
-      // Request BIND-IMAGE and RESPONSES functions
+      logger.info(`[ws:${this.wsId}] TN3270E active — model=${this.model} LU=${this.negotiatedLu || 'any'}`);
       this._send(Buffer.from([
         IAC, SB, OPT_TN3270E, TN3E_FUNCTIONS, TN3E_REQUEST,
         0x00, 0x02,
         IAC, SE,
       ]));
     } else if (func === TN3E_DEVICE_TYPE && data[2] === TN3E_REJECT) {
-      logger.warn(`[ws:${this.wsId}] TN3270E device-type rejected`);
+      logger.warn(`[ws:${this.wsId}] TN3270E device-type rejected — falling back to classic TN3270`);
       this._initClassicTn3270();
     } else if (func === TN3E_FUNCTIONS && data[2] === TN3E_IS) {
-      logger.debug(`[ws:${this.wsId}] TN3270E functions negotiated`);
+      logger.info(`[ws:${this.wsId}] TN3270E fully negotiated — ready for screen data`);
     }
   }
 
@@ -387,28 +392,28 @@ _handleSubneg(data) {
 
   _handle3270Record(bytes) {
     if (this.tn3270eEnabled) {
-      // TN3270E header is 5 bytes: data-type, request, response, seq(2)
-      // data-type 0x00 = 3270-DATA, 0x05 = BIND-IMAGE, 0x06 = UNBIND
       const dataType = bytes[0];
-      if (dataType !== 0x00) return; // ignore non-data records for now
+      if (dataType !== 0x00) {
+        logger.debug(`[ws:${this.wsId}] TN3270E non-data record type=0x${dataType.toString(16)} — skipping`);
+        return;
+      }
       bytes = bytes.slice(5);
     }
 
     const cmd = bytes[0];
+    const cmdNames = { 0xF5:'Erase Write', 0x7E:'Write', 0xF1:'Write Structured Field', 0xF3:'Erase All Unprotected', 0x6F:'Read Buffer' };
+    logger.debug(`[ws:${this.wsId}] 3270 cmd=0x${cmd.toString(16)} (${cmdNames[cmd]||'unknown'}) payload=${bytes.length}b tn3270e=${this.tn3270eEnabled}`);
 
     if (cmd === 0xF5 || cmd === 0x7E) {
-      // Write / Erase Write
-      this._processWriteCommand(bytes.slice(1), cmd === 0x7E /* erase */);
+      this._processWriteCommand(bytes.slice(1), cmd === 0x7E);
     } else if (cmd === 0xF1) {
-      // Write Structured Field
       this._processWriteStructuredField(bytes.slice(1));
     } else if (cmd === 0xF3) {
-      // Erase All Unprotected
       this._eraseAllUnprotected();
     } else if (cmd === 0x6F) {
-      // Read Buffer
-      // (host polling — we respond with our buffer)
       this._sendReadBuffer();
+    } else {
+      logger.warn(`[ws:${this.wsId}] Unknown 3270 command: 0x${cmd.toString(16)}`);
     }
   }
 
@@ -575,6 +580,28 @@ _sendQueryReply() {
   _emitScreen() {
     const fields = this._extractFields();
     const rows   = this._bufferToRows();
+
+    // ── INFO-level screen dump — useful for real LPAR debugging ──
+    const nonEmpty = rows
+      .map((cells, r) => ({ r, text: cells.map(c => c.char || ' ').join('') }))
+      .filter(x => x.text.trim().length > 0);
+
+    logger.info(`[ws:${this.wsId}] ── Screen ─────────────────────────── ${nonEmpty.length} rows, ${fields.length} fields, cursor=${Math.floor(this.cursorAddr/this.cols)}:${this.cursorAddr%this.cols}`);
+    nonEmpty.forEach(({ r, text }) => {
+      logger.info(`[ws:${this.wsId}]  ${String(r+1).padStart(2,'0')} │ ${text.substring(0,78)}`);
+    });
+
+    const inputFields = fields.filter(f => !f.protected);
+    if (inputFields.length) {
+      logger.info(`[ws:${this.wsId}] ── Input fields (${inputFields.length}) ─────────────────────`);
+      inputFields.forEach((f, i) => {
+        const row = Math.floor(f.startAddr / this.cols) + 1;
+        const col = f.startAddr % this.cols;
+        logger.info(`[ws:${this.wsId}]  [${i}] row=${row} col=${col} addr=${f.startAddr} content='${f.content.substring(0,40)}'`);
+      });
+    }
+    logger.info(`[ws:${this.wsId}] ────────────────────────────────────────────────────`);
+
     this.emit('screen', {
       rows,
       cols: this.cols,
