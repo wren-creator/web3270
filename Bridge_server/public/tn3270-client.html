@@ -216,7 +216,10 @@ body {
   box-shadow: 0 12px 40px rgba(0,0,0,0.6);
   z-index: 200;
   animation: dropIn 0.15s ease;
+  scrollbar-width: thin; scrollbar-color: #1a3050 transparent;
 }
+.lpar-dropdown-menu::-webkit-scrollbar { width: 3px; }
+.lpar-dropdown-menu::-webkit-scrollbar-thumb { background: #1a3050; border-radius: 2px; }
 .lpar-dropdown-menu.open { display: block; }
 @keyframes dropIn { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:none} }
 
@@ -276,10 +279,10 @@ body {
 .lpar-menu-connect {
   font-size: 10px;
   padding: 3px 9px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-bright);
-  color: var(--accent-green);
-  border-radius: 3px;
+  background: #0a1520;
+  border: 1px solid #1a3050;
+  color: #4488cc;
+  border-radius: 2px;
   cursor: pointer;
   font-family: 'IBM Plex Mono', monospace;
   opacity: 0;
@@ -287,11 +290,12 @@ body {
   flex-shrink: 0;
   white-space: nowrap;
 }
-.lpar-menu-connect:hover { background: rgba(0,255,136,0.08); border-color: var(--accent-green); }
+.lpar-menu-connect:hover { background: #0f2530; border-color: #6699ff; color: #6699ff; }
 .lpar-menu-connect.active-session {
   opacity: 1;
-  color: var(--accent-cyan);
-  border-color: var(--accent-cyan);
+  color: var(--accent-green);
+  border-color: #1a3020;
+  background: #0a1520;
 }
 
 .lpar-menu-divider {
@@ -389,6 +393,10 @@ body {
 .lpar-dot.conn { background: var(--accent-blue);  box-shadow: 0 0 4px var(--accent-blue); }
 .lpar-name { flex: 1; }
 .lpar-type { font-size: 9px; color: var(--text-muted); }
+
+#sidebarLparList { scrollbar-width: thin; scrollbar-color: #1a3050 transparent; }
+#sidebarLparList::-webkit-scrollbar { width: 3px; }
+#sidebarLparList::-webkit-scrollbar-thumb { background: #1a3050; border-radius: 2px; }
 
 .macro-item {
   display: flex; align-items: center; gap: 8px;
