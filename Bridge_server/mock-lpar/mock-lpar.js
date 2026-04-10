@@ -373,35 +373,50 @@ function handleConnection(socket) {
   function handleSubneg(data) {
     const opt  = data[0];
     const func = data[1];
+    debug(`[${id}] Subneg raw: ${[...data].map(b=>'0x'+b.toString(16)).join(' ')}`);
 
     if (opt === OPT_TN3270E) {
-      if (func === TN3E_DEVICE_TYPE && data[2] === TN3E_IS) {
-        // Client confirmed device-type — reply with FUNCTIONS IS (empty)
-        socket.write(Buffer.from([IAC, SB, OPT_TN3270E, TN3E_FUNCTIONS, TN3E_IS, IAC, SE]));
-        debug(`[${id}] → TN3270E FUNCTIONS IS (none)`);
-        // Do NOT send screen yet — wait for client's FUNCTIONS REQUEST
-      }
 
-      if (func === TN3E_FUNCTIONS && data[2] === TN3E_REQUEST) {
-        // ── KEY FIX: client sent FUNCTIONS REQUEST — negotiation truly complete ──
-        // Reply with FUNCTIONS IS confirming what we support
-        const requested = data.slice(3); // the function bytes client wants
+      if (func === TN3E_DEVICE_TYPE && data[2] === TN3E_IS) {
+        // Client confirmed device-type — now host must send FUNCTIONS REQUEST
+        // (RFC 2355: host asks what functions client wants to use)
         socket.write(Buffer.from([
-          IAC, SB, OPT_TN3270E, TN3E_FUNCTIONS, TN3E_IS,
-          ...requested,  // echo back what client requested
+          IAC, SB, OPT_TN3270E, TN3E_FUNCTIONS, TN3E_REQUEST,
           IAC, SE,
         ]));
-        debug(`[${id}] → TN3270E FUNCTIONS IS (echoing client request)`);
+        debug(`[${id}] → TN3270E FUNCTIONS REQUEST (asking client)`);
+        // Do NOT send screen yet — wait for client's FUNCTIONS IS
+      }
 
-        // NOW negotiation is complete — send first screen
+      if (func === TN3E_DEVICE_TYPE && data[2] === TN3E_REQUEST) {
+        // Client requesting device type — respond with IS
+        socket.write(Buffer.from([
+          IAC, SB, OPT_TN3270E, TN3E_DEVICE_TYPE, TN3E_IS,
+          ...Buffer.from('IBM-3278-2'),
+          IAC, SE,
+        ]));
+        debug(`[${id}] → TN3270E DEVICE-TYPE IS IBM-3278-2`);
+      }
+
+      if (func === TN3E_FUNCTIONS && data[2] === TN3E_IS) {
+        // Client told us what functions it supports — negotiation complete!
+        const supported = data.slice(3);
+        debug(`[${id}] ← TN3270E FUNCTIONS IS [${[...supported].map(b=>'0x'+b.toString(16)).join(' ')}]`);
         if (!negotiationComplete) {
           negotiationComplete = true;
           setImmediate(() => sendCurrentScreen());
         }
       }
 
-      if (func === TN3E_FUNCTIONS && data[2] === TN3E_IS) {
-        // Classic path (shouldn't normally happen here but handle gracefully)
+      if (func === TN3E_FUNCTIONS && data[2] === TN3E_REQUEST) {
+        // Client requesting functions (unusual but handle gracefully)
+        const requested = data.slice(3);
+        socket.write(Buffer.from([
+          IAC, SB, OPT_TN3270E, TN3E_FUNCTIONS, TN3E_IS,
+          ...requested,
+          IAC, SE,
+        ]));
+        debug(`[${id}] → TN3270E FUNCTIONS IS (echoing client request)`);
         if (!negotiationComplete) {
           negotiationComplete = true;
           setImmediate(() => sendCurrentScreen());
@@ -412,7 +427,6 @@ function handleConnection(socket) {
     if (opt === OPT_TTYPE && func === TN3E_IS) {
       const ttype = data.slice(2).toString('ascii');
       debug(`[${id}] ← TTYPE IS ${ttype}`);
-      // Classic TN3270 negotiation complete
       if (!negotiationComplete) {
         negotiationComplete = true;
         setImmediate(() => sendCurrentScreen());
