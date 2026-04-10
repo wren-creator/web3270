@@ -404,12 +404,17 @@ body {
   display: flex; align-items: center; gap: 4px;
   padding: 4px 8px;
   background: #060c14; border-bottom: 1px solid #0d1f14; flex-shrink: 0;
+  overflow-x: auto; flex-wrap: nowrap;
+  scrollbar-width: thin; scrollbar-color: #1a3050 transparent;
 }
+.terminal-toolbar::-webkit-scrollbar { height: 3px; }
+.terminal-toolbar::-webkit-scrollbar-thumb { background: #1a3050; border-radius: 2px; }
 .t-btn {
   font-size: 10px; font-family: 'IBM Plex Mono', monospace;
   padding: 3px 8px;
   background: #0a1520; border: 1px solid #1a3020; color: #33aa55;
   border-radius: 2px; cursor: pointer; transition: all 0.1s; white-space: nowrap;
+  flex-shrink: 0;
 }
 .t-btn:hover { background: #0f2530; border-color: #33ff66; color: #33ff66; }
 .t-btn.pf { color: #4488cc; border-color: #1a3050; }
