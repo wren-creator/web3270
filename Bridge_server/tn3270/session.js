@@ -278,6 +278,16 @@ class Tn3270Session extends EventEmitter {
   _handleTelnetOption(cmd, opt) {
     logger.debug(`[ws:${this.wsId}] Telnet ${cmdName(cmd)} ${optName(opt)}`);
 
+    // 1. Terminal Type — must agree or host won't send the login screen
+    if (opt === OPT_TTYPE) {
+      if (cmd === DO) {
+        this._send(Buffer.from([IAC, WILL, OPT_TTYPE]));
+        logger.debug(`[ws:${this.wsId}] Sent WILL TTYPE`);
+      }
+      return;
+    }
+
+    // 2. TN3270E
     if (opt === OPT_TN3270E) {
       if (cmd === DO) {
         if (!this.useTn3270e) {
@@ -297,30 +307,32 @@ class Tn3270Session extends EventEmitter {
       return;
     }
 
-if (opt === OPT_BINARY) {
-  if (cmd === DO && !this._binaryNegotiated) {
-    this._binaryNegotiated = true;
-    this._send(Buffer.from([IAC, WILL, OPT_BINARY]));
-  }
-  if (cmd === WILL && !this._binaryDoSent) {
-    this._binaryDoSent = true;
-    this._send(Buffer.from([IAC, DO, OPT_BINARY]));
-  }
-  return;
-}
+    // 3. Binary and EOR — required for 3270 data stream to flow
+    if (opt === OPT_BINARY) {
+      if (cmd === DO && !this._binaryNegotiated) {
+        this._binaryNegotiated = true;
+        this._send(Buffer.from([IAC, WILL, OPT_BINARY]));
+      }
+      if (cmd === WILL && !this._binaryDoSent) {
+        this._binaryDoSent = true;
+        this._send(Buffer.from([IAC, DO, OPT_BINARY]));
+      }
+      return;
+    }
 
-if (opt === OPT_EOR) {
-  if (cmd === DO && !this._eorNegotiated) {
-    this._eorNegotiated = true;
-    this._send(Buffer.from([IAC, WILL, OPT_EOR]));
-  }
-  if (cmd === WILL && !this._eorDoSent) {
-    this._eorDoSent = true;
-    this._send(Buffer.from([IAC, DO, OPT_EOR]));
-  }
-  return;
-}
-    // For anything else we don't support: refuse
+    if (opt === OPT_EOR) {
+      if (cmd === DO && !this._eorNegotiated) {
+        this._eorNegotiated = true;
+        this._send(Buffer.from([IAC, WILL, OPT_EOR]));
+      }
+      if (cmd === WILL && !this._eorDoSent) {
+        this._eorDoSent = true;
+        this._send(Buffer.from([IAC, DO, OPT_EOR]));
+      }
+      return;
+    }
+
+    // Refuse anything else
     if (cmd === DO)   this._send(Buffer.from([IAC, WONT, opt]));
     if (cmd === WILL) this._send(Buffer.from([IAC, DONT, opt]));
   }
@@ -386,8 +398,16 @@ _handleSubneg(data) {
     }
   }
 
-  if (opt === OPT_TTYPE && data[1] === 0x01 /* SEND */) {
-    this._handleTelnetOption(SB, OPT_TTYPE);
+  if (opt === OPT_TTYPE && data[1] === TN3E_SEND /* 0x01 = SEND */) {
+    // Host is asking for our terminal type — respond with IBM-model
+    const ttype = `IBM-${this.model}`;
+    const response = [
+      IAC, SB, OPT_TTYPE, TN3E_IS,
+      ...Buffer.from(ttype),
+      IAC, SE,
+    ];
+    this._send(Buffer.from(response));
+    logger.info(`[ws:${this.wsId}] Sent TTYPE IS ${ttype}`);
   }
 }
   // ── 3270 datastream processing ─────────────────────────────────
@@ -487,7 +507,9 @@ _handleSubneg(data) {
         i += 2;
 
       } else if (b === ORDER_SFE || b === ORDER_SA || b === ORDER_MF) {
-        // Extended orders with attribute pairs
+        // Extended orders with attribute pairs — currently skipped.
+        // TODO: parse attribute pairs for color, highlighting, and extended field attrs.
+        // Each pair is: type(1) + value(1). Needed for full 3279 color support.
         i++;
         const pairCount = data[i]; i++;
         i += pairCount * 2; // skip attribute type + value pairs
