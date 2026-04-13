@@ -555,32 +555,40 @@ _processWriteStructuredField(data) {
 }
 
 _sendQueryReply() {
-  // Minimal Query Reply — Summary saying we support only the basics
+  // Convert current dimensions to hex buffers
+  const w = Buffer.alloc(2);
+  const h = Buffer.alloc(2);
+  w.writeUInt16BE(this.cols);
+  h.writeUInt16BE(this.rows);
+
   const reply = Buffer.from([
     0x88,        // AID — structured field reply
-    0x00, 0x00,  // cursor address (irrelevant)
+    0x00, 0x00,  // cursor address
+    
     // Query Reply (Summary)
     0x00, 0x0E,  // length = 14
     0x81,        // Query Reply
     0x80,        // Summary
     0x80,        // Summary reply
     0x81, 0x84, 0x85, 0x86, 0x87, 0x88, 0x95, 0xA1,
+    
     // Query Reply (Usable Area)
     0x00, 0x16,  // length = 22
     0x81,        // Query Reply
     0x01,        // Usable Area
-    0x01,        // 12/14-bit addressing
-    0x00,        // variable cells not supported
-    0x00, 0x50,  // width = 80
-    0x00, 0x18,  // height = 24
-    0x01,        // units = mm
-    0x00, 0x00, 0x06, 0x00,
-    0x00, 0x00, 0x06, 0x00,
-    0x00, 0x50,  // columns = 80
-    0x00, 0x18,  // rows = 24
+    0x01,        // 12/14-bit addressing supported
+    0x00,        // flags
+    w[0], w[1],  // width (80)
+    h[0], h[1],  // height (e.g., 43 for Model 4)
+    0x01,        // units = inches/mm (standard)
+    0x00, 0x00, 0x06, 0x00, // X-axis density
+    0x00, 0x00, 0x06, 0x00, // Y-axis density
+    w[0], w[1],  // columns (80)
+    h[0], h[1],  // rows (e.g., 43 for Model 4)
   ]);
+
   this._sendDataRecord(reply);
-  logger.debug(`[ws:${this.wsId}] Sent Query Reply`);
+  logger.info(`[ws:${this.wsId}] Sent Query Reply (${this.cols}x${this.rows})`);
 }
 
  _eraseAllUnprotected() {
@@ -768,8 +776,7 @@ function modelDimensions(model) {
     '3278-3': { rows: 32,  cols: 80  },
     '3278-4': { rows: 43,  cols: 80  },
     '3278-5': { rows: 27,  cols: 132 },
-    '3279-2': { rows: 24,  cols: 80  },
-    '3279-5': { rows: 27,  cols: 132 },
+    '3178': { rows: 24,  cols: 80 }, // Standard 3178 is Model 2 equivalent
   };
   return map[model] || { rows: 24, cols: 80 };
 }
