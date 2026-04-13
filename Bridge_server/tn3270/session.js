@@ -356,17 +356,13 @@ class Tn3270Session extends EventEmitter {
 
 _handleSubneg(data) {
   logger.debug(`[ws:${this.wsId}] Subneg opt=0x${data[0].toString(16)} func=0x${(data[1]||0).toString(16)}`);
+  logger.debug(`[ws:${this.wsId}] TTYPE subneg raw bytes: ${data.toString('hex')}`);
   const opt = data[0];
-  if (opt === OPT_TN3270E) {
-    const func = data[1];
+  if (opt === OPT_TN3270E) {const func = data[1];
 
     // Host is requesting our device type — send IS response
-    if (func === TN3E_DEVICE_TYPE && data[2] === TN3E_REQUEST) {
-      const deviceType = `IBM-${this.model}`;
-      const response = [
-        IAC, SB, OPT_TN3270E, TN3E_DEVICE_TYPE, TN3E_IS,
-        ...Buffer.from(deviceType),
-      ];
+    if (func === TN3E_DEVICE_TYPE && data[2] === TN3E_REQUEST) {const deviceType = `IBM-${this.model}`;
+      const response = [IAC, SB, OPT_TN3270E, TN3E_DEVICE_TYPE, TN3E_IS, ...Buffer.from(deviceType),];
       if (this.luName) {
         response.push(TN3E_CONNECT, ...Buffer.from(this.luName));
       }
@@ -380,16 +376,11 @@ _handleSubneg(data) {
       // IS response: device-type confirmed, LU name follows CONNECT marker
       this.tn3270eEnabled = true;
       const connIdx = data.indexOf(TN3E_CONNECT, 3);
-      if (connIdx !== -1) {
-        this.negotiatedLu = data.slice(connIdx + 1).toString('ascii');
+      if (connIdx !== -1) {this.negotiatedLu = data.slice(connIdx + 1).toString('ascii');
         logger.info(`[ws:${this.wsId}] TN3270E active, LU=${this.negotiatedLu}`);
       }
       // Request BIND-IMAGE and RESPONSES functions
-      this._send(Buffer.from([
-        IAC, SB, OPT_TN3270E, TN3E_FUNCTIONS, TN3E_REQUEST,
-        0x00, 0x02,
-        IAC, SE,
-      ]));
+      this._send(Buffer.from([IAC, SB, OPT_TN3270E, TN3E_FUNCTIONS, TN3E_REQUEST, 0x00, 0x02, IAC, SE,]));
     } else if (func === TN3E_DEVICE_TYPE && data[2] === TN3E_REJECT) {
       logger.warn(`[ws:${this.wsId}] TN3270E device-type rejected`);
       this._initClassicTn3270();
@@ -401,13 +392,11 @@ _handleSubneg(data) {
   if (opt === OPT_TTYPE && data[1] === TN3E_SEND /* 0x01 = SEND */) {
     // Host is asking for our terminal type — respond with IBM-model
     const ttype = `IBM-${this.model}`;
-    const response = [
-      IAC, SB, OPT_TTYPE, TN3E_IS,
-      ...Buffer.from(ttype),
-      IAC, SE,
-    ];
+    const response = [IAC, SB, OPT_TTYPE, 0x00, ...Buffer.from(ttype), IAC, SE,];
     this._send(Buffer.from(response));
     logger.info(`[ws:${this.wsId}] Sent TTYPE IS ${ttype}`);
+    // ----- DEBUG ------
+    logger.debug(`[ws.${this.wsId}] TTYPE response bytes: ${Buffer.from(response).toString('hex')}`);
   }
 }
   // ── 3270 datastream processing ─────────────────────────────────
