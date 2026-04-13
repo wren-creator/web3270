@@ -406,7 +406,13 @@ body {
 .macro-item:hover { background: var(--bg-elevated); color: var(--accent-amber); }
 
 /* ── TERMINAL ──────────────────────────────────────────────────── */
-.terminal-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--t-bg); }
+.terminal-area { 
+  flex: 1; 
+  display: flex; 
+  flex-direction: column; 
+  overflow: auto; /* Change from hidden to auto to allow scrolling for tall models */
+  background: var(--t-bg); 
+}
 
 .terminal-toolbar {
   display: flex; align-items: center; gap: 4px;
