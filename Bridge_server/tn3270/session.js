@@ -412,6 +412,8 @@ class Tn3270Session extends EventEmitter {
   // ── 3270 datastream processing ─────────────────────────────────
 
   _handle3270Record(bytes) {
+    logger.debug(`[ws:${this.wsId}] _handler3270Record: ${bytes.length} bytes, cmd=0x${bytes[0]?.toString(16)}`);
+    logger.debug(`[ws:${this.wsId} _handle3270Record: first 10 bytes: ${bytes.slice(0,10).toString('hex')}`);
     if (this.tn3270eEnabled) {
       // TN3270E header is 5 bytes: data-type, request, response, seq(2)
       // data-type 0x00 = 3270-DATA, 0x05 = BIND-IMAGE, 0x06 = UNBIND
@@ -422,10 +424,10 @@ class Tn3270Session extends EventEmitter {
 
     const cmd = bytes[0];
 
-    if (cmd === 0xF5 || cmd === 0x7E) {
+    if (cmd === 0xF5 || cmd === 0x7E || cmd === 0x05 || cmd === 0x01) {
       // Write / Erase Write
-      this._processWriteCommand(bytes.slice(1), cmd === 0x7E /* erase */);
-    } else if (cmd === 0xF1) {
+      this._processWriteCommand(bytes.slice(1), cmd === 0x7E || cmd === 0x06/* erase */);
+    } else if (cmd === 0xF1 || cmd === 0x05) {
       // Write Structured Field
       this._processWriteStructuredField(bytes.slice(1));
     } else if (cmd === 0xF3) {
@@ -435,6 +437,15 @@ class Tn3270Session extends EventEmitter {
       // Read Buffer
       // (host polling — we respond with our buffer)
       this._sendReadBuffer();
+    } else if (cmd === 0x02) {
+      // Read Buffer — respond with current buffer contents
+      logger.debug(`[ws:${this.wsId}] Read Buffer command received`);
+      this._sendReadBuffer();
+    } else if (cmd === 0x0D || cmd === 0x6E) {
+      // Read Modified / Read Modified All — respond with AID + modified fields
+      logger.debug(`[ws:${this.wsId}] Read Modified command received`);
+      this._sendReadModified();
+
     }
   }
 
@@ -526,17 +537,19 @@ class Tn3270Session extends EventEmitter {
   }
 
 _processWriteStructuredField(data) {
+  logger.debug(`[ws:${this.wsId}] _processWSF: ${data.length} bytes, first 6: ${data.slice(0,6).toString('hex')}`);
   let i = 0;
-  while (i < data.length) {
+  while (i + 2 < data.length) {
     const len = (data[i] << 8) | data[i + 1];
-    if (len === 0) break;
+    logger.debug(`[ws:${this.wsId}] WSF field at i=${i} len=${len} sfId=0x${data[i+2]?.toString(16)}`);
+    if (len < 3 || i + len > data.length) {
+      logger.warn(`[ws:${this.wsId}] WSF bad length ${len} at i=${i}, stopping`);
+      break;
+    }
     const sfId = data[i + 2];
-
-    // Query (0x01) — host is asking what we support, send Query Reply
     if (sfId === 0x01) {
       this._sendQueryReply();
     }
-
     i += len;
   }
 }
@@ -601,15 +614,15 @@ _sendQueryReply() {
   // ── Screen emission ────────────────────────────────────────────
 
   _emitScreen() {
+  // ── DEBUG ──
+  logger.debug(`[ws:${this.wsId}] _emitScreen called`);
     const fields = this._extractFields();
     const rows   = this._bufferToRows();
+    const nonEmpty = rows.map((cells, r) => ({ r, text: cells.map(c => c.char || ' ').join('') })).filter(x => x.text.trim().length > 0);
     // ── DEBUG: row/field counts ──────────────────────────────────────
     const nonEmptyRows = rows.filter(cells => cells.map(c => c.char || ' ').join('').trim().length > 0);
     logger.debug(`[ws:${this.wsId}] _emitScreen → rows=${this.rows} nonEmptyRows=${nonEmptyRows.length} fields=${fields.length} (protected=${fields.filter(f=>f.protected).length} input=${fields.filter(f=>!f.protected).length})`);
     // ────────────────────────────────────────────────────────────────
-    const nonEmpty = rows
-      .map((cells, r) => ({ r, text: cells.map(c => c.char || ' ').join('') }))
-      .filter(x => x.text.trim().length > 0);
 
     logger.info(`[ws:${this.wsId}] ── Screen ─── ${nonEmpty.length} rows  ${fields.length} fields  cursor=${Math.floor(this.cursorAddr/this.cols)+1}:${this.cursorAddr%this.cols+1}`);
     nonEmpty.forEach(({ r, text }) =>
@@ -641,7 +654,7 @@ _sendQueryReply() {
     for (let r = 0; r < this.rows; r++) {
       const cells = [];
       for (let c = 0; c < this.cols; c++) {
-        const cell = this.buffer[r * this.cols + c];
+        const cell = this.buffer[r * this.cols + c] || { char: 0x00, fa: undefined, modified: false };
         cells.push({
           char: cell.char ? Ebcdic.toAscii(Buffer.from([cell.char]), this.codepage) : ' ',
           fa:   cell.fa,
@@ -653,30 +666,31 @@ _sendQueryReply() {
     return rows;
   }
 
-  _extractFields() {
-    const fields = [];
-    let currentField = null;
-    for (let a = 0; a < this.buffer.length; a++) {
-      const cell = this.buffer[a];
-      if (cell.fa !== undefined) {
-        if (currentField) fields.push(currentField);
-        currentField = {
-          startAddr: a,
-          fa: cell.fa,
-          protected: !!(cell.fa & FA_PROTECTED),
-          numeric:   !!(cell.fa & FA_NUMERIC),
-          modified:  !!(cell.fa & FA_MDT),
-          content:   '',
-        };
-      } else if (currentField) {
-        if (cell.char) {
-          currentField.content += Ebcdic.toAscii(Buffer.from([cell.char]), this.codepage);
-        }
+ _extractFields() {
+  const fields = [];
+  let currentField = null;
+  for (let a = 0; a < this.buffer.length; a++) {
+    const cell = this.buffer[a];
+    if (!cell) continue; // ← ADD THIS GUARD
+    if (cell.fa !== undefined) {
+      if (currentField) fields.push(currentField);
+      currentField = {
+        startAddr: a,
+        fa: cell.fa,
+        protected: !!(cell.fa & FA_PROTECTED),
+        numeric: !!(cell.fa & FA_NUMERIC),
+        modified: !!(cell.fa & FA_MDT),
+        content: '',
+      };
+    } else if (currentField) {
+      if (cell.char) {
+        currentField.content += Ebcdic.toAscii(Buffer.from([cell.char]), this.codepage);
       }
     }
-    if (currentField) fields.push(currentField);
-    return fields;
   }
+  if (currentField) fields.push(currentField);
+  return fields;
+}
 
   // ── Sending data ───────────────────────────────────────────────
 
@@ -708,6 +722,15 @@ _sendQueryReply() {
     // Not typically needed for emulator-initiated sessions but included for completeness
     logger.debug(`[ws:${this.wsId}] Read Buffer requested by host`);
   }
+
+  _sendReadModified() {
+   // Respond with AID NONE + cursor address (no modified fields)
+   const parts = [AIDS.NONE];
+   parts.push(...this._encodeSBA(this.cursorAddr));
+   this._sendDataRecord(Buffer.from(parts));
+   logger.debug(`[ws:${this.wsId}] Sent Read Modified response (AID NONE)`);
+  }
+
 
   _send(buf) {
     if (this.socket && !this._destroyed) {
