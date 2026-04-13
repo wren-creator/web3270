@@ -604,7 +604,10 @@ _sendQueryReply() {
   _emitScreen() {
     const fields = this._extractFields();
     const rows   = this._bufferToRows();
-
+    // ── DEBUG: row/field counts ──────────────────────────────────────
+    const nonEmptyRows = rows.filter(cells => cells.map(c => c.char || ' ').join('').trim().length > 0);
+    logger.debug(`[ws:${this.wsId}] _emitScreen → rows=${this.rows} nonEmptyRows=${nonEmptyRows.length} fields=${fields.length} (protected=${fields.filter(f=>f.protected).length} input=${fields.filter(f=>!f.protected).length})`);
+    // ────────────────────────────────────────────────────────────────
     const nonEmpty = rows
       .map((cells, r) => ({ r, text: cells.map(c => c.char || ' ').join('') }))
       .filter(x => x.text.trim().length > 0);
