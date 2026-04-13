@@ -554,42 +554,46 @@ _processWriteStructuredField(data) {
   }
 }
 
-_sendQueryReply() {
-  // Convert current dimensions to hex buffers
-  const w = Buffer.alloc(2);
-  const h = Buffer.alloc(2);
-  w.writeUInt16BE(this.cols);
-  h.writeUInt16BE(this.rows);
+/**
+   * Sends a structured field Query Reply.
+   * This tells the mainframe our exact screen dimensions and capabilities.
+   */
+  _sendQueryReply() {
+    // We use the current session's row/col count (from the model)
+    const w = Buffer.alloc(2);
+    const h = Buffer.alloc(2);
+    w.writeUInt16BE(this.cols);
+    h.writeUInt16BE(this.rows);
 
-  const reply = Buffer.from([
-    0x88,        // AID — structured field reply
-    0x00, 0x00,  // cursor address
-    
-    // Query Reply (Summary)
-    0x00, 0x0E,  // length = 14
-    0x81,        // Query Reply
-    0x80,        // Summary
-    0x80,        // Summary reply
-    0x81, 0x84, 0x85, 0x86, 0x87, 0x88, 0x95, 0xA1,
-    
-    // Query Reply (Usable Area)
-    0x00, 0x16,  // length = 22
-    0x81,        // Query Reply
-    0x01,        // Usable Area
-    0x01,        // 12/14-bit addressing supported
-    0x00,        // flags
-    w[0], w[1],  // width (80)
-    h[0], h[1],  // height (e.g., 43 for Model 4)
-    0x01,        // units = inches/mm (standard)
-    0x00, 0x00, 0x06, 0x00, // X-axis density
-    0x00, 0x00, 0x06, 0x00, // Y-axis density
-    w[0], w[1],  // columns (80)
-    h[0], h[1],  // rows (e.g., 43 for Model 4)
-  ]);
+    const reply = Buffer.from([
+      0x88,        // AID — structured field reply
+      0x00, 0x00,  // cursor address (typically 0 for this reply)
+      
+      // Query Reply (Summary)
+      0x00, 0x0E,  // length of this sub-field (14 bytes)
+      0x81,        // Query Reply identifier
+      0x80,        // Summary type
+      0x80,        // Summary list follows
+      0x81, 0x84, 0x85, 0x86, 0x87, 0x88, 0x95, 0xA1,
+      
+      // Query Reply (Usable Area)
+      0x00, 0x16,  // length of this sub-field (22 bytes)
+      0x81,        // Query Reply identifier
+      0x01,        // Usable Area type
+      0x01,        // Addressing flags (12/14-bit)
+      0x00,        // No variable cells
+      w[0], w[1],  // Width in units (matches columns)
+      h[0], h[1],  // Height in units (matches rows)
+      0x01,        // Units = millimeters (standard for 3270)
+      0x00, 0x00, 0x06, 0x00, // X-density
+      0x00, 0x00, 0x06, 0x00, // Y-density
+      w[0], w[1],  // Actual Columns
+      h[0], h[1],  // Actual Rows
+    ]);
 
-  this._sendDataRecord(reply);
-  logger.info(`[ws:${this.wsId}] Sent Query Reply (${this.cols}x${this.rows})`);
-}
+    this._sendDataRecord(reply);
+    logger.info(`[ws:${this.wsId}] Sent Query Reply for ${this.model} (${this.cols}x${this.rows})`);
+  }
 
  _eraseAllUnprotected() {
     for (let a = 0; a < this.buffer.length; a++) {
