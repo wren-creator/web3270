@@ -431,17 +431,25 @@ body {
 .t-spacer { flex: 1; }
 
 .screen-wrapper {
-  flex: 1; display: flex; align-items: center; justify-content: center;
-  overflow: hidden; padding: 12px;
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow: auto;
+  padding: 8px;
 }
+
 .t3270-screen {
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 13.5px; line-height: 1.45;
-  background: var(--t-bg); color: var(--t-green);
-  position: relative; width: 100%; max-width: 920px;
+  line-height: 1.45;
+  background: var(--t-bg);
+  color: var(--t-green);
+  position: relative;
+  white-space: pre;
   user-select: none;
   border: 1px solid #0d2510;
   box-shadow: 0 0 40px rgba(0,100,50,0.15), inset 0 0 60px rgba(0,0,0,0.5);
+  width: max-content;
 }
 .t3270-screen::after {
   content: '';
@@ -449,8 +457,15 @@ body {
   background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
   pointer-events: none; z-index: 10;
 }
-.screen-row { display: flex; height: 1.45em; min-height: 1.45em; }
-.screen-cell { width: 0.60em; min-width: 0.60em; height: 100%; display: inline-block; }
+.screen-row {
+  display: block;
+  white-space: pre;
+  height: 1.45em;
+}
+.screen-cell {
+  display: inline;
+  white-space: pre;
+}
 .field-protected    { color: var(--t-blue); }
 .field-protected-hi { color: var(--t-white); font-weight: 600; }
 .field-label        { color: var(--t-turquoise); }
@@ -2044,41 +2059,41 @@ function renderLiveScreen(screenData) {
   const term = document.getElementById('terminal');
   term.innerHTML = '';
 
-  const rows = screenData.rows || [];
+  const rows    = screenData.rows || [];
+  const numCols = screenData.cols || 80;
+  const cRow    = screenData.cursorRow ?? 0;
+  const cCol    = screenData.cursorCol ?? 0;
+
   rows.forEach((row, ri) => {
     const rowEl = document.createElement('div');
     rowEl.className = 'screen-row';
 
     const cells = Array.isArray(row) ? row : [];
-    const numCols = screenData.cols || 80;
-
     for (let ci = 0; ci < numCols; ci++) {
-      const cell  = cells[ci] || { char: ' ' };
+      const cell   = cells[ci] || { char: ' ' };
+      const ch     = cell.char && cell.char !== '\x00' ? cell.char : ' ';
       const cellEl = document.createElement('span');
-      cellEl.className = 'screen-cell';
-      cellEl.textContent = cell.char && cell.char !== '\x00' ? cell.char : ' ';
+      cellEl.textContent = ch;
 
-      if (ri === (screenData.cursorRow ?? 0) && ci === (screenData.cursorCol ?? 0)) {
-        cellEl.classList.add('cursor-cell');
+      if (ri === cRow && ci === cCol) {
+        cellEl.className = 'cursor-cell';
       } else if (cell.fa !== undefined) {
-        const isProtected = !!(cell.fa & 0x20);
-        const intensity   = (cell.fa & 0x0C) >> 2;
-        if (isProtected && intensity === 3)      cellEl.classList.add('field-error');
-        else if (isProtected && intensity === 2) cellEl.classList.add('field-dim');
-        else if (isProtected)                    cellEl.classList.add('field-protected');
-        else                                     cellEl.classList.add('field-label');
+        const prot = !!(cell.fa & 0x20);
+        const intens = (cell.fa & 0x0C) >> 2;
+        if (prot && intens === 3)      cellEl.className = 'field-error';
+        else if (prot && intens === 2) cellEl.className = 'field-dim';
+        else if (prot)                 cellEl.className = 'field-protected';
+        else                           cellEl.className = 'field-label';
       }
-
       rowEl.appendChild(cellEl);
     }
-
     term.appendChild(rowEl);
   });
 
   document.getElementById('oiaRow').textContent =
-    String((screenData.cursorRow ?? 0) + 1).padStart(2, '0');
+    String(cRow + 1).padStart(2, '0');
   document.getElementById('oiaCol').textContent =
-    String((screenData.cursorCol ?? 0) + 1).padStart(2, '0');
+    String(cCol + 1).padStart(2, '0');
 }
 
 // Convert a screen message to plain text for Copilot context
