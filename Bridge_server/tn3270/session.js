@@ -101,10 +101,14 @@ class Tn3270Session extends EventEmitter {
     // If false, refuse TN3270E — use classic TN3270 (required for z/VM)
     this.useTn3270e = opts.useTn3270e ?? true;
 
+    
     // Determine screen dimensions from model
-    const dims     = modelDimensions(this.model);
-    this.rows      = dims.rows;
-    this.cols      = dims.cols;
+    //const dims     = modelDimensions(this.model);
+    //this.rows      = dims.rows;
+    //this.cols      = dims.cols;
+    this.model = opts.model || '3278-2';
+    this._applyModel(this.model);
+
 
     // Screen buffer: array of {char, fa, color, highlight, protected}
     this.buffer    = newBuffer(this.rows, this.cols);
@@ -273,6 +277,21 @@ class Tn3270Session extends EventEmitter {
     return -1;
   }
 
+  _applyModel(model) {
+  this.model = model;
+
+  const dims = modelDimensions(model);
+  this.rows = dims.rows;
+  this.cols = dims.cols;
+
+  this.buffer = newBuffer(this.rows, this.cols);
+  this.cursorAddr = 0;
+
+  logger.info(
+    `[ws:${this.wsId}] Model applied: ${model} (${this.rows}x${this.cols})`
+  );
+}
+
   // ── Telnet option negotiation ──────────────────────────────────
 
   _handleTelnetOption(cmd, opt) {
@@ -415,11 +434,28 @@ class Tn3270Session extends EventEmitter {
     logger.debug(`[ws:${this.wsId}] _handler3270Record: ${bytes.length} bytes, cmd=0x${bytes[0]?.toString(16)}`);
     logger.debug(`[ws:${this.wsId} _handle3270Record: first 10 bytes: ${bytes.slice(0,10).toString('hex')}`);
     if (this.tn3270eEnabled) {
-      // TN3270E header is 5 bytes: data-type, request, response, seq(2)
-      // data-type 0x00 = 3270-DATA, 0x05 = BIND-IMAGE, 0x06 = UNBIND
       const dataType = bytes[0];
-      if (dataType !== 0x00) return; // ignore non-data records for now
-      bytes = bytes.slice(5);
+
+      // 0x05 = BIND-IMAGE (RFC 2355)
+      if (dataType === 0x05) {
+        const bindBytes = bytes.slice(5);
+        const bindStr = bindBytes.toString('ascii');
+
+       // Typical format: IBM-3278-x
+       const match = bindStr.match(/IBM-3278-(\d)/);
+        if (match) {
+          const model = `3278-${match[1]}`;
+          this._applyModel(model);
+        }
+
+        return; // BIND-IMAGE has no screen data
+      }
+
+      if (dataType !== 0x00) {
+        return; // Ignore non-3270-DATA
+      }
+
+      bytes = bytes.slice(5); // Strip TN3270E header
     }
 
     const cmd = bytes[0];
