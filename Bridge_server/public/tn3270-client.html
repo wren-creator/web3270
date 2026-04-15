@@ -102,40 +102,26 @@ body {
   padding: 4px 0;
 }
 .menu-item.open .menu-dropdown { display: block; }
+@keyframes dropIn { from{opacity:0;transform:translateY(-4px)} to{opacity:1;transform:none} }
 
 .menu-dd-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 7px 14px;
+  padding: 6px 14px;
   font-size: 12px;
   color: var(--text-dim);
   cursor: pointer;
+  transition: background 0.1s, color 0.1s;
   white-space: nowrap;
-  transition: background 0.1s;
-  gap: 20px;
 }
 .menu-dd-item:hover { background: var(--bg-elevated); color: var(--text-primary); }
-.menu-dd-item.disabled { opacity: 0.35; cursor: default; pointer-events: none; }
-.menu-dd-shortcut {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 10px;
-  color: var(--text-muted);
-}
-.menu-dd-sep {
-  height: 1px;
-  background: var(--border);
-  margin: 4px 0;
-}
-.menu-dd-label {
-  padding: 5px 14px 3px;
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
+.menu-dd-item.disabled { color: var(--text-muted); cursor: default; }
+.menu-dd-item.disabled:hover { background: none; color: var(--text-muted); }
+.menu-dd-shortcut { font-size: 10px; color: var(--text-muted); font-family: 'IBM Plex Mono', monospace; }
+.menu-dd-sep { height: 1px; background: var(--border); margin: 3px 0; }
 
+/* ── STATUS AREA ───────────────────────────────────────────────── */
 .status-area {
   display: flex;
   align-items: center;
@@ -153,199 +139,96 @@ body {
   animation: pulse 2s infinite;
 }
 .conn-dot.disconnected { background: var(--text-muted); box-shadow: none; animation: none; }
-.conn-dot.connecting   { background: var(--accent-amber); box-shadow: 0 0 6px var(--accent-amber); }
-@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
-
-.topbar-btn {
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-bright);
-  color: var(--text-dim);
-  font-family: 'IBM Plex Sans', sans-serif;
-  font-size: 11px;
-  padding: 4px 10px;
-  border-radius: 3px;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.topbar-btn:hover { border-color: var(--accent-blue); color: var(--text-primary); }
-.topbar-btn.primary { background: var(--accent-blue); border-color: var(--accent-blue); color: white; }
+.conn-dot.connecting { background: var(--accent-amber); box-shadow: 0 0 6px var(--accent-amber); animation: pulse 0.6s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
 
 /* ── LPAR DROPDOWN ─────────────────────────────────────────────── */
-.lpar-dropdown {
-  position: relative;
-  display: inline-flex;
-}
-
+.lpar-dropdown { position: relative; }
 .lpar-dropdown-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  background: var(--bg-elevated);
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 10px; cursor: pointer;
   border: 1px solid var(--border-bright);
-  color: var(--text-dim);
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 11px;
-  padding: 4px 10px;
-  border-radius: 3px;
-  cursor: pointer;
-  transition: all 0.15s;
-  white-space: nowrap;
-  user-select: none;
+  border-radius: 3px; font-size: 11px; color: var(--text-dim);
+  background: var(--bg-elevated); transition: all 0.15s; user-select: none;
 }
-.lpar-dropdown-btn:hover { border-color: var(--accent-blue); color: var(--text-primary); }
-.lpar-dropdown-btn.open  { border-color: var(--accent-cyan); color: var(--accent-cyan); background: rgba(0,212,255,0.05); }
-
-.lpar-dropdown-btn .chevron {
-  font-size: 8px;
-  transition: transform 0.2s;
-  opacity: 0.6;
-}
+.lpar-dropdown-btn:hover, .lpar-dropdown-btn.open { background: var(--bg-panel); color: var(--accent-cyan); border-color: var(--accent-cyan); }
+.lpar-dropdown-btn .chevron { font-size: 8px; transition: transform 0.15s; }
 .lpar-dropdown-btn.open .chevron { transform: rotate(180deg); }
 
 .lpar-dropdown-menu {
-  display: none;
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  min-width: 260px;
-  max-height: 400px;
-  overflow-y: auto;
-  background: var(--bg-panel);
-  border: 1px solid var(--border-bright);
-  border-radius: 5px;
-  box-shadow: 0 12px 40px rgba(0,0,0,0.6);
-  z-index: 200;
-  animation: dropIn 0.15s ease;
-  scrollbar-width: thin; scrollbar-color: #1a3050 transparent;
+  display: none; position: absolute; top: calc(100% + 4px); right: 0;
+  min-width: 280px; background: var(--bg-panel);
+  border: 1px solid var(--border-bright); border-radius: 4px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.6); z-index: 400;
+  animation: dropIn 0.12s ease;
 }
-.lpar-dropdown-menu::-webkit-scrollbar { width: 3px; }
-.lpar-dropdown-menu::-webkit-scrollbar-thumb { background: #1a3050; border-radius: 2px; }
 .lpar-dropdown-menu.open { display: block; }
-@keyframes dropIn { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:none} }
-
 .lpar-menu-header {
-  padding: 8px 12px 6px;
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  border-bottom: 1px solid var(--border);
+  font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-muted); padding: 8px 12px 6px; border-bottom: 1px solid var(--border);
 }
-
 .lpar-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 12px;
-  cursor: pointer;
-  transition: background 0.1s;
-  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 12px; cursor: pointer; transition: background 0.1s;
 }
-.lpar-menu-item:last-child { border-bottom: none; }
 .lpar-menu-item:hover { background: var(--bg-elevated); }
-.lpar-menu-item:hover .lpar-menu-connect { opacity: 1; }
-
-.lpar-menu-dot {
-  width: 7px; height: 7px;
-  border-radius: 50%;
-  background: var(--text-muted);
-  flex-shrink: 0;
-}
-.lpar-menu-dot.on   { background: var(--accent-green); box-shadow: 0 0 5px var(--accent-green); }
-.lpar-menu-dot.conn { background: var(--accent-blue);  box-shadow: 0 0 5px var(--accent-blue); }
-.lpar-menu-dot.busy { background: var(--accent-amber); box-shadow: 0 0 5px var(--accent-amber); }
-
-.lpar-menu-info { flex: 1; min-width: 0; }
-.lpar-menu-name {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 12px;
-  color: var(--text-primary);
-  font-weight: 500;
-}
-.lpar-menu-meta {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 9px;
-  color: var(--text-muted);
-  margin-top: 2px;
-}
-.lpar-menu-meta .lpar-menu-status-text {
-  color: var(--accent-green);
-}
-.lpar-menu-meta .lpar-menu-status-text.offline {
-  color: var(--text-muted);
-}
-
+.lpar-menu-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); flex-shrink: 0; }
+.lpar-menu-dot.on   { background: var(--accent-green); box-shadow: 0 0 4px var(--accent-green); }
+.lpar-menu-dot.conn { background: var(--accent-blue);  box-shadow: 0 0 4px var(--accent-blue); }
+.lpar-menu-info { flex: 1; }
+.lpar-menu-name { font-size: 11px; font-family: 'IBM Plex Mono', monospace; color: var(--text-primary); }
+.lpar-menu-meta { font-size: 10px; color: var(--text-muted); }
+.lpar-menu-status-text { color: var(--accent-green); }
+.lpar-menu-status-text.offline { color: var(--text-muted); }
 .lpar-menu-connect {
-  font-size: 10px;
-  padding: 3px 9px;
-  background: #0a1520;
-  border: 1px solid #1a3050;
-  color: #4488cc;
-  border-radius: 2px;
-  cursor: pointer;
-  font-family: 'IBM Plex Mono', monospace;
-  opacity: 0;
-  transition: all 0.15s;
-  flex-shrink: 0;
-  white-space: nowrap;
+  font-size: 10px; padding: 2px 8px; border-radius: 2px; cursor: pointer;
+  border: 1px solid var(--border-bright); color: var(--accent-green);
+  font-family: 'IBM Plex Mono', monospace; transition: all 0.1s;
 }
-.lpar-menu-connect:hover { background: #0f2530; border-color: #6699ff; color: #6699ff; }
-.lpar-menu-connect.active-session {
-  opacity: 1;
-  color: var(--accent-green);
-  border-color: #1a3020;
-  background: #0a1520;
-}
-
-.lpar-menu-divider {
-  height: 1px;
-  background: var(--border);
-  margin: 0;
-}
-
+.lpar-menu-connect:hover { background: #0f2a15; border-color: var(--accent-green); }
+.lpar-menu-connect.active-session { color: var(--accent-amber); border-color: #3a2a10; cursor: default; }
 .lpar-menu-footer {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: var(--bg-secondary);
-  cursor: pointer;
-  transition: background 0.1s;
-  color: var(--text-dim);
-  font-size: 11px;
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 12px; font-size: 11px; color: var(--text-dim);
+  border-top: 1px solid var(--border); cursor: pointer; transition: all 0.1s;
 }
-.lpar-menu-footer:hover { background: var(--bg-elevated); color: var(--text-primary); }
+.lpar-menu-footer:hover { color: var(--accent-cyan); background: var(--bg-elevated); }
+
+.topbar-btn {
+  font-size: 11px; padding: 5px 12px; border-radius: 3px; cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace;
+  background: var(--bg-elevated); border: 1px solid var(--border-bright);
+  color: var(--text-dim); transition: all 0.15s;
+}
+.topbar-btn:hover { color: var(--text-primary); border-color: var(--accent-blue); }
+.topbar-btn.primary { color: var(--accent-cyan); border-color: #1a3f5f; }
+.topbar-btn.primary:hover { background: #0a1e30; border-color: var(--accent-cyan); }
 
 /* ── SESSION TABS ──────────────────────────────────────────────── */
 .session-tabs {
-  display: flex;
-  align-items: stretch;
+  display: flex; align-items: center;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border);
-  height: 34px;
-  padding-left: 8px;
-  flex-shrink: 0;
-  overflow-x: auto;
+  height: 34px; padding: 0 8px;
+  flex-shrink: 0; overflow-x: auto; overflow-y: hidden;
+  scrollbar-width: thin; scrollbar-color: #1a3050 transparent;
 }
+.session-tabs::-webkit-scrollbar { height: 3px; }
+.session-tabs::-webkit-scrollbar-thumb { background: #1a3050; border-radius: 2px; }
 .session-tab {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 14px;
-  font-size: 11px;
-  font-family: 'IBM Plex Mono', monospace;
-  cursor: pointer;
-  color: var(--text-dim);
-  border-right: 1px solid var(--border);
-  white-space: nowrap;
-  transition: all 0.15s;
-  user-select: none;
+  display: flex; align-items: center; gap: 6px;
+  padding: 0 10px; height: 34px; font-size: 11px;
+  font-family: 'IBM Plex Mono', monospace; white-space: nowrap;
+  color: var(--text-muted); cursor: pointer; transition: all 0.15s;
+  border-right: 1px solid var(--border); user-select: none; flex-shrink: 0;
 }
-.session-tab.active { background: var(--bg-panel); color: var(--accent-cyan); border-bottom: 2px solid var(--accent-cyan); }
-.session-tab:hover:not(.active) { background: var(--bg-elevated); }
-.tab-dot { width: 6px; height: 6px; border-radius: 50%; }
-.tab-close { margin-left: 4px; opacity: 0; font-size: 13px; transition: opacity 0.15s; }
+.session-tab:hover { background: var(--bg-elevated); color: var(--text-dim); }
+.session-tab.active { background: var(--bg-panel); color: var(--text-primary); border-bottom: 2px solid var(--accent-cyan); }
+.tab-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; background: #555; }
+.tab-close {
+  font-size: 14px; line-height: 1; color: var(--text-muted);
+  opacity: 0; transition: opacity 0.15s;
+}
 .session-tab:hover .tab-close { opacity: 0.5; }
 .tab-close:hover { opacity: 1 !important; color: var(--accent-amber); }
 .tab-add {
@@ -406,12 +289,13 @@ body {
 .macro-item:hover { background: var(--bg-elevated); color: var(--accent-amber); }
 
 /* ── TERMINAL ──────────────────────────────────────────────────── */
-.terminal-area { 
-  flex: 1; 
-  display: flex; 
-  flex-direction: column; 
-  overflow: auto; /* Change from hidden to auto to allow scrolling for tall models */
-  background: var(--t-bg); 
+/* FIX: overflow:hidden here — .screen-wrapper owns the scroll     */
+.terminal-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--t-bg);
 }
 
 .terminal-toolbar {
@@ -436,15 +320,19 @@ body {
 .t-sep { width: 1px; height: 16px; background: #0d1f14; margin: 0 2px; }
 .t-spacer { flex: 1; }
 
+/* FIX: screen-wrapper centers the terminal and owns all scrolling  */
 .screen-wrapper {
   flex: 1;
   display: flex;
-  align-items: flex-start;
-  justify-content: flex-start;
+  align-items: center;
+  justify-content: center;
   overflow: auto;
   padding: 8px;
+  position: relative;
+  background: var(--t-bg);
 }
 
+/* FIX: t3270-screen sized explicitly via JS; never wraps; scales   */
 .t3270-screen {
   font-family: 'IBM Plex Mono', monospace;
   font-size: 13px;
@@ -452,12 +340,12 @@ body {
   background: var(--t-bg);
   color: var(--t-green);
   position: relative;
-  white-space: pre;
+  white-space: nowrap;        /* ← rows must NEVER wrap */
   user-select: none;
   border: 1px solid #0d2510;
   box-shadow: 0 0 40px rgba(0,100,50,0.15), inset 0 0 60px rgba(0,0,0,0.5);
-  min-width: max-content;
-  width: max-content;
+  flex-shrink: 0;
+  transform-origin: top center;
 }
 .t3270-screen::after {
   content: '';
@@ -465,15 +353,22 @@ body {
   background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
   pointer-events: none; z-index: 10;
 }
+
+/* FIX: rows never wrap; cells fixed-width so columns stay aligned  */
 .screen-row {
   display: block;
-  white-space: pre;
+  white-space: nowrap;        /* ← belt-and-suspenders no-wrap */
+  overflow: hidden;
   height: 1.45em;
 }
 .screen-cell {
-  display: inline;
+  display: inline-block;      /* ← reliable fixed width */
+  width: 1ch;                 /* ← 1 monospace character */
   white-space: pre;
+  overflow: hidden;
+  vertical-align: top;
 }
+
 .field-protected    { color: var(--t-blue); }
 .field-protected-hi { color: var(--t-white); font-weight: 600; }
 .field-label        { color: var(--t-turquoise); }
@@ -522,14 +417,9 @@ body {
   flex: 1; overflow-y: auto; padding: 12px;
   display: none;
 }
-.panel-content.active { display: flex; flex-direction: column; }
+/* .active class is set by switchPanelTab via inline style — CSS class just handles initial state */
 .panel-content::-webkit-scrollbar { width: 4px; }
 .panel-content::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 2px; }
-
-/* Settings panel scrollable normally */
-#panelSettings.active,
-#panelKeys.active,
-#panelXfer.active { display: block; }
 
 /* ── SETTINGS CONTROLS ─────────────────────────────────────────── */
 .setting-group { margin-bottom: 16px; }
@@ -542,132 +432,89 @@ body {
 
 select, input[type="text"], input[type="number"] {
   background: var(--bg-elevated); border: 1px solid var(--border-bright);
-  color: var(--text-primary); font-family: 'IBM Plex Mono', monospace;
-  font-size: 11px; padding: 4px 8px; border-radius: 3px;
-  width: 100%; outline: none; transition: border-color 0.15s;
+  color: var(--text-primary); font-size: 11px; font-family: 'IBM Plex Mono', monospace;
+  padding: 4px 8px; border-radius: 3px; width: 100%; outline: none;
 }
-select:focus, input:focus { border-color: var(--accent-blue); }
-
-input[type="range"] {
-  -webkit-appearance: none; background: var(--border);
-  height: 3px; border-radius: 2px; outline: none; width: 100%; padding: 0; border: none;
-}
-
-input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none; width: 12px; height: 12px;
-  border-radius: 50%; background: var(--accent-blue); cursor: pointer;
-}
+select:focus, input[type="text"]:focus, input[type="number"]:focus { border-color: var(--accent-blue); }
 
 .toggle {
-  width: 32px; height: 16px; background: var(--border);
-  border-radius: 8px; cursor: pointer; position: relative;
-  flex-shrink: 0; transition: background 0.2s;
+  width: 28px; height: 14px; border-radius: 7px;
+  background: var(--border-bright); cursor: pointer; position: relative; flex-shrink: 0;
+  transition: background 0.2s;
 }
-.toggle.on { background: var(--accent-blue); }
+.toggle.on { background: var(--accent-green); }
 .toggle::after {
   content: ''; position: absolute; top: 2px; left: 2px;
-  width: 12px; height: 12px; background: white;
-  border-radius: 50%; transition: transform 0.2s;
+  width: 10px; height: 10px; border-radius: 50%; background: white;
+  transition: transform 0.2s;
 }
-.toggle.on::after { transform: translateX(16px); }
+.toggle.on::after { transform: translateX(14px); }
 
-.theme-swatches { display: flex; gap: 8px; flex-wrap: wrap; }
+.theme-swatches { display: flex; gap: 6px; flex-wrap: wrap; }
 .theme-swatch {
-  width: 36px; height: 28px; border-radius: 3px; cursor: pointer;
+  width: 22px; height: 22px; border-radius: 3px; cursor: pointer;
   border: 2px solid transparent; transition: border-color 0.15s;
 }
-.theme-swatch.active   { border-color: var(--accent-cyan); }
-.theme-swatch:hover    { border-color: var(--text-dim); }
+.theme-swatch.active { border-color: var(--accent-cyan); }
+.theme-swatch:hover:not(.active) { border-color: var(--border-bright); }
 
 .shortcut-item {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 4px 0; border-bottom: 1px solid var(--border); font-size: 11px;
+  padding: 4px 0; font-size: 11px;
 }
-.shortcut-item:last-child { border-bottom: none; }
+.shortcut-desc { color: var(--text-dim); }
 .shortcut-key {
   font-family: 'IBM Plex Mono', monospace; font-size: 10px;
   background: var(--bg-elevated); border: 1px solid var(--border-bright);
   padding: 1px 5px; border-radius: 2px; color: var(--accent-amber);
 }
-.shortcut-desc { color: var(--text-dim); }
-
-.btn { font-family: 'IBM Plex Sans', sans-serif; font-size: 12px; padding: 7px 16px; border-radius: 4px; cursor: pointer; border: 1px solid transparent; transition: all 0.15s; }
-.btn-secondary { background: transparent; border-color: var(--border-bright); color: var(--text-dim); }
-.btn-secondary:hover { border-color: var(--text-dim); color: var(--text-primary); }
-.btn-primary { background: var(--accent-blue); color: white; }
-.btn-primary:hover { background: #3a8ee0; }
-.btn-green { background: #1a4a25; border-color: #2a6a35; color: var(--accent-green); }
-.btn-green:hover { background: #1f5a2d; }
 
 /* ── COPILOT PANEL ─────────────────────────────────────────────── */
-#panelCopilot {
-  padding: 0;
-  overflow: hidden;
-}
-#panelCopilot.active {
-  display: flex;
-  flex-direction: column;
-}
+#panelCopilot.active { display: flex; flex-direction: column; padding: 0; }
 
-.copilot-header {
+.copilot-header-row {
   display: flex; align-items: center; gap: 8px;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-secondary);
-  flex-shrink: 0;
+  padding: 10px 12px 8px; border-bottom: 1px solid var(--border); flex-shrink: 0;
 }
-.copilot-logo {
-  width: 26px; height: 26px; border-radius: 5px;
+.copilot-logo-sm {
+  width: 22px; height: 22px; border-radius: 4px;
   background: linear-gradient(135deg, #1a3a5c, #0d5f8f);
   border: 1px solid #2a5f8f;
   display: flex; align-items: center; justify-content: center;
-  font-size: 13px; flex-shrink: 0; position: relative; overflow: hidden;
+  font-size: 11px; color: var(--accent-cyan);
 }
-.copilot-logo::after {
-  content: ''; position: absolute; inset: 0;
-  background: linear-gradient(135deg, rgba(255,255,255,0.1), transparent);
-}
-.copilot-title-group { flex: 1; }
-.copilot-title  { font-size: 11px; font-weight: 600; color: var(--text-primary); }
-.copilot-subtitle { font-size: 9px; color: var(--text-muted); margin-top: 1px; }
-.context-badge {
-  display: flex; align-items: center; gap: 4px;
-  font-size: 9px; font-family: 'IBM Plex Mono', monospace;
-  color: var(--accent-green);
-  background: rgba(0,255,136,0.07);
-  border: 1px solid rgba(0,255,136,0.2);
-  padding: 2px 6px; border-radius: 10px; cursor: pointer;
-  transition: all 0.15s; white-space: nowrap;
-}
-.context-badge:hover { background: rgba(0,255,136,0.12); }
-.context-dot {
-  width: 5px; height: 5px; border-radius: 50%;
-  background: var(--accent-green); animation: ctxPulse 2s infinite;
-}
-@keyframes ctxPulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+.copilot-title-sm { font-size: 11px; font-weight: 600; color: var(--text-primary); }
+.copilot-subtitle { font-size: 9px; color: var(--text-muted); }
 
 .quick-prompts {
-  display: flex; gap: 5px; padding: 7px 10px;
+  display: flex; gap: 4px; padding: 6px 10px;
+  overflow-x: auto; flex-shrink: 0; flex-wrap: nowrap;
   border-bottom: 1px solid var(--border);
-  overflow-x: auto; flex-shrink: 0;
+  scrollbar-width: none;
 }
 .quick-prompts::-webkit-scrollbar { display: none; }
 .qp-btn {
   font-size: 10px; font-family: 'IBM Plex Sans', sans-serif;
-  padding: 3px 9px;
-  background: var(--bg-elevated); border: 1px solid var(--border-bright);
+  padding: 3px 9px; background: var(--bg-elevated); border: 1px solid var(--border-bright);
   color: var(--text-dim); border-radius: 12px;
   cursor: pointer; white-space: nowrap; transition: all 0.15s; flex-shrink: 0;
 }
 .qp-btn:hover { border-color: var(--accent-cyan); color: var(--accent-cyan); background: rgba(0,212,255,0.05); }
 
-/* Chat */
 .chat-area {
   flex: 1; overflow-y: auto; padding: 10px;
   display: flex; flex-direction: column; gap: 10px; scroll-behavior: smooth;
 }
 .chat-area::-webkit-scrollbar { width: 3px; }
 .chat-area::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 2px; }
+
+.chat-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  flex: 1; padding: 20px; text-align: center;
+}
+.chat-empty-icon { font-size: 28px; color: var(--text-muted); margin-bottom: 8px; }
+.chat-empty-title { font-size: 13px; color: var(--text-dim); margin-bottom: 6px; }
+.chat-empty-body { font-size: 11px; color: var(--text-muted); line-height: 1.6; }
 
 .msg { display: flex; gap: 7px; animation: msgIn 0.2s ease; }
 @keyframes msgIn { from{opacity:0;transform:translateY(5px)} to{opacity:1;transform:none} }
@@ -704,7 +551,6 @@ input[type="range"]::-webkit-slider-thumb {
 }
 .msg-content strong { color: var(--text-primary); font-weight: 600; }
 
-/* Screen context block */
 .context-block {
   background: #060c10; border: 1px solid var(--border);
   border-left: 3px solid rgba(0,255,136,0.3);
@@ -712,108 +558,94 @@ input[type="range"]::-webkit-slider-thumb {
 }
 .context-block-header {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 4px 8px; font-size: 9px;
-  font-family: 'IBM Plex Mono', monospace; color: var(--accent-green);
-  cursor: pointer; user-select: none;
+  padding: 3px 6px; font-size: 9px; color: var(--text-muted);
+  font-family: 'IBM Plex Mono', monospace; cursor: pointer;
 }
+.context-block-header:hover { color: var(--text-dim); }
 .context-block-body {
-  font-family: 'IBM Plex Mono', monospace; font-size: 9px;
-  color: #2a7a40; padding: 6px 8px;
-  white-space: pre; overflow-x: auto; max-height: 100px;
-  overflow-y: auto; line-height: 1.3;
-  border-top: 1px solid var(--border);
+  font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: #1a6030;
+  padding: 4px 6px; white-space: pre; overflow-x: auto; max-height: 80px; overflow-y: auto;
+  transition: max-height 0.2s;
 }
-.context-block-body.collapsed { display: none; }
+.context-block-body.collapsed { max-height: 0; padding: 0 6px; overflow: hidden; }
 
-/* Typing indicator */
-.typing-indicator { display: flex; align-items: center; gap: 4px; padding: 3px 0; }
+.typing-indicator { display: flex; gap: 3px; align-items: center; padding: 4px 0; }
 .typing-dot {
-  width: 5px; height: 5px; border-radius: 50%;
-  background: var(--accent-cyan); animation: typingBounce 1.2s infinite;
+  width: 5px; height: 5px; border-radius: 50%; background: var(--text-muted);
+  animation: typingPulse 1.2s infinite ease-in-out;
 }
 .typing-dot:nth-child(2) { animation-delay: 0.2s; }
 .typing-dot:nth-child(3) { animation-delay: 0.4s; }
-@keyframes typingBounce { 0%,60%,100%{transform:translateY(0);opacity:0.4} 30%{transform:translateY(-4px);opacity:1} }
+@keyframes typingPulse { 0%,60%,100%{transform:scale(1);opacity:0.5} 30%{transform:scale(1.3);opacity:1} }
 
-/* Macro card */
 .macro-card {
-  background: var(--bg-elevated); border: 1px solid var(--border-bright);
-  border-radius: 4px; padding: 8px 10px; margin-top: 6px; font-size: 11px;
+  background: #060c14; border: 1px solid var(--border);
+  border-left: 3px solid var(--accent-amber); border-radius: 3px;
+  padding: 8px 10px; margin-top: 6px;
 }
-.macro-card-title {
-  font-size: 9px; font-weight: 600; color: var(--accent-amber);
-  text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px;
-}
-.macro-card-actions { display: flex; gap: 5px; margin-top: 6px; }
+.macro-card-title { font-size: 11px; color: var(--accent-amber); margin-bottom: 4px; }
+.macro-card-actions { display: flex; gap: 5px; margin-top: 7px; }
 .macro-card-btn {
-  font-size: 10px; padding: 3px 9px; border-radius: 3px; cursor: pointer;
-  border: 1px solid var(--border-bright); background: var(--bg-panel);
-  color: var(--text-dim); transition: all 0.15s; font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 10px; font-family: 'IBM Plex Mono', monospace;
+  padding: 3px 8px; background: var(--bg-elevated); border: 1px solid var(--border-bright);
+  color: var(--text-dim); border-radius: 2px; cursor: pointer; transition: all 0.1s;
 }
-.macro-card-btn.primary { background: var(--accent-blue); border-color: var(--accent-blue); color: white; }
-.macro-card-btn:hover:not(.primary) { border-color: var(--accent-blue); color: var(--text-primary); }
+.macro-card-btn:hover { border-color: var(--accent-amber); color: var(--accent-amber); }
+.macro-card-btn.primary { color: var(--accent-green); border-color: #1a3a20; }
+.macro-card-btn.primary:hover { background: #0a1e10; border-color: var(--accent-green); }
 
-/* Empty state */
-.chat-empty {
-  flex: 1; display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  text-align: center; padding: 20px; color: var(--text-muted);
+.copilot-input-area { padding: 8px; border-top: 1px solid var(--border); flex-shrink: 0; }
+.copilot-input-row { display: flex; gap: 6px; align-items: flex-end; }
+.copilot-input-row textarea {
+  flex: 1; background: var(--bg-elevated); border: 1px solid var(--border-bright);
+  color: var(--text-primary); font-size: 11px; font-family: 'IBM Plex Sans', sans-serif;
+  padding: 6px 8px; border-radius: 3px; resize: none; outline: none; max-height: 90px;
+  scrollbar-width: thin;
 }
-.chat-empty-icon { font-size: 28px; margin-bottom: 10px; opacity: 0.4; }
-.chat-empty-title { font-size: 12px; font-weight: 500; color: var(--text-dim); margin-bottom: 5px; }
-.chat-empty-body  { font-size: 10.5px; line-height: 1.8; }
-
-/* Input */
-.copilot-input-area {
-  border-top: 1px solid var(--border);
-  padding: 8px 10px;
-  background: var(--bg-secondary); flex-shrink: 0;
-}
-.copilot-input-row { display: flex; align-items: flex-end; gap: 7px; }
-#copilot-input {
-  flex: 1; background: var(--bg-elevated);
-  border: 1px solid var(--border-bright); border-radius: 5px;
-  color: var(--text-primary); font-family: 'IBM Plex Sans', sans-serif;
-  font-size: 11.5px; padding: 7px 9px; resize: none; outline: none;
-  line-height: 1.5; max-height: 90px; overflow-y: auto;
-  transition: border-color 0.15s;
-}
-#copilot-input:focus { border-color: var(--accent-blue); }
-#copilot-input::placeholder { color: var(--text-muted); }
+.copilot-input-row textarea:focus { border-color: var(--accent-blue); }
 .send-btn {
-  width: 30px; height: 30px; border-radius: 5px;
-  background: var(--accent-blue); border: none; cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0; transition: all 0.15s; font-size: 14px; color: white;
+  width: 28px; height: 28px; border-radius: 4px; cursor: pointer;
+  background: var(--accent-blue); border: none; color: white;
+  font-size: 14px; flex-shrink: 0; transition: background 0.15s;
 }
-.send-btn:hover { background: #3a8ee0; }
-.send-btn:disabled { background: var(--bg-elevated); color: var(--text-muted); cursor: default; }
+.send-btn:hover { background: #3d8de2; }
+.send-btn:disabled { background: var(--border-bright); cursor: default; }
+
 .copilot-input-footer {
   display: flex; align-items: center; justify-content: space-between;
-  margin-top: 5px; font-size: 9px; color: var(--text-muted);
+  margin-top: 5px; padding: 0 2px;
 }
 .screen-ctx-toggle {
-  display: flex; align-items: center; gap: 4px;
-  cursor: pointer; user-select: none; transition: color 0.15s;
+  display: flex; align-items: center; gap: 5px;
+  font-size: 10px; color: var(--text-muted); cursor: pointer; user-select: none;
 }
 .screen-ctx-toggle:hover { color: var(--text-dim); }
 .toggle-mini {
-  width: 24px; height: 12px; background: var(--accent-blue);
-  border-radius: 6px; position: relative; transition: background 0.2s;
+  width: 22px; height: 12px; border-radius: 6px; position: relative;
+  background: var(--accent-green); cursor: pointer; transition: background 0.2s;
 }
 .toggle-mini.off { background: var(--border); }
 .toggle-mini::after {
   content: ''; position: absolute; top: 2px; left: 2px;
-  width: 8px; height: 8px; background: white;
-  border-radius: 50%; transition: transform 0.2s;
+  width: 8px; height: 8px; background: white; border-radius: 50%; transition: transform 0.2s;
 }
-.toggle-mini:not(.off)::after { transform: translateX(12px); }
+.toggle-mini.off::after { transform: none; }
+.toggle-mini:not(.off)::after { transform: translateX(10px); }
+
+/* ── XFER PANEL ────────────────────────────────────────────────── */
+.xfer-info { font-size: 11px; color: var(--text-dim); line-height: 1.6; margin-bottom: 10px; }
+.xfer-btn {
+  font-size: 11px; padding: 6px 12px; border-radius: 3px; cursor: pointer;
+  background: var(--bg-elevated); border: 1px solid var(--border-bright);
+  color: var(--text-dim); transition: all 0.15s; margin-bottom: 6px; width: 100%; text-align: left;
+}
+.xfer-btn:hover { border-color: var(--accent-blue); color: var(--text-primary); }
 
 /* ── MODAL ─────────────────────────────────────────────────────── */
 .modal-overlay {
-  position: fixed; inset: 0; background: rgba(0,0,0,0.7);
-  display: flex; align-items: center; justify-content: center;
-  z-index: 100; backdrop-filter: blur(4px);
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.7); backdrop-filter: blur(2px);
+  display: flex; align-items: center; justify-content: center; z-index: 500;
 }
 .modal-overlay.hidden { display: none; }
 .modal {
@@ -849,6 +681,19 @@ input[type="range"]::-webkit-slider-thumb {
   font-family: 'IBM Plex Mono', monospace; transition: all 0.1s;
 }
 .profile-connect-btn:hover { background: #0f2a15; border-color: var(--accent-green); }
+
+.btn {
+  font-size: 11px; padding: 6px 14px; border-radius: 3px; cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace; transition: all 0.15s;
+}
+.btn-secondary {
+  background: var(--bg-elevated); border: 1px solid var(--border-bright); color: var(--text-dim);
+}
+.btn-secondary:hover { border-color: var(--accent-blue); color: var(--text-primary); }
+.btn-primary {
+  background: var(--accent-blue); border: 1px solid var(--accent-blue); color: white;
+}
+.btn-primary:hover { background: #3d8de2; }
 </style>
 </head>
 <body>
@@ -862,11 +707,11 @@ input[type="range"]::-webkit-slider-thumb {
     <div class="menu-item" id="menuFile" onclick="toggleMenu('menuFile')">File
       <div class="menu-dropdown">
         <div class="menu-dd-item" onclick="showConnectModal()">New Session…<span class="menu-dd-shortcut">Ctrl+T</span></div>
-        <div class="menu-dd-item" id="menuCloseSession" onclick="menuCloseActiveSession()">Close Session<span class="menu-dd-shortcut"></span></div>
+        <div class="menu-dd-item" id="menuCloseSession" onclick="menuCloseActiveSession()">Close Session</div>
         <div class="menu-dd-sep"></div>
         <div class="menu-dd-item" onclick="menuCaptureScreen()">Save Screen Capture<span class="menu-dd-shortcut">Ctrl+P</span></div>
         <div class="menu-dd-sep"></div>
-      <div class="menu-dd-item" onclick="window.close()">Exit</div>
+        <div class="menu-dd-item" onclick="window.close()">Exit</div>
       </div>
     </div>
 
@@ -874,51 +719,36 @@ input[type="range"]::-webkit-slider-thumb {
     <div class="menu-item" id="menuSession" onclick="toggleMenu('menuSession')">Session
       <div class="menu-dropdown">
         <div class="menu-dd-item" id="menuDisconnect" onclick="menuDisconnect()">Disconnect</div>
-        <div class="menu-dd-item" id="menuReconnect"  onclick="menuReconnect()">Reconnect</div>
-        <div class="menu-dd-sep"></div>
-        <div class="menu-dd-item" onclick="menuSessionProperties()">Session Properties…</div>
+        <div class="menu-dd-item" id="menuReconnect" onclick="menuReconnect()">Reconnect</div>
       </div>
     </div>
 
     <!-- View -->
     <div class="menu-item" id="menuView" onclick="toggleMenu('menuView')">View
       <div class="menu-dropdown">
-        <div class="menu-dd-item" onclick="document.getElementById('sidebar').classList.toggle('collapsed')">Toggle Sidebar<span class="menu-dd-shortcut">Ctrl+B</span></div>
-        <div class="menu-dd-item" onclick="toggleRightPanel()">Toggle Panel<span class="menu-dd-shortcut"></span></div>
-        <div css="menu-dd-sep"></div>
-        <div class="menu-dd-item" onclick="menuFontSize(1)">Font Size +</div>
-        <div class="menu-dd-item" onclick="menuFontSize(-1)">Font Size −</div>
-        <div class="menu-dd-item" onclick="menuFontSize(0)">Reset Font Size</div>
+        <div class="menu-dd-item" onclick="document.getElementById('sidebar').classList.toggle('collapsed');closeAllMenus()">Toggle Sidebar<span class="menu-dd-shortcut">Ctrl+B</span></div>
+        <div class="menu-dd-item" onclick="toggleRightPanel();closeAllMenus()">Toggle Panel<span class="menu-dd-shortcut"></span></div>
         <div class="menu-dd-sep"></div>
-        <div class="menu-dd-item" onclick="menuFullScreen()">Full Screen<span class="menu-dd-shortcut">F11</span></div>
+        <div class="menu-dd-item" onclick="menuOpenPanel('Settings')">Settings</div>
+        <div class="menu-dd-item" onclick="menuOpenCopilot()">⬡ Copilot<span class="menu-dd-shortcut">Ctrl+K</span></div>
       </div>
     </div>
 
     <!-- Macros -->
-    <div class="menu-item" id="menuMacros"nclick="toggleMenu('menuMacros')">Macros
+    <div class="menu-item" id="menuMacros" onclick="toggleMenu('menuMacros')">Macros
       <div class="menu-dropdown">
-        <div class="menu-dd-item" onclick="showAddMacroModal()">Add Macro…</div>
-        <div class="menu-dd-item" onclick="menuImportMacro()">Import Macro JSON…</div>
+        <div class="menu-dd-item" onclick="showAddMacroModal();closeAllMenus()">Add Macro…</div>
+        <div class="menu-dd-item" onclick="menuImportMacro()">Import JSON…</div>
         <div class="menu-dd-sep"></div>
-        <div class="menu-dd-label">Saved Macros</div>
         <div id="menuMacroList"><div class="menu-dd-item disabled">No macros saved</div></div>
       </div>
     </div>
 
     <!-- Transfer -->
-    <div class="menu-item" idnuTransfer" onclick="toggleMenu('menuTransfer')">Transfer
+    <div class="menu-item" id="menuTransfer" onclick="toggleMenu('menuTransfer')">Transfer
       <div class="menu-dropdown">
-        <div class="menu-dd-item" onclick="menuOpenTransfer()">IND$FILE Transfer…</div>
-      </div>
-    </div>
-
-    <!-- Tools -->
-    <div class="menu-item" id="menuTools" onclick="toggleMenu('menuTools')">Tools
-      <div class="menu-dropdown">
-        <div class="menu-dd-item" onclick="menuOpenPanel('Settings')">Settings<span class="menu-dd-shortcut"></span></div>
-        <div class="menu-dd-item" onclick="menuenPanel('Keys')">Key Remapping</div>
-        <div class="menu-dd-sep"></div>
-        <div class="menu-dd-item" onclick="menuOpenCopilot()">⬡ Copilot<span class="menu-dd-shortcut">Ctrl+K</span></div>
+        <div class="menu-dd-item" onclick="menuOpenTransfer()">Send File (IND$FILE)</div>
+        <div class="menu-dd-item" onclick="menuOpenTransfer()">Receive File (IND$FILE)</div>
       </div>
     </div>
 
@@ -927,98 +757,38 @@ input[type="range"]::-webkit-slider-thumb {
       <div class="menu-dropdown">
         <div class="menu-dd-item" onclick="menuShowShortcuts()">Keyboard Shortcuts</div>
         <div class="menu-dd-sep"></div>
-        <div class="menu-ditem" onclick="menuAbout()">About WebTerm/3270</div>
+        <div class="menu-dd-item" onclick="menuAbout()">About WebTerm/3270</div>
       </div>
     </div>
-
   </div>
+
   <div class="status-area">
     <div class="conn-indicator">
-      <div class="conn-dot" id="mainConnDot"></div>
-      <span id="connStatusText" style="color:var(--accent-green);font-size:11px">PROD01 · Connected</span>
+      <div class="conn-dot disconnected" id="mainConnDot"></div>
+      <span id="connStatusText" style="color:var(--text-muted);font-size:11px">Not connected</span>
     </div>
 
     <!-- LPAR dropdown -->
     <div class="lpar-dropdown" id="lparDropdown">
       <div class="lpar-dropdown-btn" id="lparDropdownBtn" onclick="toggleLparDropdown()">
-        <span>⊕ Connect LPAR</span>
+        <span>⊕ Connect to LPAR</span>
         <span class="chevron">▼</span>
       </div>
       <div class="lpar-dropdown-menu" id="lparDropdownMenu">
         <div class="lpar-menu-header">LPAR Profiles</div>
-
-        <div class="lpar-menu-item" onclick="connectLpar('PROD01')">
-          <div class="lpar-menu-dot on"></div>
-          <div class="lpar-menu-info">
-            <div class="lpar-menu-name">PROD01</div>
-            <div class="lpar-menu-meta">10.x.x.x · :339 · TSO &nbsp;<span class="lpar-menu-status-text">● Connectan></div>
-          </div>
-          <div class="lpar-menu-connect active-session">Active</div>
-        </div>
-
-        <div class="lpar-menu-item" onclick="connectLpar('DEV02')">
-          <div class="lpar-menu-dot conn"></div>
-          <div class="lpar-menu-info">
-            <div class="lpar-menu-name">DEV02</div>
-            <div class="lpar-menu-meta">10.x.x.x · :339 · CICS &nbsp;<span class="lpar-menu-status-text">● Connected</span></div>
-          </div>
-          <div class="lpar-menu-connect ae-session">Active</div>
-        </div>
-
-        <div class="lpar-menu-item" onclick="connectLpar('QA01')">
-          <div class="lpar-menu-dot"></div>
-          <div class="lpar-menu-info">
-            <div class="lpar-menu-name">QA01</div>
-            <div class="lpar-menu-meta">10.x.x.x · :339 · TSO &nbsp;<span class="lpar-menu-status-text offline">○ Offline</span></div>
-	  </div> 
-          <div class="lpar-menu-connect">Connect</div>
-        </div>
-
-        <div class="lpar-menu-item" onclick="connear('DR-PROD')">
-          <div class="lpar-menu-dot"></div>
-          <div class="lpar-menu-info">
-            <div class="lpar-menu-name">DR-PROD</div>
-            <div class="lpar-menu-meta">10.x.x.x · :339 · TSO &nbsp;<span class="lpar-menu-status-text offline">○ Offline</span></div>
-          </div>
-          <div class="lpar-menu-connect">Connect</div>
-        </div>
-
-        <div class="lpar-menu-item" onclick="connectLpar('BATCH01')">
-          <div class="lpar-menu-dot"></div>
-          <div clalpar-menu-info">
-            <div class="lpar-menu-name">BATCH01</div>
-            <div class="lpar-menu-meta">10.x.x.x · :339 · JES2 &nbsp;<span class="lpar-menu-status-text offline">○ Offline</span></div>
-          </div>
-          <div class="lpar-menu-connect">Connect</div>
-        </div>
-
+        <!-- populated by loadProfiles() -->
         <div class="lpar-menu-footer" onclick="showConnectModal(); closeLparDropdown()">
           <span style="font-size:13px">＋</span> New session / manual connect…
         </div>
       </div>
     </div>
 
-  n class="topbar-btn primary" onclick="toggleRightPanel()">⊞ Panel</button>
+    <button class="topbar-btn primary" onclick="toggleRightPanel()">⊞ Panel</button>
   </div>
 </div>
 
 <!-- SESSION TABS -->
 <div class="session-tabs">
-	<!--<div class="session-tab active" onclick="switchTab(this)">
-     <div class="tab-dot" style="background:#33ff66;box-shadow:0 0 4px #33ff66"></div>
-    PROD01 · TSO
-    <span class="tab-close">×</span>
-  </div>
-  <div class="session-tab" onclick="switchTab(this)">
-    <div class="tab-dot" style="background:#4488cc;box-shadow:0 0 4px #4488cc"></div>
-    DEV02 ·     <span class="tab-close">×</span>
-  </div>
-  <div class="session-tab" onclick="switchTab(this)">
-    <div class="tab-dot" style="background:#555"></div>
-    QA01 · Offline Add 3270 session
-    <span class="tab-close">×</span>
-  </div>
-  <div class="tab-dot" style="background:#4488cc;box-shadow:0 0 4px #4488cc"></div>-->
   3270 sessions
   <div class="tab-add" onclick="showConnectModal()">＋</div>
 </div>
@@ -1027,81 +797,77 @@ input[type="range"]::-webkit-slider-thumb {
 <div class="main-layout">
 
   <!-- LEFT SIDEBAR -->
-  <div class="sidebar" id=bar">
+  <div class="sidebar" id="sidebar">
     <div class="sidebar-section">
       <div class="sidebar-header">LPAR Profiles <span class="sidebar-header-btn" onclick="showConnectModal()">＋</span></div>
-      <div id="sidebarLparList" style="padding:4px 0 8px; max-height:200px; overflow-y:auto;">
-      </div>
+      <div id="sidebarLparList" style="padding:4px 0 8px; max-height:200px; overflow-y:auto;"></div>
     </div>
     <div class="sidebar-section">
       <div class="sidebar-header">Macros <span class="sidebar-header-btn" onclick="showAddMacroModal()">＋</span></div>
       <div id="sidebarMacroList" style="padding:4px 0 8px"></div>
-    <>
+    </div>
     <div class="sidebar-section" style="flex:1">
       <div class="sidebar-header">Screen History</div>
       <div style="padding:8px 12px;font-size:10px;color:var(--text-muted);font-family:'IBM Plex Mono',monospace;line-height:1.9">
-        14:32:01 TSO Logon<br>
-        14:32:04 ISPF Primary<br>
-        14:33:11 Edit · JCL<br>
-        14:35:44 SDSF Output<br>
-        14:38:02 Dataset List<br>
-        <span style="color:var(--accent-green)">14:44:57 ▶ Current</span>
+        <span style="color:var(--accent-green)">▶ Not connected</span>
       </div>
     </div>
   </div>
 
- -- TERMINAL -->
+  <!-- TERMINAL AREA -->
   <div class="terminal-area">
     <div class="terminal-toolbar">
-      <button class="t-btn pf">PF1 Help</button>
-      <button class="t-btn pf">PF2 Split</button>
-      <button class="t-btn pf">PF3 End</button>
-      <button class="t-btn pf">PF4 Ret</button>
-      <button class="t-btn pf">PF5 RFnd</button>
-      <button class="t-btn pf">PF6 RChg</button>
+      <button class="t-btn pf" title="PF1" onclick="sendKey('PF1')">PF1 Help</button>
+      <button class="t-btn pf" title="PF2" onclick="sendKey('PF2')">PF2 Split</button>
+      <button class="t-btn pf" title="PF3" onclick="sendKey('PF3')">PF3 End</button>
+      <button class="t-btn pf" title="PF4" onclick="sendKey('PF4')">PF4 Ret</button>
+      <button class="t-btn pf" title="PF5" onclick="sendKey('PF5')">PF5 RFnd</button>
+      <button class="t-btn pf" title="PF6" onclick="sendKey('PF6')">PF6 RChg</button>
       <div class="t-sep"></div>
-      <button class="t-btn pf">PF7 ↑</button>
-      <button class="t-btn pf">PF8 ↓</button>
-      <butclass="t-btn pf">PF9 Swap</button>
-      <button class="t-btn pf">PF10 ←</button>
-      <button class="t-btn pf">PF11 →</button>
-      <button class="t-btn pf">PF12 Retr</button>
+      <button class="t-btn pf" title="PF7" onclick="sendKey('PF7')">PF7 ↑</button>
+      <button class="t-btn pf" title="PF8" onclick="sendKey('PF8')">PF8 ↓</button>
+      <button class="t-btn pf" title="PF9" onclick="sendKey('PF9')">PF9 Swap</button>
+      <button class="t-btn pf" title="PF10" onclick="sendKey('PF10')">PF10 ←</button>
+      <button class="t-btn pf" title="PF11" onclick="sendKey('PF11')">PF11 →</button>
+      <button class="t-btn pf" title="PF12" onclick="sendKey('PF12')">PF12 Retr</button>
       <div class="t-sep"></div>
-      <button class="t-btn">PA1</button>
-      <button class="t-btn">PA2</button>
-      <button class="t-btn" style="color:var(--t-red);border-color:#3a1010">SysReq</button>
-      <button class="t-btn">Clear</button>
+      <button class="t-btn" title="PA1" onclick="sendKey('PA1')">PA1</button>
+      <button class="t-btn" title="PA2" onclick="sendKey('PA2')">PA2</button>
+      <button class="t-btn" title="SysReq" style="color:var(--t-red);border-color:#3a1010" onclick="sendKey('SYSREQ')">SysReq</button>
+      <button class="t-btn" title="Clear" onclick="sendKey('CLEAR')">Clear</button>
       <div class="t-spacer"></div>
     </div>
-    <div class="screen-wrapper">
-  <div class="t3270-screen" id="terminal" onclick="termClick(event)"></div>
+
+    <!-- FIX: .screen-wrapper centers and owns scroll; .t3270-screen sized by fitScreen() -->
+    <div class="screen-wrapper" id="screenWrapper">
+      <div class="t3270-screen" id="terminal" onclick="termClick(event)"></div>
     </div>
+
     <div class="oia-bar">
-      <div class="oia-field"><span class="oia-label">SYS</span><span class="oia-val">PROD01</span></div>
-      <div class="oia-field"><span class="oia-label">LU</span><span class="oia-val">LU3A0042</span></div>
-      <div class="oia-field"><span class="oia-label">MODEL</span><span class="oia-val">3278-2</span></div>
-      <div class="oia-field"><span class="oia-label">ROW</span><span class="oia-val" id="oiaRow">14</span></div>
-      <div class="oia-field"><span class="oia-label">COL</span><span class="oia-val" id="oiaCol">29</span></div>
+      <div class="oia-field"><span class="oia-label">SYS</span><span class="oia-val" id="oiaSys">—</span></div>
+      <div class="oia-field"><span class="oia-label">LU</span><span class="oia-val" id="oiaLu">—</span></div>
+      <div class="oia-field"><span class="oia-label">MODEL</span><span class="oia-val" id="oiaModel">—</span></div>
+      <div class="oia-field"><span class="oia-label">ROW</span><span class="oia-val" id="oiaRow">00</span></div>
+      <div class="oia-field"><span class="oia-label">COL</span><span class="oia-val" id="oiaCol">00</span></div>
       <div class="oia-spacer"></div>
-      <div class="oia-field"><span class="oia-val blue" id="oiaMode">READY</span></div>
+      <div class="oia-field"><span class="oia-val blue" id="oiaMode">NOT CONNECTED</span></div>
       <div class="oia-field"><span class="oia-val">3270 · TLS 1.3</span></div>
       <div class="oia-field"><span class="oia-val" id="oiaTime">--:--:--</span></div>
     </div>
   </div>
 
   <!-- RIGHT PANEL -->
-  <div class="right-panel" id="rihtPanel">
+  <div class="right-panel" id="rightPanel">
 
-    <!-- Tab bar — 4 tabs -->
     <div class="panel-tabs">
-      <div class="panel-tab active"       onclick="switchPanelTab(this,'Settings')">Settings</div>
-      <div class="panel-tab"              onclick="switchPanelTab(this,'Keys')">Keys</div>
-      <div class="panel-tab"              onclick="switchPanelTab(this,'Xfer')">Transfer</div>
-      <div class="panel-tab copilot-tab"  onclick="switchPanelTab(this,'Copilot')">⬡ Copilot</div>
+      <div class="panel-tab active"      onclick="switchPanelTab(this,'Settings')">Settings</div>
+      <div class="panel-tab"             onclick="switchPanelTab(this,'Keys')">Keys</div>
+      <div class="panel-tab"             onclick="switchPanelTab(this,'Xfer')">Transfer</div>
+      <div class="panel-tab copilot-tab" onclick="switchPanelTab(this,'Copilot')">⬡ Copilot</div>
     </div>
 
     <!-- ── Settings ── -->
-    <dnel-content active" id="panelSettings">
+    <div class="panel-content active" id="panelSettings">
       <div class="setting-group">
         <div class="setting-label">Color Theme</div>
         <div class="theme-swatches">
@@ -1125,19 +891,18 @@ input[type="range"]::-webkit-slider-thumb {
       </div>
       <div class="setting-group">
         <div class="setting-label">Terminal Model</div>
-        <select>
-          <option>3278 Model 2 (80×24)</option>
-          <option>3278 Model 3 (80×32)</option>
-          <option>3278 Model 4 (80×43)</option>
-          <option selected>3278 Model 532×27)</option>
-          <option>3279 Color (80×24)</option>
+        <select id="modelSelect" onchange="/* model set on connect */">
+          <option value="3278-2">3278 Model 2 (80×24)</option>
+          <option value="3278-3">3278 Model 3 (80×32)</option>
+          <option value="3278-4" selected>3278 Model 4 (80×43)</option>
+          <option value="3278-5">3278 Model 5 (132×27)</option>
         </select>
       </div>
       <div class="setting-group">
         <div class="setting-label">Connection</div>
         <div class="setting-row"><label>Auto Reconnect</label><div class="toggle on" onclick="this.classList.toggle('on')"></div></div>
         <div class="setting-row"><label>Keep-Alive (s)</label><input type="number" value="30" style="width:60px"></div>
-        <div class="setting-row"><label>TN3270E</label><span style="font-si:10px;color:var(--text-muted)">Set per session in connect dialog</span></div>
+        <div class="setting-row"><label>TN3270E</label><span style="font-size:10px;color:var(--text-muted)">Set per session in connect dialog</span></div>
       </div>
     </div>
 
@@ -1147,73 +912,50 @@ input[type="range"]::-webkit-slider-thumb {
         <div class="setting-label">Key Remapping</div>
         <div style="display:flex;flex-direction:column;gap:4px">
           <div class="shortcut-item"><span class="shortcut-desc">PF3 End</span><span class="shortcut-key">F3</span></div>
-          <div class="shortcut-item"><span class="shorc">PF7 Scroll Up</span><span class="shortcut-key">PgUp</span></div>
+          <div class="shortcut-item"><span class="shortcut-desc">PF7 Scroll Up</span><span class="shortcut-key">PgUp</span></div>
           <div class="shortcut-item"><span class="shortcut-desc">PF8 Scroll Down</span><span class="shortcut-key">PgDn</span></div>
           <div class="shortcut-item"><span class="shortcut-desc">Enter / Transmit</span><span class="shortcut-key">Enter</span></div>
           <div class="shortcut-item"><span class="shortcut-desc">SysReq / Attn</span><span class="shortcut-key">Esc</span></div>
           <div class="shortcut-item"><span class="shortcut-desc">Insert Mode</span><span class="shortcut-key">Ins</span></div>
           <div class="shortcut-item"><span class="shortcut-desc">Clear Screen</span><span class="shortcut-key">Ctrl+L</span></div>
-          <div class="shortcut-item"><span class="shortcut-desc">New Session Tab</span><span class="shortcut-key">Ctrl+T</span></div>
+          <div class="shortcut-item"><span class="shortcut-desc">New Session</span><span class="shortcut-key">Ctrl+T</span></div>
+          <div class="shortcut-item"><span class="shortcut-desc">Open Copilot</span><span class="shortcut-key">Ctrl+K</span></div>
           <div class="shortcut-item"><span class="shortcut-desc">Toggle Sidebar</span><span class="shortcut-key">Ctrl+B</span></div>
-          <div class="shortcut-item"><span class="shortcut-desc">Toggle Copilot</span><span class="shortcut-key">Ctrl+K</span></div>
-          <div class="shortcut-item"><span class="shortcut-desc">Screen Capture</span><span class="shortcut-key">Ctrl+P</span></div>
-          <div class="shortcut-item"><span class="shortcut-desc">Find in Screen</span><span class="shortcut-key">Ctrl+F</span></div>
         </div>
       </div>
     </div>
 
     <!-- ── Transfer ── -->
     <div class="panel-content" id="panelXfer">
-      <div class="setting-        <div class="setting-label">IND$FILE Transfer</div>
-        <div class="form-group"><div class="form-label">Direction</div>
-          <select><option>Upload (PC → Host)</option><option>Download (Host → PC)</option></select>
-        </div>
-        <div class="form-group"><div class="form-label">Host Dataset</div>
-          <input type="text" value="PROD.JCL.CNTL">
-        </div>
-        <div class="form-group"><div class="form-label">Transfer Mode</div>
-          <select><option>Text (ASCII/EBCDICption><option>Binary</option></select>
-        </div>
-        <div class="form-group"><div class="form-label">LRECL</div><input type="number" value="80"></div>
-        <button class="btn btn-green" style="width:100%;margin-top:8px">▶ Start Transfer</button>
-      </div>
       <div class="setting-group">
-        <div class="setting-label">Recent Transfers</div>
-        <div style="font-size:10px;color:var(--text-muted);font-family:'IBM Plex Mono',monospace;line-height:2">
-          ✓ PROD.JCL.CNTL<br>✓DATA.CSV<br>✗ BATCH.OUTPUT.DAT
-        </div>
+        <div class="setting-label">IND$FILE Transfer</div>
+        <div class="xfer-info">Send or receive datasets using the IND$FILE protocol. Requires an active session.</div>
+        <button class="xfer-btn">⬆ Send File to Mainframe</button>
+        <button class="xfer-btn">⬇ Receive File from Mainframe</button>
       </div>
     </div>
 
-    <!-- ── COPILOT TAB ── -->
+    <!-- ── Copilot ── -->
     <div class="panel-content" id="panelCopilot">
-
-      <!-- Copilot header -->
-      <div class="copilot-header">
-        <div class="copilot-logo">⬡</div>
-        <div class="copilot-title-group">
-          <div class="copilot-title">3270 Copilot</div>
-          <div class="copilot-subtitle">AI assistant · screen-aware</div>
-        </div>
-        <div class="context-badge" onclick="toggleCo)" title="Screen context active">
-          <div class="context-dot"></div>CTX
+      <div class="copilot-header-row">
+        <div class="copilot-logo-sm">⬡</div>
+        <div>
+          <div class="copilot-title-sm">3270 Copilot</div>
+          <div class="copilot-subtitle" id="copilotSubtitle">AI assistant · screen-aware</div>
         </div>
       </div>
-
-      <!-- Quick prompts -->
       <div class="quick-prompts">
-        <button class="qp-btn" onclick="quickPrompt('Explain what this screen is showing me')">Explain</button>
-        <button class="qp-btn" onclick="quickPrompt('What do the PF keys do on this screen?')">PF keys</button>
+        <button class="qp-btn" onclick="quickPrompt('Explain what this screen is showing me')">Explain screen</button>
+        <button class="qp-btn" onclick="quickPrompt('What are my options from here? List the PF keys and what they do')">PF keys</button>
         <button class="qp-btn" onclick="quickPrompt('What should I type in each field?')">Fields</button>
         <button class="qp-btn" onclick="quickPrompt('Generate a macro JSON to automate this screen')">→ Macro</button>
         <button class="qp-btn" onclick="quickPrompt('I see an error — what does it mean and how do I fix it?')">Errors</button>
         <button class="qp-btn" onclick="quickPrompt('Write JCL that will ')">JCL</button>
       </div>
-
-      <!-- Chat messages -->
       <div class="chat-area" id="chatArea">
         <div class="chat-empty" id="chatEmpty">
-          <div class="chat-empty-icon">⬡</div      <div class="chat-empty-title">3270 Copilot</div>
+          <div class="chat-empty-icon">⬡</div>
+          <div class="chat-empty-title">3270 Copilot</div>
           <div class="chat-empty-body">
             Ask anything about this screen,<br>
             TSO · ISPF · JCL · REXX · errors.<br><br>
@@ -1221,12 +963,10 @@ input[type="range"]::-webkit-slider-thumb {
           </div>
         </div>
       </div>
-
-      <!-- Input -->
       <div class="copilot-input-area">
         <div class="copilot-input-row">
           <textarea id="copilot-input" rows="1"
-            plaer="Ask about this screen…"
+            placeholder="Ask about this screen…"
             onkeydown="copilotKeydown(event)"
             oninput="copilotResize(this)"></textarea>
           <button class="send-btn" id="sendBtn" onclick="sendCopilotMessage()">↑</button>
@@ -1236,7 +976,7 @@ input[type="range"]::-webkit-slider-thumb {
             <div class="toggle-mini" id="screenCtxMini"></div>
             Include screen
           </div>
-          <span style="font-family:'IBM Plex Mono',monoe;font-size:9px" id="charCount"></span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:9px" id="charCount"></span>
         </div>
       </div>
     </div>
@@ -1254,7 +994,7 @@ input[type="range"]::-webkit-slider-thumb {
     </div>
     <div class="modal-body">
       <div class="form-group">
-        <div class"form-label">Macro Name</div>
+        <div class="form-label">Macro Name</div>
         <input type="text" id="macroName" placeholder="e.g. TSO ISPF Login" style="width:100%">
       </div>
       <div class="form-group">
@@ -1263,8 +1003,9 @@ input[type="range"]::-webkit-slider-thumb {
       </div>
       <div class="form-group">
         <div class="form-label">Macro JSON</div>
-        <textarea id="macroJson" rows="8" placeholder='{"name":"My Macro","steps":[{"type":"key","aid":"ENTER"}]}'
-          style="width:100%;font-family:\'IBM Plex Mono\',monospace;font-size:11px;background:var(--bg-elevated);border:1px solid var(--border-bright);color:var(--text-primary);padding:8px;border-radius:3px;resize:vertical;outline:none"></textarea>
+        <textarea id="macroJson" rows="8"
+          placeholder='{"name":"My Macro","steps":[{"op":"aid","aid":"ENTER"}]}'
+          style="width:100%;font-family:'IBM Plex Mono',monospace;font-size:11px;background:var(--bg-elevated);border:1px solid var(--border-bright);color:var(--text-primary);padding:8px;border-radius:3px;resize:vertical;outline:none"></textarea>
         <div style="font-size:10px;color:var(--text-muted);margin-top:4px">Paste a macro JSON or leave blank to create an empty macro skeleton.</div>
       </div>
     </div>
@@ -1281,254 +1022,140 @@ input[type="range"]::-webkit-slider-thumb {
 <div class="modal-overlay hidden" id="connectModal">
   <div class="modal">
     <div class="modal-header">
-      <div css="modal-title" id="connectModalTitle">New 3270 Session</div>
+      <div class="modal-title" id="connectModalTitle">New 3270 Session</div>
       <div class="modal-close" onclick="hideConnectModal()">×</div>
     </div>
     <div class="modal-body">
+      <div style="margin-bottom:14px">
+        <div class="setting-label" style="margin-bottom:8px">Saved Profiles</div>
+        <div id="modalProfileList"></div>
+      </div>
+      <hr style="border-color:var(--border);margin:16px 0">
+      <div class="setting-label" style="margin-bottom:12px">Manual Connection</div>
+      <div class="form-row">
+        <div class="form-group"><div class="form-label">Hostname / IP</div><input type="text" id="connHost" placeholder="10.x.x.x"></div>
+        <div class="form-group" style="max-width:80px"><div class="form-label">Port</div><input type="number" id="connPort" value="23"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><div class="form-label">Session Name</div><input type="text" id="connName" placeholder="My LPAR"></div>
+        <div class="form-group"><div class="form-label">LU Name (opt)</div><input type="text" id="connLu" placeholder="LU3A0001"></div>
+      </div>
       <div class="form-row">
         <div class="form-group">
-          <div class="form-label">Session Name</div>
-          <input type="text" id="connName" placeholder="e.g. VM01">
-        </div>
-        <div class="form-group" style="max-width:90px">
-          <div class="form-label">Type</div>
+          <div class="form-label">Session Type</div>
           <select id="connType">
-           <option value="TSO">TSO</option>
-            <option value="ZVM">z/VM</option>
-            <option value="CICS">CICS</option>
-            <option value="JES2">JES2</option>
+            <option>TSO</option><option>CICS</option><option>JES2</option><option>ZVM</option><option>Other</option>
           </select>
         </div>
-      </div>
-      <div class="form-row">
         <div class="form-group">
-          <div class="form-label">Hostname / IP</div>
-          <input type="text" id="connHost" placeholder="10.x.x.x or hostname">
-        </div>
-        <div class="form-group" style="max-width:80px">
-          <div class="form-label">Port</div>
-          <input type="number" id="connPort" value="23">
-        </div>
-      </div>
-      <div class="form-row">
-        <div class="form-group">
-          <div class="form-label">LU Name (optional)</div>
-          <input type="text" id="connLu" placeholder="LU3A0001">
-        </div>
-        <div class="form-group" style="max-width:120px">
           <div class="form-label">Terminal Model</div>
           <select id="connModel">
-            <option value="3278-2">3278-2 (80×24)</optio>
+            <option value="3278-2">3278-2 (80×24)</option>
             <option value="3278-3">3278-3 (80×32)</option>
             <option value="3278-4" selected>3278-4 (80×43)</option>
             <option value="3278-5">3278-5 (132×27)</option>
           </select>
         </div>
       </div>
-      <div class="form-row" style="align-items:center;gap:16px;margin-bottom:14px">
-        <div class="form-group" style="margin-bottom:0;flex:1">
-          <div class="form-label">Security</div>
-          <select id="connSecurity">
-            <option value="none">None ain TN3270)</option>
-            <option value="tls">TLS/SSL</option>
-          </select>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;padding-top:16px;flex-shrink:0">
-          <div class="toggle" id="connTn3270eToggle" onclick="this.classList.toggle('on')" title="Enable TN3270E negotiation"></div>
-          <span style="font-size:11px;color:var(--text-dim)">TN3270E</span>
-        </div>
+      <div class="setting-row" style="margin-top:8px">
+        <label style="font-size:11px;color:var(--text-dim)">TLS / SSL</label>
+        <div class="toggle" id="connTls" onclick="this.classList.toggle('on')"></div>
+        <label style="font-size:11px;color:var(--text-dim)">TN3270E</label>
+        <div class="toggle on" id="connTn3270e" onclick="this.classList.toggle('on')"></div>
       </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="hideConnectModal()">Cancel</button>
-      <button class="btn btn-primary" id="connectModalBtn" onclick="connectFromModal()">Connect</button>
+      <button class="btn btn-primary" onclick="connectManual()">Connect</button>
     </div>
   </div>
 </div>
 
 <script>
-// ══════════════════════════════════════════════════════════════════
-//  PRODUCTION CLIENT — connects to ws://localhost:8081
-//  Bridge must be running (Docker Desktop or WSL2)
-//  Demo tn3270-client-demo.html  (no bridge needed)
-// ══════════════════════════════════════════════════════════════════
+'use strict';
 
-// ── Bridge WebSocket URL ──────────────────────────────────────────
-// Change this if your bridge runs on a different host or port.
-// ws://  = plain WebSocket (bridge on locss:// = TLS WebSocket  (bridge behind nginx with TLS)
+// ══════════════════════════════════════════════════════════════════
+//  CONFIGURATION
+// ══════════════════════════════════════════════════════════════════
 const BRIDGE_URL = 'ws://localhost:8081';
 
 // ── Per-session WebSocket connections ─────────────────────────────
-// Map of sessionId → { ws, profile, tabEl }
-const sessions  = new Map();
-let   activeSession = null;   // currently visible session id
-let   sessionSeq    = 0;      // incrementing session id
+const sessions    = new Map();
+let   activeSession = null;
+let   sessionSeq    = 0;
 
-// ── Screen buffer for the active session ─────────────âPopulated by 'screen' messages from the bridge.
-// Used by Copilot for screen context.
+// ── Screen buffer for the active session ──────────────────────────
 let   liveScreenText = '';
 let   cursorRow = 0, cursorCol = 0;
 
-// Fallback screens array (only used before first real screen arrives)
-const screens = [
-  { label:'ISPF Primary', rows:[
-    {t:'                        ISPF Primary Option Menu',c:'field-title'},
-    {t:''},
-    {t:'  Option ===>',c:'field-protected-hi',cur:13},
-    {t:''},
-    {t:'     0  Settings       Terminal and user parameters',c:'field-protected'},
-    {t:'     1  View           Display source data or listings',c:'field-protected'},
-    {t:'     2  Edit           Create or change source data',c:'field-protected'},
-    {t:'     3  Utilities      Perform utility functions',c:'field-protected'},
-    {t:'     4  Foreground     Interactive language processing',c:'field-protected'},
-    {t:'     5  Batch          Submit job for language processing',c:'field-protected'},
-    {t:'     6  Command        Enter TSO or Workstation commands',c:'field-protected'},
-    {t:'     7  Dialog Test    Perform dialog testing',c:'field-protected'},
-    {t:'     9  IBM Products   IBM program development products',c:'field-protected'},
-    {t:'    10  SCLM           SW Configuration Library Manager',c:'field-protected'},
-    {t:'    11  Workplace      ISPF Object/Action Workplace',c:'field-protected'},
-    {t:'    12  z/OS System    z/OS system programmer applications',c:'field-protected'},
-    {t:''},
-    {t:'  Enter X to Terminate using log/list defaults',c:'field-dim'},
-    {t:''},
-    {t:' User ID . : JSMITH     Time. . . .: 14:44:57',c:'field-label'},
-    {t:' System ID : PROD01     Terminal. .: 3278',c:'field-label'},
-    {t:' Screen. . : 1          Language. .: ENGLISH',c:'field-label'},
-    {t:''},
-    {t:'F1=Help  F2=Split  F3=Exit  F9=Swap  F10=Actions  F12=Cancel',c:'field-dim'},
-  ]},
-  { label:'TSO Logon', rows:[
-    {t:''},
-    {t:'                    I B M    z / O S    S y s t e m',c:'field-title'},
-    {t:'                         TSO/E LOGON',c:'field-title'},
-    {t:''},
-    {t:'  Enter LOGON parameters below:              RACF LOGON parameters:',c:'field-protected'},
-    {t:''},
-    {t:'  Userid  ===> JSMITH               Group   ===>',c:'field-protected-hi'},
-    {t:'  Password===>                       Appl ID ===>',c:'field-protected-hi'},
-    {t:'  Procedure==> TSOPROC              Acct Nmbr===> CORP01',c:'field-protected'},
-    {t:'  Size    ===> 4096                 Perform  ===>',c:'field-protected'},
-    {t:'  Command ===>',c:'field-protected'},
-    {t:''},
-    {t:"   Enter an 'S' before each option desired below:",c:'field-protected'},
-    {t:'                  -Nomail         -Nonotice       -Reconnect',c:'field-dim'},
-    {t:''},
-    {t:'   PF1/PF13 ==> Help   PF3/PF15 ==> Logoff   PA1 ==> Attention',c:'field-dim'},
-    {t:''},
-    {t:'  ISPF Buffer Pool used this session: 1,048,576 bytes',c:'field-dim'},
-    {t:''},
-    {t:''},
-    {t:''},
-    {t:''},
-    {t:''},
-    {t:'***',c:'field-label'},
-  ]},
-  { label:'ISPF Edit', rows:[
-    {t:' Edit - JSMITH.JCL.CNTL(MYJOB) - 01.00         Columns 00001 00072',c:'field-title'},
-    {t:' Command ===>                                             Scroll ===> CSR',c:'field-protected-hi'},
-    {t:'000001 //MYJOB    JOB (ACCTNO),"BATCH PROCESS",CLASS=A,',c:'field-label'},
-    {t:'000002 //             MSGCLASS=X,NOTIFY=&SYSUID',c:'field-label'},
-    {t:'000003 //*',c:'field-dim'},
-    {t:'000004 //* STEP 1: COPY INPUT FILE',c:'field-dim'},
-    {t:'000005 //*',c:'field-dim'},
-    {t:'000006 //COPY     EXEC PGM=IEBGENER',c:'field-label'},
-    {t:'000007 //SYSPRINT DD SYSOUT=*',c:'field-label'},
-    {t:'000008 //SYSUT1   DD DSN=PROD.INPUT.DATA,',c:'field-label'},
-    {t:'000009 //             DISP=SHR',c:'field-label'},
-    {t:'000010 //SYSUT2   DD DSN=WORK.OUTPUT.DATA,',c:'field-label'},
-    {t:'000011 //             DISP=(NEW,CATLG,DELETE),',c:'field-label'},
-    {t:'000012 //             SPACE=(CYL,(5,2),RLSE),',c:'field-label'},
-    {t:'000013 //             DCB=(RECFM=FB,LRECL=80,BLKSIZE=27920)',c:'field-label'},
-    {t:'000014 //SYSIN    DD DUMMY',c:'field-label'},
-    {t:'000015 //*',c:'field-dim'},
-    {t:'000016 //* STEP 2: PROCESS OUTPUT',c:'field-dim'},
-    {t:'000017 //*',c:'field-dim'},
-    {t:"000018 //PROCESS  EXEC PGM=IKJEFT01,PARM='CALL'",c:'field-label'},
-    {t:'000019 //SYSTSPRT DD SYSOUT=*',c:'field-label'},
-    {t:'000020 //SYSTSIN  DD *',c:'field-label'},
-    {t:''},
-    {t:'F2=Split  F3=Exit  F5=Rfind  F6=Rchange  F7=Up  F8=Down  F14=Save',c:'field-dim'},
-  ]},
-  { label:'SDSF Output', rows:[
-    {t:' SDSF OUTPUT DISPLAY MYJOB    JOB07432  DSID   2 LINE 0     COLUMNS 02-81',c:'field-title'},
-    {t:' COMMAND INPUT ===>                                          SCROLL ===> PAGE',c:'field-protected-hi'},
-    {t:''},
-    {t:'         1 //MYJOB    JOB (ACCT),"My Job",CLASS=A,MSGCLASS=X,NOTIFY=&SYSUID',c:'field-label'},
-    {t:'         2 //*',c:'field-dim'},
-    {t:'         3 //STEP1    EXEC PGM=IEFBR14',c:'field-label'},
-    {t:'         4 //DD1      DD   DSN=PROD.DATA.FILE,DISP=SHR',c:'field-label'},
-    {t:''},
-    {t:' IEF236I ALLOC. FOR MYJOB STEP1',c:'field-protected'},
-    {t:' IEF237I DD1     ALLOCATED TO PROD.DATA.FILE',c:'field-protected'},
-    {t:' IEF142I MYJOB STEP1 - STEP WAS EXECUTED - COND CODE 0000',c:'field-protected'},
-    {t:' IEF285I   PROD.DATA.FILE                             KEPT',c:'field-protected'},
-    {t:' IEF373I STEP/STEP1  /START 2024077.1444',c:'field-protected'},
-    {t:' IEF374I STEP/STEP1  /STOP  2024077.1444 CPU    0MIN 00.01SEC',c:'field-protected'},
-    {t:' IEF376I  JOB/MYJOB  /STOP  2024077.1444 CPU    0MIN 00.01SEC',c:'field-protected'},
-    {t:' IEF377I  JOB/MYJOB  ELAPSED TIME  00:00:01',c:'field-protected'},
-    {t:''},
-    {t:' *** END OF DATA ***',c:'field-error'},
-    {t:''},
-    {t:''},
-    {t:''},
-    {t:''},
-    {t:''},
-    {t:'F1=Help  F3=End  F5=RFind  F7=Up  F8=Down  F10=Left  F11=Right',c:'field-dim'},
-  ]},
-];
+// ── Copilot state ──────────────────────────────────────────────────
+let chatHistory  = [];
+let includeScreen = true;
+let isStreaming   = false;
 
-let currentScreen = 0;
-cursorRow = 2, cursorCol = 13;
+// ── Macro store ────────────────────────────────────────────────────
+let macros = [];
 
-function renderScreen() {
-  const scr  = screens[currentScreen];
-  const term = document.getElementById('terminal');
-  term.innerHTML = '';
-  scr.rows.forEach((row, ri) => {
-    const rowEl = document.createElement('div');
-    rowEl.className = 'screen-row';
-    const text = row.t || '';
-    for (let ci = 0; ci < 80; ci++) {
-      const cell = document.createElement('span');
-      cell.className = 'screen-cell';
-      cell.textContent = ci < text.length ? text[ci] : ' ';
-      if (ri === cursorRow && ci === cursorCol) {
-        cell.classList.add('cursor-cell');
-      } else if (row.c) {
-        cell.classList.add(row.c);
-      }
-      rowEl.appendChild(cell);
-    }
-    term.appendChild(rowEl);
-  });
-  document.getElementById('oiaRow').textContent = String(cursorRow + 1).padStart(2,'0');
-  document.getElementById('oiaCol').textContent = String(cursorCol + 1).padStart(2,'0');
-}
+// ══════════════════════════════════════════════════════════════════
+//  SCREEN FIT — fixes both wrap and sizing issues
+// ══════════════════════════════════════════════════════════════════
+/**
+ * fitScreen()
+ * -----------
+ * Measures the intrinsic pixel dimensions of #terminal, then computes
+ * a CSS scale factor so it fills the available .screen-wrapper area
+ * without overflow.  Max scale = 1 (never upscale — keeps text crisp).
+ *
+ * Called after every render AND by a ResizeObserver on .screen-wrapper
+ * so panel/sidebar toggles and window resizes are handled automatically.
+ */
+function fitScreen() {
+  const wrapper = document.getElementById('screenWrapper');
+  const term    = document.getElementById('terminal');
+  if (!wrapper || !term) return;
 
-function cycleScreen() {
-  currentScreen = (currentScreen + 1) % screens.length;
-  renderScreen();
-}
+  // Bail if terminal has no content yet (blank on connect)
+  if (!term.children.length) return;
 
-function termClick(e) {
-  const rect  = e.currentTarget.getBoundingClientRect();
-  const cellW = rect.width / 80;
-  const nRows = screens[currentScreen].rows.length;
-  const cellH = rect.height / nRows;
-  cursorCol = Math.min(79, Math.floor((e.clientX - rect.left) / cellW));
-  cursorRow = Math.min(nRows - 1, Math.floor((e.clientY - rect.top) / cellH));
-  renderScreen();
-}
+  // Measure available space (subtract padding 8px each side)
+  const availW = wrapper.clientWidth  - 16;
+  const availH = wrapper.clientHeight - 16;
+  if (availW <= 0 || availH <= 0) return;
 
-function getCurrentScreenText() {
-  // In production, use the live screen buffer from the bridge.
-  // Falls back to demo screens array if it exists (demo mode).
-  if (liveScreenText) return liveScreenText;
-  if (typeof screens !== 'undefined' && screens[currentScreen]) {
-    return screens[currentScreen].rows.map(r => (r.t || '').padEnd(80)).join('\n');
+  // Reset any existing transform so we measure true intrinsic size
+  term.style.transform    = 'none';
+  term.style.marginBottom = '0';
+
+  const intrinsicW = term.offsetWidth;
+  const intrinsicH = term.offsetHeight;
+  // Guard: if intrinsic size is 0, fonts haven't loaded yet — retry after a tick
+  if (intrinsicW === 0 || intrinsicH === 0) {
+    requestAnimationFrame(fitScreen);
+    return;
   }
-  return '';
+
+  // Scale to fit, keeping aspect ratio; cap at 1.0 (no upscale)
+  const scale = Math.min(availW / intrinsicW, availH / intrinsicH, 1);
+
+  // Guard: never apply a nonsense scale
+  if (!isFinite(scale) || scale <= 0) return;
+
+  term.style.transform       = `scale(${scale})`;
+  term.style.transformOrigin = 'top center';
+
+  // Compensate layout height so the OIA bar isn't hidden under the
+  // scaled element (CSS transform doesn't affect layout flow)
+  const scaledH = intrinsicH * scale;
+  term.style.marginBottom = `${scaledH - intrinsicH}px`;
 }
+
+// Attach ResizeObserver so fitScreen fires on any layout change
+// (sidebar collapse, right-panel toggle, window resize, etc.)
+(function initFitObserver() {
+  const wrapper = document.getElementById('screenWrapper');
+  if (!wrapper || typeof ResizeObserver === 'undefined') return;
+  new ResizeObserver(() => fitScreen()).observe(wrapper);
+})();
 
 // ══════════════════════════════════════════════════════════════════
 //  PANEL / TAB SWITCHING
@@ -1536,26 +1163,51 @@ function getCurrentScreenText() {
 function switchPanelTab(el, name) {
   document.querySelectorAll('.panel-tab').forEach(t => t.classList.remove('active'));
   el.classList.add('active');
-  document.querySelectorAll('.panel-content').forEach(p => {
-    p.classList.remove('active');
-    p.style.display = 'none';
-  });
+  // Hide all panels via inline style (overrides any CSS)
+  document.querySelectorAll('.panel-content').forEach(p => { p.style.display = 'none'; });
   const panel = document.getElementById('panel' + name);
   if (panel) {
-    panel.classList.add('active');
-    // Copilot needs flex layout, all other panels use block
-    panel.style.display === 'Copilot') ? 'flex' : 'block';
+    // Copilot needs flex for its chat layout; all others scroll as block
+    panel.style.display = (name === 'Copilot') ? 'flex' : 'block';
+    if (name === 'Copilot') {
+      panel.style.flexDirection = 'column';
+      panel.style.padding = '0';
+    } else {
+      panel.style.flexDirection = '';
+      panel.style.padding = '12px';
+    }
   }
 }
 
 function toggleRightPanel() {
-  document.getElementById('rightPanel').classList.toggle('hidden');
+  const rp = document.getElementById('rightPanel');
+  rp.classList.toggle('hidden');
+  // Re-fit after panel toggle since available width changed
+  setTimeout(fitScreen, 210);
 }
 
-// Ctrl+K shortcut opens Copilot tab
+// ══════════════════════════════════════════════════════════════════
+//  MENU HELPERS
+// ══════════════════════════════════════════════════════════════════
+function toggleMenu(id) {
+  const item = document.getElementById(id);
+  const wasOpen = item.classList.contains('open');
+  closeAllMenus();
+  if (!wasOpen) item.classList.add('open');
+}
+
+function closeAllMenus() {
+  document.querySelectorAll('.menu-item.open').forEach(m => m.classList.remove('open'));
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.menu-item')) closeAllMenus();
+});
+
+// Keyboard shortcuts (always active)
 document.addEventListener('keydown', e => {
-  // Ignore key repeat
   if (e.repeat) return;
+
   if (e.ctrlKey && e.key === 'k') {
     e.preventDefault();
     const copilotTabBtn = document.querySelector('.copilot-tab');
@@ -1564,27 +1216,56 @@ document.addEventListener('keydown', e => {
     }
     switchPanelTab(copilotTabBtn, 'Copilot');
     document.getElementById('copilot-input').focus();
+    setTimeout(fitScreen, 210);
     return;
   }
   if (e.ctrlKey && e.key === 'b') {
     e.preventDefault();
     document.getElementById('sidebar').classList.toggle('collapsed');
+    setTimeout(fitScreen, 210);
     return;
   }
-  // All other keys are handled by the main keydown listener in the
-  // WebSocket section which sends them to the bridge
+  if (e.ctrlKey && e.key === 't') {
+    e.preventDefault();
+    closeAllMenus();
+    showConnectModal();
+    return;
+  }
+  if (e.ctrlKey && e.key === 'p') {
+    e.preventDefault();
+    menuCaptureScreen();
+    return;
+  }
+  // Terminal key handling — only when not in a text input
+  const tag = document.activeElement?.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+  const aid = AID_MAP[e.key];
+  if (aid) {
+    e.preventDefault();
+    sendKey(aid);
+    return;
+  }
+  if (e.key === 'PageUp')  { e.preventDefault(); sendKey('PF7'); return; }
+  if (e.key === 'PageDown'){ e.preventDefault(); sendKey('PF8'); return; }
+  if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+    e.preventDefault();
+    sendType(cursorRow, cursorCol, e.key);
+  }
 });
 
-// ══════════════════════════â══════════════════════════════════
+// ══════════════════════════════════════════════════════════════════
 //  SETTINGS
 // ══════════════════════════════════════════════════════════════════
 function setFontSize(v) {
   document.getElementById('fontSizeLabel').textContent = v;
   document.getElementById('terminal').style.fontSize = v + 'px';
+  // Re-fit after font size change — intrinsic dimensions change
+  setTimeout(fitScreen, 50);
 }
 
 const themes = {
-  green: { bg:'#000833ff66', prot:'#6699ff' },
+  green: { bg:'#000810', fg:'#33ff66', prot:'#6699ff' },
   blue:  { bg:'#00060f', fg:'#7799ff', prot:'#aaccff' },
   amber: { bg:'#080400', fg:'#ffaa00', prot:'#ff8800' },
   white: { bg:'#0a0a0a', fg:'#e8e8e8', prot:'#aaaacc' },
@@ -1602,120 +1283,53 @@ function setTheme(name, el) {
 
 // ══════════════════════════════════════════════════════════════════
 //  MODAL
-// ════════════════════════════════════════â═══════════════════
 // ══════════════════════════════════════════════════════════════════
-//  MODAL — new / edit session
-// ══════════════════════════════════════════════════════════════════
-function showCnectModal(profile) {
-  const modal   = document.getElementById('connectModal');
-  const title   = document.getElementById('connectModalTitle');
-  const btnText = document.getElementById('connectModalBtn');
-
-  if (profile) {
-    // Edit / connect to existing profile — pre-fill fields
-    title.textContent    = 'Connect · ' + esc(profile.name || profile.id);
-    btnText.textContent  = 'Connect';
-    document.getElementById('connName').value     = profile.name || profile.id || '';
-    document.getElementByIconnHost').value     = profile.host || '';
-    document.getElementById('connPort').value     = profile.port || 23;
-    document.getElementById('connLu').value       = profile.luName || '';
-    document.getElementById('connType').value     = profile.type || 'TSO';
-    document.getElementById('connModel').value    = profile.model || '3278-4';
-    document.getElementById('connSecurity').value = profile.tls ? 'tls' : 'none';
-    // TN3270E toggle: default OFF for z/VM, ON for others
-    const tn3270e = profile.tn3270e ?? (profile.type !== 'ZVM');
-    document.getElementById('connTn3270eToggle').classList.toggle('on', tn3270e);
-    // Store the profile id so connectFromModal knows this is an edit
-    modal.dataset.profileId = profile.id || '';
-  } else {
-    // New manual session — blank form
-    title.textContent    = 'New 3270 Session';
-    btnText.textContent  = 'Connect';
-    document.getElementById('connName').value     = '';
-    document.getElementById('connHost').value     = '';
-    document.getElementByI'connPort').value     = '23';
-    document.getElementById('connLu').value       = '';
-    document.getElementById('connType').value     = 'TSO';
-    document.getElementById('connModel').value    = '3278-4';
-    document.getElementById('connSecurity').value = 'none';
-    document.getElementById('connTn3270eToggle').classList.remove('on');
-    modal.dataset.profileId = '';
-  }
-
-  modal.classList.remove('hidden');
-  setTimeout(() => document.getElementById('connHost').focus(), 50);
-}
-
-function hideConnectModal() {
-  document.getElementById('connectModal').classList.add('hidden');
-}
-
-function connectFromModal() {
-  const host = document.getElementById('connHost').value.trim();
-  if (!host) {
-    document.getElementById('connHost').style.borderColor = 'var(--t-red)';
-    document.getElementById('connHost').focus();
-    return;
-  }
-  document.getElementById('connHost').style.borderColor = '';
-
-  const name    = document.getElementById('connName').value.trim() || host;
-  const port    = parseInt(document.getElementById('connPort').value, 10) || 23;
-  const lu      = document.getElementById('connLu').value.trim() || null;
-  const type    = document.getElementById('connType').value || 'TSO';
-  const model   = document.getElementById('connModel').value || '3278-4';
-  const tls     = document.getElementById('connSecurity').value === 'tls';
-  const tn3270e = document.getElementById('connTn3270eToggle').classList.contains('on');
-
-  openSession({ id: name, name, host, port, tls, luName: lu, type, model, codepage: 37, tn3270e });
-  hideConnectModal();
-}
-
+function showConnectModal() { document.getElementById('connectModal').classList.remove('hidden'); }
+function hideConnectModal() { document.getElementById('connectModal').classList.add('hidden'); }
 document.getElementById('connectModal').addEventListener('click', e => {
   if (e.target === e.currentTarget) hideConnectModal();
 });
 
+function connectManual() {
+  const host   = document.getElementById('connHost').value.trim();
+  const port   = parseInt(document.getElementById('connPort').value, 10) || 23;
+  const name   = document.getElementById('connName').value.trim() || host;
+  const luName = document.getElementById('connLu').value.trim() || null;
+  const type   = document.getElementById('connType').value;
+  const model  = document.getElementById('connModel').value;
+  const tls    = document.getElementById('connTls').classList.contains('on');
+  const tn3270e= document.getElementById('connTn3270e').classList.contains('on');
+  if (!host) { document.getElementById('connHost').focus(); return; }
+  openSession({ id: name, host, port, name, luName, type, model, tls, tn3270e, codepage: 37 });
+}
+
 // ══════════════════════════════════════════════════════════════════
 //  LPAR PROFILES — loaded from bridge at startup
-//  Source of truth is .env on the bridge server, not this file.
-//  Fallback to empty array uetch completes.
 // ══════════════════════════════════════════════════════════════════
 let LPAR_PROFILES = [];
 
 async function loadProfiles() {
   try {
-    // Only fetch if served by the bridge (not opened as a file://)
     if (window.location.protocol === 'file:') {
-      // File mode — use hardcoded fallback for demo purposes
-      LPAR_PROFILES = [
-      ];
+      LPAR_PROFILES = [];
     } else {
-   st res = await fetch('/api/profiles');
+      const res = await fetch('/api/profiles');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       LPAR_PROFILES = await res.json();
-      logger.info('Loaded ' + LPAR_PROFILES.length + ' LPAR profiles from bridge');
     }
     renderLparDropdown();
     renderSidebarLpars();
+    renderModalProfiles();
   } catch (err) {
     console.warn('Could not load profiles from bridge:', err.message);
   }
 }
 
-function logger() {}  // stub — replace with real logger if needed
-logger.info = console.log.bind(console);
-
-// ── Render LPAR droprom fetched profiles ────────────────────
 function renderLparDropdown() {
-  const menu = document.getElementById('lparDropdownMenu');
+  const menu   = document.getElementById('lparDropdownMenu');
   if (!menu) return;
-  const header = menu.querySelector('.lpar-menu-header');
   const footer = menu.querySelector('.lpar-menu-footer');
-  // Remove old profile items (keep header + footer)
   [...menu.querySelectorAll('.lpar-menu-item')].forEach(el => el.remove());
-
-  // Insert fresh items after header
-  const insertAfter = header || meChild;
   LPAR_PROFILES.forEach(p => {
     const item = document.createElement('div');
     item.className = 'lpar-menu-item';
@@ -1725,14 +1339,13 @@ function renderLparDropdown() {
         <div class="lpar-menu-name">${esc(p.name || p.id)}</div>
         <div class="lpar-menu-meta">${esc(p.host)} · :${p.port} · ${esc(p.type||'TSO')} &nbsp;<span class="lpar-menu-status-text offline">○ Offline</span></div>
       </div>
-      <div class="lpar-menu-connect">Connect</`;
+      <div class="lpar-menu-connect">Connect</div>`;
     item.addEventListener('click', () => connectLpar(p.id));
     if (footer) menu.insertBefore(item, footer);
     else menu.appendChild(item);
   });
 }
 
-// ── Render sidebar LPAR list ──────────────────────────────────────
 function renderSidebarLpars() {
   const container = document.getElementById('sidebarLparList');
   if (!container) return;
@@ -1740,173 +1353,41 @@ function renderSidebarLpars() {
   LPAR_PROFILES.forEach(p => {
     const item = document.createElement('div');
     item.className = 'lpar-item';
-    item.style.justifyContent = 'space-between';
     item.innerHTML = `
       <div class="lpar-dot"></div>
-      <div class="lpar-name" style="flex:1">${esc(p.name || p.id)}</div>
-      <div class="lpar-type">${esc(p.type || 'TSO')}</div>
-      <span title="Edit / Connect" style="font-size:11px;margin-left:6px;color:var(--text-muted);cursor:pointer;opacity:0;transition:opacity 0.15s" class="lpar-edit-btn">✎</span>`;
-    // Click row → connect direc    item.addEventListener('click', e => {
-      if (e.target.classList.contains('lpar-edit-btn')) return;
-      connectLpar(p.id);
-    });
-    // Click edit icon → open modal pre-filled
-    item.querySelector('.lpar-edit-btn').addEventListener('click', e => {
-      e.stopPropagation();
-      showConnectModal(p);
-    });
-    item.addEventListener('mouseenter', () => item.querySelector('.lpar-edit-btn').style.opacity = '0.6');
-    item.addEventListener('mouseleave', () => item.querySelector('.lpar-edit-btn'style.opacity = '0');
+      <div class="lpar-name">${esc(p.name || p.id)}</div>
+      <div class="lpar-type">${esc(p.type || 'TSO')}</div>`;
+    item.addEventListener('click', () => connectLpar(p.id));
     container.appendChild(item);
   });
 }
 
-// ══════════════════════════════════════════════════════════════════
-//  MACROS
-// ══════════════════════════════════════════════════════════════════
-const MACROS_KEY = 'tn3270_macrosacros = [];
-
-function loadMacros() {
-  try {
-    const stored = localStorage.getItem(MACROS_KEY);
-    macros = stored ? JSON.parse(stored) : [];
-  } catch { macros = []; }
-  renderSidebarMacros();
-}
-
-function saveMacrosToStorage() {
-  try { localStorage.setItem(MACROS_KEY, JSON.stringify(macros)); } catch {}
-}
-
-function renderSidebarMacros() {
-  const container = document.getElementById('sidebarMacroList');
+function renderModalProfiles() {
+  const container = document.getElementById('modalProfileList');
   if (!container) return;
   container.innerHTML = '';
-  if (!macros.length) {
-    container.innerHTML = '<div style="padding:4px 12px 8px;font-size:10px;color:var(--text-muted)">No macros yet — click ＋ to add</div>';
-    return;
-  }
-  macros.forEach((m, idx) => {
+  LPAR_PROFILES.forEach(p => {
     const item = document.createElement('div');
-    item.className = 'macro-item';
-    item.style.justifyContent = 'space-between';
+    item.className = 'profile-item';
     item.innerHTML = `
-      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">▶ ${esc(m.name)}</span>
-      <span class="macro-run-btn" title="Run" onclick="runMacro(${idx})" style=size:11px;margin-left:6px;color:var(--accent-green);cursor:pointer;opacity:0.7">▶</span>
-      <span class="macro-del-btn" title="Delete" onclick="deleteMacro(${idx})" style="font-size:12px;margin-left:4px;color:var(--text-muted);cursor:pointer;opacity:0.7">×</span>`;
-    item.querySelector('.macro-run-btn').addEventListener('mouseenter', e => e.target.style.opacity='1');
-    item.querySelector('.macro-run-btn').addEventListener('mouseleave', e => e.target.style.opacity='0.7');
-    item.querySelector('.mo-del-btn').addEventListener('mouseenter', e => e.target.style.opacity='1');
-    item.querySelector('.macro-del-btn').addEventListener('mouseleave', e => e.target.style.opacity='0.7');
+      <div>
+        <div class="profile-name">${esc(p.name || p.id)}</div>
+        <div class="profile-host">${esc(p.host)}:${p.port}${p.tls ? ' · TLS' : ''} · ${esc(p.type||'TSO')}</div>
+      </div>
+      <button class="profile-connect-btn">Connect</button>`;
+    item.querySelector('button').addEventListener('click', () => {
+      connectLpar(p.id);
+      hideConnectModal();
+    });
     container.appendChild(item);
   });
-  refreshMenuMacroList();
 }
 
-function showAddMacroModal() {
-  document.getElementById('macroName').value  = '';
-  document.getElementById('macroDesc').value  = '';
-  document.getElementById('macroJson').value  = '';
-  document.getElementById('addMacroModal').classList.remove('hidden');
-  setTimeout(() => document.getElementById('macroName').focus(), 50);
-}
-
-function hideAddMacroModal() {
-  document.getElementById('addMacroModal').classList.add('hidden');
-}
-
-function saveMacroFromModal() {
-  const nameEl = document.getElementById('macroName');
-  const descEl = document.getElementById('macroDesc');
-  const jsonEl = document.getElementById('macroJson');
-
-  const name = nameEl.value.trim();
-  if (!name) { nameEl.focus(); nameEl.style.borderColor='var(--t-red)'; return; }
-  nameEl.style.borderColor = '';
-
-  let macroObj = { name, description: descEl.value.trim(), steps: [] };
-  const raw = jsonEl.value.trim();
-  if (raw) {
-    try {
-      const parsed = JSON.parse(raw);
-      // Accept either a full macro object or just a steps array
-      if (Array.isArray(parsed)) {
-        macroObj.steps = parsed;
-      } else {
-        macroObj = { ...parsed, name, description: descEl.value.trim() || parsed.description || '' };
-      }
-    } catch (err) {
-      jsonEl.style.borderColor = 'var(--t-red)';
-      jsonEl.title = 'Invalid JSON: ' + err.message;
-      return;
-    }
-  }
-  jsonEl.style.borderColor = '';
-
-  macros.push(macroObj);
-  saveMacrosToStorage();
-  renderSidebarMacros();
-  hideAddMacroModal();
-}
-
-function deleteMacro(idx) {
-  macros.splice(idx, 1);
-  saveMacrosToStorage();
-  renderSidebarMacros();
-}
-
-function runMacro(idx) {
-  const m = macros[idx];
-  if (!m) return;
-  const session = sessions.get(activeSession);
-  if (!session || session.ws.readyState !== WebSocket.OPEN) {
-    showBridgeError('No active session — connect to an LPAR first');
-    return;
-  }
-  session.ws.send(JSON.stringify({ type: 'macro.run', macro: m }));
-}
-
-// Allow saving a macro object handed in from the Copilot card
-function saveMacro(macro) {
-  if (!macro || !macro.name) return;
-  macros.push(macro);
-  saveMacrosToStorage();
-  renderSidebarMacros();
-}
-
-function importMacroFromFile() {
-  document.getElementById('macroFileInput').click();
-}
-
-function loadMacroFile(e) {
-  const file = e.target.files[0];
-  if (!file) return;
- onst reader = new FileReader();
-  reader.onload = ev => {
-    document.getElementById('macroJson').value = ev.target.result;
-    // Pre-fill name from filename if empty
-    const nameEl = document.getElementById('macroName');
-    if (!nameEl.value.trim()) {
-      nameEl.value = file.name.replace(/\.macro\.json$|\.json$/, '');
-    }
-  };
-  reader.readAsText(file);
-  // Reset so the same file can be re-selected
-  e.target.value = '';
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-  // Close macro modal on overlay click
-  document.getElementById('addMacroModal').addEventListener('click', e => {
-    if (e.target === e.currentTarget) hideAddMacroModal();
-  });
-});
-
-// ── LPAR dropdown ──────────────────────────────────────────────────
+// ── LPAR dropdown helpers ─────────────────────────────────────────
 function toggleLparDropdown() {
   const btn  = document.getElementById('lparDropdownBtn');
   const menu = document.getElementById('lparDropdownMenu');
-  const open = menust.toggle('open');
+  const open = menu.classList.toggle('open');
   btn.classList.toggle('open', open);
 }
 function closeLparDropdown() {
@@ -1917,8 +1398,8 @@ document.addEventListener('click', e => {
   if (!document.getElementById('lparDropdown').contains(e.target)) closeLparDropdown();
 });
 
-// ── Connect to a named LPAR profile ───────────────────────────────
-functi connectLpar(name) {
+// ── Connect to a named LPAR profile ──────────────────────────────
+function connectLpar(name) {
   closeLparDropdown();
   const profile = LPAR_PROFILES.find(p => p.id === name);
   if (!profile) return;
@@ -1928,23 +1409,20 @@ functi connectLpar(name) {
 // ── Open a new WebSocket session to the bridge ────────────────────
 function openSession(profile) {
   hideConnectModal();
-
-  const sid   = ++sessionSeq;
-  const name  = profile.id || 'Session ' + sid;
-
+  const sid  = ++sessionSeq;
+  const name = profile.id || 'Session ' + sid;
   setConnStatus(name, 'connecting');
 
   let ws;
   try {
     ws = new WebSocket(BRIDGE_URL);
   } catch (e) {
-   us(name, 'error', 'Cannot reach bridge at ' + BRIDGE_URL);
+    setConnStatus(name, 'error');
     showBridgeError(e.message);
     return;
   }
 
   ws.onopen = () => {
-    // First message must be the connect request
     ws.send(JSON.stringify({
       type:     'connect',
       host:     profile.host,
@@ -1953,8 +1431,6 @@ function openSession(profile) {
       luName:   profile.luName   ?? null,
       model:    profile.model    ?? '3278-4',
       codepage: profile.codepage ?? 37,
-      // tn3270e comes from the profile (set in lpars.txt or connect modal)
-      // default: OFF for z/VM, ON for everything else
       tn3270e:  profile.tn3270e  ?? (profile.type !== 'ZVM'),
     }));
   };
@@ -1982,29 +1458,24 @@ function openSession(profile) {
     }
   };
 
-  // Register the session
   const tabEl = addSessionTab(name, profile.type || 'TSO', sid);
   sessions.set(sid, { ws, profile, tabEl, name });
   activateSession(sid);
 }
 
-// ── Handle messages from the bridge ───────────────────────
+// ── Handle messages from the bridge ──────────────────────────────
 function handleBridgeMsg(sid, msg) {
   const session = sessions.get(sid);
   if (!session) return;
 
   switch (msg.type) {
-
     case 'status':
       if (msg.state === 'connected') {
         setConnStatus(session.name, 'connected');
         updateSessionDot(sid, 'connected');
-        // Update OIA LU field if negotiated LU was returned
         if (msg.lu) {
-          document.querySelector('.oia-bar')
-            ?.querySelectorAll('.oia-field')[1]
-            ?.querySelector('.oia-val')
-      xtContent === msg.lu;
+          const luEl = document.getElementById('oiaLu');
+          if (luEl) luEl.textContent = msg.lu;
         }
       } else if (msg.state === 'disconnected') {
         setConnStatus(session.name, 'disconnected');
@@ -2015,9 +1486,8 @@ function handleBridgeMsg(sid, msg) {
       break;
 
     case 'screen':
-      if (sid === activeSession) renderLiveScreen(msg);
-      // Always update live text for Copilot context
       if (sid === activeSession) {
+        renderLiveScreen(msg);
         liveScreenText = screenToText(msg);
         cursorRow = msg.cursorRow ?? 0;
         cursorCol = msg.cursorCol ?? 0;
@@ -2029,9 +1499,8 @@ function handleBridgeMsg(sid, msg) {
       break;
 
     case 'copilot.provider':
-      document.querySelector('.copilot-subtitle')
-        && (document.querySelector('.copilot-subtitle').textContent =
-          `${msg.name} · ${msg.model}`);
+      const sub = document.getElementById('copilotSubtitle');
+      if (sub) sub.textContent = `${msg.name} · ${msg.model}`;
       break;
 
     case 'copilot.reply':
@@ -2039,14 +1508,13 @@ function handleBridgeMsg(sid, msg) {
       break;
 
     case 'copilot.error':
-      handleCopilotReply(⚠ Copilot error: ' + msg.message);
+      handleCopilotReply('⚠ Copilot error: ' + msg.message);
       break;
 
     case 'macro.started':
     case 'macro.completed':
     case 'macro.failed':
     case 'macro.progress':
-      // Route to macro UI if implemented
       break;
 
     case 'error':
@@ -2055,9 +1523,20 @@ function handleBridgeMsg(sid, msg) {
   }
 }
 
-// ── Render a live screen from the bridge ──────────────────────────
+// ══════════════════════════════════════════════════════════════════
+//  SCREEN RENDERING — with fitScreen() called after every render
+// ══════════════════════════════════════════════════════════════════
+
+/**
+ * renderLiveScreen(screenData)
+ * ----------------------------
+ * Renders a live screen from the bridge.
+ * Uses display:inline-block cells with width:1ch so rows never wrap
+ * and character columns always align, regardless of terminal model.
+ * Calls fitScreen() after DOM update so the screen scales to fit.
+ */
 function renderLiveScreen(screenData) {
-  const term = document.getElementById(';
+  const term    = document.getElementById('terminal');
   term.innerHTML = '';
 
   const rows    = screenData.rows || [];
@@ -2074,27 +1553,29 @@ function renderLiveScreen(screenData) {
       const cell   = cells[ci] || { char: ' ' };
       const ch     = cell.char && cell.char !== '\x00' ? cell.char : ' ';
       const cellEl = document.createElement('span');
+      cellEl.className = 'screen-cell';
       cellEl.textContent = ch;
 
       if (ri === cRow && ci === cCol) {
-        cellEl.className = 'cursor-cell';
+        cellEl.className = 'screen-cell cursor-cell';
       } else if (cell.fa !== undefined) {
-        const prot = !!(cell.fa & 0x20);
+        const prot   = !!(cell.fa & 0x20);
         const intens = (cell.fa & 0x0C) >> 2;
-        if (prot && intens === 3)      cellEl.className = 'field-error';
-        else if (prot && intens === 2) cellEl.className = 'field-dim';
-        else if (prot)                 cellEl.className = 'field-protected';
-        else                           cellEl.className = 'field-label';
+        if (prot && intens === 3)      cellEl.className = 'screen-cell field-error';
+        else if (prot && intens === 2) cellEl.className = 'screen-cell field-dim';
+        else if (prot)                 cellEl.className = 'screen-cell field-protected';
+        else                           cellEl.className = 'screen-cell field-label';
       }
       rowEl.appendChild(cellEl);
     }
     term.appendChild(rowEl);
   });
 
-  document.getElementById('oiaRow').textContent =
-    String(cRow + 1).padStart(2, '0');
-  document.getElementById('oiaCol').textContent =
-    String(cCol + 1).padStart(2, '0');
+  document.getElementById('oiaRow').textContent = String(cRow + 1).padStart(2, '0');
+  document.getElementById('oiaCol').textContent = String(cCol + 1).padStart(2, '0');
+
+  // FIX: fit screen to available viewport after every render
+  fitScreen();
 }
 
 // Convert a screen message to plain text for Copilot context
@@ -2113,7 +1594,36 @@ function updateOIA(oia) {
     mode.textContent = 'X SYSTEM';
     mode.className   = 'oia-val amber';
   } else {
-    mode.textContent = 'REmode.className   = 'oia-val blue';
+    mode.textContent = 'READY';
+    mode.className   = 'oia-val blue';
+  }
+}
+
+// ── Click on terminal → move cursor ──────────────────────────────
+function termClick(e) {
+  const term = e.currentTarget;
+  const rect = term.getBoundingClientRect();
+  // Account for CSS scale transform
+  const scaleStr = term.style.transform || '';
+  const scaleMatch = scaleStr.match(/scale\(([\d.]+)\)/);
+  const scale = scaleMatch ? parseFloat(scaleMatch[1]) : 1;
+
+  // Cell dimensions at current font
+  const rows = term.querySelectorAll('.screen-row');
+  if (!rows.length) return;
+  const cellH = rows[0].offsetHeight || 1;
+  const cells = rows[0].querySelectorAll('.screen-cell');
+  const cellW = cells.length ? (rows[0].offsetWidth / cells.length) : 8;
+
+  const x = (e.clientX - rect.left) / scale;
+  const y = (e.clientY - rect.top)  / scale;
+
+  cursorCol = Math.max(0, Math.min(Math.floor(x / cellW), (cells.length || 80) - 1));
+  cursorRow = Math.max(0, Math.min(Math.floor(y / cellH), rows.length - 1));
+
+  const session = sessions.get(activeSession);
+  if (session && session.ws.readyState === WebSocket.OPEN) {
+    session.ws.send(JSON.stringify({ type: 'cursor', row: cursorRow, col: cursorCol }));
   }
 }
 
@@ -2126,11 +1636,10 @@ function sendKey(aid, fields = []) {
 
 function sendType(row, col, text) {
   const session = sessions.get(activeSession);
-  if (! session.ws.readyState !== WebSocket.OPEN) return;
+  if (!session || session.ws.readyState !== WebSocket.OPEN) return;
   session.ws.send(JSON.stringify({ type: 'type', row, col, text }));
 }
 
-// ── Keyboard handler ──────────────────────────────────────────────
 const AID_MAP = {
   'Enter':'ENTER','Escape':'PA1',
   'F1':'PF1','F2':'PF2','F3':'PF3','F4':'PF4','F5':'PF5','F6':'PF6',
@@ -2140,89 +1649,24 @@ const AID_MAP = {
   'F21':'PF21','F22':'PF22','F23':'PF23','F24':'PF24',
 };
 
-document.addEventListener('keydown', e => {
-  // UI shortcuts (always active)
-  if (e.ctrlKey && e.key === 't') {
-    e.preventDefault();
-    closeAllMenus();
-    showConnectModal();
-    return;
-  }
-  if (e.ctrlKey && e.key === 'k') {
-    e.preventDefault();
-    const copilotTabBtn = document.querySelector('.copilot-tab');
-    if (document.getElementById('rightPanel').classList.contains('hidden'))
-      document.getElementById('rightPanel').classList.remove('hidden');
-    switchPanelTab(copilotTabBtn, 'Copilot');
-    document.getElementById('copilot-input').focus();
-    return;
-  }
-  if (e.ctrlKey && e.key === 'b') {
-    e.preventDefault();
-    document.getElementById('sidebar').classList.toggle('collapsed');
-    return;
-  }
-
-  // Don't capture keys when focused on text inputs or textareas
-  const tag = document.activeElement?.tagName;
-  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-
-  // AID keys — send to bridge
-  if (AID_MAP[e.key]) {
-    e.preventDefault();
-    sendKey(AID_MAP[e.key]);
-    return;
-  }
-
-  // Printable characters — send to bridge as type-at-cursor
-  if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
-    sendType(cursorRow, cursorCol, e.key);
-    return;
-  }
-
-  // Backspace
-  if (e.key === 'Backspace') {
-    e.preventDefault();
-    sendType(cursorRow, Math.max(0, cursorCol - 1), ' ');
-    return;
-  }
-});
-
-// âoolbar buttons ────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
-  document.querySelectorAll('.t-btn.pf').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const txt = btn.textContent.trim();
-      const match = txt.match(/^(PF\d+|PA\d+)/);
-      if (match) sendKey(match[1]);
-    });
-  });
-  document.querySelector('.t-btn[title="Clear"]')
-    ?.addEventLislick', () => sendKey('CLEAR'));
-  document.querySelector('.t-btn[title="SysReq"]')
-    ?.addEventListener('click', () => sendKey('SYSREQ'));
-  document.querySelector('.t-btn[title="PA1"]')
-    ?.addEventListener('click', () => sendKey('PA1'));
-  document.querySelector('.t-btn[title="PA2"]')
-    ?.addEventListener('click', () => sendKey('PA2'));
-});
-
 // ── Connection status helpers ─────────────────────────────────────
-function sete, state, detail) {
+function setConnStatus(name, state) {
   const dot  = document.getElementById('mainConnDot');
   const txt  = document.getElementById('connStatusText');
   const mode = document.getElementById('oiaMode');
-
   const states = {
-    connected:    { dotClass:'conn-dot',                 color:'var(--accent-green)', modeText:'READY',        modeClass:'oia-val blue'  },
-    connecting:   { dotClass:'conn-dot connecting',      color:'var(--accent-amber)', modeText:'CONNECTING',   modeClass:'oia-val amber' },
-    disconnected: { dotClass:'conn-dot disconnected',    color:'var(--text-muted)',   modeText:'DISCONNECTED', modeClass:'oia-val'       },
-    error:        { dotClass:'conn-dot disconnected',    color:'var(--t-red)',        modeText:'ERROR',        modeClass:'oia-val'       },
+    connected:    { dotClass:'conn-dot',             color:'var(--accent-green)', modeText:'READY',        modeClass:'oia-val blue'  },
+    connecting:   { dotClass:'conn-dot connecting',  color:'var(--accent-amber)', modeText:'CONNECTING',   modeClass:'oia-val amber' },
+    disconnected: { dotClass:'conn-dot disconnected',color:'var(--text-muted)',   modeText:'DISCONNECTED', modeClass:'oia-val'       },
+    error:        { dotClass:'conn-dot disconnected',color:'var(--t-red)',        modeText:'ERROR',        modeClass:'oia-val'       },
   };
   const s = states[state] || states.disconnected;
   dot.className   = s.dotClass;
-  txt.textContent = name + (state === 'connecting' ? ' · Connecting…' : state === 'connected' ? ' · Connected' : state === 'error' ? ' · Error' : ' · Disconnected');
- tyle.color = s.color;
+  txt.textContent = name + (
+    state === 'connecting'   ? ' · Connecting…' :
+    state === 'connected'    ? ' · Connected'   :
+    state === 'error'        ? ' · Error'        : ' · Disconnected');
+  txt.style.color  = s.color;
   mode.textContent = s.modeText;
   mode.className   = s.modeClass;
 }
@@ -2238,14 +1682,13 @@ function updateSessionDot(sid, state) {
   dot.style.boxShadow  = state === 'connected' ? `0 0 4px ${c}` : 'none';
 }
 
-// ── Bridge error overlay ──────────────────────────────────────────
+// ── Bridge error toast ────────────────────────────────────────────
 function showBridgeError(msg) {
-  // Show a non-blocking toast on the terminal instead of alert()
-  const term = document.getElementById('terminal');
+  const term  = document.getElementById('terminal');
   const toast = document.createElement('div');
   toast.style.cssText = `
     position:absolute;top:8px;left:50%;transform:translateX(-50%);
-    background:#1a0a0a;border:1px solid var(--t-red);bords:4px;
+    background:#1a0a0a;border:1px solid var(--t-red);border-radius:4px;
     padding:8px 16px;font-size:11px;color:var(--t-red);z-index:50;
     font-family:'IBM Plex Mono',monospace;white-space:pre;max-width:90%;
     text-align:center;box-shadow:0 4px 20px rgba(0,0,0,0.6)`;
@@ -2255,11 +1698,11 @@ function showBridgeError(msg) {
   setTimeout(() => toast.remove(), 8000);
 }
 
-// ── Session tabs ────────────────────────────────────────────────âtion addSessionTab(name, type, sid) {
-  const tabs  = document.querySelector('.session-tabs');
+// ── Session tabs ──────────────────────────────────────────────────
+function addSessionTab(name, type, sid) {
+  const tabs   = document.querySelector('.session-tabs');
   const addBtn = tabs.querySelector('.tab-add');
 
-  // Switch to existing tab if already open
   const existing = [...tabs.querySelectorAll('.session-tab')]
     .find(t => t.dataset.sid === String(sid));
   if (existing) { activateTabEl(existing, sid); return existing; }
@@ -2268,9 +1711,9 @@ function showBridgeError(msg) {
   const color  = colors[tabs.querySelectorAll('.session-tab').length % colors.length];
 
   const tab = document.createElement('div');
-  tab.className    = 'session-tab';
-  tab.dataset.sid  = sid;
-  tab.innerHTML = `<div class="tab-dot" style="background:#ffaa00;box-shadow:0 0 4px #ffaa00"></div>
+  tab.className   = 'session-tab';
+  tab.dataset.sid = sid;
+  tab.innerHTML   = `<div class="tab-dot" style="background:#ffaa00;box-shadow:0 0 4px #ffaa00"></div>
     ${esc(name)} · ${esc(type)}
     <span class="tab-close" onclick="closeSessionTab(event,this)">×</span>`;
   tab.onclick = () => activateTabEl(tab, sid);
@@ -2279,7 +1722,7 @@ function showBridgeError(msg) {
 }
 
 function activateTabEl(tabEl, sid) {
-  document.querySelectorAll('.sessn-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.session-tab').forEach(t => t.classList.remove('active'));
   tabEl.classList.add('active');
   activateSession(sid);
 }
@@ -2290,7 +1733,6 @@ function activateSession(sid) {
   if (!session) return;
   setConnStatus(session.name,
     session.ws.readyState === WebSocket.OPEN ? 'connected' : 'disconnected');
-  // Clear terminal until bridge sends a screen
   if (session.ws.readyState !== WebSocket.OPEN) {
     document.getElementById('terminal').innerHTML = '';
   }
@@ -2304,7 +1746,6 @@ function closeSessionTab(e, closeBtn) {
   const all  = [...tabs.querySelectorAll('.session-tab')];
   const idx  = all.indexOf(tab);
 
-  // Close the WebSocket
   const session = sessions.get(sid);
   if (session) {
     session.ws.send(JSON.stringify({ type: 'disconnect' }));
@@ -2324,94 +1765,15 @@ function closeSessionTab(e, closeBtn) {
   }
 }
 
-// Keep the old switchTab for pre-existing static tabs
 function switchTab(el) {
   document.querySelectorAll('.session-tab').forEach(t => t.classList.remove('active'));
   el.classList.add('active');
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  SETTINGS
-
-function esc(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function escAttr(s) { return s.replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
-
-// ══════════════════════════â══════════════════════════════
-//  MENU BAR
+//  MENU ACTIONS
 // ══════════════════════════════════════════════════════════════════
-const MENU_IDS = ['menuFile','menuSession','menuView','menuMacros','menuTransfer','menuTools','menuHelp'];
-
-function toggleMenu(id) {
-  const isOpen = document.getElementById(id).classList.contains('open;
-  closeAllMenus();
-  if (!isOpen) document.getElementById(id).classList.add('open');
-}
-
-function closeAllMenus() {
-  MENU_IDS.forEach(id => document.getElementById(id)?.classList.remove('open'));
-}
-
-// Close on outside click
-document.addEventListener('click', e => {
-  if (!e.target.closest('.menu-item')) closeAllMenus();
-});
-
-// Hover-slide: if any menu is open, hovering another opens it
-document.addEventListener('DOMContentLoaded', () => {
-  MENU_IDS.forEach(id => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.addEventListener('mouseenter', () => {
-      if (document.querySelector('.menu-item.open')) {
-        closeAllMenus();
-        el.classList.add('open');
-      }
-    });
-    // Stop dropdown clicks from closing via the outside-click handler
-    el.querySelector('.menu-dropdown')?.addEventListener('click', e => e.stopPropagation());
-  });
-});
-
-// ── File ───────────────────────────────────────â──────────────
-function menuCloseActiveSession() {
-  closeAllMenus();
-  if (activeSession === null) return;
-  const tab = document.querySelector(`.session-tab[data-sid="${activeSession}"]`);
-  const closeBtn = tab?.querySelector('.tab-close');
-  if (closeBtn) closeSessionTab({ stopPropagation: () => {} }, closeBtn);
-}
-
-let _menuFontSize = 13;
-function menuFontSize(delta) {
-  closeAllMenus();
-  if (delta === 0) { _menuFontSize = 13; }
-  else { _menuFontSize = Math.max(9, Math.mntSize + delta)); }
-  document.getElementById('terminal').style.fontSize = _menuFontSize + 'px';
-  const lbl = document.getElementById('fontSizeLabel');
-  if (lbl) lbl.textContent = _menuFontSize;
-  const slider = document.querySelector('#panelSettings input[type=range]');
-  if (slider) slider.value = _menuFontSize;
-}
-
-function menuCaptureScreen() {
-  closeAllMenus();
-  const text = getCurrentScreenText();
-  if (!text) return;
-  const blob = new Blob([text], { type: 'text/plain' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'screen-' + new Date().toISOString().replace(/[:.]/g, '-') + '.txt';
-  a.click();
-}
-
-function menuFullScreen() {
-  closeAllMenus();
-  if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
-  else document.exitFullscreen?.();
-}
-
-// ── Session ───────────────────────────────────────────────────────
-funcon menuDisconnect() {
+function menuDisconnect() {
   closeAllMenus();
   const session = sessions.get(activeSession);
   if (!session) return;
@@ -2422,24 +1784,110 @@ function menuReconnect() {
   closeAllMenus();
   const session = sessions.get(activeSession);
   if (!session) return;
-  const profile = session.profile;
-  session.ws.send(JSON.stringify({ type: 'disconnect' }));
-  session.ws.close();
-  setTimeout(() => openSession(profile), 300);
+  openSession(session.profile);
 }
 
-function menuSessionProperties() {
+function menuCloseActiveSession() {
   closeAllMenus();
-  const session = sessions.get(activeSession);
-  showConnectModal(session?.profile ?? null);
+  const tab = document.querySelector('.session-tab.active');
+  if (tab) {
+    const close = tab.querySelector('.tab-close');
+    if (close) closeSessionTab({ stopPropagation: () => {} }, close);
+  }
 }
 
-// ── Macros ────────────────────────────────────────────────────────
+function menuCaptureScreen() {
+  closeAllMenus();
+  const term = document.getElementById('terminal');
+  const lines = [...term.querySelectorAll('.screen-row')]
+    .map(r => [...r.querySelectorAll('.screen-cell')].map(c => c.textContent).join(''))
+    .join('\n');
+  const blob = new Blob([lines], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'screen-capture-' + new Date().toISOString().slice(0,19).replace(/:/g,'-') + '.txt';
+  a.click();
+}
+
+function menuOpenPanel(name) {
+  closeAllMenus();
+  const rightPanel = document.getElementById('rightPanel');
+  if (rightPanel.classList.contains('hidden')) { rightPanel.classList.remove('hidden'); setTimeout(fitScreen, 210); }
+  const tabs = [...document.querySelectorAll('.panel-tab')];
+  const idx  = { Settings:0, Keys:1, Xfer:2, Copilot:3 }[name] ?? 0;
+  if (tabs[idx]) switchPanelTab(tabs[idx], name);
+}
+
+function menuOpenCopilot() {
+  closeAllMenus();
+  const rightPanel = document.getElementById('rightPanel');
+  if (rightPanel.classList.contains('hidden')) { rightPanel.classList.remove('hidden'); setTimeout(fitScreen, 210); }
+  const tab = document.querySelector('.copilot-tab');
+  if (tab) switchPanelTab(tab, 'Copilot');
+  document.getElementById('copilot-input')?.focus();
+}
+
+function menuOpenTransfer() {
+  closeAllMenus();
+  menuOpenPanel('Xfer');
+}
+
+function menuShowShortcuts() {
+  closeAllMenus();
+  menuOpenPanel('Keys');
+}
+
+function menuAbout() {
+  closeAllMenus();
+  showBridgeError('WebTerm/3270\nModern web-based IBM mainframe terminal emulator.\n\nProtocol: TN3270 / TN3270E  (RFC 1576 / RFC 2355)\nBridge: Node.js WebSocket · Client: HTML5');
+}
+
+function menuImportMacro() {
+  closeAllMenus();
+  showAddMacroModal();
+  setTimeout(() => importMacroFromFile(), 150);
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  MACROS
+// ══════════════════════════════════════════════════════════════════
+function loadMacros() {
+  try {
+    const raw = localStorage.getItem('wt3270_macros');
+    macros = raw ? JSON.parse(raw) : [];
+  } catch { macros = []; }
+  renderSidebarMacros();
+  refreshMenuMacroList();
+}
+
+function saveMacrosToStorage() {
+  try { localStorage.setItem('wt3270_macros', JSON.stringify(macros)); } catch {}
+}
+
+function renderSidebarMacros() {
+  const container = document.getElementById('sidebarMacroList');
+  if (!container) return;
+  container.innerHTML = '';
+  macros.forEach((m, idx) => {
+    const item = document.createElement('div');
+    item.className = 'macro-item';
+    item.style.position = 'relative';
+    item.innerHTML = `<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">▶ ${esc(m.name)}</span>
+      <span style="font-size:11px;color:var(--text-muted);opacity:0.7;cursor:pointer" title="Delete">✕</span>`;
+    item.querySelector('span:last-child').addEventListener('click', e => { e.stopPropagation(); deleteMacro(idx); });
+    item.addEventListener('click', () => runMacro(idx));
+    item.querySelector('span:last-child').addEventListener('mouseenter', e => e.target.style.opacity='1');
+    item.querySelector('span:last-child').addEventListener('mouseleave', e => e.target.style.opacity='0.7');
+    container.appendChild(item);
+  });
+  refreshMenuMacroList();
+}
+
 function refreshMenuMacroList() {
   const container = document.getElementById('menuMacroList');
   if (!container) return;
-  if (!macros || !macros.length) {
-    container.innerHTML = '<div class="menu-dd-item disabled">No macros sa/div>';
+  if (!macros.length) {
+    container.innerHTML = '<div class="menu-dd-item disabled">No macros saved</div>';
     return;
   }
   container.innerHTML = '';
@@ -2452,52 +1900,299 @@ function refreshMenuMacroList() {
   });
 }
 
-function menuImportMacro() {
-  closeAllMenus();
-  showAddMacroModal();
-  setTimeout(() => importMacroFromFile(), 150);
+function showAddMacroModal() {
+  document.getElementById('macroName').value = '';
+  document.getElementById('macroDesc').value = '';
+  document.getElementById('macroJson').value = '';
+  document.getElementById('addMacroModal').classList.remove('hidden');
+  setTimeout(() => document.getElementById('macroName').focus(), 50);
 }
 
-// ── Transfer ────────────────────────────────────────────────────
-function menuOpenTransfer() {
-  closeAllMenus();
-  menuOpenPanel('Xfer');
+function hideAddMacroModal() {
+  document.getElementById('addMacroModal').classList.add('hidden');
 }
 
-// ── Tools ─────────────────────────────────────────────────────────
-function menuOpenPanel(name) {
-  closeAllMenus();
-  const rightPanel = document.getElementById('rightPanel');
-  if (rightPanel.classst.contains('hidden')) rightPanel.classList.remove('hidden');
-  const panelIndex = { Settings: 1, Keys: 2, Xfer: 3, Copilot: 4 }[name] || 1;
-  const tab = document.querySelector(`.panel-tab:nth-child(${panelIndex})`);
-  if (tab) switchPanelTab(tab, name);
+function saveMacroFromModal() {
+  const nameEl = document.getElementById('macroName');
+  const descEl = document.getElementById('macroDesc');
+  const jsonEl = document.getElementById('macroJson');
+  const name = nameEl.value.trim();
+  if (!name) { nameEl.focus(); nameEl.style.borderColor = 'var(--t-red)'; return; }
+  nameEl.style.borderColor = '';
+  let macroObj = { name, description: descEl.value.trim(), steps: [] };
+  const raw = jsonEl.value.trim();
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        macroObj.steps = parsed;
+      } else {
+        macroObj = { ...parsed, name, description: descEl.value.trim() || parsed.description || '' };
+      }
+    } catch (err) {
+      jsonEl.style.borderColor = 'var(--t-red)';
+      jsonEl.title = 'Invalid JSON: ' + err.message;
+      return;
+    }
+  }
+  jsonEl.style.borderColor = '';
+  macros.push(macroObj);
+  saveMacrosToStorage();
+  renderSidebarMacros();
+  hideAddMacroModal();
 }
 
-function menuOpenCopilot() {
-  closeAllMenus();
-  const rightPanel = document.getElementById('rightPanel');
-  if (rightPanel.classList.contains('hidden')) rightPanel.classList.remove('hidden');
-  const tab = document.querySelector('.copilot-tab');
-  if (tab) switchPanelTab(tab, 'Copilot');
-  document.getElementById('copilot-input')?.focus();
+function deleteMacro(idx) {
+  macros.splice(idx, 1);
+  saveMacrosToStorage();
+  renderSidebarMacros();
 }
 
-// ── Help ──────────────────────────────────────────────────────────
-function menuShowShortcuts() {
-  closeAllMenus();
-  menuOpenPanel('Keys');
+function runMacro(idx) {
+  const m = macros[idx];
+  if (!m) return;
+  const session = sessions.get(activeSession);
+  if (!session || session.ws.readyState !== WebSocket.OPEN) {
+    showBridgeError('No active session — connect to an LPAR first');
+    return;
+  }
+  session.ws.send(JSON.stringify({ type: 'macro.run', macro: m }));
 }
 
-function menuAbout() {
-  closeAllMenus();
-  showBridgeError(
-    'WebTerm/3270\n' +
-    'Modern web-based IBM mainframe terminal emulator.\n\n' +
-    l: TN3270 / TN3270E  (RFC 1576 / RFC 2355)\n' +
-    'Bridge: Node.js WebSocket · Client: HTML5'
-  );
+function saveMacro(macro) {
+  if (!macro || !macro.name) return;
+  macros.push(macro);
+  saveMacrosToStorage();
+  renderSidebarMacros();
 }
+
+function importMacroFromFile() {
+  document.getElementById('macroFileInput').click();
+}
+
+function loadMacroFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    document.getElementById('macroJson').value = ev.target.result;
+    const nameEl = document.getElementById('macroName');
+    if (!nameEl.value.trim()) nameEl.value = file.name.replace(/\.macro\.json$|\.json$/, '');
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('addMacroModal').addEventListener('click', e => {
+    if (e.target === e.currentTarget) hideAddMacroModal();
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  COPILOT
+// ══════════════════════════════════════════════════════════════════
+function buildSystemPrompt() {
+  let sys = `You are a helpful assistant embedded in WebTerm/3270, a web-based IBM mainframe terminal emulator.
+You help users navigate TSO, ISPF, SDSF, JES2, CICS, and other z/OS subsystems.
+You can help with: JCL, REXX, CLIST, ISPF panels, error messages, dataset management, job submission, and macro generation.
+
+When generating macros, output them as valid JSON:
+{ "name": "...", "description": "...", "steps": [
+  { "op": "wait",    "condition": "text", "row": N, "col": N, "text": "..." },
+  { "op": "type",    "row": N, "col": N, "text": "..." },
+  { "op": "aid",     "aid": "ENTER|PF1..PF24|PA1|PA2|CLEAR" },
+  { "op": "wait",    "condition": "unlock" },
+  { "op": "comment", "text": "..." }
+]}
+
+Be concise and use IBM mainframe terminology. Reference row/column positions when discussing screen fields.`;
+
+  if (includeScreen && liveScreenText) {
+    sys += `\n\n--- CURRENT 3270 SCREEN ---\n${liveScreenText}\n--- END SCREEN ---\n\nThe user is looking at this screen right now.`;
+  }
+  return sys;
+}
+
+async function sendCopilotMessage(override) {
+  if (isStreaming) return;
+  const input = document.getElementById('copilot-input');
+  const text  = (override ?? input.value).trim();
+  if (!text) return;
+
+  input.value = '';
+  copilotResize(input);
+  document.getElementById('chatEmpty').style.display = 'none';
+
+  appendUserMsg(text);
+  chatHistory.push({ role: 'user', content: text });
+
+  const typingEl = appendTyping();
+  isStreaming = true;
+  document.getElementById('sendBtn').disabled = true;
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model:      'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        system:     buildSystemPrompt(),
+        messages:   chatHistory,
+      }),
+    });
+
+    typingEl.remove();
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error?.message || `API error ${res.status}`);
+    }
+
+    const data  = await res.json();
+    const reply = data.content.filter(b => b.type === 'text').map(b => b.text).join('');
+    chatHistory.push({ role: 'assistant', content: reply });
+    appendAssistantMsg(reply);
+
+  } catch (err) {
+    typingEl.remove();
+    appendErrorMsg(err.message);
+  } finally {
+    isStreaming = false;
+    document.getElementById('sendBtn').disabled = false;
+  }
+}
+
+function handleCopilotReply(content) {
+  // Bridge-routed Copilot reply (non-direct API path)
+  appendAssistantMsg(content);
+}
+
+function quickPrompt(text) {
+  const copilotTabBtn = document.querySelector('.copilot-tab');
+  switchPanelTab(copilotTabBtn, 'Copilot');
+  sendCopilotMessage(text);
+}
+
+function appendUserMsg(text) {
+  const chat = document.getElementById('chatArea');
+  const div  = document.createElement('div');
+  div.className = 'msg user';
+  div.innerHTML = `
+    <div class="msg-avatar">you</div>
+    <div class="msg-body">
+      <div class="msg-role">You</div>
+      <div class="msg-content">${esc(text)}</div>
+    </div>`;
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function appendAssistantMsg(raw) {
+  const chat = document.getElementById('chatArea');
+  const div  = document.createElement('div');
+  div.className = 'msg assistant';
+  div.innerHTML = `
+    <div class="msg-avatar">⬡</div>
+    <div class="msg-body">
+      <div class="msg-role">Copilot</div>
+      <div class="msg-content">${renderMd(raw)}</div>
+    </div>`;
+  chat.appendChild(div);
+
+  // Detect macro JSON and add action card
+  const m = raw.match(/```json\s*(\{[\s\S]*?"steps"[\s\S]*?\})\s*```/);
+  if (m) {
+    try {
+      const macro = JSON.parse(m[1]);
+      const card  = document.createElement('div');
+      card.className = 'macro-card';
+      card.innerHTML = `
+        <div class="macro-card-title">⚡ Macro · ${esc(macro.name || 'Untitled')}</div>
+        <div style="font-size:10px;color:var(--text-dim)">${macro.steps?.length||0} steps${macro.description ? ' · ' + esc(macro.description) : ''}</div>
+        <div class="macro-card-actions">
+          <button class="macro-card-btn primary" onclick='saveMacro(${escAttr(JSON.stringify(macro))})'>Save to Engine</button>
+          <button class="macro-card-btn" onclick='dlMacro(${escAttr(JSON.stringify(macro))})'>⬇ Download</button>
+        </div>`;
+      div.querySelector('.msg-body').appendChild(card);
+    } catch {}
+  }
+
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function appendTyping() {
+  const chat = document.getElementById('chatArea');
+  const div  = document.createElement('div');
+  div.className = 'msg assistant';
+  div.innerHTML = `
+    <div class="msg-avatar">⬡</div>
+    <div class="msg-body">
+      <div class="msg-role">Copilot</div>
+      <div class="typing-indicator">
+        <div class="typing-dot"></div>
+        <div class="typing-dot"></div>
+        <div class="typing-dot"></div>
+      </div>
+    </div>`;
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+  return div;
+}
+
+function appendErrorMsg(message) {
+  const chat = document.getElementById('chatArea');
+  const div  = document.createElement('div');
+  div.className = 'msg assistant';
+  div.innerHTML = `
+    <div class="msg-avatar">⬡</div>
+    <div class="msg-body">
+      <div class="msg-role" style="color:var(--t-red)">Error</div>
+      <div class="msg-content" style="color:var(--text-dim);font-size:11px">${esc(message)}</div>
+    </div>`;
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function dlMacro(macro) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(macro, null, 2)], {type:'application/json'}));
+  a.download = (macro.name||'macro').replace(/[^a-z0-9]/gi,'_') + '.macro.json';
+  a.click();
+}
+
+function toggleScreenCtx() {
+  includeScreen = !includeScreen;
+  document.getElementById('screenCtxMini').classList.toggle('off', !includeScreen);
+}
+
+function copilotKeydown(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendCopilotMessage(); }
+}
+
+function copilotResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 90) + 'px';
+  const n = el.value.length;
+  document.getElementById('charCount').textContent = n > 0 ? String(n) : '';
+}
+
+function renderMd(text) {
+  return text
+    .replace(/```(\w*)\n?([\s\S]*?)```/g, (_,l,c) => `<pre>${esc(c.trim())}</pre>`)
+    .replace(/`([^`]+)`/g,              (_,c) => `<code>${esc(c)}</code>`)
+    .replace(/\*\*(.+?)\*\*/g,                   '<strong>$1</strong>')
+    .replace(/\n/g,                               '<br>');
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  UTILITIES
+// ══════════════════════════════════════════════════════════════════
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function escAttr(s) { return s.replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 
 // ════════════════════════════════════
 //  CLOCK + INIT
@@ -2508,7 +2203,7 @@ function tick() {
 }
 setInterval(tick, 1000); tick();
 
-/ Start with a blank terminal — bridge will send the first screen
+// Start with a blank terminal — bridge will send the first screen
 document.getElementById('terminal').innerHTML = '';
 document.getElementById('oiaMode').textContent = 'NOT CONNECTED';
 document.getElementById('oiaMode').className   = 'oia-val';
@@ -2516,15 +2211,20 @@ document.getElementById('connStatusText').textContent = 'Not connected';
 document.getElementById('connStatusText').style.color = 'var(--text-muted)';
 document.getElementById('mainConnDot').className = 'conn-dot disconnected';
 
-// Load LPAR profiles from bridge (popules dropdown, sidebar, modal)
+// Load LPAR profiles from bridge (populates dropdown, sidebar, modal)
 loadProfiles();
 
 // Load saved macros from localStorage
 loadMacros();
 
-// Initialise the default active panel (Settings) with correct display value
+// Initialise the default active panel (Settings)
+// Must use inline style — switchPanelTab owns display state via inline styles
 const defaultPanel = document.getElementById('panelSettings');
-if (defaultPanel) defaultPanel.style.display = 'block';
+if (defaultPanel) {
+  defaultPanel.style.display      = 'block';
+  defaultPanel.style.flexDirection = '';
+  defaultPanel.style.padding       = '12px';
+}
 
 </script>
 </body>
