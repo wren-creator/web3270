@@ -891,15 +891,6 @@ select:focus, input[type="text"]:focus, input[type="number"]:focus { border-colo
         <div class="setting-row"><label>Field Highlights</label><div class="toggle on" onclick="this.classList.toggle('on')"></div></div>
       </div>
       <div class="setting-group">
-        <div class="setting-label">Terminal Model</div>
-        <select id="modelSelect" onchange="/* model set on connect */">
-          <option value="3278-2">3278 Model 2 (80×24)</option>
-          <option value="3278-3">3278 Model 3 (80×32)</option>
-          <option value="3278-4" selected>3278 Model 5 (132×27)</option>
-          <option value="3278-5">3278 Model 5 (132×27)</option>
-        </select>
-      </div>
-      <div class="setting-group">
         <div class="setting-label">Connection</div>
         <div class="setting-row"><label>Auto Reconnect</label><div class="toggle on" onclick="this.classList.toggle('on')"></div></div>
         <div class="setting-row"><label>Keep-Alive (s)</label><input type="number" value="30" style="width:60px"></div>
@@ -1512,12 +1503,26 @@ function handleBridgeMsg(sid, msg) {
         setConnStatus(session.name, 'connected');
         updateSessionDot(sid, 'connected');
         if (msg.lu) {
-          const luEl = document.getElementById('oiaLu');
-          if (luEl) luEl.textContent = msg.lu;
+          const luE1 = document.getElementById('oiaLu');
+          if (luE1) luE1.textContent = msg.lu;
         }
+	// Added for the oia model 
+	if (msg.model) {
+		const modelE1 = document.getElementById('oiaModel');
+		if (modelE1) modelE1.textContent = msg.model;
+	}
+	if (msg.host) {
+		const sysSpan = document.getElementById('oiaSys');
+		if (sysSpan) sysSpan.textContent = msg.host;
+	}
       } else if (msg.state === 'disconnected') {
         setConnStatus(session.name, 'disconnected');
         updateSessionDot(sid, 'disconnected');
+	// Add these to reset the model in the oia bar
+	const luE1 = document.getElementById('oialu');
+	const modelE1 = document.getElementById('oiaModel');
+	if (luE1) luE1.textContent = '-';
+	if(modelE1) modelE1.textContent = '-';
       } else if (msg.state === 'connecting') {
         setConnStatus(session.name, 'connecting');
       }
