@@ -23,15 +23,15 @@ USER tn3270
 # The bridge → mainframe connections go OUT on whatever port
 # each LPAR profile specifies (:23, :992, etc.) — no EXPOSE needed
 # for those since they are outbound.
-EXPOSE 8080
+EXPOSE 8081
 
 # Health-check: confirm the WS port is accepting connections
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget -qO- http://localhost:8080/health 2>/dev/null || \
-      nc -z localhost 8080 || exit 1
+  CMD wget -qO- http://localhost:8081/health 2>/dev/null || \
+      nc -z localhost 8081 || exit 1
 
 ENV NODE_ENV=production \
-    BRIDGE_PORT=8080 \
+    BRIDGE_PORT=8081 \
     LOG_LEVEL=info
 
 CMD ["node", "server.js"]
