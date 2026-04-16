@@ -358,14 +358,15 @@ body {
 .screen-row {
   display: block;
   white-space: nowrap;        /* ← belt-and-suspenders no-wrap */
-  overflow: hidden;
+  <!--  overflow: hidden; -->
   height: 1.45em;
 }
 .screen-cell {
   display: inline-block;      /* ← reliable fixed width */
-  width: 1ch;                 /* ← 1 monospace character */
+  <!-- width: 1ch;                 /* ← 1 monospace character */ -->
+  width: var_--cell-w, 1ch);                 /* ← 1 monospace character */
   white-space: pre;
-  overflow: hidden;
+  <!-- overflow: hidden; -->
   vertical-align: top;
 }
 
@@ -894,7 +895,7 @@ select:focus, input[type="text"]:focus, input[type="number"]:focus { border-colo
         <select id="modelSelect" onchange="/* model set on connect */">
           <option value="3278-2">3278 Model 2 (80×24)</option>
           <option value="3278-3">3278 Model 3 (80×32)</option>
-          <option value="3278-4" selected>3278 Model 4 (80×43)</option>
+          <option value="3278-4" selected>3278 Model 5 (132×27)</option>
           <option value="3278-5">3278 Model 5 (132×27)</option>
         </select>
       </div>
@@ -1100,62 +1101,98 @@ let macros = [];
 //  SCREEN FIT — fixes both wrap and sizing issues
 // ══════════════════════════════════════════════════════════════════
 /**
+/**
  * fitScreen()
  * -----------
- * Measures the intrinsic pixel dimensions of #terminal, then computes
- * a CSS scale factor so it fills the available .screen-wrapper area
- * without overflow.  Max scale = 1 (never upscale — keeps text crisp).
- *
- * Called after every render AND by a ResizeObserver on .screen-wrapper
- * so panel/sidebar toggles and window resizes are handled automatically.
+ * Layout-safe terminal fitting for 80- and 132-column models.
  */
 function fitScreen() {
-  const wrapper = document.getElementById('screenWrapper');
-  const term    = document.getElementById('terminal');
-  if (!wrapper || !term) return;
+  try {
+    const wrapper = document.getElementById('screenWrapper');
+    const term = document.getElementById('terminal');
+    if (!wrapper || !term) return;
 
-  // Bail if terminal has no content yet (blank on connect)
-  if (!term.children.length) return;
+    const rows = term.querySelectorAll('.screen-row');
+    if (!rows.length) return;
 
-  // Measure available space (subtract padding 8px each side)
-  const availW = wrapper.clientWidth  - 16;
-  const availH = wrapper.clientHeight - 16;
-  if (availW <= 0 || availH <= 0) return;
+    // Determine column count from first row
+    const cellCount = rows[0].querySelectorAll('.screen-cell').length;
+    if (!cellCount) return;
 
-  // Reset any existing transform so we measure true intrinsic size
-  term.style.transform    = 'none';
-  term.style.marginBottom = '0';
+    // Read computed values
+    const style = getComputedStyle(term);
+    const baseFontSize = parseFloat(style.fontSize) || 13;
 
-  const intrinsicW = term.offsetWidth;
-  const intrinsicH = term.offsetHeight;
-  // Guard: if intrinsic size is 0, fonts haven't loaded yet — retry after a tick
-  if (intrinsicW === 0 || intrinsicH === 0) {
-    requestAnimationFrame(fitScreen);
-    return;
+    // Cell width must already be measured via measureCellWidth()
+    const cellWVar = getComputedStyle(document.documentElement)
+      .getPropertyValue('--cell-w')
+      .trim();
+
+    const cellW = parseFloat(cellWVar);
+    if (!Number.isFinite(cellW) || cellW <= 0) {
+      console.debug('[fitScreen] cell width not ready yet, skipping');
+      return;
+    }
+
+    // Explicit intrinsic size of terminal
+    const intrinsicWidth = Math.ceil(cellCount * cellW);
+    const intrinsicHeight = term.offsetHeight;
+
+    // DEBUG — width math
+    console.debug(
+      `[fitScreen] cols=${cellCount}, cellW=${cellW.toFixed(2)}px, ` +
+      `intrinsicWidth=${intrinsicWidth}px`
+    );
+
+    // Apply hard width — prevents browser reflow guesses
+    term.style.width = intrinsicWidth + 'px';
+    term.style.minWidth = intrinsicWidth + 'px';
+    term.style.maxWidth = intrinsicWidth + 'px';
+
+    // Available space inside wrapper (account for padding)
+    const availW = wrapper.clientWidth - 16;
+    const availH = wrapper.clientHeight - 16;
+    if (availW <= 0 || availH <= 0) return;
+
+    // Compute font scaling factor
+    const scaleW = availW / intrinsicWidth;
+    const scaleH = availH / intrinsicHeight;
+    const scale = Math.min(scaleW, scaleH, 1); // never upscale
+
+    // Apply via font-size instead of transform
+    const newFontSize = Math.floor(baseFontSize * scale * 100) / 100;
+    term.style.fontSize = newFontSize + 'px';
+
+    // Clear any legacy transform remnants
+    term.style.transform = 'none';
+    term.style.marginBottom = '0';
+  } catch (err) {
+    console.error('[fitScreen] fatal error:', err);
   }
-
-  // Scale to fit, keeping aspect ratio; cap at 1.0 (no upscale)
-  const scale = Math.min(availW / intrinsicW, availH / intrinsicH, 1);
-
-  // Guard: never apply a nonsense scale
-  if (!isFinite(scale) || scale <= 0) return;
-
-  term.style.transform       = `scale(${scale})`;
-  term.style.transformOrigin = 'top center';
-
-  // Compensate layout height so the OIA bar isn't hidden under the
-  // scaled element (CSS transform doesn't affect layout flow)
-  const scaledH = intrinsicH * scale;
-  term.style.marginBottom = `${scaledH - intrinsicH}px`;
 }
 
-// Attach ResizeObserver so fitScreen fires on any layout change
-// (sidebar collapse, right-panel toggle, window resize, etc.)
-(function initFitObserver() {
-  const wrapper = document.getElementById('screenWrapper');
-  if (!wrapper || typeof ResizeObserver === 'undefined') return;
-  new ResizeObserver(() => fitScreen()).observe(wrapper);
-})();
+// ══════════════════════════════════════════════════════════════════
+// CELL WIDTH MEASUREMENT
+// ══════════════════════════════════════════════════════════════════
+function measureCellWidth() {
+  const term = document.getElementById('terminal');
+  const ruler = document.createElement('span');
+  ruler.style.cssText = [
+    'position:absolute', 'visibility:hidden', 'top:-9999px', 'left:-9999px',
+    'font-family:' + (getComputedStyle(term).fontFamily || "'IBM Plex Mono',monospace"),
+    'font-size:' + (getComputedStyle(term).fontSize || '13px'),
+    'line-height:normal', 'white-space:pre', 'pointer-events:none'
+  ].join(';');
+  ruler.textContent = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'.repeat(2);
+  document.body.appendChild(ruler);
+  const w = ruler.getBoundingClientRect().width / 100;
+  document.body.removeChild(ruler);
+  if (w > 0) {
+    document.documentElement.style.setProperty('--cell-w', w + 'px');
+  }
+}
+
+document.fonts.ready.then(() => { measureCellWidth(); fitScreen(); });
 
 // ══════════════════════════════════════════════════════════════════
 //  PANEL / TAB SWITCHING
@@ -1260,6 +1297,7 @@ document.addEventListener('keydown', e => {
 function setFontSize(v) {
   document.getElementById('fontSizeLabel').textContent = v;
   document.getElementById('terminal').style.fontSize = v + 'px';
+  requestAnimationFrame(() => {measureCellWidth(); fitScreen(); });
   // Re-fit after font size change — intrinsic dimensions change
   setTimeout(fitScreen, 50);
 }
@@ -1429,7 +1467,7 @@ function openSession(profile) {
       port:     profile.port,
       tls:      profile.tls      ?? false,
       luName:   profile.luName   ?? null,
-      model:    profile.model    ?? '3278-4',
+      model:    profile.model    ?? '3278-5',
       codepage: profile.codepage ?? 37,
       tn3270e:  profile.tn3270e  ?? (profile.type !== 'ZVM'),
     }));
@@ -1538,6 +1576,7 @@ function handleBridgeMsg(sid, msg) {
 function renderLiveScreen(screenData) {
   const term    = document.getElementById('terminal');
   term.innerHTML = '';
+  measureCellWidth();
 
   const rows    = screenData.rows || [];
   const numCols = screenData.cols || 80;
@@ -1574,9 +1613,14 @@ function renderLiveScreen(screenData) {
   document.getElementById('oiaRow').textContent = String(cRow + 1).padStart(2, '0');
   document.getElementById('oiaCol').textContent = String(cCol + 1).padStart(2, '0');
 
-  // FIX: fit screen to available viewport after every render
-  fitScreen();
-}
+	<!-- // FIX: fit screen to available viewport after every render -->
+  <!-- fitScreen(); -->
+
+  // Ensure cell width is measured before fitting
+  requestAnimationFrame(() => {
+    measureCellWidth();
+    fitScreen();
+  });
 
 // Convert a screen message to plain text for Copilot context
 function screenToText(screenData) {
@@ -2199,9 +2243,11 @@ function escAttr(s) { return s.replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 // ════════════════════════════════════
 function tick() {
   document.getElementById('oiaTime').textContent =
-    new Date().toLocaleTimeString('en-US', {hour12:false});
+    new Date().toLocaleTimeString('en-US', { hour12: false });
 }
-setInterval(tick, 1000); tick();
+
+setInterval(tick, 1000);
+tick();
 
 // Start with a blank terminal — bridge will send the first screen
 document.getElementById('terminal').innerHTML = '';
@@ -2218,14 +2264,12 @@ loadProfiles();
 loadMacros();
 
 // Initialise the default active panel (Settings)
-// Must use inline style — switchPanelTab owns display state via inline styles
 const defaultPanel = document.getElementById('panelSettings');
 if (defaultPanel) {
-  defaultPanel.style.display      = 'block';
+  defaultPanel.style.display       = 'block';
   defaultPanel.style.flexDirection = '';
   defaultPanel.style.padding       = '12px';
 }
-
 </script>
 </body>
 </html>

@@ -23,7 +23,7 @@ function loadLparFile() {
     .map(line => line.trim())
     .filter(line => line && !line.startsWith('#'))
     .map(line => {
-      const [id, name, host, port, tls, type] = line.split(',').map(s => s.trim());
+      const [id, name, host, port, tls, type, model] = line.split(',').map(s => s.trim());
       return {
         id:       id,
         name:     name || id.toUpperCase(),
@@ -31,7 +31,7 @@ function loadLparFile() {
         port:     parseInt(port || '23', 10),
         tls:      (tls || 'false') === 'true',
         type:     (type || 'TSO').toUpperCase(),
-        model:    '3278-2',
+        model:    model || process.env.DEFAULT_MODEL || '3278-2',
         codepage: 37,
       };
     });
@@ -64,7 +64,7 @@ module.exports = {
      * Options: 3278-2 (80x24), 3278-3 (80x32), 3278-4 (80x43),
      *          3278-5 (132x27), 3279-2, 3279-5
      */
-    model: process.env.DEFAULT_MODEL || '3278-2',
+    model: process.env.DEFAULT_MODEL || '3278-5',
 
     /**
      * Default EBCDIC code page.
