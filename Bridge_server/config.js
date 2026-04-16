@@ -40,7 +40,7 @@ function loadLparFile() {
 module.exports = {
   bridge: {
     /** Port the WebSocket server listens on (browser connects here) */
-    port: parseInt(process.env.BRIDGE_PORT || '8080', 10),
+    port: parseInt(process.env.BRIDGE_PORT || '8081', 10),
 
     /**
      * Whether to verify TLS certificates when connecting to the mainframe.

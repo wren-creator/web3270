@@ -364,7 +364,7 @@ body {
 .screen-cell {
   display: inline-block;      /* ← reliable fixed width */
   <!-- width: 1ch;                 /* ← 1 monospace character */ -->
-  width: var_--cell-w, 1ch);                 /* ← 1 monospace character */
+  width: var(--cell-w, 1ch);                 /* ← 1 monospace character */
   white-space: pre;
   <!-- overflow: hidden; -->
   vertical-align: top;
@@ -1621,6 +1621,7 @@ function renderLiveScreen(screenData) {
     measureCellWidth();
     fitScreen();
   });
+}
 
 // Convert a screen message to plain text for Copilot context
 function screenToText(screenData) {
