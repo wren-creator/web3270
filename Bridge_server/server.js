@@ -147,7 +147,7 @@ wss.on('connection', (ws, req) => {
     // ── Session → Browser events ───────────────────────────────────
     session.on('connected', () => {
       logger.info(`[ws:${wsId}] TCP connected to ${host}:${port}`);
-      send(ws, { type: 'status', state: 'connected', host, port, lu: session.negotiatedLu });
+      send(ws, { type: 'status', state: 'connected', host, port, lu: session.negotiatedLu, model });
     });
 
     session.on('screen', screenData => {
