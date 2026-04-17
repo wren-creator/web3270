@@ -291,7 +291,15 @@ class Tn3270Session extends EventEmitter {
     `[ws:${this.wsId}] Model applied: ${model} (${this.rows}x${this.cols})`
   );
 }
-
+  _applyDynamicDimensions(cols, rows) {
+	  if (this.model !== 'IBM-DYNAMIC') return;
+	  if (cols === this.cols && rows === this.rows) return;
+	  logger.info(`[ws:${this.wsId}] IBM-DYNAMIC: resizing to ${cols}x${rows}`);
+	  this.cols = cols;
+	  this.rows = rows;
+	  this.buffer = newBuffer(this.rows, this.cols);
+	  this.cursorAddr = 0;
+  } 
   // ── Telnet option negotiation ──────────────────────────────────
 
   _handleTelnetOption(cmd, opt) {
@@ -356,22 +364,25 @@ class Tn3270Session extends EventEmitter {
     if (cmd === WILL) this._send(Buffer.from([IAC, DONT, opt]));
   }
 
-  _sendTn3270eDeviceType() {
-    // SB TN3270E DEVICE-TYPE REQUEST IBM-model [CONNECT lu-name] IAC SE
-    const deviceType = `IBM-${this.model}`;
-    const parts = [IAC, SB, OPT_TN3270E, TN3E_DEVICE_TYPE, TN3E_REQUEST,
-                   ...Buffer.from(deviceType)];
-    if (this.luName) {
-      parts.push(TN3E_CONNECT, ...Buffer.from(this.luName));
-    }
-    parts.push(IAC, SE);
-    this._send(Buffer.from(parts));
-  }
+ _sendTn3270eDeviceType() {
+  // IBM-DYNAMIC is sent as-is; all other models get the IBM- prefix
+  const deviceType = (this.model === 'IBM-DYNAMIC')
+    ? 'IBM-DYNAMIC'
+    : `IBM-${this.model}`;
 
+  const parts = [IAC, SB, OPT_TN3270E, TN3E_DEVICE_TYPE, TN3E_REQUEST,
+	 ...Buffer.from(deviceType)];
+  if (this.luName) {
+    parts.push(TN3E_CONNECT, ...Buffer.from(this.luName));
+  }
+  parts.push(IAC, SE);
+  this._send(Buffer.from(parts));
+  logger.info(`[ws:${this.wsId}] Sent TN3270E DEVICE-TYPE REQUEST ${deviceType}`);
+  }
   _initClassicTn3270() {
     logger.info(`[ws:${this.wsId}] Falling back to classic TN3270`);
     this.tn3270eEnabled = false;
-  }
+ }
 
   _handleSubneg(data) {
   logger.debug(`[ws:${this.wsId}] Subneg opt=0x${data[0].toString(16)} func=0x${(data[1]||0).toString(16)}`);
@@ -420,8 +431,10 @@ class Tn3270Session extends EventEmitter {
 
   // Handle Classic Terminal Type (RFC 1091)
   // Note: TN3E_SEND is 0x01, which is also the standard Telnet TTYPE SEND code
-  if (opt === OPT_TTYPE && data[1] === 0x01) {
-    const ttype = `IBM-${this.model}`;
+    if (opt === OPT_TTYPE && data[1] === 0x01) {
+      const ttype = (this.model === 'IBM-DYNAMIC')
+        ? 'IBM-DYNAMIC'
+        : `IBM-${this.model}`;
     const response = [IAC, SB, OPT_TTYPE, 0x00, ...Buffer.from(ttype), IAC, SE];
     this._send(Buffer.from(response));
     logger.info(`[ws:${this.wsId}] Sent TTYPE IS ${ttype}`);
@@ -585,6 +598,16 @@ _processWriteStructuredField(data) {
     const sfId = data[i + 2];
     if (sfId === 0x01) {
       this._sendQueryReply();
+      // If IBM-DYNAMIC, parse the Usable Area reply the host sen
+      // (sfId 0x81 type 0x01 contains cols/rows at known offsets)
+      if (this.model === 'IBM-DYNAMIC' && data.length >= 22) {
+	 try {
+	   const cols = (data[8] << 8) | data[9];
+	   const rows = (data[10] << 8) | data[11];
+	   if (cols > 0 && rows > 0) this._applyDynamicDimensions(cols, rows);
+          } catch(_) {}
+         }
+      }
     }
     i += len;
   }
@@ -811,15 +834,22 @@ function newBuffer(rows, cols) {
 }
 
 function modelDimensions(model) {
-  const map = {
-    '3278-2': { rows: 24,  cols: 80  },
-    '3278-3': { rows: 32,  cols: 80  },
-    '3278-4': { rows: 43,  cols: 80  },
-    '3278-5': { rows: 27,  cols: 132 },
-    '3178': { rows: 24,  cols: 80 }, // Standard 3178 is Model 2 equivalent
-  };
-  return map[model] || { rows: 24, cols: 80 };
-}
+	  const map = {
+		      'IBM-DYNAMIC': { rows: 24,  cols: 80  },  // placeholder; host drives real size
+		      '3278-2':      { rows: 24,  cols: 80  },
+		      '3278-3':      { rows: 32,  cols: 80  },
+		      '3278-4':      { rows: 43,  cols: 80  },
+		      '3278-5':      { rows: 27,  cols: 132 },
+		      '3178':        { rows: 24,  cols: 80  },
+		    };
+	  if (map[model]) return map[model];
+
+	  // Support freeform "COLSxROWS" e.g. "162x54"
+	  const m = model.match(/^(\d+)x(\d+)$/i);
+	  if (m) return { cols: parseInt(m[1], 10), rows: parseInt(m[2], 10) };
+	
+	  return { rows: 24, cols: 80 }; // safe fallback
+       }
 
 function cmdName(c) {
   return { [DO]:'DO',[DONT]:'DONT',[WILL]:'WILL',[WONT]:'WONT' }[c] || c;
