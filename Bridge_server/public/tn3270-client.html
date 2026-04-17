@@ -891,6 +891,18 @@ select:focus, input[type="text"]:focus, input[type="number"]:focus { border-colo
         <div class="setting-row"><label>Field Highlights</label><div class="toggle on" onclick="this.classList.toggle('on')"></div></div>
       </div>
       <div class="setting-group">
+	<div class="setting-label">Terminal Model</div>
+        <select id="settingsModel" onchange="applySettingsModel(this.value)">
+	   <option value="IBM-DYNAMIC">IBM-DYNAMIC (host-driven)</option>
+	   <option value="3278-2">3278-2 (80×24)</option>
+	   <option value="3278-3">3278-3 (80×32)</option>
+	   <option value="3278-4">3278-4 (80×43)</option>
+	   <option value="3278-5" selected>3278-5 (132×27)</option>
+	   <option value="162x54">162×54 (large monitor)</option>
+	   <option value="162x72">162×72 (extra tall)</option>
+	   </select>
+      </div>
+      <div class="setting-group"> 
         <div class="setting-label">Connection</div>
         <div class="setting-row"><label>Auto Reconnect</label><div class="toggle on" onclick="this.classList.toggle('on')"></div></div>
         <div class="setting-row"><label>Keep-Alive (s)</label><input type="number" value="30" style="width:60px"></div>
@@ -1042,10 +1054,13 @@ select:focus, input[type="text"]:focus, input[type="number"]:focus { border-colo
         <div class="form-group">
           <div class="form-label">Terminal Model</div>
           <select id="connModel">
+	    <option value="IBM-DYNAMIC">IBM-DYNAMIC (host-driven)</option>
             <option value="3278-2">3278-2 (80×24)</option>
             <option value="3278-3">3278-3 (80×32)</option>
-            <option value="3278-4" selected>3278-4 (80×43)</option>
-            <option value="3278-5">3278-5 (132×27)</option>
+            <option value="3278-4">3278-4 (80×43)</option>
+            <option value="3278-5" selected>3278-5 (132×27)</option>
+	    <option value="162x54">162×54 (large monitor)</option>
+	    <option value="162x72">162×72 (extra tall)</option>
           </select>
         </div>
       </div>
@@ -1308,6 +1323,11 @@ function setTheme(name, el) {
   document.documentElement.style.setProperty('--t-green', t.fg);
   document.documentElement.style.setProperty('--t-blue', t.prot);
   document.getElementById('terminal').style.color = t.fg;
+}
+function applySettingsModel(model) {
+	  localStorage.setItem('preferredModel', model);
+	  const connModel = document.getElementById('connModel');
+	  if (connModel) connModel.value = model;
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -2271,6 +2291,12 @@ loadMacros();
 
 // Initialise the default active panel (Settings)
 const defaultPanel = document.getElementById('panelSettings');
+if (savedModel) {
+  const s = document.getElementById('settingsModel');
+  if (s) s.value = savedModel;
+  const c = document.getElementById('connModel');
+  if (c) c.value = savedModel;
+}
 if (defaultPanel) {
   defaultPanel.style.display       = 'block';
   defaultPanel.style.flexDirection = '';
