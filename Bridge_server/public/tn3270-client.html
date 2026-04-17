@@ -893,14 +893,14 @@ select:focus, input[type="text"]:focus, input[type="number"]:focus { border-colo
       <div class="setting-group">
 	<div class="setting-label">Terminal Model</div>
         <select id="settingsModel" onchange="applySettingsModel(this.value)">
-	   <option value="IBM-DYNAMIC">IBM-DYNAMIC (host-driven)</option>
-	   <option value="3278-2">3278-2 (80×24)</option>
-	   <option value="3278-3">3278-3 (80×32)</option>
-	   <option value="3278-4">3278-4 (80×43)</option>
-	   <option value="3278-5" selected>3278-5 (132×27)</option>
-	   <option value="162x54">162×54 (large monitor)</option>
-	   <option value="162x72">162×72 (extra tall)</option>
-	   </select>
+	  <option value="IBM-DYNAMIC">IBM-DYNAMIC (host-driven)</option>
+	  <option value="3278-2">3278-2 (80×24)</option>
+	  <option value="3278-3">3278-3 (80×32)</option>
+	  <option value="3278-4">3278-4 (80×43)</option>
+	  <option value="3278-5" selected>3278-5 (132×27)</option>
+	  <option value="162x54">162×54 (large monitor)</option>
+	  <option value="162x72">162×72 (extra tall)</option>
+	</select>
       </div>
       <div class="setting-group"> 
         <div class="setting-label">Connection</div>
@@ -1051,17 +1051,17 @@ select:focus, input[type="text"]:focus, input[type="number"]:focus { border-colo
             <option>TSO</option><option>CICS</option><option>JES2</option><option>ZVM</option><option>Other</option>
           </select>
         </div>
-        <div class="form-group">
-          <div class="form-label">Terminal Model</div>
-          <select id="connModel">
-	    <option value="IBM-DYNAMIC">IBM-DYNAMIC (host-driven)</option>
-            <option value="3278-2">3278-2 (80×24)</option>
-            <option value="3278-3">3278-3 (80×32)</option>
-            <option value="3278-4">3278-4 (80×43)</option>
-            <option value="3278-5" selected>3278-5 (132×27)</option>
-	    <option value="162x54">162×54 (large monitor)</option>
-	    <option value="162x72">162×72 (extra tall)</option>
-          </select>
+      <div class="form-group">
+        <div class="form-label">Terminal Model</div>
+        <select id="connModel">
+	  <option value="IBM-DYNAMIC">IBM-DYNAMIC (host-driven)</option>
+          <option value="3278-2">3278-2 (80×24)</option>
+          <option value="3278-3">3278-3 (80×32)</option>
+          <option value="3278-4">3278-4 (80×43)</option>
+          <option value="3278-5" selected>3278-5 (132×27)</option>
+	  <option value="162x54">162×54 (large monitor)</option>
+	  <option value="162x72">162×72 (extra tall)</option>
+        </select>
         </div>
       </div>
       <div class="setting-row" style="margin-top:8px">
@@ -1315,6 +1315,7 @@ const themes = {
   white: { bg:'#0a0a0a', fg:'#e8e8e8', prot:'#aaaacc' },
   teal:  { bg:'#001010', fg:'#00ffdd', prot:'#66ddff' },
 };
+
 function setTheme(name, el) {
   document.querySelectorAll('.theme-swatch').forEach(s => s.classList.remove('active'));
   el.classList.add('active');
@@ -1324,10 +1325,11 @@ function setTheme(name, el) {
   document.documentElement.style.setProperty('--t-blue', t.prot);
   document.getElementById('terminal').style.color = t.fg;
 }
+
 function applySettingsModel(model) {
-	  localStorage.setItem('preferredModel', model);
-	  const connModel = document.getElementById('connModel');
-	  if (connModel) connModel.value = model;
+  localStorage.setItem('preferredModel', model);
+  const connModel = document.getElementById('connModel');
+  if (connModel) connModel.value = model;
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -2291,6 +2293,7 @@ loadMacros();
 
 // Initialise the default active panel (Settings)
 const defaultPanel = document.getElementById('panelSettings');
+const savedModel = localStorage.getItem('preferredModel');
 if (savedModel) {
   const s = document.getElementById('settingsModel');
   if (s) s.value = savedModel;
