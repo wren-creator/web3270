@@ -70,9 +70,9 @@ Open `http://localhost:8081` in your Windows browser.
 LPARs are defined in `lpars.txt` (one per line, `#` for comments):
 
 ```
-# id, name, host/IP, port, tls, type
-prod01, PROD01, 10.80.1.1, 339, false, TSO
-dev01,  DEV01,  10.80.1.2, 339, false, TSO
+# id, name, host/IP, port, tls, type, model
+prod01, PROD01, 10.80.1.1, 339, false, TSO, 3278-2
+dev01,  DEV01,  10.80.1.2, 339, false, TSO, 3278-2
 ```
 
 Port guide:
