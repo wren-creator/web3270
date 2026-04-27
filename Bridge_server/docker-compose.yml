@@ -38,8 +38,30 @@ services:
           cpus: "0.50"
         reservations:
           memory: 64M
-
-  # Mock LPAR  lightweight TN3270 server for testing and demos
+# Mock z/VM  — lightweight TN3270 server simulating CP/CMS
+  mock-zvm:
+    build:
+      context: .
+      dockerfile: mock-lpar/Dockerfile.mock-zvm
+    container_name: mock-zvm
+    restart: unless-stopped
+   
+    environment:
+      MOCK_ZVM_PORT:  "3271"
+      MOCK_ZVM_SYSID: "ZVMPROD"
+      MOCK_ZVM_VMID:  "ZVMSYS1"
+      MOCK_ZVM_LU:    "ZVMLU01"
+      LOG_LEVEL:      "debug"
+   
+    networks:
+      - tn3270-net
+     
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+          cpus: "0.25"
+#Mock LPAR  lightweight TN3270 server for testing and demos
   mock-lpar:
     build:
       context: .                          # project root COPY paths are relative to here
