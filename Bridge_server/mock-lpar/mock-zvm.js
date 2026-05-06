@@ -37,6 +37,7 @@ const VMID    = process.env.MOCK_ZVM_VMID  || 'ZVMSYS1';   // z/VM system name s
 const IAC  = 0xFF, DONT = 0xFE, DO   = 0xFD;
 const WONT = 0xFC, WILL = 0xFB, SB   = 0xFA, SE = 0xF0;
 const EOR  = 0xEF;
+const NOP  = 0xF1;
 
 const OPT_BINARY  = 0x00;
 const OPT_EOR     = 0x19;
@@ -159,17 +160,17 @@ function screenLogon() {
     { row:9,  col:1,  fa: FA_PROTECTED },
     { row:9,  col:1,  text: 'USERID  ==>' },
     { row:9,  col:13, fa: FA_UNPROTECTED },
-    { row:9,  col:13, text: '        ' },
-    { row:9,  col:13, ic: true },
+    { row:9,  col:14, ic: true },
+    { row:9,  col:14, text: '        ' },
     { row:10, col:1,  fa: FA_PROTECTED },
     { row:10, col:1,  text: 'PASSWORD==>' },
     { row:10, col:13, fa: FA_UNPROTECTED_NUM },
-    { row:10, col:13, text: '        ' },
+    { row:10, col:14, text: '        ' },
 
     { row:12, col:1,  fa: FA_PROTECTED },
     { row:12, col:1,  text: 'Command ==>' },
     { row:12, col:13, fa: FA_UNPROTECTED },
-    { row:12, col:13, text: '        ' },
+    { row:12, col:14, text: '        ' },
 
     { row:14, col:1,  fa: FA_PROTECTED },
     { row:14, col:1,  text: 'Enter LOGON to connect to z/VM.' },
@@ -539,59 +540,108 @@ function handleConnection(socket) {
     else if (cmd === DONT || cmd === WONT) { /* ignore */ }
   }
 
-  function handleSB(payload) {
-    if (payload.length === 0) return;
-    debug(`[${id}] SB opt=0x${payload[0].toString(16)} len=${payload.length}`);
+  function sendScreen() {
+   let ds;
+   switch (currentScreen) {
+    case 'logon': ds = screenLogon(); break;
+    case 'cp': ds = screenCPReady(userid, lastCPMsg); break;
+    case 'cms': ds = screenCMSReady(userid, lastCMSMsg); break;
+    case 'filelist': ds = screenFilelist(userid); break;
+    case 'rdrlist': ds = screenRdrlist(userid); break;
+    case 'xedit': ds = screenXedit(userid); break;
+    case 'cpquery': ds = screenCPQuery(userid, cpQueryResult); break;
+    default: ds = screenLogon(); break;
+   }
 
-    if (payload[0] === OPT_TN3270E) {
-      const subCmd = payload[1];
-      if (subCmd === TN3E_SEND && payload[2] === TN3E_DEVICE_TYPE) {
-        // Client wants to negotiate device type — respond with IBM-3278-2-E
-        const response = Buffer.from([
-          IAC, SB, OPT_TN3270E,
-          TN3E_DEVICE_TYPE, TN3E_IS,
-          ...Buffer.from('IBM-3278-2-E'),
-          0x01,   // CONNECT
-          ...Buffer.from(LU_NAME),
-          IAC, SE,
-        ]);
-        socket.write(response);
-        log(`[${id}] Sent TN3270E DEVICE-TYPE IS IBM-3278-2-E LU=${LU_NAME}`);
-      } else if (subCmd === TN3E_FUNCTIONS && payload[2] === TN3E_REQUEST) {
-        // Client requesting FUNCTIONS — respond with FUNCTIONS IS (empty = basic)
-        const response = Buffer.from([IAC, SB, OPT_TN3270E, TN3E_FUNCTIONS, TN3E_IS, IAC, SE]);
-        socket.write(response);
-        log(`[${id}] Sent TN3270E FUNCTIONS IS`);
-        tn3270eMode = true;
-        negotiated  = true;
-        log(`[${id}] TN3270E negotiation complete — sending logon screen`);
-        sendCurrentScreen();
-      } else if (subCmd === TN3E_FUNCTIONS && payload[2] === TN3E_IS) {
-        // Client accepted our FUNCTIONS IS — we're done
-        tn3270eMode = true;
-        negotiated  = true;
-        log(`[${id}] TN3270E complete (client sent FUNCTIONS IS) — sending logon screen`);
-        sendCurrentScreen();
-      }
-    } else if (payload[0] === OPT_TTYPE) {
-      if (payload[1] === 0x00) {
-        const ttype_str = payload.slice(2).toString('ascii');
-        debug(`[${id}] TTYPE = ${ttype_str}`);
-        // Fall-through to classic TN3270 if TN3270E wasn't accepted
-        if (!negotiated) {
-          negotiated = true;
-          log(`[${id}] Classic TN3270 negotiation complete — sending logon screen`);
-          sendCurrentScreen();
-        }
-      }
+   if (tn3270eMode) {
+     // TN3270E header: data-type=0x00, request=0x00, response=0x00, seq=0x00 0x00
+     ds = Buffer.concat([Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00]), ds]);
+   }
+
+   socket.write(wrapEOR(ds));
+   log(`[${id}] → Screen: ${currentScreen} (tn3270e=${tn3270eMode})`);
+  }
+
+  function handleSB(payload) {
+   if (payload.length === 0) return;
+   debug(`[${id}] SB opt=0x${payload[0].toString(16)} len=${payload.length}`);
+
+   // ── TN3270E sub-negotiation ──────────────────────────────────────
+   if (payload[0] === OPT_TN3270E) {
+    const subCmd = payload[1];
+
+    //if (subCmd === TN3E_SEND && payload[2] === TN3E_DEVICE_TYPE) {
+    if (subCmd === TN3E_DEVICE_TYPE && payload[2] === TN3E_REQUEST) {
+      // Client wants to negotiate device type — respond with IBM-3278-2-E
+      const response = Buffer.from([
+        IAC, SB, OPT_TN3270E,
+        TN3E_DEVICE_TYPE, TN3E_IS,
+        ...Buffer.from('IBM-3278-2-E'),
+        0x01, // CONNECT
+        ...Buffer.from(LU_NAME),
+        IAC, SE,
+      ]);
+      socket.write(response);
+      return;
     }
+
+    if (subCmd === TN3E_DEVICE_TYPE && payload[2] === TN3E_IS) {
+      // Client acknowledged device type
+      // Now send FUNCTIONS REQUEST
+      socket.write(Buffer.from([
+        IAC, SB, OPT_TN3270E,
+        TN3E_FUNCTIONS, TN3E_REQUEST,
+        IAC, SE,
+      ]));
+      return;
+    }
+
+    if (subCmd === TN3E_FUNCTIONS && payload[2] === TN3E_IS) {
+      // Client confirmed functions — TN3270E negotiation complete
+      debug(`[${id}] TN3270E negotiation complete`);
+      tn3270eMode = true;
+      negotiated = true;
+      sendScreen();
+      return;
+    }
+
+    if (subCmd === TN3E_FUNCTIONS && payload[2] === TN3E_REQUEST) {
+      // Client is requesting functions — respond with FUNCTIONS IS (empty = basic)
+      socket.write(Buffer.from([
+        IAC, SB, OPT_TN3270E,
+        TN3E_FUNCTIONS, TN3E_IS,
+        IAC, SE,
+      ]));
+      tn3270eMode = true;
+      negotiated = true;
+      sendScreen();
+      return;
+    }
+
+    return;
+   }
+
+   // ── Classic TN3270: TTYPE IS response ───────────────────────────
+   if (payload[0] === OPT_TTYPE) {
+    // payload[1] === 0x00 means IS
+    if (payload[1] === 0x00) {
+      const ttypeStr = payload.slice(2).toString('ascii');
+      debug(`[${id}] TTYPE IS: ${ttypeStr}`);
+      negotiated = true;
+      sendScreen();
+    }
+    return;
+   } 
   }
 
   function checkReady() {
     // Classic TN3270 path: BINARY both ways + EOR + TTYPE
     if (!negotiated && binaryUs && binaryThem && eorUs && eorThem && ttype) {
+      if (!ttypeRequested) {
+	 ttypeRequested = true;
       // Request TTYPE from client
       socket.write(Buffer.from([IAC, SB, OPT_TTYPE, 0x01, IAC, SE]));
+      }
     }
   }
 
@@ -599,33 +649,46 @@ function handleConnection(socket) {
     if (!negotiated) return;
 
     // Strip TN3270E 5-byte header if present
-    const payload = tn3270eMode && data.length >= 5 ? data.slice(5) : data;
+    const payload = data;
     if (payload.length === 0) return;
-
     const aid = payload[0];
     debug(`[${id}] ← AID 0x${aid.toString(16).padStart(2,'0')} screen='${currentScreen}'`);
 
     // Extract typed text from field write data
-    let inputText = '';
-    if (payload.length > 3) {
-      let j = 3;
-      while (j < payload.length) {
-        if (payload[j] === 0x11 && j + 2 < payload.length) {
-          j += 3;   // skip SBA + 2 address bytes
-        } else {
-          const b = payload[j];
-          if (b >= 0x40) inputText += String.fromCharCode(EBCDIC_TO_ASCII[b] || 0x20);
-          j++;
-        }
-      }
-      inputText = inputText.trim();
+    // Extract fields keyed by buffer address
+    const fieldMap = {};
+    let j = 1;
+    // Skip cursor SBA
+    if (payload[j] === 0x11 && j + 2 < payload.length) {
+      j += 3;
     }
-    debug(`[${id}] Input: '${inputText}'`);
+    while (j < payload.length) {
+      if (payload[j] === 0x11 && j + 2 < payload.length) {
+      // Decode SBA address
+      const b1 = payload[j+1], b2 = payload[j+2];
+      const addr = ((b1 & 0x3F) << 6) | (b2 & 0x3F);
+      j += 3;
+      // Read data for this field
+      let fieldText = '';
+      while (j < payload.length && payload[j] !== 0x11 && payload[j] !== 0xFF) {
+       const b = payload[j];
+       if (b >= 0x40) fieldText += String.fromCharCode(EBCDIC_TO_ASCII[b] || 0x20);
+       j++;
+      }
+      fieldMap[addr] = fieldText.trim();
+    } else if (payload[j] === 0x1D) {
+      j += 2;
+    } else {
+      j++;
+    }
+  }
+  const inputText = Object.values(fieldMap).join(' ').trim();
+  debug(`[${id}] Input: '${inputText}'`);
 
     switch (currentScreen) {
       case 'logon':
         if (aid === AID_ENTER) {
-          userid = (inputText || 'DEMO').slice(0, 8).toUpperCase();
+          userid = (fieldMap[734] || fieldMap[Object.keys(fieldMap)[0]] || 'DEMO').slice(0, 8).toUpperCase();
           log(`[${id}] Logon: userid='${userid}'`);
           currentScreen = 'cp';
           lastCPMsg     = '';
@@ -736,7 +799,6 @@ function handleConnection(socket) {
         break;
     }
   }
-
   function sendCurrentScreen() {
     let ds;
     switch (currentScreen) {
@@ -759,7 +821,6 @@ function handleConnection(socket) {
     log(`[${id}] → Screen: ${currentScreen} (tn3270e=${tn3270eMode})`);
   }
 }
-
 // ── Logging ───────────────────────────────────────────────────────
 function log(msg)   { console.log(`${new Date().toISOString()} [INFO ] ${msg}`); }
 function debug(msg) { if (LOG) console.log(`${new Date().toISOString()} [DEBUG] ${msg}`); }

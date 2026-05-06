@@ -891,18 +891,6 @@ select:focus, input[type="text"]:focus, input[type="number"]:focus { border-colo
         <div class="setting-row"><label>Field Highlights</label><div class="toggle on" onclick="this.classList.toggle('on')"></div></div>
       </div>
       <div class="setting-group">
-	<div class="setting-label">Terminal Model</div>
-        <select id="settingsModel" onchange="applySettingsModel(this.value)">
-	  <option value="IBM-DYNAMIC">IBM-DYNAMIC (host-driven)</option>
-	  <option value="3278-2">3278-2 (80×24)</option>
-	  <option value="3278-3">3278-3 (80×32)</option>
-	  <option value="3278-4">3278-4 (80×43)</option>
-	  <option value="3278-5" selected>3278-5 (132×27)</option>
-	  <option value="162x54">162×54 (large monitor)</option>
-	  <option value="162x72">162×72 (extra tall)</option>
-	</select>
-      </div>
-      <div class="setting-group"> 
         <div class="setting-label">Connection</div>
         <div class="setting-row"><label>Auto Reconnect</label><div class="toggle on" onclick="this.classList.toggle('on')"></div></div>
         <div class="setting-row"><label>Keep-Alive (s)</label><input type="number" value="30" style="width:60px"></div>
@@ -1051,17 +1039,14 @@ select:focus, input[type="text"]:focus, input[type="number"]:focus { border-colo
             <option>TSO</option><option>CICS</option><option>JES2</option><option>ZVM</option><option>Other</option>
           </select>
         </div>
-      <div class="form-group">
-        <div class="form-label">Terminal Model</div>
-        <select id="connModel">
-	  <option value="IBM-DYNAMIC">IBM-DYNAMIC (host-driven)</option>
-          <option value="3278-2">3278-2 (80×24)</option>
-          <option value="3278-3">3278-3 (80×32)</option>
-          <option value="3278-4">3278-4 (80×43)</option>
-          <option value="3278-5" selected>3278-5 (132×27)</option>
-	  <option value="162x54">162×54 (large monitor)</option>
-	  <option value="162x72">162×72 (extra tall)</option>
-        </select>
+        <div class="form-group">
+          <div class="form-label">Terminal Model</div>
+          <select id="connModel">
+            <option value="3278-2">3278-2 (80×24)</option>
+            <option value="3278-3">3278-3 (80×32)</option>
+            <option value="3278-4" selected>3278-4 (80×43)</option>
+            <option value="3278-5">3278-5 (132×27)</option>
+          </select>
         </div>
       </div>
       <div class="setting-row" style="margin-top:8px">
@@ -1093,6 +1078,7 @@ let   sessionSeq    = 0;
 
 // ── Screen buffer for the active session ──────────────────────────
 let   liveScreenText = '';
+let   liveScreen = null;
 let   cursorRow = 0, cursorCol = 0;
 
 // ── Copilot state ──────────────────────────────────────────────────
@@ -1291,6 +1277,46 @@ document.addEventListener('keydown', e => {
   }
   if (e.key === 'PageUp')  { e.preventDefault(); sendKey('PF7'); return; }
   if (e.key === 'PageDown'){ e.preventDefault(); sendKey('PF8'); return; }
+  if (e.key === 'Tab') {
+   e.preventDefault();
+   // Find next unprotected field
+   if (liveScreen && liveScreen.fields) {
+    const inputFields = liveScreen.fields.filter(f => !f.protected);
+    if (inputFields.length > 0) {
+      // Find which field cursor is currently in
+      const curAddr = cursorRow * (liveScreen.cols || 80) + cursorCol;
+      const nextField = inputFields.find(f => f.startAddr > curAddr)
+                     || inputFields[0]; // wrap around
+      const nextRow = Math.floor(nextField.startAddr / (liveScreen.cols || 80));
+      const nextCol = (nextField.startAddr % (liveScreen.cols || 80)) + 1;
+      cursorRow = nextRow;
+      cursorCol = nextCol;
+      liveScreen.cursorRow = cursorRow;
+      liveScreen.cursorCol = cursorCol;
+      renderLiveScreen(liveScreen);
+    }
+   }
+   return;
+  }
+  if (e.key === 'Backspace') {
+   e.preventDefault();
+   if (cursorCol > 0) {
+    cursorCol--;
+     if (liveScreen && liveScreen.rows) {
+       liveScreen.rows[cursorRow][cursorCol].char = ' ';
+       liveScreen.rows[cursorRow][cursorCol].modified = true;
+       liveScreen.cursorRow = cursorRow;
+       liveScreen.cursorCol = cursorCol;
+       renderLiveScreen(liveScreen);
+     }
+     // Send space to server WITHOUT using sendType (which advances cursor)
+     const session = sessions.get(activeSession);
+     if (session && session.ws.readyState === WebSocket.OPEN) {
+	session.ws.send(JSON.stringify({ type: 'erase', row: cursorRow, col: cursorCol }));
+     }
+   }
+   return;
+  }
   if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
     e.preventDefault();
     sendType(cursorRow, cursorCol, e.key);
@@ -1315,7 +1341,6 @@ const themes = {
   white: { bg:'#0a0a0a', fg:'#e8e8e8', prot:'#aaaacc' },
   teal:  { bg:'#001010', fg:'#00ffdd', prot:'#66ddff' },
 };
-
 function setTheme(name, el) {
   document.querySelectorAll('.theme-swatch').forEach(s => s.classList.remove('active'));
   el.classList.add('active');
@@ -1324,12 +1349,6 @@ function setTheme(name, el) {
   document.documentElement.style.setProperty('--t-green', t.fg);
   document.documentElement.style.setProperty('--t-blue', t.prot);
   document.getElementById('terminal').style.color = t.fg;
-}
-
-function applySettingsModel(model) {
-  localStorage.setItem('preferredModel', model);
-  const connModel = document.getElementById('connModel');
-  if (connModel) connModel.value = model;
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -1554,6 +1573,7 @@ function handleBridgeMsg(sid, msg) {
       if (sid === activeSession) {
         renderLiveScreen(msg);
         liveScreenText = screenToText(msg);
+	liveScreen = msg;
         cursorRow = msg.cursorRow ?? 0;
         cursorCol = msg.cursorCol ?? 0;
       }
@@ -1707,10 +1727,30 @@ function sendKey(aid, fields = []) {
 }
 
 function sendType(row, col, text) {
+  console.log('sendType', row, col, text);
   const session = sessions.get(activeSession);
   if (!session || session.ws.readyState !== WebSocket.OPEN) return;
+
+  // Update local screen buffer immediately so character appears
+  if (liveScreen && liveScreen.rows) {
+    const row2 = liveScreen.rows[cursorRow];
+    if (row2 && row2[cursorCol]) {
+      row2[cursorCol].char = text;
+      row2[cursorCol].modified = true;
+    }
+    cursorCol++;
+    if (cursorCol >= (liveScreen.cols || 80)) {
+      cursorCol = 0;
+      cursorRow++;
+    }
+    liveScreen.cursorRow = cursorRow;
+    liveScreen.cursorCol = cursorCol;
+    renderLiveScreen(liveScreen);
+  }
+
   session.ws.send(JSON.stringify({ type: 'type', row, col, text }));
 }
+
 
 const AID_MAP = {
   'Enter':'ENTER','Escape':'PA1',
@@ -2293,13 +2333,6 @@ loadMacros();
 
 // Initialise the default active panel (Settings)
 const defaultPanel = document.getElementById('panelSettings');
-const savedModel = localStorage.getItem('preferredModel');
-if (savedModel) {
-  const s = document.getElementById('settingsModel');
-  if (s) s.value = savedModel;
-  const c = document.getElementById('connModel');
-  if (c) c.value = savedModel;
-}
 if (defaultPanel) {
   defaultPanel.style.display       = 'block';
   defaultPanel.style.flexDirection = '';
