@@ -276,11 +276,35 @@ body {
 .lpar-dot.conn { background: var(--accent-blue);  box-shadow: 0 0 4px var(--accent-blue); }
 .lpar-name { flex: 1; }
 .lpar-type { font-size: 9px; color: var(--text-muted); }
-
 #sidebarLparList { scrollbar-width: thin; scrollbar-color: #1a3050 transparent; }
 #sidebarLparList::-webkit-scrollbar { width: 3px; }
 #sidebarLparList::-webkit-scrollbar-thumb { background: #1a3050; border-radius: 2px; }
 
+.lpar-edit-btn {
+  display: none;
+  padding: 0 5px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  line-height: 16px;
+  font-family: 'IBM Plex Mono', monospace;
+  transition: all 0.1s;
+  flex-shrink: 0;
+}
+.lpar-item:hover .lpar-edit-btn { display: inline-block; }
+.lpar-edit-btn:hover { color: var(--accent-cyan); border-color: var(--accent-cyan); }
+
+.profile-edit-btn {
+  font-size: 10px; padding: 2px 7px;
+  background: var(--bg-panel); border: 1px solid var(--border);
+  color: var(--text-dim); border-radius: 2px; cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace; transition: all 0.1s;
+  flex-shrink: 0;
+}
+.profile-edit-btn:hover { color: var(--accent-cyan); border-color: var(--accent-cyan); }
 .macro-item {
   display: flex; align-items: center; gap: 8px;
   padding: 5px 12px; font-size: 11px;
@@ -801,7 +825,7 @@ select:focus, input[type="text"]:focus, input[type="number"]:focus { border-colo
   <div class="sidebar" id="sidebar">
     <div class="sidebar-section">
       <div class="sidebar-header">LPAR Profiles <span class="sidebar-header-btn" onclick="showConnectModal()">＋</span></div>
-      <div id="sidebarLparList" style="padding:4px 0 8px; max-height:200px; overflow-y:auto;"></div>
+        <div id="sidebarLparList" style="padding:4px 0 8px; max-height:220px; overflow-y:auto;"></div>
     </div>
     <div class="sidebar-section">
       <div class="sidebar-header">Macros <span class="sidebar-header-btn" onclick="showAddMacroModal()">＋</span></div>
@@ -1415,7 +1439,6 @@ function renderLparDropdown() {
     else menu.appendChild(item);
   });
 }
-
 function renderSidebarLpars() {
   const container = document.getElementById('sidebarLparList');
   if (!container) return;
@@ -1426,7 +1449,12 @@ function renderSidebarLpars() {
     item.innerHTML = `
       <div class="lpar-dot"></div>
       <div class="lpar-name">${esc(p.name || p.id)}</div>
-      <div class="lpar-type">${esc(p.type || 'TSO')}</div>`;
+      <div class="lpar-type">${esc(p.type || 'TSO')}</div>
+      <button class="lpar-edit-btn" title="Edit profile">✎</button>`;
+    item.querySelector('.lpar-edit-btn').addEventListener('click', e => {
+      e.stopPropagation();
+      editProfile(p.id);
+    });
     item.addEventListener('click', () => connectLpar(p.id));
     container.appendChild(item);
   });
@@ -1439,20 +1467,43 @@ function renderModalProfiles() {
   LPAR_PROFILES.forEach(p => {
     const item = document.createElement('div');
     item.className = 'profile-item';
-    item.innerHTML = `
-      <div>
+ item.innerHTML = `
+      <div style="flex:1">
         <div class="profile-name">${esc(p.name || p.id)}</div>
         <div class="profile-host">${esc(p.host)}:${p.port}${p.tls ? ' · TLS' : ''} · ${esc(p.type||'TSO')}</div>
       </div>
+      <button class="profile-edit-btn" title="Edit profile">✎</button>
       <button class="profile-connect-btn">Connect</button>`;
-    item.querySelector('button').addEventListener('click', () => {
+    item.querySelector('.profile-edit-btn').addEventListener('click', e => {
+      e.stopPropagation();
+      editProfile(p.id);
+    });
+    item.querySelector('.profile-connect-btn').addEventListener('click', () => {
       connectLpar(p.id);
       hideConnectModal();
     });
     container.appendChild(item);
   });
 }
-
+// ── Edit a profile — pre-fills the manual connect form ───────────
+function editProfile(profileId) {
+  const p = LPAR_PROFILES.find(p => p.id === profileId);
+  if (!p) return;
+  showConnectModal();
+  document.getElementById('connHost').value  = p.host   || '';
+  document.getElementById('connPort').value  = p.port   || 23;
+  document.getElementById('connName').value  = p.name   || p.id || '';
+  document.getElementById('connLu').value    = p.luName || '';
+  const typeEl  = document.getElementById('connType');
+  const modelEl = document.getElementById('connModel');
+  if (typeEl  && p.type)  typeEl.value  = p.type;
+  if (modelEl && p.model) modelEl.value = p.model;
+  if (p.tls)     document.getElementById('connTls').classList.add('on');
+  if (!p.tn3270e) document.getElementById('connTn3270e').classList.remove('on');
+  // Scroll modal body to the manual form section
+  const body = document.querySelector('#connectModal .modal-body');
+  if (body) setTimeout(() => body.scrollTop = body.scrollHeight, 50);
+}
 // ── LPAR dropdown helpers ─────────────────────────────────────────
 function toggleLparDropdown() {
   const btn  = document.getElementById('lparDropdownBtn');
