@@ -48,6 +48,7 @@ const httpServer = http.createServer((req, res) => {
       type:     p.type     ?? 'TSO',
       model:    p.model    ?? config.defaults.model,
       codepage: p.codepage ?? config.defaults.codepage,
+      tn3270e:  p.tn3270e ?? true,
     }));
     res.writeHead(200, {
       'Content-Type':                'application/json',
@@ -193,7 +194,8 @@ wss.on('connection', (ws, req) => {
 
         case 'key':
           // { type:'key', aid:'ENTER'|'PF1'…'PF24'|'PA1'|'PA2'|'CLEAR', fields:[{addr,data}] }
-          session.sendAid(msg.aid, msg.fields || []);
+         // session.sendAid(msg.aid, msg.fields || []);
+          session.sendAid(msg.aid, session.getModifiedFields());
           break;
 
         case 'type':
@@ -204,6 +206,10 @@ wss.on('connection', (ws, req) => {
         case 'cursor':
           // { type:'cursor', row, col }
           session.moveCursor(msg.row, msg.col);
+          break;
+	
+	case 'erase':
+          session.eraseAt(msg.row, msg.col);
           break;
 
         case 'disconnect':

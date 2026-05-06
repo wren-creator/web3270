@@ -20,21 +20,23 @@ function loadLparFile() {
 
   return fs.readFileSync(filePath, 'utf8')
     .split('\n')
-    .map(line => line.trim())
     .filter(line => line && !line.startsWith('#'))
     .map(line => {
-      const [id, name, host, port, tls, type, model] = line.split(',').map(s => s.trim());
-      return {
-        id:       id,
-        name:     name || id.toUpperCase(),
-        host:     host || id,
-        port:     parseInt(port || '23', 10),
-        tls:      (tls || 'false') === 'true',
-        type:     (type || 'TSO').toUpperCase(),
-        model:    model || process.env.DEFAULT_MODEL || '3278-2',
-        codepage: 37,
-      };
-    });
+  const parts = line.split(',').map(s => s.trim());
+  const [id, name, host, port, tls, type, model] = parts;
+  return {
+    id,
+    name: name || id.toUpperCase(),
+    host: host || id,
+    port: parseInt(port || '23', 10),
+    tls: (tls || 'false') === 'true',
+    type: (type || 'TSO').toUpperCase(),
+    model: model || process.env.DEFAULT_MODEL || '3278-2',
+    codepage: 37,
+    tn3270e: parts[7] !== undefined ? parts[7] === 'true' : true,
+  };
+});
+
 }
 
 module.exports = {
