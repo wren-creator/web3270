@@ -90,4 +90,7 @@ module.exports = {
     /** 'debug' | 'info' | 'warn' | 'error' */
     level: process.env.LOG_LEVEL || 'info',
   },
+
+  // Exposed so server.js can hot-reload after a save
+  loadLparFile,
 };

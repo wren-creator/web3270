@@ -10,6 +10,11 @@ services:
 
     ports:
       - "8081:8081"
+    
+    volumes:
+      - type: bind
+        source: ./lpars.txt
+        target: /app/lpars.txt
 
     environment:
       BRIDGE_PORT: "8081"
