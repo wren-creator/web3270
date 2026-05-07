@@ -690,6 +690,15 @@ select:focus, input[type="text"]:focus, input[type="number"]:focus { border-colo
 .form-label { font-size: 11px; color: var(--text-dim); margin-bottom: 5px; display: block; }
 .form-row { display: flex; gap: 8px; }
 .form-row .form-group { flex: 1; }
+#modalProfileList {
+  max-height: 200px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #1a3050 transparent;
+  margin-bottom: 4px;
+}
+#modalProfileList::-webkit-scrollbar { width: 3px; }
+#modalProfileList::-webkit-scrollbar-thumb { background: #1a3050; border-radius: 2px; }
 .profile-item {
   display: flex; align-items: center; gap: 8px;
   padding: 7px 8px; background: var(--bg-elevated);
