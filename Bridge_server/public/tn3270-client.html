@@ -157,11 +157,15 @@ body {
 
 .lpar-dropdown-menu {
   display: none; position: absolute; top: calc(100% + 4px); right: 0;
-  min-width: 280px; background: var(--bg-panel);
+  min-width: 280px; max-height: 400px; overflow-y: auto;
+  background: var(--bg-panel);
   border: 1px solid var(--border-bright); border-radius: 4px;
   box-shadow: 0 12px 40px rgba(0,0,0,0.6); z-index: 400;
   animation: dropIn 0.12s ease;
+  scrollbar-width: thin; scrollbar-color: #1a3050 transparent;
 }
+.lpar-dropdown-menu::-webkit-scrollbar { width: 3px; }
+.lpar-dropdown-menu::-webkit-scrollbar-thumb { background: #1a3050; border-radius: 2px; }
 .lpar-dropdown-menu.open { display: block; }
 .lpar-menu-header {
   font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
@@ -297,6 +301,23 @@ body {
 .lpar-item:hover .lpar-edit-btn { display: inline-block; }
 .lpar-edit-btn:hover { color: var(--accent-cyan); border-color: var(--accent-cyan); }
 
+.lpar-delete-btn {
+  display: none;
+  padding: 0 5px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  line-height: 16px;
+  font-family: 'IBM Plex Mono', monospace;
+  transition: all 0.1s;
+  flex-shrink: 0;
+}
+.lpar-item:hover .lpar-delete-btn { display: inline-block; }
+.lpar-delete-btn:hover { color: var(--t-red); border-color: var(--t-red); }
+
 .profile-edit-btn {
   font-size: 10px; padding: 2px 7px;
   background: var(--bg-panel); border: 1px solid var(--border);
@@ -305,6 +326,14 @@ body {
   flex-shrink: 0;
 }
 .profile-edit-btn:hover { color: var(--accent-cyan); border-color: var(--accent-cyan); }
+.profile-delete-btn {
+  font-size: 10px; padding: 2px 7px;
+  background: var(--bg-panel); border: 1px solid var(--border);
+  color: var(--text-muted); border-radius: 2px; cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace; transition: all 0.1s;
+  flex-shrink: 0;
+}
+.profile-delete-btn:hover { color: var(--t-red); border-color: var(--t-red); }
 .macro-item {
   display: flex; align-items: center; gap: 8px;
   padding: 5px 12px; font-size: 11px;
@@ -1091,6 +1120,7 @@ select:focus, input[type="text"]:focus, input[type="number"]:focus { border-colo
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="hideConnectModal()">Cancel</button>
+      <button class="btn btn-secondary" id="saveProfileBtn" onclick="saveProfileFromForm()">Save Profile</button>
       <button class="btn btn-primary" onclick="connectManual()">Connect</button>
     </div>
   </div>
@@ -1121,7 +1151,8 @@ let isStreaming   = false;
 
 // ── Macro store ────────────────────────────────────────────────────
 let macros = [];
-
+// ── Profile being edited (null = new profile) ─────────────────────
+let editingProfileId = null;
 // ══════════════════════════════════════════════════════════════════
 //  SCREEN FIT — fixes both wrap and sizing issues
 // ══════════════════════════════════════════════════════════════════
@@ -1387,7 +1418,10 @@ function setTheme(name, el) {
 // ══════════════════════════════════════════════════════════════════
 //  MODAL
 // ══════════════════════════════════════════════════════════════════
-function showConnectModal() { document.getElementById('connectModal').classList.remove('hidden'); }
+function showConnectModal() {
+  editingProfileId = null;
+  document.getElementById('connectModal').classList.remove('hidden');
+}
 function hideConnectModal() { document.getElementById('connectModal').classList.add('hidden'); }
 document.getElementById('connectModal').addEventListener('click', e => {
   if (e.target === e.currentTarget) hideConnectModal();
@@ -1459,10 +1493,15 @@ function renderSidebarLpars() {
       <div class="lpar-dot"></div>
       <div class="lpar-name">${esc(p.name || p.id)}</div>
       <div class="lpar-type">${esc(p.type || 'TSO')}</div>
-      <button class="lpar-edit-btn" title="Edit profile">✎</button>`;
+      <button class="lpar-edit-btn" title="Edit profile">✎</button>
+      <button class="lpar-delete-btn" title="Delete profile">🗑</button>`;
     item.querySelector('.lpar-edit-btn').addEventListener('click', e => {
-      e.stopPropagation();
-      editProfile(p.id);
+     e.stopPropagation();
+     editProfile(p.id);
+    });
+    item.querySelector('.lpar-delete-btn').addEventListener('click', e => {
+     e.stopPropagation();
+     deleteProfile(p.id, p.name || p.id);
     });
     item.addEventListener('click', () => connectLpar(p.id));
     container.appendChild(item);
@@ -1482,15 +1521,20 @@ function renderModalProfiles() {
         <div class="profile-host">${esc(p.host)}:${p.port}${p.tls ? ' · TLS' : ''} · ${esc(p.type||'TSO')}</div>
       </div>
       <button class="profile-edit-btn" title="Edit profile">✎</button>
+      <button class="profile-delete-btn" title="Delete profile">🗑</button>
       <button class="profile-connect-btn">Connect</button>`;
-    item.querySelector('.profile-edit-btn').addEventListener('click', e => {
-      e.stopPropagation();
-      editProfile(p.id);
-    });
-    item.querySelector('.profile-connect-btn').addEventListener('click', () => {
-      connectLpar(p.id);
-      hideConnectModal();
-    });
+ item.querySelector('.profile-edit-btn').addEventListener('click', e => {
+   e.stopPropagation();
+   editProfile(p.id);
+ });
+ item.querySelector('.profile-delete-btn').addEventListener('click', e => {
+   e.stopPropagation();
+   deleteProfile(p.id, p.name || p.id);
+ });
+ item.querySelector('.profile-connect-btn').addEventListener('click', () => {
+   connectLpar(p.id);
+   hideConnectModal();
+ });
     container.appendChild(item);
   });
 }
@@ -1499,6 +1543,7 @@ function editProfile(profileId) {
   const p = LPAR_PROFILES.find(p => p.id === profileId);
   if (!p) return;
   showConnectModal();
+  editingProfileId = profileId;  // set AFTER showConnectModal() so it isn't cleared
   document.getElementById('connHost').value  = p.host   || '';
   document.getElementById('connPort').value  = p.port   || 23;
   document.getElementById('connName').value  = p.name   || p.id || '';
@@ -1513,6 +1558,81 @@ function editProfile(profileId) {
   const body = document.querySelector('#connectModal .modal-body');
   if (body) setTimeout(() => body.scrollTop = body.scrollHeight, 50);
 }
+// ── Delete a profile via bridge API ──────────────────────────────
+async function deleteProfile(profileId, displayName) {
+  if (!confirm(`Delete profile "${displayName}"?`)) return;
+
+  try {
+    const res = await fetch('/api/profiles/' + encodeURIComponent(profileId), {
+      method: 'DELETE',
+    });
+
+    if (!res.ok) {
+       const err = await res.json().catch(() => ({}));
+       throw new Error(err.error || `HTTP ${res.status}`);
+    }
+
+    await loadProfiles();
+
+  } catch (err) {
+    showBridgeError('Could not delete profile: ' + err.message);
+  }
+}
+// ── Save profile from connect form → lpars.txt via bridge API ────
+async function saveProfileFromForm() {
+  const host    = document.getElementById('connHost').value.trim();
+  const port    = parseInt(document.getElementById('connPort').value, 10) || 23;
+  const name    = document.getElementById('connName').value.trim();
+  const luName  = document.getElementById('connLu').value.trim() || null;
+  const type    = document.getElementById('connType').value;
+  const model   = document.getElementById('connModel').value;
+  const tls     = document.getElementById('connTls').classList.contains('on');
+  const tn3270e = document.getElementById('connTn3270e').classList.contains('on');
+
+  if (!host) { document.getElementById('connHost').focus(); return; }
+  if (!name) { document.getElementById('connName').focus(); return; }
+
+  // If editing, keep original ID; otherwise derive from name
+  const id = editingProfileId
+    || name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+
+  const profile = { id, name, host, port, tls, luName, type, model, tn3270e, codepage: 37 };
+
+  const btn = document.getElementById('saveProfileBtn');
+  try {
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+
+    const res = await fetch('/api/profiles', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(profile),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `HTTP ${res.status}`);
+    }
+
+    await loadProfiles();
+
+    btn.textContent       = '✓ Saved';
+    btn.style.color       = 'var(--accent-green)';
+    btn.style.borderColor = 'var(--accent-green)';
+    setTimeout(() => {
+      btn.textContent       = 'Save Profile';
+      btn.style.color       = '';
+      btn.style.borderColor = '';
+      btn.disabled          = false;
+    }, 1500);
+
+  } catch (err) {
+    btn.textContent = 'Save Profile';
+    btn.disabled    = false;
+    showBridgeError('Could not save profile: ' + err.message);
+  }
+}
+
 // ── LPAR dropdown helpers ─────────────────────────────────────────
 function toggleLparDropdown() {
   const btn  = document.getElementById('lparDropdownBtn');

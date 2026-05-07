@@ -37,7 +37,7 @@ const MIME = {
 const httpServer = http.createServer((req, res) => {
 
   // GET /api/profiles — returns LPAR list from config / .env
-  if (req.url === '/api/profiles') {
+  if (req.url === '/api/profiles' && req.method === 'GET') {
     const profiles = config.profiles.map(p => ({
       id:       p.id,
       name:     p.name,
@@ -59,7 +59,115 @@ const httpServer = http.createServer((req, res) => {
     return;
   }
 
-  // Static files
+  // POST /api/profiles — save or update a profile in lpars.txt
+  if (req.url === '/api/profiles' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', () => {
+      try {
+        const p = JSON.parse(body);
+        if (!p.id || !p.host) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'id and host are required' }));
+          return;
+        }
+
+        const lparsPath = path.join(__dirname, 'lpars.txt');
+
+        // Read existing lines, preserving comments; create file if missing
+        let lines = [];
+        if (fs.existsSync(lparsPath)) {
+          lines = fs.readFileSync(lparsPath, 'utf8').split('\n');
+        } else {
+          lines = ['# id, name, host/IP, port, tls, type, model'];
+        }
+
+        const newLine = [
+          p.id,
+          p.name  || p.id.toUpperCase(),
+          p.host,
+          p.port  || 23,
+          p.tls   ? 'true' : 'false',
+          p.type  || 'TSO',
+          p.model || '3278-2',
+        ].join(', ');
+
+        // Replace existing entry or append new one
+        const idx = lines.findIndex(l => {
+          const trimmed = l.trim();
+          if (!trimmed || trimmed.startsWith('#')) return false;
+          return trimmed.split(',')[0].trim() === p.id;
+        });
+
+        if (idx >= 0) {
+          lines[idx] = newLine;
+        } else {
+          lines.push(newLine);
+        }
+
+        fs.writeFileSync(lparsPath, lines.join('\n'));
+
+        // Hot-reload config.profiles in memory
+        config.profiles = config.loadLparFile();
+
+        logger.info(`[api] Profile "${p.id}" saved to lpars.txt`);
+
+        res.writeHead(200, {
+          'Content-Type':                'application/json',
+          'Access-Control-Allow-Origin': '*',
+        });
+        res.end(JSON.stringify({ ok: true }));
+
+      } catch (err) {
+        logger.error(`[api] Failed to save profile: ${err.message}`);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+    });
+    return;
+ }
+
+   // DELETE /api/profiles/:id — remove a profile from lpars.txt
+   const deleteMatch = req.url.match(/^\/api\/profiles\/(.+)$/);
+   if (deleteMatch && req.method === 'DELETE') {
+      const profileId = decodeURIComponent(deleteMatch[1]);
+      try {
+         const lparsPath = path.join(__dirname, 'lpars.txt');
+         if (!fs.existsSync(lparsPath)) {
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'lpars.txt not found' }));
+            return;
+         }
+
+         let lines = fs.readFileSync(lparsPath, 'utf8').split('\n');
+         const idx = lines.findIndex(l => {
+           const trimmed = l.trim();
+           if (!trimmed || trimmed.startsWith('#')) return false;
+           return trimmed.split(',')[0].trim() === profileId;
+         });
+
+         if (idx < 0) {
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Profile "' + profileId + '" not found' }));
+            return;
+         }
+
+         lines.splice(idx, 1);
+         fs.writeFileSync(lparsPath, lines.join('\n'));
+         config.profiles = config.loadLparFile();
+
+         logger.info(`[api] Profile "${profileId}" deleted from lpars.txt`);
+         res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+         res.end(JSON.stringify({ ok: true, deleted: profileId }));
+       } catch (err) {
+         logger.error(`[api] Failed to delete profile: ${err.message}`);
+         res.writeHead(500, { 'Content-Type': 'application/json' });
+         res.end(JSON.stringify({ error: err.message }));
+       }
+       return;
+   }
+
+                                                                                                                                                                 // Static files
   let filename;
   if (req.url === '/demo' || req.url === '/demo.html') {
     filename = 'tn3270-client-demo.html';
