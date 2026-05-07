@@ -125,49 +125,48 @@ const httpServer = http.createServer((req, res) => {
       }
     });
     return;
- }
+  }
 
-   // DELETE /api/profiles/:id — remove a profile from lpars.txt
-   const deleteMatch = req.url.match(/^\/api\/profiles\/(.+)$/);
-   if (deleteMatch && req.method === 'DELETE') {
-      const profileId = decodeURIComponent(deleteMatch[1]);
-      try {
-         const lparsPath = path.join(__dirname, 'lpars.txt');
-         if (!fs.existsSync(lparsPath)) {
-            res.writeHead(404, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: 'lpars.txt not found' }));
-            return;
-         }
+  // DELETE /api/profiles/:id — remove a profile from lpars.txt
+  if (req.method === 'DELETE' && req.url.startsWith('/api/profiles/')) {
+    const profileId = decodeURIComponent(req.url.slice('/api/profiles/'.length));
+    try {
+      const lparsPath = path.join(__dirname, 'lpars.txt');
+      if (!fs.existsSync(lparsPath)) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'lpars.txt not found' }));
+        return;
+      }
 
-         let lines = fs.readFileSync(lparsPath, 'utf8').split('\n');
-         const idx = lines.findIndex(l => {
-           const trimmed = l.trim();
-           if (!trimmed || trimmed.startsWith('#')) return false;
-           return trimmed.split(',')[0].trim() === profileId;
-         });
+      let lines = fs.readFileSync(lparsPath, 'utf8').split('\n');
+      const idx = lines.findIndex(l => {
+        const trimmed = l.trim();
+        if (!trimmed || trimmed.startsWith('#')) return false;
+        return trimmed.split(',')[0].trim() === profileId;
+      });
 
-         if (idx < 0) {
-            res.writeHead(404, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: 'Profile "' + profileId + '" not found' }));
-            return;
-         }
+      if (idx < 0) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Profile "' + profileId + '" not found' }));
+        return;
+      }
 
-         lines.splice(idx, 1);
-         fs.writeFileSync(lparsPath, lines.join('\n'));
-         config.profiles = config.loadLparFile();
+      lines.splice(idx, 1);
+      fs.writeFileSync(lparsPath, lines.join('\n'));
+      config.profiles = config.loadLparFile();
 
-         logger.info(`[api] Profile "${profileId}" deleted from lpars.txt`);
-         res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-         res.end(JSON.stringify({ ok: true, deleted: profileId }));
-       } catch (err) {
-         logger.error(`[api] Failed to delete profile: ${err.message}`);
-         res.writeHead(500, { 'Content-Type': 'application/json' });
-         res.end(JSON.stringify({ error: err.message }));
-       }
-       return;
-   }
+      logger.info(`[api] Profile "${profileId}" deleted from lpars.txt`);
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ ok: true, deleted: profileId }));
+    } catch (err) {
+      logger.error(`[api] Failed to delete profile: ${err.message}`);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: err.message }));
+    }
+    return;
+  }
 
-                                                                                                                                                                 // Static files
+  // Static files
   let filename;
   if (req.url === '/demo' || req.url === '/demo.html') {
     filename = 'tn3270-client-demo.html';
