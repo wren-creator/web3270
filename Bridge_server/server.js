@@ -37,7 +37,7 @@ const MIME = {
 const httpServer = http.createServer((req, res) => {
 
   // GET /api/profiles — returns LPAR list from config / .env
-  if (req.url === '/api/profiles' && req.method === 'GET') {
+  if (req.url === '/api/profiles') {
     const profiles = config.profiles.map(p => ({
       id:       p.id,
       name:     p.name,
@@ -124,45 +124,6 @@ const httpServer = http.createServer((req, res) => {
         res.end(JSON.stringify({ error: err.message }));
       }
     });
-    return;
-  }
-
-  // DELETE /api/profiles/:id — remove a profile from lpars.txt
-  if (req.method === 'DELETE' && req.url.startsWith('/api/profiles/')) {
-    const profileId = decodeURIComponent(req.url.slice('/api/profiles/'.length));
-    try {
-      const lparsPath = path.join(__dirname, 'lpars.txt');
-      if (!fs.existsSync(lparsPath)) {
-        res.writeHead(404, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'lpars.txt not found' }));
-        return;
-      }
-
-      let lines = fs.readFileSync(lparsPath, 'utf8').split('\n');
-      const idx = lines.findIndex(l => {
-        const trimmed = l.trim();
-        if (!trimmed || trimmed.startsWith('#')) return false;
-        return trimmed.split(',')[0].trim() === profileId;
-      });
-
-      if (idx < 0) {
-        res.writeHead(404, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Profile "' + profileId + '" not found' }));
-        return;
-      }
-
-      lines.splice(idx, 1);
-      fs.writeFileSync(lparsPath, lines.join('\n'));
-      config.profiles = config.loadLparFile();
-
-      logger.info(`[api] Profile "${profileId}" deleted from lpars.txt`);
-      res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-      res.end(JSON.stringify({ ok: true, deleted: profileId }));
-    } catch (err) {
-      logger.error(`[api] Failed to delete profile: ${err.message}`);
-      res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: err.message }));
-    }
     return;
   }
 
@@ -293,6 +254,16 @@ wss.on('connection', (ws, req) => {
         return;
       }
 
+      // ── Transfer messages ──────────────────────────────────────
+      if (msg.type === 'xfer.upload') {
+        handleXferUpload(msg, ws, wsId, session);
+        return;
+      }
+      if (msg.type === 'xfer.download') {
+        handleXferDownload(msg, ws, wsId, session);
+        return;
+      }
+
       // ── Terminal key/type messages ─────────────────────────────
       // Let macro handler intercept during recording
       macroHandler.interceptIfRecording(msg);
@@ -365,6 +336,73 @@ function buildTlsOptions(params) {
   if (params.clientKey)  opts.key  = fs.readFileSync(params.clientKey);
   if (params.caCert)     opts.ca   = fs.readFileSync(params.caCert);
   return opts;
+}
+
+// ── IND$FILE Transfer Handlers ────────────────────────────────────
+
+function handleXferUpload(msg, ws, wsId, session) {
+  const { dataset, mode, recfm, filename, data } = msg;
+  logger.info(`[ws:${wsId}] xfer.upload → ${dataset} mode=${mode}`);
+  try {
+    const buf  = Buffer.from(data, 'base64');
+    const text = mode === 'BINARY'
+      ? buf.toString('base64')
+      : buf.toString('utf8').replace(/\r\n/g, '\n');
+
+    // Type IND$FILE PUT command then data
+    session.typeAt(0, 0, `IND$FILE PUT '${dataset}' ${mode || 'TEXT'}${recfm ? ' RECFM(' + recfm + ')' : ''}`);
+    setTimeout(() => {
+      session.sendAid('ENTER', []);
+      setTimeout(() => {
+        session.typeAt(0, 0, text);
+        session.sendAid('ENTER', []);
+        send(ws, { type: 'xfer.ok', message: `Upload of ${filename} to ${dataset} initiated` });
+        logger.info(`[ws:${wsId}] xfer.upload complete → ${dataset} (${buf.length} bytes)`);
+      }, 1000);
+    }, 500);
+  } catch (err) {
+    logger.error(`[ws:${wsId}] xfer.upload error: ${err.message}`);
+    send(ws, { type: 'xfer.error', message: err.message });
+  }
+}
+
+function handleXferDownload(msg, ws, wsId, session) {
+  const { dataset, mode, saveAs } = msg;
+  logger.info(`[ws:${wsId}] xfer.download ← ${dataset} mode=${mode}`);
+  try {
+    let accumulated = '';
+    const filename  = saveAs || dataset.split('.').pop().toLowerCase() + '.txt';
+
+    const timeout = setTimeout(() => {
+      session.removeListener('screen', onScreen);
+      send(ws, { type: 'xfer.error', message: `Timeout waiting for data from ${dataset}` });
+    }, 30000);
+
+    function onScreen(screenData) {
+      const text = (screenData.rows || [])
+        .map(row => (Array.isArray(row) ? row : [])
+          .map(c => c.char && c.char !== '\x00' ? c.char : ' ').join(''))
+        .join('\n');
+
+      // IND$FILE signals completion with these strings
+      if (text.includes('TRANSFER COMPLETE') || text.includes('EWS032I')) {
+        clearTimeout(timeout);
+        session.removeListener('screen', onScreen);
+        const encoded = Buffer.from(accumulated, 'utf8').toString('base64');
+        send(ws, { type: 'xfer.data', data: encoded, saveAs: filename });
+        logger.info(`[ws:${wsId}] xfer.download complete ← ${dataset}`);
+      } else {
+        accumulated += text;
+      }
+    }
+
+    session.on('screen', onScreen);
+    session.sendAid('ENTER', []);
+
+  } catch (err) {
+    logger.error(`[ws:${wsId}] xfer.download error: ${err.message}`);
+    send(ws, { type: 'xfer.error', message: err.message });
+  }
 }
 
 // ── Graceful shutdown ──────────────────────────────────────────────
