@@ -975,6 +975,8 @@ select:focus, input[type="text"]:focus, input[type="number"]:focus { border-colo
           <div class="shortcut-item"><span class="shortcut-desc">New Session</span><span class="shortcut-key">Ctrl+T</span></div>
           <div class="shortcut-item"><span class="shortcut-desc">Open Copilot</span><span class="shortcut-key">Ctrl+K</span></div>
           <div class="shortcut-item"><span class="shortcut-desc">Toggle Sidebar</span><span class="shortcut-key">Ctrl+B</span></div>
+	  <div class="shortcut-item"><span class="shortcut-desc">Next Session</span><span class="shortcut-key">Ctrl+.</span></div>
+          <div class="shortcut-item"><span class="shortcut-desc">Prev Session</span><span class="shortcut-key">Ctrl+,</span></div>
         </div>
       </div>
     </div>
@@ -1070,6 +1072,9 @@ select:focus, input[type="text"]:focus, input[type="number"]:focus { border-colo
     </div>
   </div>
 </div>
+<input type="file" id="macroFileInput"
+  </div>
+</div>
 <input type="file" id="macroFileInput" accept=".json" style="display:none" onchange="loadMacroFile(event)">
 
 <!-- CONNECT MODAL -->
@@ -1122,8 +1127,8 @@ select:focus, input[type="text"]:focus, input[type="number"]:focus { border-colo
       <button class="btn btn-secondary" onclick="hideConnectModal()">Cancel</button>
       <button class="btn btn-secondary" id="saveProfileBtn" onclick="saveProfileFromForm()">Save Profile</button>
       <button class="btn btn-primary" onclick="connectManual()">Connect</button>
-    </div>
-  </div>
+     </div>
+   </div>
 </div>
 
 <script>
@@ -1327,6 +1332,16 @@ document.addEventListener('keydown', e => {
   if (e.ctrlKey && e.key === 'p') {
     e.preventDefault();
     menuCaptureScreen();
+    return;
+  }
+  if (e.ctrlKey && e.key === '.') {
+    e.preventDefault();
+    cycleSession(1);
+    return;
+  }
+  if (e.ctrlKey && e.key === ',') {
+    e.preventDefault();
+    cycleSession(-1);
     return;
   }
   // Terminal key handling — only when not in a text input
@@ -1558,6 +1573,7 @@ function editProfile(profileId) {
   const body = document.querySelector('#connectModal .modal-body');
   if (body) setTimeout(() => body.scrollTop = body.scrollHeight, 50);
 }
+<<<<<<< HEAD
 // ── Delete a profile via bridge API ──────────────────────────────
 async function deleteProfile(profileId, displayName) {
   if (!confirm(`Delete profile "${displayName}"?`)) return;
@@ -1587,18 +1603,38 @@ async function saveProfileFromForm() {
   const type    = document.getElementById('connType').value;
   const model   = document.getElementById('connModel').value;
   const tls     = document.getElementById('connTls').classList.contains('on');
+=======
+// ── Save profile from connect form → lpars.txt via bridge API ────
+async function saveProfileFromForm() {
+  const host  = document.getElementById('connHost').value.trim();
+  const port  = parseInt(document.getElementById('connPort').value, 10) || 23;
+  const name  = document.getElementById('connName').value.trim();
+  const luName= document.getElementById('connLu').value.trim() || null;
+  const type  = document.getElementById('connType').value;
+  const model = document.getElementById('connModel').value;
+  const tls   = document.getElementById('connTls').classList.contains('on');
+>>>>>>> b69ae02 (updated the tn3270-client.html to allow for key combo to cycle between open LPAR sessions. ctrl + , and ctrl + . allow you to do that.)
   const tn3270e = document.getElementById('connTn3270e').classList.contains('on');
 
   if (!host) { document.getElementById('connHost').focus(); return; }
   if (!name) { document.getElementById('connName').focus(); return; }
 
+<<<<<<< HEAD
   // If editing, keep original ID; otherwise derive from name
   const id = editingProfileId
     || name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+=======
+  // Derive id from name: lowercase, spaces→hyphens, strip non-alphanum
+  const id = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+>>>>>>> b69ae02 (updated the tn3270-client.html to allow for key combo to cycle between open LPAR sessions. ctrl + , and ctrl + . allow you to do that.)
 
   const profile = { id, name, host, port, tls, luName, type, model, tn3270e, codepage: 37 };
 
   const btn = document.getElementById('saveProfileBtn');
+<<<<<<< HEAD
+=======
+
+>>>>>>> b69ae02 (updated the tn3270-client.html to allow for key combo to cycle between open LPAR sessions. ctrl + , and ctrl + . allow you to do that.)
   try {
     btn.disabled = true;
     btn.textContent = 'Saving…';
@@ -1614,6 +1650,7 @@ async function saveProfileFromForm() {
       throw new Error(err.error || `HTTP ${res.status}`);
     }
 
+<<<<<<< HEAD
     await loadProfiles();
 
     btn.textContent       = '✓ Saved';
@@ -1624,11 +1661,28 @@ async function saveProfileFromForm() {
       btn.style.color       = '';
       btn.style.borderColor = '';
       btn.disabled          = false;
+=======
+    // Re-render all three profile lists with fresh data from bridge
+    await loadProfiles();
+
+    btn.textContent  = '✓ Saved';
+    btn.style.color  = 'var(--accent-green)';
+    btn.style.borderColor = 'var(--accent-green)';
+    setTimeout(() => {
+      btn.textContent  = 'Save Profile';
+      btn.style.color  = '';
+      btn.style.borderColor = '';
+      btn.disabled = false;
+>>>>>>> b69ae02 (updated the tn3270-client.html to allow for key combo to cycle between open LPAR sessions. ctrl + , and ctrl + . allow you to do that.)
     }, 1500);
 
   } catch (err) {
     btn.textContent = 'Save Profile';
+<<<<<<< HEAD
     btn.disabled    = false;
+=======
+    btn.disabled = false;
+>>>>>>> b69ae02 (updated the tn3270-client.html to allow for key combo to cycle between open LPAR sessions. ctrl + , and ctrl + . allow you to do that.)
     showBridgeError('Could not save profile: ' + err.message);
   }
 }
@@ -2057,6 +2111,14 @@ function closeSessionTab(e, closeBtn) {
   }
 }
 
+// ── Cycle through open sessions ───────────────────────────────────
+function cycleSession(direction) {
+  const tabs = [...document.querySelectorAll('.session-tab')];
+  if (tabs.length < 2) return;
+  const current = tabs.findIndex(t => t.classList.contains('active'));
+  const next = (current + direction + tabs.length) % tabs.length;
+  activateTabEl(tabs[next], Number(tabs[next].dataset.sid));
+}
 function switchTab(el) {
   document.querySelectorAll('.session-tab').forEach(t => t.classList.remove('active'));
   el.classList.add('active');

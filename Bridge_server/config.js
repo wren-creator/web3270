@@ -84,7 +84,7 @@ module.exports = {
    * Example:  cdsctv01, CDSCTV01, 10.80.1.1, 23, false, TSO
    * Lines starting with # are treated as comments.
    */
-  profiles: loadLparFile(),
+profiles: loadLparFile(),
 
   logging: {
     /** 'debug' | 'info' | 'warn' | 'error' */
