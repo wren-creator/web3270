@@ -1,3 +1,5 @@
 lpars.txt
 Bridge_server/public/tn3270-client.html-0415-good
-Bridge_server/public/tn3270-client.html
+# macOS metadata
+.DS_Store
+**/.DS_Store
