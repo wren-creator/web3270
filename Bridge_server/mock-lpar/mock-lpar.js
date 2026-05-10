@@ -147,6 +147,7 @@ function screenISPF(userid = 'DEMO') {
     { row:6,  col:8,  text: 'Edit           Create or change source data' },
     { row:7,  col:5,  text: '3' },
     { row:7,  col:8,  text: 'Utilities      Perform utility functions' },
+    { row:7,  col:40, text: '3.4 Dataset List' },
     { row:8,  col:5,  text: '4' },
     { row:8,  col:8,  text: 'Foreground     Interactive language processing' },
     { row:9,  col:5,  text: '5' },
@@ -162,6 +163,43 @@ function screenISPF(userid = 'DEMO') {
     { row:21, col:1,  text: ` System ID : ${SYSNAME.padEnd(8)}    Terminal .: 3278` },
     { row:23, col:0,  fa: FA_PROTECTED },
     { row:23, col:0,  text: 'F1=Help   F2=Split  F3=Exit   F7=Backward  F8=Forward  F12=Cancel' },
+  ]);
+}
+
+function screenISPF34(userid = 'DEMO', dsLevel = '') {
+  const level = dsLevel || userid.toUpperCase();
+  return buildScreen(true, [
+    { row:0,  col:0,  fa: FA_PROTECTED_HIGH },
+    { row:0,  col:1,  text: 'ISPF  Data Set List Utility' },
+    { row:0,  col:55, fa: FA_PROTECTED },
+    { row:0,  col:55, text: 'Row 1 of 10' },
+    { row:1,  col:0,  fa: FA_PROTECTED },
+    { row:1,  col:1,  text: 'Command ==>' },
+    { row:1,  col:12, fa: FA_UNPROTECTED },
+    { row:1,  col:12, text: '                                    ' },
+    { row:1,  col:49, fa: FA_PROTECTED },
+    { row:1,  col:49, text: 'Scroll ===> CSR' },
+    { row:2,  col:1,  fa: FA_PROTECTED },
+    { row:2,  col:1,  text: 'Dsname Level. . ' + level.padEnd(8) },
+    { row:3,  col:0,  fa: FA_PROTECTED },
+    { row:3,  col:1,  text: 'Volume serial .        Optionally enter a volume serial' },
+    { row:4,  col:0,  fa: FA_PROTECTED_HIGH },
+    { row:4,  col:1,  text: 'Name                             Tracks  XT Used  XT Dsorg Recfm Lrecl BlkSz' },
+    { row:5,  col:0,  fa: FA_PROTECTED },
+    { row:5,  col:1,  text: ' ' + level + '.JCL.CNTL                       15   1   15   1 PO    FB       80 27920' },
+    { row:6,  col:1,  text: ' ' + level + '.REXX.EXEC                        5   1    5   1 PO    VB       80  6160' },
+    { row:7,  col:1,  text: ' ' + level + '.DATA.INPUT                      20   1   18   1 PS    FB       80 27920' },
+    { row:8,  col:1,  text: ' ' + level + '.DATA.OUTPUT                     20   1    0   0 PS    FB       80 27920' },
+    { row:9,  col:1,  text: ' ' + level + '.LOAD                            30   1   22   1 PO    U         0 32760' },
+    { row:10, col:1,  text: ' ' + level + '.PROCLIB                         10   1    8   1 PO    FB       80 27920' },
+    { row:11, col:1,  text: ' ' + level + '.CLIST                            5   1    4   1 PO    VB      255  6160' },
+    { row:12, col:1,  text: ' ' + level + '.PANELS                           5   1    5   1 PO    FB       80  6160' },
+    { row:13, col:1,  text: ' ' + level + '.MSGS                             5   1    5   1 PO    FB       80  6160' },
+    { row:14, col:1,  text: ' ' + level + '.WORK.DATA                       10   1    3   1 PS    FB       80 27920' },
+    { row:15, col:0,  fa: FA_PROTECTED_HIGH },
+    { row:15, col:1,  text: '**END**' },
+    { row:23, col:0,  fa: FA_PROTECTED },
+    { row:23, col:0,  text: 'F1=Help  F2=Split  F3=Exit  F5=Reset  F7=Up  F8=Down  F10=Left  F11=Right' },
   ]);
 }
 
@@ -474,6 +512,7 @@ function handleConnection(socket) {
         if (aid === AID_ENTER) {
           const opt = inputText.toUpperCase();
           if      (opt === '2')              { lastScreen = 'ispf'; currentScreen = 'edit'; }
+          else if (opt === '3' || opt === '3.4') { lastScreen = 'ispf'; currentScreen = 'ispf34'; }
           else if (opt === 'M' || opt === 'SDSF') { lastScreen = 'ispf'; currentScreen = 'sdsf'; }
           else if (opt === 'X')              { socket.end(); return; }
           else if (opt !== '')               { lastScreen = 'ispf'; currentScreen = 'error'; state.errorCmd = opt; }
@@ -484,6 +523,7 @@ function handleConnection(socket) {
         break;
 
       case 'edit':
+      case 'ispf34':
       case 'sdsf':
       case 'error':
         if (aid === AID_PF3 || aid === AID_ENTER) {
@@ -502,6 +542,7 @@ function handleConnection(socket) {
       case 'logon': ds = screenLogon();              break;
       case 'ispf':  ds = screenISPF(userid);         break;
       case 'edit':  ds = screenEdit();               break;
+      case 'ispf34': ds = screenISPF34(userid);      break;
       case 'sdsf':  ds = screenSDSF();               break;
       case 'error': ds = screenError(state.errorCmd); break;
       default:      ds = screenISPF(userid);

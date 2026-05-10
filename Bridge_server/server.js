@@ -257,6 +257,7 @@ wss.on('connection', (ws, req) => {
     });
 
     session.on('screen', screenData => {
+      session.lastScreen = screenData;  // cache for dataset listing
       send(ws, { type: 'screen', ...screenData });
     });
 
@@ -298,6 +299,10 @@ wss.on('connection', (ws, req) => {
       }
       if (msg.type === 'xfer.download') {
         handleXferDownload(msg, ws, wsId, session);
+        return;
+      }
+      if (msg.type === 'xfer.listdatasets') {
+        handleXferListDatasets(msg, ws, wsId, session);
         return;
       }
 
@@ -440,6 +445,147 @@ function handleXferDownload(msg, ws, wsId, session) {
     logger.error(`[ws:${wsId}] xfer.download error: ${err.message}`);
     send(ws, { type: 'xfer.error', message: err.message });
   }
+}
+
+// ── Dataset listing handler ───────────────────────────────────────
+
+// ── Screen state detector ────────────────────────────────────────
+function detectScreenState(screenLines) {
+  const text = screenLines.join('\n');
+  if (text.includes('FILELIST'))                                     return 'zvm-filelist';
+  if (text.includes('z/VM CMS') || (text.includes('CMS') && text.includes('Ready;'))) return 'zvm-cms';
+  if (text.includes('z/VM CP')  || (text.includes('CP')  && text.includes('Ready;'))) return 'zvm-cp';
+  if (text.includes('Enter LOGON') || text.includes('CP Logon'))     return 'zvm-logon';
+  if (text.includes('RUNNING') && !text.includes('ISPF'))            return 'zvm-cp';
+  if (text.includes('Data Set List Utility'))                         return 'ispf34';
+  if (text.includes('ISPF Primary Option Menu'))                      return 'ispf-menu';
+  if (text.includes('TSO/E LOGON'))                                   return 'tso-logon';
+  if (text.includes('READY') || text.includes('***'))                 return 'tso-ready';
+  return 'unknown';
+}
+
+function screenToLines(screenData) {
+  return (screenData.rows || []).map(row =>
+    (Array.isArray(row) ? row : [])
+      .map(c => c.char && c.char !== '\x00' ? c.char : ' ')
+      .join('')
+  );
+}
+
+// ── Dataset listing handler — reads current screen, no navigation ─
+function handleXferListDatasets(msg, ws, wsId, session) {
+  const sessionType = msg.sessionType || 'TSO';
+  logger.info(`[ws:${wsId}] xfer.listdatasets type=${sessionType}`);
+
+  try {
+    if (!session.lastScreen || !session.lastScreen.rows) {
+      send(ws, { type: 'xfer.error', message: 'No screen data — connect to an LPAR first' });
+      return;
+    }
+
+    const lines   = screenToLines(session.lastScreen);
+    const state   = detectScreenState(lines);
+    logger.info(`[ws:${wsId}] screen state: ${state}`);
+
+    if (sessionType === 'ZVM') {
+      if (state !== 'zvm-filelist') {
+        send(ws, { type: 'xfer.error', message: 'Navigate to FILELIST in CMS then press \u21BA' });
+        return;
+      }
+      const datasets = parseFilelistScreen(lines);
+      if (!datasets.length) {
+        send(ws, { type: 'xfer.error', message: 'FILELIST screen found but no files could be parsed' });
+        return;
+      }
+      logger.info(`[ws:${wsId}] xfer.listdatasets found ${datasets.length} CMS files`);
+      send(ws, { type: 'xfer.datasets', datasets, sessionType });
+
+    } else {
+      if (state !== 'ispf34') {
+        send(ws, { type: 'xfer.error', message: 'Navigate to ISPF 3.4 (Dataset List) then press \u21BA' });
+        return;
+      }
+      const datasets = parseIspf34Screen(lines);
+      if (!datasets.length) {
+        send(ws, { type: 'xfer.error', message: 'ISPF 3.4 screen found but no datasets could be parsed' });
+        return;
+      }
+      logger.info(`[ws:${wsId}] xfer.listdatasets found ${datasets.length} datasets`);
+      send(ws, { type: 'xfer.datasets', datasets, sessionType });
+    }
+
+  } catch (err) {
+    logger.error(`[ws:${wsId}] xfer.listdatasets error: ${err.message}`);
+    send(ws, { type: 'xfer.error', message: err.message });
+  }
+}
+
+function parseIspf34Screen(lines) {
+  const datasets = [];
+  let inList = false;
+
+  for (const line of lines) {
+    // Header row signals start of data
+    if (line.includes('ISPF  Data Set List') || line.includes('Data Set List Utility')) {
+      inList = true;
+      continue;
+    }
+    if (!inList) continue;
+    if (line.includes('**END**')) break;
+    // Skip header/separator rows
+    if (line.match(/^\s*(Name|Command|Dsname|Volume|Row|Scroll|F1=)/i)) continue;
+    if (line.trim() === '') continue;
+
+    // Dataset lines start with a space then the name
+    // Format: " NAME.WITH.QUAL    tracks  XT used XT Dsorg Recfm Lrecl BlkSz"
+    const match = line.match(/^\s{1,2}([A-Z$#@][A-Z0-9$#@.]{1,43})\s+(\d+)\s+\d+\s+(\d+)\s+\d+\s+(\w+)\s+(\w+)\s+(\d+)/);
+    if (match) {
+      datasets.push({
+        name:   match[1].trim(),
+        tracks: parseInt(match[2]),
+        used:   parseInt(match[3]),
+        dsorg:  match[4].trim(),
+        recfm:  match[5].trim(),
+        lrecl:  parseInt(match[6]),
+      });
+    }
+  }
+
+  return datasets;
+}
+
+// ── z/VM FILELIST screen parser ───────────────────────────────────
+// Expects the CMS FILELIST screen.
+// File lines: "      FILENAME  FILETYPE  Fm  Format  Lrecl  Records  Blocks  Date  Time"
+// Col positions: filename starts at col 6, filetype at col 16, fm at col 26
+function parseFilelistScreen(lines) {
+  const datasets = [];
+  let inList = false;
+
+  for (const line of lines) {
+    if (line.includes('FILELIST')) { inList = true; continue; }
+    if (!inList) continue;
+    // Skip header/separator/command lines
+    if (line.match(/Cmd\s+Filename|^[─\s]*$|PF\d|RUNNING|^\s{0,2}\w+=/) ) continue;
+    if (line.trim() === '') continue;
+
+    // FILELIST data lines: 6 spaces then filename (8), filetype (8), filemode (2)
+    // "      PROFILE   EXEC      A1  V  80  42  1  date  time"
+    const match = line.match(/^\s{2,8}([A-Z0-9$#@_\-]{1,8})\s+([A-Z0-9$#@_\-]{1,8})\s+([A-Z]\d)\s+([VF])\s+(\d+)\s+(\d+)/);
+    if (match) {
+      datasets.push({
+        name:    match[1].trim() + ' ' + match[2].trim(),  // "FILENAME FILETYPE"
+        filemode: match[3].trim(),
+        format:  match[4].trim(),
+        lrecl:   parseInt(match[5]),
+        records: parseInt(match[6]),
+        dsorg:   'CMS',
+        recfm:   match[4].trim(),
+      });
+    }
+  }
+
+  return datasets;
 }
 
 // ── Graceful shutdown ──────────────────────────────────────────────

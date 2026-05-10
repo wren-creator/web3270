@@ -791,7 +791,7 @@ select:focus, input[type="text"]:focus, input[type="number"]:focus { border-colo
         <div class="menu-dd-item" onclick="toggleRightPanel();closeAllMenus()">Toggle Panel<span class="menu-dd-shortcut"></span></div>
         <div class="menu-dd-sep"></div>
         <div class="menu-dd-item" onclick="menuOpenPanel('Settings')">Settings</div>
-        <div class="menu-dd-item" onclick="menuOpenCopilot()">⬡ AI Assist<span class="menu-dd-shortcut">Ctrl+K</span></div>
+        <div class="menu-dd-item" onclick="menuOpenCopilot()">⬡ Copilot<span class="menu-dd-shortcut">Ctrl+K</span></div>
       </div>
     </div>
 
@@ -924,7 +924,7 @@ select:focus, input[type="text"]:focus, input[type="number"]:focus { border-colo
       <div class="panel-tab active"      onclick="switchPanelTab(this,'Settings')">Settings</div>
       <div class="panel-tab"             onclick="switchPanelTab(this,'Keys')">Keys</div>
       <div class="panel-tab"             onclick="switchPanelTab(this,'Xfer')">Transfer</div>
-      <div class="panel-tab copilot-tab" onclick="switchPanelTab(this,'Copilot')">⬡ AI Assist</div>
+      <div class="panel-tab copilot-tab" onclick="switchPanelTab(this,'Copilot')">⬡ Copilot</div>
     </div>
 
     <!-- ── Settings ── -->
@@ -971,7 +971,7 @@ select:focus, input[type="text"]:focus, input[type="number"]:focus { border-colo
           <div class="shortcut-item"><span class="shortcut-desc">Insert Mode</span><span class="shortcut-key">Ins</span></div>
           <div class="shortcut-item"><span class="shortcut-desc">Clear Screen</span><span class="shortcut-key">Ctrl+L</span></div>
           <div class="shortcut-item"><span class="shortcut-desc">New Session</span><span class="shortcut-key">Ctrl+T</span></div>
-          <div class="shortcut-item"><span class="shortcut-desc">Open AI Assist</span><span class="shortcut-key">Ctrl+K</span></div>
+          <div class="shortcut-item"><span class="shortcut-desc">Open Copilot</span><span class="shortcut-key">Ctrl+K</span></div>
           <div class="shortcut-item"><span class="shortcut-desc">Toggle Sidebar</span><span class="shortcut-key">Ctrl+B</span></div>
 	  <div class="shortcut-item"><span class="shortcut-desc">Next Session</span><span class="shortcut-key">Ctrl+.</span></div>
           <div class="shortcut-item"><span class="shortcut-desc">Prev Session</span><span class="shortcut-key">Ctrl+,</span></div>
@@ -980,7 +980,7 @@ select:focus, input[type="text"]:focus, input[type="number"]:focus { border-colo
     </div>
 
     <!-- ── Transfer ── -->
-    <div class="panel-content" id="panelXfer" style="padding:0!important;display:none;flex-direction:column">
+    <div class="panel-content" id="panelXfer" style="display:none;flex-direction:column">
 
       <!-- Status bar -->
       <div id="xferStatus" style="display:none;padding:5px 8px;font-size:10px;
@@ -994,16 +994,22 @@ select:focus, input[type="text"]:focus, input[type="number"]:focus { border-colo
         <div style="display:flex;flex-direction:column;flex:1;min-height:0">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
             <span style="font-size:9px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted)">Local</span>
-            <span id="xferLocalPath" style="font-size:9px;font-family:'IBM Plex Mono',monospace;color:var(--text-muted);
-                  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px;text-align:right"></span>
+            <div style="display:flex;align-items:center;gap:4px">
+              <span id="xferLocalPath" style="font-size:9px;font-family:'IBM Plex Mono',monospace;color:var(--text-muted);
+                    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px;text-align:right"></span>
+              <button onclick="xferPickDir()"
+                style="font-size:9px;padding:1px 6px;background:transparent;border:1px solid var(--border);
+                       color:var(--text-muted);border-radius:2px;cursor:pointer;white-space:nowrap;
+                       font-family:'IBM Plex Mono',monospace" title="Open a local folder">📁 Open</button>
+            </div>
           </div>
           <div id="xferLocalList"
             style="flex:1;background:#060c14;border:1px solid var(--border);border-radius:3px;
                    overflow-y:auto;font-family:'IBM Plex Mono',monospace;font-size:10px;
                    min-height:120px;max-height:160px;
                    scrollbar-width:thin;scrollbar-color:#1a3050 transparent">
-            <div style="padding:20px;text-align:center;color:var(--text-muted);font-size:10px">
-              Loading…
+            <div style="padding:20px;text-align:center;color:var(--text-muted);font-size:10px;line-height:1.6">
+              Click 📁 Open to browse<br>your local files
             </div>
           </div>
           <div style="margin-top:4px;display:flex;gap:4px;align-items:center">
@@ -1071,7 +1077,7 @@ select:focus, input[type="text"]:focus, input[type="number"]:focus { border-colo
                    min-height:80px;max-height:120px;
                    scrollbar-width:thin;scrollbar-color:#1a3050 transparent">
             <div style="padding:16px;text-align:center;color:var(--text-muted);font-size:10px;line-height:1.6">
-              Connect to an LPAR and<br>press ↺ to list datasets
+              z/OS: go to ISPF 3.4<br>z/VM: run FILELIST<br>then press ↺
             </div>
           </div>
           <div style="margin-top:4px">
@@ -1106,7 +1112,7 @@ select:focus, input[type="text"]:focus, input[type="number"]:focus { border-colo
       <div class="copilot-header-row">
         <div class="copilot-logo-sm">⬡</div>
         <div>
-          <div class="copilot-title-sm">3270 AI Assist</div>
+          <div class="copilot-title-sm">3270 Copilot</div>
           <div class="copilot-subtitle" id="copilotSubtitle">AI assistant · screen-aware</div>
         </div>
       </div>
@@ -1121,7 +1127,7 @@ select:focus, input[type="text"]:focus, input[type="number"]:focus { border-colo
       <div class="chat-area" id="chatArea">
         <div class="chat-empty" id="chatEmpty">
           <div class="chat-empty-icon">⬡</div>
-          <div class="chat-empty-title">3270 AI Assist</div>
+          <div class="chat-empty-title">3270 Copilot</div>
           <div class="chat-empty-body">
             Ask anything about this screen,<br>
             TSO · ISPF · JCL · REXX · errors.<br><br>
@@ -1695,16 +1701,6 @@ async function deleteProfile(profileId, displayName) {
   }
 }
 
-// ── Delete a profile via bridge API ──────────────────────────────
-async function deleteProfile(profileId, displayName) {
-  if (!confirm('Delete profile "' + displayName + '"?')) return;
-  try {
-    const res = await fetch('/api/profiles/' + encodeURIComponent(profileId), { method: 'DELETE' });
-    if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || 'HTTP ' + res.status); }
-    await loadProfiles();
-  } catch (err) { showBridgeError('Could not delete profile: ' + err.message); }
-}
-
 // ── Save profile from connect form → lpars.txt via bridge API ────
 async function saveProfileFromForm() {
   const host  = document.getElementById('connHost').value.trim();
@@ -1913,6 +1909,7 @@ function handleBridgeMsg(sid, msg) {
     case 'xfer.data':
     case 'xfer.ok':
     case 'xfer.error':
+    case 'xfer.datasets':
       if (sid === activeSession) handleXferMsg(msg);
       break;
 
@@ -2338,14 +2335,71 @@ function xferFileSelected(e) {
 }
 
 function xferRefreshMainframe() {
-  const list = document.getElementById('xferMainframeList');
+  const list    = document.getElementById('xferMainframeList');
   const session = sessions.get(activeSession);
   if (!session || session.ws.readyState !== WebSocket.OPEN) {
-    list.innerHTML = '<div style="padding:12px;text-align:center;color:var(--t-red);font-size:10px">No active session</div>';
+    list.innerHTML = '<div style="padding:12px;text-align:center;color:var(--t-red);font-size:10px">No active session — connect to an LPAR first</div>';
     return;
   }
-  list.innerHTML = '<div style="padding:12px;text-align:center;color:var(--accent-amber);font-size:10px;line-height:1.6">\u27F3 Dataset listing in Phase 2 Step 2<br><span style="color:var(--text-muted)">Type dataset name above</span></div>';
-  xferLog('Dataset browser \u2014 Phase 2 Step 2', 'var(--text-muted)');
+
+  // Determine session type from profile
+  const sessionType = session.profile?.type || 'TSO';
+  const hint = sessionType === 'ZVM'
+    ? 'Navigate to FILELIST in CMS first'
+    : 'Navigate to ISPF 3.4 (type 3.4 at ISPF menu) first';
+
+  list.innerHTML = '<div style="padding:12px;text-align:center;color:var(--accent-amber);font-size:10px">⟳ Requesting dataset list…</div>';
+  xferLog('Requesting dataset list (' + sessionType + ')…', 'var(--accent-amber)');
+
+  session.ws.send(JSON.stringify({ type: 'xfer.listdatasets', sessionType }));
+}
+
+// ── Render dataset list from bridge response ──────────────────────
+function xferRenderDatasets(datasets, sessionType) {
+  const list = document.getElementById('xferMainframeList');
+  list.innerHTML = '';
+
+  if (!datasets || datasets.length === 0) {
+    list.innerHTML = '<div style="padding:12px;text-align:center;color:var(--text-muted);font-size:10px">No datasets found</div>';
+    return;
+  }
+
+  datasets.forEach(ds => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:3px 7px;cursor:pointer;border-bottom:1px solid #0a1520;transition:background 0.1s';
+
+    const nameColor = 'var(--t-blue)';
+    const meta = sessionType === 'ZVM'
+      ? (ds.filemode + ' ' + ds.recfm + ' ' + ds.lrecl + ' ' + ds.records + 'rec')
+      : (ds.dsorg + ' ' + ds.recfm + ' ' + ds.lrecl);
+
+    row.innerHTML = '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:' + nameColor + ';font-family:IBM Plex Mono,monospace">'
+      + esc(ds.name) + '</span>'
+      + '<span style="color:var(--text-muted);font-size:9px;flex-shrink:0">' + esc(meta) + '</span>';
+
+    row.addEventListener('click', () => {
+      list.querySelectorAll('div').forEach(r => r.style.background = '');
+      row.style.background = '#0a1020';
+      // Populate the dataset field
+      const dsField = document.getElementById('xferDataset');
+      dsField.value = ds.name.toUpperCase();
+      // Auto-fill save-as from last qualifier
+      const saveAs = document.getElementById('xferSaveAs');
+      if (!saveAs.value) {
+        const parts = ds.name.split(/[\s.]/);
+        saveAs.value = parts[parts.length - 1].toLowerCase() + '.txt';
+      }
+      xferLog('Selected: ' + ds.name, 'var(--t-blue)');
+    });
+
+    row.addEventListener('mouseenter', () => { row.style.background = '#0a1020'; });
+    row.addEventListener('mouseleave', () => {
+      if (document.getElementById('xferDataset').value !== ds.name.toUpperCase())
+        row.style.background = '';
+    });
+
+    list.appendChild(row);
+  });
 }
 
 function xferLog(msg, color) {
@@ -2450,7 +2504,12 @@ function handleXferMsg(msg) {
     xferLog('\u2713 Received ' + (bytes.length/1024).toFixed(1) + ' KB \u2192 ' + msg.saveAs, 'var(--accent-green)');
     if (xferCurrentPath) xferLoadDir(xferCurrentPath);
   }
-  if (msg.type === 'xfer.ok') { xferSetStatus('\u2713 ' + (msg.message || 'Transfer complete'), 'ok'); xferLog('\u2713 ' + (msg.message || 'Transfer complete'), 'var(--accent-green)'); }
+  if (msg.type === 'xfer.datasets') {
+    xferRenderDatasets(msg.datasets, msg.sessionType);
+    xferSetStatus('✓ Found ' + msg.datasets.length + ' datasets', 'ok');
+    xferLog('✓ ' + msg.datasets.length + ' datasets listed', 'var(--accent-green)');
+  }
+  if (msg.type === 'xfer.ok') { xferSetStatus('✓ ' + (msg.message || 'Transfer complete'), 'ok'); xferLog('✓ ' + (msg.message || 'Transfer complete'), 'var(--accent-green)'); }
   if (msg.type === 'xfer.error') { xferSetStatus('Transfer error: ' + msg.message, 'error'); xferLog('ERROR: ' + msg.message, 'var(--t-red)'); }
 }
 
@@ -2731,7 +2790,7 @@ function appendAssistantMsg(raw) {
   div.innerHTML = `
     <div class="msg-avatar">⬡</div>
     <div class="msg-body">
-      <div class="msg-role">AI Assist</div>
+      <div class="msg-role">Copilot</div>
       <div class="msg-content">${renderMd(raw)}</div>
     </div>`;
   chat.appendChild(div);
@@ -2764,7 +2823,7 @@ function appendTyping() {
   div.innerHTML = `
     <div class="msg-avatar">⬡</div>
     <div class="msg-body">
-      <div class="msg-role">AI Assist</div>
+      <div class="msg-role">Copilot</div>
       <div class="typing-indicator">
         <div class="typing-dot"></div>
         <div class="typing-dot"></div>
