@@ -305,6 +305,33 @@ body {
   flex-shrink: 0;
 }
 .profile-edit-btn:hover { color: var(--accent-cyan); border-color: var(--accent-cyan); }
+
+.profile-delete-btn {
+  font-size: 10px; padding: 2px 7px;
+  background: var(--bg-panel); border: 1px solid var(--border);
+  color: var(--text-muted); border-radius: 2px; cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace; transition: all 0.1s;
+  flex-shrink: 0;
+}
+.profile-delete-btn:hover { color: var(--t-red); border-color: var(--t-red); }
+
+.lpar-delete-btn {
+  display: none;
+  padding: 0 5px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  line-height: 16px;
+  font-family: 'IBM Plex Mono', monospace;
+  transition: all 0.1s;
+  flex-shrink: 0;
+}
+.lpar-item:hover .lpar-delete-btn { display: inline-block; }
+.lpar-delete-btn:hover { color: var(--t-red); border-color: var(--t-red); }
+
 .macro-item {
   display: flex; align-items: center; gap: 8px;
   padding: 5px 12px; font-size: 11px;
@@ -764,7 +791,7 @@ select:focus, input[type="text"]:focus, input[type="number"]:focus { border-colo
         <div class="menu-dd-item" onclick="toggleRightPanel();closeAllMenus()">Toggle Panel<span class="menu-dd-shortcut"></span></div>
         <div class="menu-dd-sep"></div>
         <div class="menu-dd-item" onclick="menuOpenPanel('Settings')">Settings</div>
-        <div class="menu-dd-item" onclick="menuOpenCopilot()">⬡ Copilot<span class="menu-dd-shortcut">Ctrl+K</span></div>
+        <div class="menu-dd-item" onclick="menuOpenCopilot()">⬡ AI Assist<span class="menu-dd-shortcut">Ctrl+K</span></div>
       </div>
     </div>
 
@@ -897,7 +924,7 @@ select:focus, input[type="text"]:focus, input[type="number"]:focus { border-colo
       <div class="panel-tab active"      onclick="switchPanelTab(this,'Settings')">Settings</div>
       <div class="panel-tab"             onclick="switchPanelTab(this,'Keys')">Keys</div>
       <div class="panel-tab"             onclick="switchPanelTab(this,'Xfer')">Transfer</div>
-      <div class="panel-tab copilot-tab" onclick="switchPanelTab(this,'Copilot')">⬡ Copilot</div>
+      <div class="panel-tab copilot-tab" onclick="switchPanelTab(this,'Copilot')">⬡ AI Assist</div>
     </div>
 
     <!-- ── Settings ── -->
@@ -944,7 +971,7 @@ select:focus, input[type="text"]:focus, input[type="number"]:focus { border-colo
           <div class="shortcut-item"><span class="shortcut-desc">Insert Mode</span><span class="shortcut-key">Ins</span></div>
           <div class="shortcut-item"><span class="shortcut-desc">Clear Screen</span><span class="shortcut-key">Ctrl+L</span></div>
           <div class="shortcut-item"><span class="shortcut-desc">New Session</span><span class="shortcut-key">Ctrl+T</span></div>
-          <div class="shortcut-item"><span class="shortcut-desc">Open Copilot</span><span class="shortcut-key">Ctrl+K</span></div>
+          <div class="shortcut-item"><span class="shortcut-desc">Open AI Assist</span><span class="shortcut-key">Ctrl+K</span></div>
           <div class="shortcut-item"><span class="shortcut-desc">Toggle Sidebar</span><span class="shortcut-key">Ctrl+B</span></div>
 	  <div class="shortcut-item"><span class="shortcut-desc">Next Session</span><span class="shortcut-key">Ctrl+.</span></div>
           <div class="shortcut-item"><span class="shortcut-desc">Prev Session</span><span class="shortcut-key">Ctrl+,</span></div>
@@ -953,120 +980,125 @@ select:focus, input[type="text"]:focus, input[type="number"]:focus { border-colo
     </div>
 
     <!-- ── Transfer ── -->
-    <div class="panel-content" id="panelXfer">
+    <div class="panel-content" id="panelXfer" style="padding:0!important;display:none;flex-direction:column">
 
       <!-- Status bar -->
-      <div id="xferStatus" style="display:none;margin-bottom:10px;padding:6px 8px;
-           border-radius:3px;font-size:10px;font-family:'IBM Plex Mono',monospace;
-           border:1px solid var(--border)"></div>
+      <div id="xferStatus" style="display:none;padding:5px 8px;font-size:10px;
+           font-family:'IBM Plex Mono',monospace;border-bottom:1px solid var(--border);
+           flex-shrink:0"></div>
 
-      <!-- ── UPLOAD ── -->
-      <div class="setting-group">
-        <div class="setting-label">⬆ Send to Mainframe</div>
-        <div class="xfer-info">Select a local file and specify the target mainframe dataset.</div>
+      <!-- ── TWO-PANE BROWSER ── -->
+      <div style="display:flex;flex-direction:column;flex:1;overflow:hidden;padding:8px;gap:6px">
 
-        <div class="form-group" style="margin-bottom:8px">
-          <div class="form-label">Local File</div>
-          <div style="display:flex;gap:6px;align-items:center">
-            <input type="text" id="xferLocalFile" placeholder="No file selected" readonly
-              style="flex:1;cursor:pointer;font-size:10px;font-family:'IBM Plex Mono',monospace"
-              onclick="document.getElementById('xferFileInput').click()">
-            <button class="btn btn-secondary" style="padding:3px 8px;font-size:10px;white-space:nowrap"
-              onclick="document.getElementById('xferFileInput').click()">Browse…</button>
+        <!-- LOCAL PANE -->
+        <div style="display:flex;flex-direction:column;flex:1;min-height:0">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+            <span style="font-size:9px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted)">Local</span>
+            <span id="xferLocalPath" style="font-size:9px;font-family:'IBM Plex Mono',monospace;color:var(--text-muted);
+                  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px;text-align:right"></span>
           </div>
-          <input type="file" id="xferFileInput" style="display:none" onchange="xferFileSelected(event)">
+          <div id="xferLocalList"
+            style="flex:1;background:#060c14;border:1px solid var(--border);border-radius:3px;
+                   overflow-y:auto;font-family:'IBM Plex Mono',monospace;font-size:10px;
+                   min-height:120px;max-height:160px;
+                   scrollbar-width:thin;scrollbar-color:#1a3050 transparent">
+            <div style="padding:20px;text-align:center;color:var(--text-muted);font-size:10px">
+              Loading…
+            </div>
+          </div>
+          <div style="margin-top:4px;display:flex;gap:4px;align-items:center">
+            <span id="xferLocalSelected" style="flex:1;font-size:9px;font-family:'IBM Plex Mono',monospace;
+                  color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+              No file selected
+            </span>
+            <input type="file" id="xferFileInput" style="display:none" onchange="xferFileSelected(event)">
+            <button onclick="document.getElementById('xferFileInput').click()"
+              style="font-size:9px;padding:2px 6px;background:var(--bg-elevated);border:1px solid var(--border-bright);
+                     color:var(--text-dim);border-radius:2px;cursor:pointer;white-space:nowrap;font-family:'IBM Plex Mono',monospace">
+              Browse…
+            </button>
+          </div>
         </div>
 
-        <div class="form-group" style="margin-bottom:8px">
-          <div class="form-label">Mainframe Dataset</div>
-          <input type="text" id="xferUploadDataset" placeholder="USER.DATA.FILE"
-            style="font-family:'IBM Plex Mono',monospace;font-size:10px;text-transform:uppercase"
-            oninput="this.value=this.value.toUpperCase()">
-        </div>
-
-        <div style="display:flex;gap:6px;margin-bottom:8px">
-          <div style="flex:1">
-            <div class="form-label">Mode</div>
-            <select id="xferUploadMode" style="font-size:10px">
-              <option value="TEXT">TEXT (CRLF)</option>
+        <!-- TRANSFER CONTROLS -->
+        <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
+          <button id="xferSendBtn" onclick="xferSend()"
+            style="flex:1;padding:5px;border-radius:3px;cursor:pointer;font-size:10px;
+                   font-family:'IBM Plex Mono',monospace;text-align:center;
+                   background:#060f08;border:1px solid #1a4020;color:var(--accent-green)">
+            ⬆ Send →
+          </button>
+          <div style="flex:1;display:flex;flex-direction:column;gap:3px">
+            <select id="xferMode" style="font-size:9px;padding:2px 4px;width:100%">
+              <option value="TEXT">TEXT</option>
               <option value="BINARY">BINARY</option>
             </select>
-          </div>
-          <div style="flex:1">
-            <div class="form-label">RECFM</div>
-            <select id="xferUploadRecfm" style="font-size:10px">
-              <option value="">Default</option>
+            <select id="xferRecfm" style="font-size:9px;padding:2px 4px;width:100%">
+              <option value="">RECFM: Default</option>
               <option value="FB">FB</option>
               <option value="VB">VB</option>
               <option value="FBA">FBA</option>
             </select>
           </div>
+          <button id="xferRecvBtn" onclick="xferReceive()"
+            style="flex:1;padding:5px;border-radius:3px;cursor:pointer;font-size:10px;
+                   font-family:'IBM Plex Mono',monospace;text-align:center;
+                   background:#06080f;border:1px solid #1a2a40;color:var(--t-blue)">
+            ← ⬇ Recv
+          </button>
         </div>
 
-        <button id="xferSendBtn" onclick="xferSend()"
-          style="width:100%;padding:6px;border-radius:3px;cursor:pointer;font-size:10px;
-                 font-family:'IBM Plex Mono',monospace;text-align:center;
-                 background:#060f08;border:1px solid #1a4020;color:var(--accent-green);
-                 transition:all 0.15s">
-          ⬆ Send File to Mainframe
-        </button>
-      </div>
-
-      <hr style="border-color:var(--border);margin:4px 0 12px">
-
-      <!-- ── DOWNLOAD ── -->
-      <div class="setting-group">
-        <div class="setting-label">⬇ Receive from Mainframe</div>
-        <div class="xfer-info">Enter the mainframe dataset name to download.</div>
-
-        <div class="form-group" style="margin-bottom:8px">
-          <div class="form-label">Mainframe Dataset</div>
-          <input type="text" id="xferDownloadDataset" placeholder="USER.DATA.FILE"
-            style="font-family:'IBM Plex Mono',monospace;font-size:10px;text-transform:uppercase"
+        <!-- MAINFRAME PANE -->
+        <div style="display:flex;flex-direction:column;flex:1;min-height:0">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+            <span style="font-size:9px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted)">Mainframe Dataset</span>
+            <button onclick="xferRefreshMainframe()"
+              style="font-size:9px;padding:1px 5px;background:transparent;border:1px solid var(--border);
+                     color:var(--text-muted);border-radius:2px;cursor:pointer;font-family:'IBM Plex Mono',monospace">
+              ↺
+            </button>
+          </div>
+          <!-- Dataset name input (manual for Phase 2 Step 1) -->
+          <input type="text" id="xferDataset" placeholder="USER.DATA.FILE"
+            style="font-family:'IBM Plex Mono',monospace;font-size:10px;text-transform:uppercase;
+                   margin-bottom:4px;padding:4px 7px;background:var(--bg-elevated);
+                   border:1px solid var(--border-bright);color:var(--text-primary);
+                   border-radius:3px;width:100%;outline:none"
             oninput="this.value=this.value.toUpperCase()">
-        </div>
-
-        <div style="display:flex;gap:6px;margin-bottom:8px">
-          <div style="flex:1">
-            <div class="form-label">Mode</div>
-            <select id="xferDownloadMode" style="font-size:10px">
-              <option value="TEXT">TEXT</option>
-              <option value="BINARY">BINARY</option>
-            </select>
+          <div id="xferMainframeList"
+            style="flex:1;background:#060c14;border:1px solid var(--border);border-radius:3px;
+                   overflow-y:auto;font-family:'IBM Plex Mono',monospace;font-size:10px;
+                   min-height:80px;max-height:120px;
+                   scrollbar-width:thin;scrollbar-color:#1a3050 transparent">
+            <div style="padding:16px;text-align:center;color:var(--text-muted);font-size:10px;line-height:1.6">
+              Connect to an LPAR and<br>press ↺ to list datasets
+            </div>
           </div>
-          <div style="flex:1">
-            <div class="form-label">Save As</div>
-            <input type="text" id="xferSaveAs" placeholder="auto"
-              style="font-size:10px;font-family:'IBM Plex Mono',monospace">
+          <div style="margin-top:4px">
+            <input type="text" id="xferSaveAs" placeholder="Save as (auto)"
+              style="font-family:'IBM Plex Mono',monospace;font-size:9px;
+                     padding:3px 6px;background:var(--bg-elevated);
+                     border:1px solid var(--border);color:var(--text-dim);
+                     border-radius:2px;width:100%;outline:none">
           </div>
         </div>
 
-        <button id="xferRecvBtn" onclick="xferReceive()"
-          style="width:100%;padding:6px;border-radius:3px;cursor:pointer;font-size:10px;
-                 font-family:'IBM Plex Mono',monospace;text-align:center;
-                 background:#06080f;border:1px solid #1a2a40;color:var(--t-blue);
-                 transition:all 0.15s">
-          ⬇ Receive File from Mainframe
-        </button>
-      </div>
-
-      <!-- ── LOG ── -->
-      <div class="setting-group">
-        <div class="setting-label" style="display:flex;justify-content:space-between;align-items:center">
-          <span>Transfer Log</span>
-          <span style="cursor:pointer;font-size:9px;color:var(--text-muted);
-                       font-family:'IBM Plex Mono',monospace;text-transform:none;
-                       letter-spacing:0" onclick="xferClearLog()">clear</span>
+        <!-- LOG -->
+        <div style="flex-shrink:0">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+            <span style="font-size:9px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted)">Log</span>
+            <span onclick="xferClearLog()" style="font-size:9px;color:var(--text-muted);cursor:pointer;font-family:'IBM Plex Mono',monospace">clear</span>
+          </div>
+          <div id="xferLog"
+            style="background:#060c14;border:1px solid var(--border);border-radius:3px;
+                   padding:5px 7px;font-family:'IBM Plex Mono',monospace;font-size:9px;
+                   color:#3a7050;max-height:70px;overflow-y:auto;line-height:1.8;
+                   scrollbar-width:thin;scrollbar-color:#1a3050 transparent">
+            <span style="color:var(--text-muted)">No transfers yet.</span>
+          </div>
         </div>
-        <div id="xferLog"
-          style="background:#060c14;border:1px solid var(--border);border-radius:3px;
-                 padding:6px 8px;font-family:'IBM Plex Mono',monospace;font-size:9px;
-                 color:#3a7050;max-height:110px;overflow-y:auto;line-height:1.8;
-                 scrollbar-width:thin;scrollbar-color:#1a3050 transparent">
-          <span style="color:var(--text-muted)">No transfers yet.</span>
-        </div>
-      </div>
 
+      </div>
     </div>
 
     <!-- ── Copilot ── -->
@@ -1074,7 +1106,7 @@ select:focus, input[type="text"]:focus, input[type="number"]:focus { border-colo
       <div class="copilot-header-row">
         <div class="copilot-logo-sm">⬡</div>
         <div>
-          <div class="copilot-title-sm">3270 Copilot</div>
+          <div class="copilot-title-sm">3270 AI Assist</div>
           <div class="copilot-subtitle" id="copilotSubtitle">AI assistant · screen-aware</div>
         </div>
       </div>
@@ -1089,7 +1121,7 @@ select:focus, input[type="text"]:focus, input[type="number"]:focus { border-colo
       <div class="chat-area" id="chatArea">
         <div class="chat-empty" id="chatEmpty">
           <div class="chat-empty-icon">⬡</div>
-          <div class="chat-empty-title">3270 Copilot</div>
+          <div class="chat-empty-title">3270 AI Assist</div>
           <div class="chat-empty-body">
             Ask anything about this screen,<br>
             TSO · ISPF · JCL · REXX · errors.<br><br>
@@ -1343,8 +1375,8 @@ function switchPanelTab(el, name) {
   const panel = document.getElementById('panel' + name);
   if (panel) {
     // Copilot needs flex for its chat layout; all others scroll as block
-    panel.style.display = (name === 'Copilot') ? 'flex' : 'block';
-    if (name === 'Copilot') {
+    panel.style.display = (name === 'Copilot' || name === 'Xfer') ? 'flex' : 'block';
+    if (name === 'Copilot' || name === 'Xfer') {
       panel.style.flexDirection = 'column';
       panel.style.padding = '0';
     } else {
@@ -1582,10 +1614,15 @@ function renderSidebarLpars() {
       <div class="lpar-dot"></div>
       <div class="lpar-name">${esc(p.name || p.id)}</div>
       <div class="lpar-type">${esc(p.type || 'TSO')}</div>
-      <button class="lpar-edit-btn" title="Edit profile">✎</button>`;
+      <button class="lpar-edit-btn" title="Edit profile">✎</button>
+      <button class="lpar-delete-btn" title="Delete profile">🗑</button>`;
     item.querySelector('.lpar-edit-btn').addEventListener('click', e => {
       e.stopPropagation();
       editProfile(p.id);
+    });
+    item.querySelector('.lpar-delete-btn').addEventListener('click', e => {
+      e.stopPropagation();
+      deleteProfile(p.id, p.name || p.id);
     });
     item.addEventListener('click', () => connectLpar(p.id));
     container.appendChild(item);
@@ -1605,10 +1642,15 @@ function renderModalProfiles() {
         <div class="profile-host">${esc(p.host)}:${p.port}${p.tls ? ' · TLS' : ''} · ${esc(p.type||'TSO')}</div>
       </div>
       <button class="profile-edit-btn" title="Edit profile">✎</button>
+      <button class="profile-delete-btn" title="Delete profile">🗑</button>
       <button class="profile-connect-btn">Connect</button>`;
     item.querySelector('.profile-edit-btn').addEventListener('click', e => {
       e.stopPropagation();
       editProfile(p.id);
+    });
+    item.querySelector('.profile-delete-btn').addEventListener('click', e => {
+      e.stopPropagation();
+      deleteProfile(p.id, p.name || p.id);
     });
     item.querySelector('.profile-connect-btn').addEventListener('click', () => {
       connectLpar(p.id);
@@ -1636,6 +1678,33 @@ function editProfile(profileId) {
   const body = document.querySelector('#connectModal .modal-body');
   if (body) setTimeout(() => body.scrollTop = body.scrollHeight, 50);
 }
+// ── Delete a profile via bridge API ──────────────────────────────
+async function deleteProfile(profileId, displayName) {
+  if (!confirm('Delete profile "' + displayName + '"?')) return;
+  try {
+    const res = await fetch('/api/profiles/' + encodeURIComponent(profileId), {
+      method: 'DELETE',
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'HTTP ' + res.status);
+    }
+    await loadProfiles();
+  } catch (err) {
+    showBridgeError('Could not delete profile: ' + err.message);
+  }
+}
+
+// ── Delete a profile via bridge API ──────────────────────────────
+async function deleteProfile(profileId, displayName) {
+  if (!confirm('Delete profile "' + displayName + '"?')) return;
+  try {
+    const res = await fetch('/api/profiles/' + encodeURIComponent(profileId), { method: 'DELETE' });
+    if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || 'HTTP ' + res.status); }
+    await loadProfiles();
+  } catch (err) { showBridgeError('Could not delete profile: ' + err.message); }
+}
+
 // ── Save profile from connect form → lpars.txt via bridge API ────
 async function saveProfileFromForm() {
   const host  = document.getElementById('connHost').value.trim();
@@ -2195,212 +2264,208 @@ function menuOpenCopilot() {
 function menuOpenTransfer() {
   closeAllMenus();
   menuOpenPanel('Xfer');
+  if (!xferCurrentPath) xferLoadDir('');
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  IND$FILE TRANSFER — Phase 1
+//  IND$FILE TRANSFER — Phase 2 Step 1 (local file browser)
 // ══════════════════════════════════════════════════════════════════
 
-let xferFileData = null;   // ArrayBuffer of selected local file
-let xferFileName = null;   // original filename
+let xferFileData      = null;
+let xferFileName      = null;
+let xferSelectedLocal = null;
+let xferCurrentPath   = null;
+
+async function xferLoadDir(dirPath) {
+  const list = document.getElementById('xferLocalList');
+  list.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-muted);font-size:10px">Loading\u2026</div>';
+  try {
+    const res  = await fetch('/api/files?path=' + encodeURIComponent(dirPath || ''));
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    xferCurrentPath = data.path;
+    document.getElementById('xferLocalPath').textContent = data.path;
+    list.innerHTML = '';
+    data.items.forEach(item => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:3px 7px;cursor:pointer;border-bottom:1px solid #0a1520;transition:background 0.1s';
+      const icon  = item.type === 'dir' ? '\u{1F4C1}' : '\u{1F4C4}';
+      const color = item.type === 'dir' ? 'var(--accent-cyan)' : 'var(--text-dim)';
+      const size  = item.size != null ? xferFmtSize(item.size) : '';
+      row.innerHTML = '<span style="flex-shrink:0">' + icon + '</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:' + color + '">' + item.name + '</span><span style="color:var(--text-muted);font-size:9px;flex-shrink:0">' + size + '</span>';
+      row.addEventListener('click', () => {
+        if (item.type === 'dir') { xferLoadDir(item.path); }
+        else { list.querySelectorAll('div').forEach(r => r.style.background = ''); row.style.background = '#0a1e10'; xferSelectLocalFile(item); }
+      });
+      row.addEventListener('mouseenter', () => { if (xferSelectedLocal?.path !== item.path) row.style.background = '#0a1520'; });
+      row.addEventListener('mouseleave', () => { if (xferSelectedLocal?.path !== item.path) row.style.background = ''; });
+      list.appendChild(row);
+    });
+  } catch (err) {
+    list.innerHTML = '<div style="padding:12px;color:var(--t-red);font-size:10px">Error: ' + err.message + '</div>';
+  }
+}
+
+function xferSelectLocalFile(item) {
+  xferSelectedLocal = item;
+  const sel = document.getElementById('xferLocalSelected');
+  sel.textContent = item.name; sel.style.color = 'var(--accent-green)';
+  const ds = document.getElementById('xferDataset');
+  if (!ds.value) ds.value = item.name.replace(/\.[^.]+$/, '').toUpperCase().replace(/[^A-Z0-9.]/g, '');
+  fetch('/api/files/read?path=' + encodeURIComponent(item.path))
+    .then(r => r.arrayBuffer()).then(buf => { xferFileData = buf; xferFileName = item.name; })
+    .catch(() => { xferFileData = null; });
+}
+
+function xferFmtSize(bytes) {
+  if (bytes < 1024) return bytes + 'B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + 'KB';
+  return (bytes / 1024 / 1024).toFixed(1) + 'MB';
+}
 
 function xferFileSelected(e) {
   const file = e.target.files[0];
   if (!file) return;
-  xferFileName = file.name;
-  document.getElementById('xferLocalFile').value = file.name;
-
-  // Auto-suggest dataset name from filename
-  const ds = document.getElementById('xferUploadDataset');
-  if (!ds.value) {
-    ds.value = file.name.replace(/\.[^.]+$/, '').toUpperCase().replace(/[^A-Z0-9.]/g, '');
-  }
-
+  xferFileName = file.name; xferSelectedLocal = { name: file.name, path: null };
+  const sel = document.getElementById('xferLocalSelected');
+  sel.textContent = file.name; sel.style.color = 'var(--accent-green)';
+  const ds = document.getElementById('xferDataset');
+  if (!ds.value) ds.value = file.name.replace(/\.[^.]+$/, '').toUpperCase().replace(/[^A-Z0-9.]/g, '');
   const reader = new FileReader();
   reader.onload = ev => { xferFileData = ev.target.result; };
-  reader.readAsArrayBuffer(file);
-  e.target.value = '';
+  reader.readAsArrayBuffer(file); e.target.value = '';
+}
+
+function xferRefreshMainframe() {
+  const list = document.getElementById('xferMainframeList');
+  const session = sessions.get(activeSession);
+  if (!session || session.ws.readyState !== WebSocket.OPEN) {
+    list.innerHTML = '<div style="padding:12px;text-align:center;color:var(--t-red);font-size:10px">No active session</div>';
+    return;
+  }
+  list.innerHTML = '<div style="padding:12px;text-align:center;color:var(--accent-amber);font-size:10px;line-height:1.6">\u27F3 Dataset listing in Phase 2 Step 2<br><span style="color:var(--text-muted)">Type dataset name above</span></div>';
+  xferLog('Dataset browser \u2014 Phase 2 Step 2', 'var(--text-muted)');
 }
 
 function xferLog(msg, color) {
   const log = document.getElementById('xferLog');
-  const placeholder = log.querySelector('span[style]');
-  if (placeholder) placeholder.remove();
+  const ph = log.querySelector('span[style]');
+  if (ph) ph.remove();
   const line = document.createElement('div');
   line.style.color = color || 'var(--t-green)';
   line.textContent = new Date().toLocaleTimeString('en-US', { hour12: false }) + '  ' + msg;
-  log.appendChild(line);
-  log.scrollTop = log.scrollHeight;
+  log.appendChild(line); log.scrollTop = log.scrollHeight;
 }
 
 function xferClearLog() {
-  document.getElementById('xferLog').innerHTML =
-    '<span style="color:var(--text-muted)">No transfers yet.</span>';
+  document.getElementById('xferLog').innerHTML = '<span style="color:var(--text-muted)">No transfers yet.</span>';
 }
 
 function xferSetStatus(msg, type) {
   const el = document.getElementById('xferStatus');
   if (!msg) { el.style.display = 'none'; return; }
-  el.style.display = 'block';
-  el.textContent = msg;
-  const styles = {
-    ok:      { color: 'var(--accent-green)', border: '#1a3a20', bg: '#060f08' },
-    error:   { color: 'var(--t-red)',        border: '#3a1010', bg: '#0f0606' },
-    working: { color: 'var(--accent-amber)', border: '#3a2a10', bg: '#0f0a04' },
-  };
-  const s = styles[type] || { color: 'var(--text-dim)', border: 'var(--border)', bg: 'var(--bg-elevated)' };
-  el.style.color       = s.color;
-  el.style.borderColor = s.border;
-  el.style.background  = s.bg;
+  el.style.display = 'block'; el.textContent = msg;
+  const s = { ok: { color:'var(--accent-green)', border:'#1a3a20', bg:'#060f08' }, error: { color:'var(--t-red)', border:'#3a1010', bg:'#0f0606' }, working: { color:'var(--accent-amber)', border:'#3a2a10', bg:'#0f0a04' } }[type] || { color:'var(--text-dim)', border:'var(--border)', bg:'var(--bg-elevated)' };
+  el.style.color = s.color; el.style.borderColor = s.border; el.style.background = s.bg;
 }
 
 function xferCheckSession() {
   const session = sessions.get(activeSession);
   if (!session || session.ws.readyState !== WebSocket.OPEN) {
-    xferSetStatus('No active session — connect to an LPAR first', 'error');
-    xferLog('ERROR: No active session', 'var(--t-red)');
-    return null;
+    xferSetStatus('No active session \u2014 connect to an LPAR first', 'error');
+    xferLog('ERROR: No active session', 'var(--t-red)'); return null;
   }
   return session;
 }
 
 async function xferSend() {
-  const session = xferCheckSession();
-  if (!session) return;
-
-  const dataset = document.getElementById('xferUploadDataset').value.trim().toUpperCase();
-  const mode    = document.getElementById('xferUploadMode').value;
-  const recfm   = document.getElementById('xferUploadRecfm').value;
-
-  if (!dataset) {
-    xferSetStatus('Enter a mainframe dataset name', 'error');
-    document.getElementById('xferUploadDataset').focus();
-    return;
-  }
-  if (!xferFileData) {
-    xferSetStatus('Select a local file first', 'error');
-    return;
-  }
-
-  let cmd = `IND$FILE PUT '${dataset}' ${mode}`;
-  if (recfm) cmd += ` RECFM(${recfm})`;
-
-  xferSetStatus('Sending command to host…', 'working');
-  xferLog(`UPLOAD → ${dataset} [${mode}]`, 'var(--accent-amber)');
-  xferLog(`CMD: ${cmd}`, 'var(--text-muted)');
-
+  const session = xferCheckSession(); if (!session) return;
+  const dataset = document.getElementById('xferDataset').value.trim().toUpperCase();
+  const mode = document.getElementById('xferMode').value;
+  const recfm = document.getElementById('xferRecfm').value;
+  if (!dataset) { xferSetStatus('Enter a mainframe dataset name', 'error'); document.getElementById('xferDataset').focus(); return; }
+  if (!xferFileData) { xferSetStatus('Select a local file first', 'error'); return; }
+  let cmd = "IND$FILE PUT '" + dataset + "' " + mode;
+  if (recfm) cmd += ' RECFM(' + recfm + ')';
+  xferSetStatus('Sending to host\u2026', 'working');
+  xferLog('UPLOAD \u2192 ' + dataset + ' [' + mode + ']', 'var(--accent-amber)');
+  xferLog('CMD: ' + cmd, 'var(--text-muted)');
   const btn = document.getElementById('xferSendBtn');
-  btn.disabled = true;
-  btn.textContent = '⟳ Sending…';
-
+  btn.disabled = true; btn.textContent = '\u27F3';
   try {
-    // Type command into TSO command line and press ENTER
     session.ws.send(JSON.stringify({ type: 'type', row: cursorRow, col: cursorCol, text: cmd }));
     await new Promise(r => setTimeout(r, 200));
     session.ws.send(JSON.stringify({ type: 'key', aid: 'ENTER', fields: [] }));
     await new Promise(r => setTimeout(r, 1500));
-
-    // Send file data to bridge for IND$FILE upload
     const base64 = xferToBase64(xferFileData);
-    session.ws.send(JSON.stringify({
-      type: 'xfer.upload', dataset, mode, recfm: recfm || null,
-      filename: xferFileName, data: base64,
-    }));
-
-    xferSetStatus(`✓ Upload initiated for ${dataset}`, 'ok');
-    xferLog(`✓ Sent ${(xferFileData.byteLength / 1024).toFixed(1)} KB → ${dataset}`, 'var(--accent-green)');
+    session.ws.send(JSON.stringify({ type: 'xfer.upload', dataset, mode, recfm: recfm || null, filename: xferFileName, data: base64 }));
+    xferSetStatus('\u2713 Upload sent \u2192 ' + dataset, 'ok');
+    xferLog('\u2713 Sent ' + (xferFileData.byteLength / 1024).toFixed(1) + ' KB \u2192 ' + dataset, 'var(--accent-green)');
   } catch (err) {
     xferSetStatus('Upload failed: ' + err.message, 'error');
     xferLog('ERROR: ' + err.message, 'var(--t-red)');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '⬆ Send File to Mainframe';
-  }
+  } finally { btn.disabled = false; btn.textContent = '\u2b06 Send \u2192'; }
 }
 
 async function xferReceive() {
-  const session = xferCheckSession();
-  if (!session) return;
-
-  const dataset = document.getElementById('xferDownloadDataset').value.trim().toUpperCase();
-  const mode    = document.getElementById('xferDownloadMode').value;
-  const saveAs  = document.getElementById('xferSaveAs').value.trim()
-                  || dataset.split('.').pop().toLowerCase() + '.txt';
-
-  if (!dataset) {
-    xferSetStatus('Enter a mainframe dataset name', 'error');
-    document.getElementById('xferDownloadDataset').focus();
-    return;
-  }
-
-  const cmd = `IND$FILE GET '${dataset}' ${mode}`;
-
-  xferSetStatus('Sending receive command to host…', 'working');
-  xferLog(`DOWNLOAD ← ${dataset} [${mode}]`, 'var(--t-blue)');
-  xferLog(`CMD: ${cmd}`, 'var(--text-muted)');
-
+  const session = xferCheckSession(); if (!session) return;
+  const dataset = document.getElementById('xferDataset').value.trim().toUpperCase();
+  const mode = document.getElementById('xferMode').value;
+  const saveAs = document.getElementById('xferSaveAs').value.trim() || (xferSelectedLocal?.name) || dataset.split('.').pop().toLowerCase() + '.txt';
+  if (!dataset) { xferSetStatus('Enter a mainframe dataset name', 'error'); document.getElementById('xferDataset').focus(); return; }
+  const cmd = "IND$FILE GET '" + dataset + "' " + mode;
+  xferSetStatus('Receiving from host\u2026', 'working');
+  xferLog('DOWNLOAD \u2190 ' + dataset + ' [' + mode + ']', 'var(--t-blue)');
+  xferLog('CMD: ' + cmd, 'var(--text-muted)');
   const btn = document.getElementById('xferRecvBtn');
-  btn.disabled = true;
-  btn.textContent = '⟳ Waiting…';
-
+  btn.disabled = true; btn.textContent = '\u27F3';
   try {
     session.ws.send(JSON.stringify({ type: 'type', row: cursorRow, col: cursorCol, text: cmd }));
     await new Promise(r => setTimeout(r, 200));
     session.ws.send(JSON.stringify({ type: 'key', aid: 'ENTER', fields: [] }));
-
     session.ws.send(JSON.stringify({ type: 'xfer.download', dataset, mode, saveAs }));
-    xferSetStatus(`Waiting for ${dataset} from host…`, 'working');
-    xferLog('Waiting for data stream…', 'var(--text-dim)');
+    xferSetStatus('Waiting for ' + dataset + '\u2026', 'working');
+    xferLog('Waiting for data stream\u2026', 'var(--text-dim)');
   } catch (err) {
     xferSetStatus('Receive failed: ' + err.message, 'error');
     xferLog('ERROR: ' + err.message, 'var(--t-red)');
-    btn.disabled = false;
-    btn.textContent = '⬇ Receive File from Mainframe';
+    btn.disabled = false; btn.textContent = '\u2190 \u2b07 Recv';
   }
 }
 
-// ── Handle xfer responses from bridge ─────────────────────────────
 function handleXferMsg(msg) {
-  const sendBtn = document.getElementById('xferSendBtn');
-  const recvBtn = document.getElementById('xferRecvBtn');
-  if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = '⬆ Send File to Mainframe'; }
-  if (recvBtn) { recvBtn.disabled = false; recvBtn.textContent = '⬇ Receive File from Mainframe'; }
-
+  const sb = document.getElementById('xferSendBtn');
+  const rb = document.getElementById('xferRecvBtn');
+  if (sb) { sb.disabled = false; sb.textContent = '\u2b06 Send \u2192'; }
+  if (rb) { rb.disabled = false; rb.textContent = '\u2190 \u2b07 Recv'; }
   if (msg.type === 'xfer.data') {
-    const bytes    = xferFromBase64(msg.data);
-    const blob     = new Blob([bytes], { type: 'application/octet-stream' });
-    const url      = URL.createObjectURL(blob);
-    const a        = document.createElement('a');
-    a.href         = url;
-    a.download     = msg.saveAs || 'mainframe-file.txt';
-    a.click();
+    const bytes = xferFromBase64(msg.data);
+    const blob = new Blob([bytes], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = msg.saveAs || 'mainframe-file.txt'; a.click();
     URL.revokeObjectURL(url);
-    xferSetStatus(`✓ Downloaded ${msg.saveAs} (${(bytes.length / 1024).toFixed(1)} KB)`, 'ok');
-    xferLog(`✓ Received ${(bytes.length / 1024).toFixed(1)} KB → ${msg.saveAs}`, 'var(--accent-green)');
+    xferSetStatus('\u2713 Downloaded ' + msg.saveAs + ' (' + (bytes.length/1024).toFixed(1) + ' KB)', 'ok');
+    xferLog('\u2713 Received ' + (bytes.length/1024).toFixed(1) + ' KB \u2192 ' + msg.saveAs, 'var(--accent-green)');
+    if (xferCurrentPath) xferLoadDir(xferCurrentPath);
   }
-  if (msg.type === 'xfer.ok') {
-    xferSetStatus('✓ ' + (msg.message || 'Transfer complete'), 'ok');
-    xferLog('✓ ' + (msg.message || 'Transfer complete'), 'var(--accent-green)');
-  }
-  if (msg.type === 'xfer.error') {
-    xferSetStatus('Transfer error: ' + msg.message, 'error');
-    xferLog('ERROR: ' + msg.message, 'var(--t-red)');
-  }
+  if (msg.type === 'xfer.ok') { xferSetStatus('\u2713 ' + (msg.message || 'Transfer complete'), 'ok'); xferLog('\u2713 ' + (msg.message || 'Transfer complete'), 'var(--accent-green)'); }
+  if (msg.type === 'xfer.error') { xferSetStatus('Transfer error: ' + msg.message, 'error'); xferLog('ERROR: ' + msg.message, 'var(--t-red)'); }
 }
 
 function xferToBase64(buf) {
-  const bytes = new Uint8Array(buf);
-  let binary = '';
+  const bytes = new Uint8Array(buf); let binary = '';
   for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
   return btoa(binary);
 }
 
 function xferFromBase64(b64) {
-  const binary = atob(b64);
-  const bytes  = new Uint8Array(binary.length);
+  const binary = atob(b64); const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return bytes;
 }
+
 
 function menuShowShortcuts() {
   closeAllMenus();
@@ -2666,7 +2731,7 @@ function appendAssistantMsg(raw) {
   div.innerHTML = `
     <div class="msg-avatar">⬡</div>
     <div class="msg-body">
-      <div class="msg-role">Copilot</div>
+      <div class="msg-role">AI Assist</div>
       <div class="msg-content">${renderMd(raw)}</div>
     </div>`;
   chat.appendChild(div);
@@ -2699,7 +2764,7 @@ function appendTyping() {
   div.innerHTML = `
     <div class="msg-avatar">⬡</div>
     <div class="msg-body">
-      <div class="msg-role">Copilot</div>
+      <div class="msg-role">AI Assist</div>
       <div class="typing-indicator">
         <div class="typing-dot"></div>
         <div class="typing-dot"></div>
