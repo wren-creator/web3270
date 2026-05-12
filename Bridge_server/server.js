@@ -164,6 +164,62 @@ const httpServer = http.createServer((req, res) => {
 
 
 
+  // GET /api/macros — return all saved macros
+  if (req.url === '/api/macros' && req.method === 'GET') {
+    const macros = loadMacroFile();
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify(macros));
+    return;
+  }
+
+  // POST /api/macros — save a new or updated macro
+  if (req.url === '/api/macros' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', () => {
+      try {
+        const macro = JSON.parse(body);
+        if (!macro.name) { res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'name is required' })); return; }
+        if (!macro.id) macro.id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+        const macroPath = path.join(__dirname, 'macros.json');
+        const macros = loadMacroFile();
+        const idx = macros.findIndex(m => m.id === macro.id);
+        if (idx >= 0) macros[idx] = macro;
+        else macros.push(macro);
+        fs.writeFileSync(macroPath, JSON.stringify(macros, null, 2));
+        logger.info(`[api] Macro "${macro.name}" saved`);
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ ok: true, macro }));
+      } catch (err) {
+        logger.error(`[api] Failed to save macro: ${err.message}`);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+    });
+    return;
+  }
+
+  // DELETE /api/macros/:id — delete a macro by id
+  if (req.method === 'DELETE' && req.url.startsWith('/api/macros/')) {
+    const macroId = decodeURIComponent(req.url.slice('/api/macros/'.length));
+    try {
+      const macroPath = path.join(__dirname, 'macros.json');
+      const macros = loadMacroFile();
+      const idx = macros.findIndex(m => m.id === macroId);
+      if (idx < 0) { res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Macro not found' })); return; }
+      macros.splice(idx, 1);
+      fs.writeFileSync(macroPath, JSON.stringify(macros, null, 2));
+      logger.info(`[api] Macro "${macroId}" deleted`);
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ ok: true }));
+    } catch (err) {
+      logger.error(`[api] Failed to delete macro: ${err.message}`);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: err.message }));
+    }
+    return;
+  }
+
   // Static files
   let filename;
   if (req.url === '/demo' || req.url === '/demo.html') {
@@ -586,6 +642,14 @@ function parseFilelistScreen(lines) {
   }
 
   return datasets;
+}
+
+// ── Macro file helpers ─────────────────────────────────────────────
+function loadMacroFile() {
+  const macroPath = path.join(__dirname, 'macros.json');
+  if (!fs.existsSync(macroPath)) return [];
+  try { return JSON.parse(fs.readFileSync(macroPath, 'utf8')); }
+  catch { return []; }
 }
 
 // ── Graceful shutdown ──────────────────────────────────────────────
