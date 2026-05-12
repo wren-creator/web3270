@@ -1,0 +1,86 @@
+[
+  {
+    "name": "z/VM FILELIST",
+    "description": "cms to filelist",
+    "steps": [
+      {
+        "op": "comment",
+        "text": "Ensure we are at CMS Ready prompt"
+      },
+      {
+        "op": "wait",
+        "condition": "unlock"
+      },
+      {
+        "op": "type",
+        "row": 21,
+        "col": 14,
+        "text": "FILELIST"
+      },
+      {
+        "op": "aid",
+        "aid": "ENTER"
+      },
+      {
+        "op": "wait",
+        "condition": "unlock"
+      },
+      {
+        "op": "comment",
+        "text": "FILELIST screen is now active — click the refresh button in the Transfer panel"
+      }
+    ],
+    "id": "mp17efzred08"
+  },
+  {
+    "name": "z/VM CP to FILELIST",
+    "description": "cp to filelist for z\\vm",
+    "steps": [
+      {
+        "op": "comment",
+        "text": "Start from CP Ready prompt"
+      },
+      {
+        "op": "wait",
+        "condition": "unlock"
+      },
+      {
+        "op": "type",
+        "row": 21,
+        "col": 13,
+        "text": "IPL CMS"
+      },
+      {
+        "op": "aid",
+        "aid": "ENTER"
+      },
+      {
+        "op": "wait",
+        "condition": "unlock"
+      },
+      {
+        "op": "comment",
+        "text": "Now at CMS Ready"
+      },
+      {
+        "op": "type",
+        "row": 21,
+        "col": 14,
+        "text": "FILELIST"
+      },
+      {
+        "op": "aid",
+        "aid": "ENTER"
+      },
+      {
+        "op": "wait",
+        "condition": "unlock"
+      },
+      {
+        "op": "comment",
+        "text": "FILELIST screen active — open Transfer panel and click refresh"
+      }
+    ],
+    "id": "mp17gc94ntij"
+  }
+]

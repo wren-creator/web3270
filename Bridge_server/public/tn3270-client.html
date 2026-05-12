@@ -339,6 +339,34 @@ body {
 }
 .macro-item:hover { background: var(--bg-elevated); color: var(--accent-amber); }
 
+.macro-edit-btn, .macro-delete-btn {
+  display: none;
+  padding: 0 5px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  font-size: 10px;
+  cursor: pointer;
+  line-height: 16px;
+  font-family: 'IBM Plex Mono', monospace;
+  transition: all 0.1s;
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+.macro-item:hover .macro-edit-btn,
+.macro-item:hover .macro-delete-btn { display: inline-block; }
+.macro-edit-btn:hover  { color: var(--accent-cyan);  border-color: var(--accent-cyan); }
+.macro-delete-btn:hover { color: var(--t-red);        border-color: var(--t-red); }
+
+#sidebarMacroList {
+  max-height: 180px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #1a3050 transparent;
+}
+#sidebarMacroList::-webkit-scrollbar { width: 3px; }
+#sidebarMacroList::-webkit-scrollbar-thumb { background: #1a3050; border-radius: 2px; }
+
 /* ── TERMINAL ──────────────────────────────────────────────────── */
 /* FIX: overflow:hidden here — .screen-wrapper owns the scroll     */
 .terminal-area {
@@ -791,7 +819,7 @@ select:focus, input[type="text"]:focus, input[type="number"]:focus { border-colo
         <div class="menu-dd-item" onclick="toggleRightPanel();closeAllMenus()">Toggle Panel<span class="menu-dd-shortcut"></span></div>
         <div class="menu-dd-sep"></div>
         <div class="menu-dd-item" onclick="menuOpenPanel('Settings')">Settings</div>
-        <div class="menu-dd-item" onclick="menuOpenCopilot()">⬡ Copilot<span class="menu-dd-shortcut">Ctrl+K</span></div>
+        <div class="menu-dd-item" onclick="menuOpenCopilot()">⬡ AI Assist<span class="menu-dd-shortcut">Ctrl+K</span></div>
       </div>
     </div>
 
@@ -865,7 +893,7 @@ select:focus, input[type="text"]:focus, input[type="number"]:focus { border-colo
     </div>
     <div class="sidebar-section">
       <div class="sidebar-header">Macros <span class="sidebar-header-btn" onclick="showAddMacroModal()">＋</span></div>
-      <div id="sidebarMacroList" style="padding:4px 0 8px"></div>
+      <div id="sidebarMacroList" style="padding:4px 0 8px;max-height:180px;overflow-y:auto"></div>
     </div>
     <div class="sidebar-section" style="flex:1">
       <div class="sidebar-header">Screen History</div>
@@ -924,7 +952,7 @@ select:focus, input[type="text"]:focus, input[type="number"]:focus { border-colo
       <div class="panel-tab active"      onclick="switchPanelTab(this,'Settings')">Settings</div>
       <div class="panel-tab"             onclick="switchPanelTab(this,'Keys')">Keys</div>
       <div class="panel-tab"             onclick="switchPanelTab(this,'Xfer')">Transfer</div>
-      <div class="panel-tab copilot-tab" onclick="switchPanelTab(this,'Copilot')">⬡ Copilot</div>
+      <div class="panel-tab copilot-tab" onclick="switchPanelTab(this,'Copilot')">⬡ AI Assist</div>
     </div>
 
     <!-- ── Settings ── -->
@@ -971,7 +999,7 @@ select:focus, input[type="text"]:focus, input[type="number"]:focus { border-colo
           <div class="shortcut-item"><span class="shortcut-desc">Insert Mode</span><span class="shortcut-key">Ins</span></div>
           <div class="shortcut-item"><span class="shortcut-desc">Clear Screen</span><span class="shortcut-key">Ctrl+L</span></div>
           <div class="shortcut-item"><span class="shortcut-desc">New Session</span><span class="shortcut-key">Ctrl+T</span></div>
-          <div class="shortcut-item"><span class="shortcut-desc">Open Copilot</span><span class="shortcut-key">Ctrl+K</span></div>
+          <div class="shortcut-item"><span class="shortcut-desc">Open AI Assist</span><span class="shortcut-key">Ctrl+K</span></div>
           <div class="shortcut-item"><span class="shortcut-desc">Toggle Sidebar</span><span class="shortcut-key">Ctrl+B</span></div>
 	  <div class="shortcut-item"><span class="shortcut-desc">Next Session</span><span class="shortcut-key">Ctrl+.</span></div>
           <div class="shortcut-item"><span class="shortcut-desc">Prev Session</span><span class="shortcut-key">Ctrl+,</span></div>
@@ -1112,7 +1140,7 @@ select:focus, input[type="text"]:focus, input[type="number"]:focus { border-colo
       <div class="copilot-header-row">
         <div class="copilot-logo-sm">⬡</div>
         <div>
-          <div class="copilot-title-sm">3270 Copilot</div>
+          <div class="copilot-title-sm">3270 AI Assist</div>
           <div class="copilot-subtitle" id="copilotSubtitle">AI assistant · screen-aware</div>
         </div>
       </div>
@@ -1127,7 +1155,7 @@ select:focus, input[type="text"]:focus, input[type="number"]:focus { border-colo
       <div class="chat-area" id="chatArea">
         <div class="chat-empty" id="chatEmpty">
           <div class="chat-empty-icon">⬡</div>
-          <div class="chat-empty-title">3270 Copilot</div>
+          <div class="chat-empty-title">3270 AI Assist</div>
           <div class="chat-empty-body">
             Ask anything about this screen,<br>
             TSO · ISPF · JCL · REXX · errors.<br><br>
@@ -1165,6 +1193,13 @@ select:focus, input[type="text"]:focus, input[type="number"]:focus { border-colo
       <div class="modal-close" onclick="hideAddMacroModal()">×</div>
     </div>
     <div class="modal-body">
+      <div style="margin-bottom:14px">
+        <div class="setting-label" style="margin-bottom:6px">Saved Macros</div>
+        <div id="modalMacroList" style="max-height:160px;overflow-y:auto;
+             scrollbar-width:thin;scrollbar-color:#1a3050 transparent;margin-bottom:4px"></div>
+        <div style="font-size:10px;color:var(--text-muted)">Click a macro to load it for editing.</div>
+      </div>
+      <hr style="border-color:var(--border);margin:12px 0">
       <div class="form-group">
         <div class="form-label">Macro Name</div>
         <input type="text" id="macroName" placeholder="e.g. TSO ISPF Login" style="width:100%">
@@ -1182,13 +1217,11 @@ select:focus, input[type="text"]:focus, input[type="number"]:focus { border-colo
       </div>
     </div>
     <div class="modal-footer">
+      <input type="hidden" id="editingMacroId">
       <button class="btn btn-secondary" onclick="hideAddMacroModal()">Cancel</button>
       <button class="btn btn-secondary" onclick="importMacroFromFile()">⬆ Import JSON</button>
       <button class="btn btn-primary" onclick="saveMacroFromModal()">Save Macro</button>
     </div>
-  </div>
-</div>
-<input type="file" id="macroFileInput"
   </div>
 </div>
 <input type="file" id="macroFileInput" accept=".json" style="display:none" onchange="loadMacroFile(event)">
@@ -1272,6 +1305,9 @@ let isStreaming   = false;
 
 // ── Macro store ────────────────────────────────────────────────────
 let macros = [];
+
+// ── Profile being edited (null = new profile) ─────────────────────
+let editingProfileId = null;
 
 // ══════════════════════════════════════════════════════════════════
 //  SCREEN FIT — fixes both wrap and sizing issues
@@ -1548,7 +1584,11 @@ function setTheme(name, el) {
 // ══════════════════════════════════════════════════════════════════
 //  MODAL
 // ══════════════════════════════════════════════════════════════════
-function showConnectModal() { document.getElementById('connectModal').classList.remove('hidden'); }
+function showConnectModal() {
+  editingProfileId = null;
+  renderModalProfiles();
+  document.getElementById('connectModal').classList.remove('hidden');
+}
 function hideConnectModal() { document.getElementById('connectModal').classList.add('hidden'); }
 document.getElementById('connectModal').addEventListener('click', e => {
   if (e.target === e.currentTarget) hideConnectModal();
@@ -1670,6 +1710,7 @@ function editProfile(profileId) {
   const p = LPAR_PROFILES.find(p => p.id === profileId);
   if (!p) return;
   showConnectModal();
+  editingProfileId = profileId;
   document.getElementById('connHost').value  = p.host   || '';
   document.getElementById('connPort').value  = p.port   || 23;
   document.getElementById('connName').value  = p.name   || p.id || '';
@@ -2272,31 +2313,75 @@ let xferFileData      = null;
 let xferFileName      = null;
 let xferSelectedLocal = null;
 let xferCurrentPath   = null;
+let xferDirHandle     = null;
+let xferDirStack      = [];
 
-async function xferLoadDir(dirPath) {
-  const list = document.getElementById('xferLocalList');
-  list.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-muted);font-size:10px">Loading\u2026</div>';
+// ── Open folder via browser native picker ────────────────────────
+async function xferPickDir() {
+  const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+  if (!window.showDirectoryPicker || isSafari) {
+    document.getElementById('xferFileInput').click();
+    return;
+  }
   try {
-    const res  = await fetch('/api/files?path=' + encodeURIComponent(dirPath || ''));
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    xferCurrentPath = data.path;
-    document.getElementById('xferLocalPath').textContent = data.path;
+    const handle = await window.showDirectoryPicker({ mode: 'read' });
+    xferDirHandle = handle;
+    xferDirStack  = [];
+    await xferLoadDir(handle);
+  } catch (err) {
+    if (err.name === 'AbortError') return;
+    xferLog('Directory picker unavailable, using file picker', 'var(--text-muted)');
+    document.getElementById('xferFileInput').click();
+  }
+}
+
+// ── Browse a directory handle ─────────────────────────────────────
+async function xferLoadDir(dirHandle) {
+  const list = document.getElementById('xferLocalList');
+  list.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-muted);font-size:10px">Loading...</div>';
+  try {
+    const items = [];
+    for await (const [name, handle] of dirHandle.entries()) {
+      if (name.startsWith('.')) continue;
+      const isDir = handle.kind === 'directory';
+      let size = null;
+      if (!isDir) { try { const f = await handle.getFile(); size = f.size; } catch {} }
+      items.push({ name, type: isDir ? 'dir' : 'file', handle, size });
+    }
+    items.sort((a, b) => {
+      if (a.type !== b.type) return a.type === 'dir' ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+    document.getElementById('xferLocalPath').textContent = dirHandle.name;
     list.innerHTML = '';
-    data.items.forEach(item => {
+    if (xferDirStack.length > 0) {
+      const back = document.createElement('div');
+      back.style.cssText = 'display:flex;align-items:center;gap:6px;padding:3px 7px;cursor:pointer;border-bottom:1px solid #0a1520;color:var(--accent-cyan)';
+      back.innerHTML = '<span>&#x1F4C1;</span><span>..</span>';
+      back.addEventListener('click', async () => { const p = xferDirStack.pop(); await xferLoadDir(p); });
+      back.addEventListener('mouseenter', () => back.style.background = '#0a1520');
+      back.addEventListener('mouseleave', () => back.style.background = '');
+      list.appendChild(back);
+    }
+    items.forEach(item => {
       const row = document.createElement('div');
       row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:3px 7px;cursor:pointer;border-bottom:1px solid #0a1520;transition:background 0.1s';
-      const icon  = item.type === 'dir' ? '\u{1F4C1}' : '\u{1F4C4}';
+      const icon  = item.type === 'dir' ? '&#x1F4C1;' : '&#x1F4C4;';
       const color = item.type === 'dir' ? 'var(--accent-cyan)' : 'var(--text-dim)';
       const size  = item.size != null ? xferFmtSize(item.size) : '';
-      row.innerHTML = '<span style="flex-shrink:0">' + icon + '</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:' + color + '">' + item.name + '</span><span style="color:var(--text-muted);font-size:9px;flex-shrink:0">' + size + '</span>';
-      row.addEventListener('click', () => {
-        if (item.type === 'dir') { xferLoadDir(item.path); }
-        else { list.querySelectorAll('div').forEach(r => r.style.background = ''); row.style.background = '#0a1e10'; xferSelectLocalFile(item); }
+      row.innerHTML = '<span style="flex-shrink:0">' + icon + '</span>'
+        + '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:' + color + '">' + esc(item.name) + '</span>'
+        + '<span style="color:var(--text-muted);font-size:9px;flex-shrink:0">' + size + '</span>';
+      row.addEventListener('click', async () => {
+        if (item.type === 'dir') { xferDirStack.push(dirHandle); await xferLoadDir(item.handle); }
+        else {
+          list.querySelectorAll('div').forEach(r => r.style.background = '');
+          row.style.background = '#0a1e10';
+          await xferSelectLocalHandle(item);
+        }
       });
-      row.addEventListener('mouseenter', () => { if (xferSelectedLocal?.path !== item.path) row.style.background = '#0a1520'; });
-      row.addEventListener('mouseleave', () => { if (xferSelectedLocal?.path !== item.path) row.style.background = ''; });
+      row.addEventListener('mouseenter', () => { if (xferSelectedLocal?.name !== item.name) row.style.background = '#0a1520'; });
+      row.addEventListener('mouseleave', () => { if (xferSelectedLocal?.name !== item.name) row.style.background = ''; });
       list.appendChild(row);
     });
   } catch (err) {
@@ -2545,19 +2630,50 @@ function menuImportMacro() {
 // ══════════════════════════════════════════════════════════════════
 //  MACROS
 // ══════════════════════════════════════════════════════════════════
-function loadMacros() {
+// ══════════════════════════════════════════════════════════════════
+//  MACROS — server-side storage via /api/macros
+// ══════════════════════════════════════════════════════════════════
+
+// ── Load macros from bridge ───────────────────────────────────────
+async function loadMacros() {
   try {
-    const raw = localStorage.getItem('wt3270_macros');
-    macros = raw ? JSON.parse(raw) : [];
-  } catch { macros = []; }
+    if (window.location.protocol === 'file:') {
+      macros = [];
+    } else {
+      const res = await fetch('/api/macros');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      macros = await res.json();
+    }
+  } catch (err) {
+    console.warn('Could not load macros from bridge:', err.message);
+    macros = [];
+  }
   renderSidebarMacros();
   refreshMenuMacroList();
+  renderModalMacros();
 }
 
-function saveMacrosToStorage() {
-  try { localStorage.setItem('wt3270_macros', JSON.stringify(macros)); } catch {}
+// ── Save a single macro to bridge ────────────────────────────────
+async function saveMacroToServer(macro) {
+  if (window.location.protocol === 'file:') return;
+  const res = await fetch('/api/macros', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(macro),
+  });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const data = await res.json();
+  return data.macro; // server returns macro with assigned id
 }
 
+// ── Delete a macro from bridge ────────────────────────────────────
+async function deleteMacroFromServer(macroId) {
+  if (window.location.protocol === 'file:') return;
+  const res = await fetch('/api/macros/' + encodeURIComponent(macroId), { method: 'DELETE' });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+}
+
+// ── Render sidebar macro list ─────────────────────────────────────
 function renderSidebarMacros() {
   const container = document.getElementById('sidebarMacroList');
   if (!container) return;
@@ -2565,18 +2681,43 @@ function renderSidebarMacros() {
   macros.forEach((m, idx) => {
     const item = document.createElement('div');
     item.className = 'macro-item';
-    item.style.position = 'relative';
-    item.innerHTML = `<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">▶ ${esc(m.name)}</span>
-      <span style="font-size:11px;color:var(--text-muted);opacity:0.7;cursor:pointer" title="Delete">✕</span>`;
-    item.querySelector('span:last-child').addEventListener('click', e => { e.stopPropagation(); deleteMacro(idx); });
+    item.innerHTML = '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">\u25B6 ' + esc(m.name) + '</span>'
+      + '<button class="macro-edit-btn" title="Edit macro">\u270E</button>'
+      + '<button class="macro-delete-btn" title="Delete macro">\uD83D\uDDD1</button>';
+    item.querySelector('.macro-edit-btn').addEventListener('click', e => { e.stopPropagation(); editMacro(idx); });
+    item.querySelector('.macro-delete-btn').addEventListener('click', e => { e.stopPropagation(); deleteMacro(idx); });
     item.addEventListener('click', () => runMacro(idx));
-    item.querySelector('span:last-child').addEventListener('mouseenter', e => e.target.style.opacity='1');
-    item.querySelector('span:last-child').addEventListener('mouseleave', e => e.target.style.opacity='0.7');
     container.appendChild(item);
   });
   refreshMenuMacroList();
 }
 
+// ── Render macro list inside Add Macro modal ──────────────────────
+function renderModalMacros() {
+  const container = document.getElementById('modalMacroList');
+  if (!container) return;
+  container.innerHTML = '';
+  if (!macros.length) {
+    container.innerHTML = '<div style="font-size:10px;color:var(--text-muted);padding:4px 0">No macros saved yet.</div>';
+    return;
+  }
+  macros.forEach((m, idx) => {
+    const item = document.createElement('div');
+    item.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 8px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:3px;margin-bottom:4px;cursor:pointer;transition:border-color 0.15s';
+    item.innerHTML = '<div style="flex:1"><div style="font-size:11px;font-family:\'IBM Plex Mono\',monospace;color:var(--text-primary)">' + esc(m.name) + '</div>'
+      + '<div style="font-size:10px;color:var(--text-muted)">' + (m.steps ? m.steps.length + ' steps' : '') + (m.description ? ' \xB7 ' + esc(m.description) : '') + '</div></div>'
+      + '<button class="macro-edit-btn" style="display:inline-block" title="Edit">\u270E</button>'
+      + '<button class="macro-delete-btn" style="display:inline-block" title="Delete">\uD83D\uDDD1</button>';
+    item.querySelector('.macro-edit-btn').addEventListener('click', e => { e.stopPropagation(); editMacro(idx); });
+    item.querySelector('.macro-delete-btn').addEventListener('click', e => { e.stopPropagation(); deleteMacro(idx); });
+    item.addEventListener('click', () => editMacro(idx));
+    item.addEventListener('mouseenter', () => item.style.borderColor = 'var(--accent-blue)');
+    item.addEventListener('mouseleave', () => item.style.borderColor = 'var(--border)');
+    container.appendChild(item);
+  });
+}
+
+// ── Refresh top menu macro list ───────────────────────────────────
 function refreshMenuMacroList() {
   const container = document.getElementById('menuMacroList');
   if (!container) return;
@@ -2588,17 +2729,20 @@ function refreshMenuMacroList() {
   macros.forEach((m, idx) => {
     const item = document.createElement('div');
     item.className = 'menu-dd-item';
-    item.textContent = '▶ ' + m.name;
+    item.textContent = '\u25B6 ' + m.name;
     item.addEventListener('click', () => { closeAllMenus(); runMacro(idx); });
     container.appendChild(item);
   });
 }
 
+// ── Show/hide Add Macro modal ─────────────────────────────────────
 function showAddMacroModal() {
   document.getElementById('macroName').value = '';
   document.getElementById('macroDesc').value = '';
   document.getElementById('macroJson').value = '';
+  document.getElementById('editingMacroId').value = '';
   document.getElementById('addMacroModal').classList.remove('hidden');
+  renderModalMacros();
   setTimeout(() => document.getElementById('macroName').focus(), 50);
 }
 
@@ -2606,23 +2750,37 @@ function hideAddMacroModal() {
   document.getElementById('addMacroModal').classList.add('hidden');
 }
 
-function saveMacroFromModal() {
-  const nameEl = document.getElementById('macroName');
-  const descEl = document.getElementById('macroDesc');
-  const jsonEl = document.getElementById('macroJson');
+// ── Load a macro into the edit form ──────────────────────────────
+function editMacro(idx) {
+  const m = macros[idx];
+  if (!m) return;
+  document.getElementById('macroName').value = m.name || '';
+  document.getElementById('macroDesc').value = m.description || '';
+  document.getElementById('macroJson').value = JSON.stringify({ name: m.name, description: m.description, steps: m.steps || [] }, null, 2);
+  document.getElementById('editingMacroId').value = m.id || '';
+  document.getElementById('addMacroModal').classList.remove('hidden');
+  setTimeout(() => document.getElementById('macroName').focus(), 50);
+}
+
+// ── Save macro from modal form ────────────────────────────────────
+async function saveMacroFromModal() {
+  const nameEl  = document.getElementById('macroName');
+  const descEl  = document.getElementById('macroDesc');
+  const jsonEl  = document.getElementById('macroJson');
+  const idEl    = document.getElementById('editingMacroId');
   const name = nameEl.value.trim();
   if (!name) { nameEl.focus(); nameEl.style.borderColor = 'var(--t-red)'; return; }
   nameEl.style.borderColor = '';
+
   let macroObj = { name, description: descEl.value.trim(), steps: [] };
+  if (idEl.value) macroObj.id = idEl.value;
+
   const raw = jsonEl.value.trim();
   if (raw) {
     try {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        macroObj.steps = parsed;
-      } else {
-        macroObj = { ...parsed, name, description: descEl.value.trim() || parsed.description || '' };
-      }
+      if (Array.isArray(parsed)) { macroObj.steps = parsed; }
+      else { macroObj = { ...parsed, name, description: descEl.value.trim() || parsed.description || '', id: macroObj.id }; }
     } catch (err) {
       jsonEl.style.borderColor = 'var(--t-red)';
       jsonEl.title = 'Invalid JSON: ' + err.message;
@@ -2630,34 +2788,64 @@ function saveMacroFromModal() {
     }
   }
   jsonEl.style.borderColor = '';
-  macros.push(macroObj);
-  saveMacrosToStorage();
-  renderSidebarMacros();
-  hideAddMacroModal();
+
+  try {
+    const saved = await saveMacroToServer(macroObj);
+    if (saved) macroObj = saved;
+    // Update local array
+    const idx = macros.findIndex(m => m.id === macroObj.id);
+    if (idx >= 0) macros[idx] = macroObj;
+    else macros.push(macroObj);
+    renderSidebarMacros();
+    renderModalMacros();
+    hideAddMacroModal();
+  } catch (err) {
+    showBridgeError('Could not save macro: ' + err.message);
+  }
 }
 
-function deleteMacro(idx) {
-  macros.splice(idx, 1);
-  saveMacrosToStorage();
-  renderSidebarMacros();
+// ── Delete a macro ────────────────────────────────────────────────
+async function deleteMacro(idx) {
+  const m = macros[idx];
+  if (!m) return;
+  if (!confirm('Delete macro "' + m.name + '"?')) return;
+  try {
+    if (m.id) await deleteMacroFromServer(m.id);
+    macros.splice(idx, 1);
+    renderSidebarMacros();
+    renderModalMacros();
+  } catch (err) {
+    showBridgeError('Could not delete macro: ' + err.message);
+  }
 }
 
+// ── Run a macro ───────────────────────────────────────────────────
 function runMacro(idx) {
   const m = macros[idx];
   if (!m) return;
   const session = sessions.get(activeSession);
   if (!session || session.ws.readyState !== WebSocket.OPEN) {
-    showBridgeError('No active session — connect to an LPAR first');
+    showBridgeError('No active session \u2014 connect to an LPAR first');
     return;
   }
   session.ws.send(JSON.stringify({ type: 'macro.run', macro: m }));
 }
 
-function saveMacro(macro) {
+// ── Save macro from Copilot card (no modal) ───────────────────────
+async function saveMacro(macro) {
   if (!macro || !macro.name) return;
-  macros.push(macro);
-  saveMacrosToStorage();
-  renderSidebarMacros();
+  try {
+    const saved = await saveMacroToServer(macro);
+    if (saved) macro = saved;
+    const idx = macros.findIndex(m => m.id === macro.id);
+    if (idx >= 0) macros[idx] = macro;
+    else macros.push(macro);
+    renderSidebarMacros();
+  } catch (err) {
+    // Fallback: add locally if server unavailable
+    macros.push(macro);
+    renderSidebarMacros();
+  }
 }
 
 function importMacroFromFile() {
@@ -2672,6 +2860,7 @@ function loadMacroFile(e) {
     document.getElementById('macroJson').value = ev.target.result;
     const nameEl = document.getElementById('macroName');
     if (!nameEl.value.trim()) nameEl.value = file.name.replace(/\.macro\.json$|\.json$/, '');
+    document.getElementById('addMacroModal').classList.remove('hidden');
   };
   reader.readAsText(file);
   e.target.value = '';
@@ -2790,7 +2979,7 @@ function appendAssistantMsg(raw) {
   div.innerHTML = `
     <div class="msg-avatar">⬡</div>
     <div class="msg-body">
-      <div class="msg-role">Copilot</div>
+      <div class="msg-role">AI Assist</div>
       <div class="msg-content">${renderMd(raw)}</div>
     </div>`;
   chat.appendChild(div);
@@ -2823,7 +3012,7 @@ function appendTyping() {
   div.innerHTML = `
     <div class="msg-avatar">⬡</div>
     <div class="msg-body">
-      <div class="msg-role">Copilot</div>
+      <div class="msg-role">AI Assist</div>
       <div class="typing-indicator">
         <div class="typing-dot"></div>
         <div class="typing-dot"></div>
