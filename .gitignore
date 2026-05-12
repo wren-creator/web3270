@@ -3,3 +3,4 @@ Bridge_server/public/tn3270-client.html-0415-good
 # macOS metadata
 .DS_Store
 **/.DS_Store
+Bridge_server/backup-files/*
