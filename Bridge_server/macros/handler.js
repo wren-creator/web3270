@@ -66,10 +66,10 @@ class MacroHandler {
         case 'macro.list':
           return this._send({ type: 'macro.list', macros: await this.store.list() });
 
-        case 'macro.run':
+	case 'macro.run':
           if (!msg.name) return this._error('macro.run requires "name"');
-          // Don't await — replay runs asynchronously
-          this.engine.run(msg.name).catch(() => {});
+          // Use macro object directly if provided, otherwise look up by name
+          this.engine.run(msg.macro || msg.name).catch(() => {});
           break;
 
         case 'macro.stop':

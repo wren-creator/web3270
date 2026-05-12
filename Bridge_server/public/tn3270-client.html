@@ -2828,7 +2828,7 @@ function runMacro(idx) {
     showBridgeError('No active session \u2014 connect to an LPAR first');
     return;
   }
-  session.ws.send(JSON.stringify({ type: 'macro.run', macro: m }));
+  session.ws.send(JSON.stringify({ type: 'macro.run', name: m.name, macro: m }));
 }
 
 // ── Save macro from Copilot card (no modal) ───────────────────────
