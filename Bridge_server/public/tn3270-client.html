@@ -1915,10 +1915,11 @@ function handleBridgeMsg(sid, msg) {
       break;
 
     case 'screen':
+      if (session) session.lastScreen = msg;
       if (sid === activeSession) {
         renderLiveScreen(msg);
         liveScreenText = screenToText(msg);
-	liveScreen = msg;
+        liveScreen = msg;
         cursorRow = msg.cursorRow ?? 0;
         cursorCol = msg.cursorCol ?? 0;
       }
@@ -2197,7 +2198,13 @@ function activateSession(sid) {
   if (!session) return;
   setConnStatus(session.name,
     session.ws.readyState === WebSocket.OPEN ? 'connected' : 'disconnected');
-  if (session.ws.readyState !== WebSocket.OPEN) {
+  if (session.lastScreen) {
+    renderLiveScreen(session.lastScreen);
+    liveScreenText = screenToText(session.lastScreen);
+    liveScreen     = session.lastScreen;
+    cursorRow      = session.lastScreen.cursorRow ?? 0;
+    cursorCol      = session.lastScreen.cursorCol ?? 0;
+  } else {
     document.getElementById('terminal').innerHTML = '';
   }
 }
@@ -2302,7 +2309,6 @@ function menuOpenCopilot() {
 function menuOpenTransfer() {
   closeAllMenus();
   menuOpenPanel('Xfer');
-  if (!xferCurrentPath) xferLoadDir('');
 }
 
 // ══════════════════════════════════════════════════════════════════
