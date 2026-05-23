@@ -1,6 +1,27 @@
+# ── Node ──────────────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+package-lock.json
+
+# ── Environment & secrets ─────────────────────────────────────────
+.env
 lpars.txt
-Bridge_server/public/tn3270-client.html-0415-good
-# macOS metadata
+
+# ── Build / backup artifacts ──────────────────────────────────────
+backup-files/
+*.bak
+*.bak.*
+public/*.bak
+public/*-good
+public/*-demo.html
+public/demo-*.html
+
+# ── macOS metadata ────────────────────────────────────────────────
 .DS_Store
 **/.DS_Store
-Bridge_server/backup-files/*
+
+# ── Editor / IDE ──────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
