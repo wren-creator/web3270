@@ -220,21 +220,31 @@ const httpServer = http.createServer((req, res) => {
     return;
   }
 
-  // Static files
-  let filename;
-  if (req.url === '/demo' || req.url === '/demo.html') {
-    filename = 'tn3270-client-demo.html';
-  } else if (req.url === '/copilot' || req.url === '/copilot.html') {
-    filename = 'copilot-panel-standalone.html';
+  // Static files — serve any file under PUBLIC_DIR, fall back to tn3270-client.html
+  const urlPath = req.url.split('?')[0];
+  let filePath;
+
+  if (urlPath === '/' || urlPath === '') {
+    filePath = path.join(PUBLIC_DIR, 'tn3270-client.html');
+  } else if (urlPath === '/demo' || urlPath === '/demo.html') {
+    filePath = path.join(PUBLIC_DIR, 'tn3270-client-demo.html');
+  } else if (urlPath === '/copilot' || urlPath === '/copilot.html') {
+    filePath = path.join(PUBLIC_DIR, 'copilot-panel-standalone.html');
   } else {
-    filename = 'tn3270-client.html';
+    // Serve css/, js/, and other static assets directly
+    filePath = path.join(PUBLIC_DIR, urlPath);
+    // Safety: prevent path traversal outside PUBLIC_DIR
+    if (!filePath.startsWith(PUBLIC_DIR + path.sep) && filePath !== PUBLIC_DIR) {
+      res.writeHead(403, { 'Content-Type': 'text/plain' });
+      res.end('Forbidden');
+      return;
+    }
   }
 
-  const filePath = path.join(PUBLIC_DIR, filename);
   fs.readFile(filePath, (err, data) => {
     if (err) {
       res.writeHead(404, { 'Content-Type': 'text/plain' });
-      res.end(`Not found: ${filename}`);
+      res.end(`Not found: ${urlPath}`);
       return;
     }
     const ext  = path.extname(filePath);
