@@ -103,7 +103,8 @@ function termClick(e) {
   if (!rows.length) return;
   const cellH = rows[0].offsetHeight || 1;
   const cells = rows[0].querySelectorAll('.screen-cell');
-  const cellW = cells.length ? (rows[0].offsetWidth / cells.length) : 8;
+  const cellW = cells.length ?
+    (rows[0].offsetWidth / cells.length) : 8;
   cursorCol = Math.max(0, Math.min(Math.floor((e.clientX - rect.left) / cellW), (cells.length || 80) - 1));
   cursorRow = Math.max(0, Math.min(Math.floor((e.clientY - rect.top)  / cellH), rows.length - 1));
   const session = sessions.get(activeSession);
@@ -201,6 +202,15 @@ function activateSession(sid) {
   const session = sessions.get(sid);
   if (!session) return;
   setConnStatus(session.name, session.ws.readyState === WebSocket.OPEN ? 'connected' : 'disconnected');
+
+  // FIX: Refresh OIA identity fields when switching sessions
+  const oiaSys   = document.getElementById('oiaSys');
+  const oiaLu    = document.getElementById('oiaLu');
+  const oiaModel = document.getElementById('oiaModel');
+  if (oiaSys)   oiaSys.textContent   = session.profile?.host  || '\u2014';
+  if (oiaLu)    oiaLu.textContent    = session.lastLu          || '\u2014';
+  if (oiaModel) oiaModel.textContent = session.profile?.model  || '\u2014';
+
   if (session.lastScreen) {
     renderLiveScreen(session.lastScreen); liveScreenText = screenToText(session.lastScreen);
     liveScreen = session.lastScreen; cursorRow = session.lastScreen.cursorRow ?? 0; cursorCol = session.lastScreen.cursorCol ?? 0;
@@ -230,4 +240,3 @@ function cycleSession(direction) {
   activateTabEl(tabs[next], Number(tabs[next].dataset.sid));
 }
 function switchTab(el) { document.querySelectorAll('.session-tab').forEach(t => t.classList.remove('active')); el.classList.add('active'); }
-
