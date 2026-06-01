@@ -47,16 +47,15 @@ async function loadProfiles() {
 }
 
 function renderLparDropdown() {
-  const menu   = document.getElementById('lparDropdownMenu');
-  if (!menu) return;
-  const footer = menu.querySelector('.lpar-menu-footer');
-  [...menu.querySelectorAll('.lpar-menu-item')].forEach(el => el.remove());
+  const container = document.getElementById('lparMenuItems');
+  if (!container) return;
+  container.innerHTML = '';
   LPAR_PROFILES.forEach(p => {
     const item = document.createElement('div');
     item.className = 'lpar-menu-item';
     item.innerHTML = `<div class="lpar-menu-dot"></div><div class="lpar-menu-info"><div class="lpar-menu-name">${esc(p.name||p.id)}</div><div class="lpar-menu-meta">${esc(p.host)} &middot; :${p.port} &middot; ${esc(p.type||'TSO')} &nbsp;<span class="lpar-menu-status-text offline">&#9675; Offline</span></div></div><div class="lpar-menu-connect">Connect</div>`;
     item.addEventListener('click', () => connectLpar(p.id));
-    if (footer) menu.insertBefore(item, footer); else menu.appendChild(item);
+    container.appendChild(item);
   });
 }
 
