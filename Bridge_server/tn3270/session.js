@@ -844,15 +844,13 @@ _processWriteStructuredField(data) {
   }
 
   _encodeSBA(addr) {
-    // Encode a buffer address using 12-bit or 14-bit encoding
+    // Encode a 12-bit buffer address as two 6-bit bytes in the 0x40-0x7F range.
+    // Both 0x40-0x7F and 0xC0-0xFF are valid 6-bit encodings (low 6 bits hold
+    // the value); we use the lower range exclusively so every value round-trips
+    // cleanly through any spec-compliant decoder.
     const hi = (addr >> 6) & 0x3F;
     const lo =  addr       & 0x3F;
-    const code = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ @£$¥·←→↑↓';
-    // Standard 6-bit encoding table (0x40-based):
-    const encode6 = n => {
-      if (n < 0x3F) return 0x40 + n;
-      return 0xC0 + (n - 0x3F);
-    };
+    const encode6 = n => 0x40 + (n & 0x3F);
     return Buffer.from([ORDER_SBA, encode6(hi), encode6(lo)]);
   }
 
@@ -887,12 +885,11 @@ _processWriteStructuredField(data) {
 // ── Utilities ──────────────────────────────────────────────────────
 
 function decode3270Address(b1, b2, cols) {
-  // 3270 uses a 6-bit encoding per byte; decode to a buffer offset
-  const decode6 = b => {
-    if (b >= 0x40 && b <= 0x7F) return b - 0x40;
-    if (b >= 0xC0 && b <= 0xFF) return b - 0xC0 + 0x3F;
-    return b & 0x3F;
-  };
+  // 3270 12-bit buffer address: 6 bits per byte.
+  // Both 0x40-0x7F and 0xC0-0xFF are valid encodings of the same 0-63 value
+  // (they're alternate bit patterns chosen for EBCDIC printability). The
+  // 14-bit binary variant (top 2 bits = 00) is rare and we don't support it.
+  const decode6 = b => b & 0x3F;
   return (decode6(b1) << 6) | decode6(b2);
 }
 
