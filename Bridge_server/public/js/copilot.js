@@ -319,7 +319,7 @@ async function aiFetchOpenAIModelsDirect() {
 
 async function aiFetchGeminiModelsDirect() {
   const key = aiGetKeyFor('gemini');
-  if (!key) return ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash-latest'];
+  if (!key) return ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.0-flash-lite'];
   const r   = await fetch('https://generativelanguage.googleapis.com/v1beta/models?key=' + key);
   if (!r.ok) throw new Error('Gemini models API returned ' + r.status);
   const data = await r.json();

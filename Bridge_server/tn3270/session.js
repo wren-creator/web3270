@@ -418,6 +418,7 @@ class Tn3270Session extends EventEmitter {
   _initClassicTn3270() {
     logger.info(`[ws:${this.wsId}] Falling back to classic TN3270`);
     this.tn3270eEnabled = false;
+    this._applyModel(this.model);
   }
 
   _handleSubneg(data) {
@@ -721,7 +722,7 @@ _processWriteStructuredField(data) {
 
     logger.info(`[ws:${this.wsId}] ── Screen ─── ${nonEmpty.length} rows  ${fields.length} fields  cursor=${Math.floor(this.cursorAddr/this.cols)+1}:${this.cursorAddr%this.cols+1}`);
     nonEmpty.forEach(({ r, text }) =>
-      logger.info(`[ws:${this.wsId}]  ${String(r+1).padStart(2,'0')} │ ${text.substring(0,78)}`)
+      logger.info(`[ws:${this.wsId}]  ${String(r+1).padStart(2,'0')} │ ${text.substring(0, this.cols)}`)
     );
     const inputFields = fields.filter(f => !f.protected);
     if (inputFields.length) {
