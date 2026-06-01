@@ -1,0 +1,47 @@
+tn3270-bridge  | 2026-06-01T17:36:44.403Z [INFO ] [ws:6] Connecting → 10.80.7.14:2323 tls=true tn3270e=false lu=any model=3278-5
+tn3270-bridge  | 2026-06-01T17:36:44.404Z [INFO ] [ws:6] Model applied: 3278-5 (27x132)
+tn3270-bridge  | 2026-06-01T17:36:44.472Z [DEBUG] [ws:6] TCP socket open
+tn3270-bridge  | 2026-06-01T17:36:44.472Z [INFO ] [ws:6] TCP connected to 10.80.7.14:2323
+tn3270-bridge  | 2026-06-01T17:36:44.473Z [DEBUG] [ws:6] Telnet DO TN3270E
+tn3270-bridge  | 2026-06-01T17:36:44.473Z [INFO ] [ws:6] TN3270E disabled — sending WONT TN3270E
+tn3270-bridge  | 2026-06-01T17:36:44.473Z [INFO ] [ws:6] Falling back to classic TN3270
+tn3270-bridge  | 2026-06-01T17:36:44.473Z [INFO ] [ws:6] Model applied: 3278-5 (27x132)
+tn3270-bridge  | 2026-06-01T17:36:44.475Z [DEBUG] [ws:6] Telnet DO TTYPE
+tn3270-bridge  | 2026-06-01T17:36:44.475Z [DEBUG] [ws:6] Sent WILL TTYPE
+tn3270-bridge  | 2026-06-01T17:36:44.477Z [DEBUG] [ws:6] Subneg opt=0x18 func=0x1
+tn3270-bridge  | 2026-06-01T17:36:44.477Z [DEBUG] [ws:6] TTYPE subneg raw bytes: 1801
+tn3270-bridge  | 2026-06-01T17:36:44.477Z [INFO ] [ws:6] Sent TTYPE IS IBM-3278-5
+tn3270-bridge  | 2026-06-01T17:36:44.477Z [DEBUG] [ws:6] TTYPE response bytes: fffa180049424d2d333237382d35fff0
+tn3270-bridge  | 2026-06-01T17:36:44.478Z [DEBUG] [ws:6] Telnet DO EOR
+tn3270-bridge  | 2026-06-01T17:36:44.478Z [DEBUG] [ws:6] Telnet WILL EOR
+tn3270-bridge  | 2026-06-01T17:36:44.478Z [DEBUG] [ws:6] Telnet DO BINARY
+tn3270-bridge  | 2026-06-01T17:36:44.478Z [DEBUG] [ws:6] Telnet WILL BINARY
+tn3270-bridge  | 2026-06-01T17:36:44.481Z [DEBUG] [ws:6] Telnet DO BINARY
+tn3270-bridge  | 2026-06-01T17:36:44.481Z [DEBUG] [ws:6] Telnet WILL BINARY
+tn3270-bridge  | 2026-06-01T17:36:44.481Z [DEBUG] [ws:6] _handler3270Record: 2 bytes, cmd=0xd
+tn3270-bridge  | 2026-06-01T17:36:44.481Z [DEBUG] [ws:6 _handle3270Record: first 10 bytes: 0dc2
+tn3270-bridge  | 2026-06-01T17:36:44.481Z [DEBUG] [ws:6] Read Modified command received
+tn3270-bridge  | 2026-06-01T17:36:44.481Z [DEBUG] [ws:6] Sent Read Modified response (AID NONE)
+tn3270-bridge  | 2026-06-01T17:36:44.481Z [DEBUG] [ws:6] _handler3270Record: 1 bytes, cmd=0x2
+tn3270-bridge  | 2026-06-01T17:36:44.481Z [DEBUG] [ws:6 _handle3270Record: first 10 bytes: 02
+tn3270-bridge  | 2026-06-01T17:36:44.481Z [DEBUG] [ws:6] Read Buffer command received
+tn3270-bridge  | 2026-06-01T17:36:44.481Z [DEBUG] [ws:6] Read Buffer requested by host
+tn3270-bridge  | 2026-06-01T17:36:44.491Z [DEBUG] [ws:6] _handler3270Record: 1743 bytes, cmd=0x5
+tn3270-bridge  | 2026-06-01T17:36:44.491Z [DEBUG] [ws:6 _handle3270Record: first 10 bytes: 05c7115d6b1d60d9e4d5
+tn3270-bridge  | 2026-06-01T17:36:44.491Z [DEBUG] [ws:6] _emitScreen called
+tn3270-bridge  | 2026-06-01T17:36:44.493Z [DEBUG] [ws:6] _emitScreen → rows=27 nonEmptyRows=9 fields=18 (protected=15 input=3)
+tn3270-bridge  | 2026-06-01T17:36:44.493Z [INFO ] [ws:6] ── Screen ─── 9 rows  18 fields  cursor=16:88
+tn3270-bridge  | 2026-06-01T17:36:44.493Z [INFO ] [ws:6]  05 │                                                                                                      -----------| result in discipli
+tn3270-bridge  | 2026-06-01T17:36:44.493Z [INFO ] [ws:6]  06 │ nary action and/or civil and criminal penalties. At any   | | time and for any lawful Government purpose, the government may monitor
+tn3270-bridge  | 2026-06-01T17:36:44.493Z [INFO ] [ws:6]  07 │ ,     |i| record, and audit your system usage and/or intercept, search and seize any  || communication or data transiting or stored
+tn3270-bridge  | 2026-06-01T17:36:44.493Z [INFO ] [ws:6]  08 │ on this system. Therefore, you   | t| have no reasonable expectation of privacy. Any communication or data        |U| transiting or
+tn3270-bridge  | 2026-06-01T17:36:44.493Z [INFO ] [ws:6]  09 │ stored on this system may be disclosed or used for any lawful |
+tn3270-bridge  | 2026-06-01T17:36:44.493Z [INFO ] [ws:6]  13 │       Government purpose.                                                         | ------------
+tn3270-bridge  | 2026-06-01T17:36:44.493Z [INFO ] [ws:6]  14 │                                              COMMAND  ===>                                                             n your USERID
+tn3270-bridge  | 2026-06-01T17:36:44.493Z [INFO ] [ws:6]  15 │  and PASSWORD and press ENTER                           ING  (Your password will not appear when you type it)
+tn3270-bridge  | 2026-06-01T17:36:44.493Z [INFO ] [ws:6]  16 │                                                                         USERID   ===>    PASSWORD ===>
+tn3270-bridge  | 2026-06-01T17:36:44.493Z [INFO ] [ws:6] ── Input fields (3)
+tn3270-bridge  | 2026-06-01T17:36:44.493Z [INFO ] [ws:6]   [0] row=14 col=60 content='n your USERID and PASSWORD and press ENT'
+tn3270-bridge  | 2026-06-01T17:36:44.493Z [INFO ] [ws:6]   [1] row=16 col=87 content='PASSWO'
+tn3270-bridge  | 2026-06-01T17:36:44.493Z [INFO ] [ws:6]   [2] row=16 col=104 content=''
+tn3270-bridge  | 2026-06-01T17:36:44.493Z [INFO ] [ws:6] ─────────────────────────────────────────────────
