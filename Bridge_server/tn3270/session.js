@@ -481,6 +481,15 @@ class Tn3270Session extends EventEmitter {
   _handle3270Record(bytes) {
     logger.debug(`[ws:${this.wsId}] _handler3270Record: ${bytes.length} bytes, cmd=0x${bytes[0]?.toString(16)}`);
     logger.debug(`[ws:${this.wsId} _handle3270Record: first 10 bytes: ${bytes.slice(0,10).toString('hex')}`);
+    // Full hex dump for parser diagnostics — enable with TN3270_HEXDUMP=1
+    if (process.env.TN3270_HEXDUMP === '1' && bytes.length > 1) {
+      const hex = bytes.toString('hex');
+      const lines = [];
+      for (let off = 0; off < hex.length; off += 64) {
+        lines.push(`  ${(off/2).toString(16).padStart(4,'0')}: ${hex.slice(off, off + 64)}`);
+      }
+      logger.info(`[ws:${this.wsId}] ── 3270 record hexdump (${bytes.length} bytes, cmd=0x${bytes[0]?.toString(16)}) ──\n${lines.join('\n')}`);
+    }
     if (this.tn3270eEnabled) {
       const dataType = bytes[0];
 
@@ -600,13 +609,46 @@ class Tn3270Session extends EventEmitter {
         // Graphic Escape — next byte is a graphic character (skip for now)
         i += 2;
 
-      } else if (b === ORDER_SFE || b === ORDER_SA || b === ORDER_MF) {
-        // Extended orders with attribute pairs — currently skipped.
-        // TODO: parse attribute pairs for color, highlighting, and extended field attrs.
-        // Each pair is: type(1) + value(1). Needed for full 3279 color support.
+      } else if (b === ORDER_SFE) {
+        // Start Field Extended — like SF, but with attribute pairs.
+        // Format: 0x29 <pairCount> <type> <value> <type> <value> ...
+        // The pair with type=0xC0 carries the basic field attribute (FA byte
+        // equivalent to what SF would set). At minimum we MUST create a field
+        // at this address and advance addr by one cell — otherwise every
+        // subsequent character lands one cell early per SFE encountered,
+        // which produces the "starts in the middle of the screen" symptom.
         i++;
         const pairCount = data[i]; i++;
-        i += pairCount * 2; // skip attribute type + value pairs
+        let baseFa = 0x60; // default: protected, normal intensity
+        for (let p = 0; p < pairCount; p++) {
+          const type  = data[i];
+          const value = data[i + 1];
+          if (type === 0xC0) baseFa = value; // basic field attribute
+          i += 2;
+        }
+        this.buffer[addr] = { char: 0x00, fa: baseFa, modified: false };
+        addr = (addr + 1) % (this.rows * this.cols);
+
+      } else if (b === ORDER_SA) {
+        // Set Attribute — applies a single attribute to subsequent characters.
+        // Format: 0x28 <type> <value>  (NO count byte, NO addr advance)
+        i += 3;
+
+      } else if (b === ORDER_MF) {
+        // Modify Field — modifies attributes of the field at current addr.
+        // Format: 0x2C <pairCount> <type> <value> ...
+        // Current addr must point at an existing field attribute cell.
+        i++;
+        const pairCount = data[i]; i++;
+        for (let p = 0; p < pairCount; p++) {
+          const type  = data[i];
+          const value = data[i + 1];
+          if (type === 0xC0 && this.buffer[addr]) {
+            this.buffer[addr].fa = value;
+          }
+          i += 2;
+        }
+        addr = (addr + 1) % (this.rows * this.cols);
 
       } else {
         // Regular character — store in buffer
