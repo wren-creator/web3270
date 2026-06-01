@@ -161,7 +161,7 @@ body {
 .t-btn.pf:hover { border-color:#6699ff;color:#6699ff; }
 .t-sep { width:1px;height:16px;background:#0d1f14;margin:0 2px; }
 .t-spacer { flex:1; }
-.screen-wrapper { flex:1;display:flex;align-items:center;justify-content:center;overflow:auto;padding:8px;position:relative;background:var(--t-bg); }
+.screen-wrapper { flex:1;display:flex;align-items:center;justify-content:flex-start;overflow:auto;padding:8px;position:relative;background:var(--t-bg); }
 .t3270-screen { font-family:'IBM Plex Mono',monospace;font-size:13px;line-height:1.45;background:var(--t-bg);color:var(--t-green);position:relative;white-space:nowrap;user-select:none;border:1px solid #0d2510;box-shadow:0 0 40px rgba(0,100,50,0.15),inset 0 0 60px rgba(0,0,0,0.5);flex-shrink:0;transform-origin:top center; }
 .t3270-screen::after { content:'';position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px);pointer-events:none;z-index:10; }
 .screen-row { display:block;white-space:nowrap;height:1.45em; }

@@ -25,9 +25,16 @@ function fitScreen() {
     const availW = wrapper.clientWidth  - 16;
     const availH = wrapper.clientHeight - 16;
     if (availW <= 0 || availH <= 0) return;
-    const scale       = Math.min(availW / intrinsicWidth, availH / intrinsicHeight, 1);
+    const scale       = Math.min(availW / intrinsicWidth, availH / intrinsicHeight);
     const newFontSize = Math.floor(baseFontSize * scale * 100) / 100;
     term.style.fontSize  = newFontSize + 'px';
+    // Re-measure cell width at the new font size and re-lock terminal width
+    measureCellWidth();
+    const newCellW = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--cell-w').trim());
+    if (newCellW > 0) {
+      const lockedW = Math.ceil(cellCount * newCellW);
+      term.style.width = term.style.minWidth = term.style.maxWidth = lockedW + 'px';
+    }
     term.style.transform = 'none';
   } catch (err) { console.error('[fitScreen]', err); }
 }
