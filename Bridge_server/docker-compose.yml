@@ -28,6 +28,7 @@ services:
       BRIDGE_VERIFY_TLS: "false"
       BRIDGE_SOCKET_TIMEOUT_MS: "300000"
       BRIDGE_MAX_SESSIONS: "50"
+      TN3270_HEXDUMP: "1"
       
 
       DEFAULT_MODEL:    "3278-2"
