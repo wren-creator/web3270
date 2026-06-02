@@ -534,12 +534,14 @@ class Tn3270Session extends EventEmitter {
 
     const cmd = bytes[0];
 
-    if (cmd === 0xF5 || cmd === 0x7E || cmd === 0x05 || cmd === 0x01) {
-      // Write / Erase Write
-      this._processWriteCommand(bytes.slice(1), cmd === 0x7E || cmd === 0x06/* erase */);
-    } else if (cmd === 0xF1 || cmd === 0x05) {
-      // Write Structured Field
-      this._processWriteStructuredField(bytes.slice(1));
+    if (cmd === 0xF5 || cmd === 0x7E || cmd === 0x05 || cmd === 0x01 || cmd === 0xF1) {
+      // Write / Erase Write family.
+      // Erase commands: 0x05 (Erase Write), 0xF5 (SNA Erase Write),
+      //                 0x7E (Erase Write Alternate, both encodings)
+      // Plain Write: 0x01 (overlay, do NOT clear buffer)
+      // 0xF1 is also documented as Write in some references.
+      const erase = (cmd === 0x05 || cmd === 0xF5 || cmd === 0x7E);
+      this._processWriteCommand(bytes.slice(1), erase);
     } else if (cmd === 0xF3) {
       // Erase All Unprotected
       this._eraseAllUnprotected();
@@ -861,24 +863,23 @@ _processWriteStructuredField(data) {
   }
 
   _encodeSBA(addr) {
-    // Encode a 12-bit buffer address as two 6-bit bytes in the 0xC0-0xFF range.
-    // The 3270 spec allows either 0x40-0x7F or 0xC0-0xFF (the high two bits
-    // differ but the low 6 bits — which carry the address — are identical).
-    // z/VM and many other real-world hosts send addresses in the 0xC0 range
-    // and appear to expect responses in the same form, so we match it.
+    // Encode a 12-bit buffer address as two 6-bit bytes in the 0x40-0x7F range.
+    // Both 0x40-0x7F and 0xC0-0xFF are valid 6-bit encodings (low 6 bits hold
+    // the value); we use the lower range exclusively per IBM 3270 spec
+    // canonical form. The decoder side handles both for inbound parsing.
     const hi = (addr >> 6) & 0x3F;
     const lo =  addr       & 0x3F;
-    const encode6 = n => 0xC0 + (n & 0x3F);
+    const encode6 = n => 0x40 + (n & 0x3F);
     return Buffer.from([ORDER_SBA, encode6(hi), encode6(lo)]);
   }
 
   _encodeAddrRaw(addr) {
     // Encode a 12-bit buffer address as two raw 6-bit bytes WITHOUT the
-    // SBA order prefix. Used for the cursor address in AID responses.
-    // Same 0xC0+ encoding as _encodeSBA, for compatibility with z/VM.
+    // SBA order prefix. Used for the cursor address in AID responses,
+    // which per IBM 3270 spec is sent as raw bytes, not as an SBA order.
     const hi = (addr >> 6) & 0x3F;
     const lo =  addr       & 0x3F;
-    const encode6 = n => 0xC0 + (n & 0x3F);
+    const encode6 = n => 0x40 + (n & 0x3F);
     return Buffer.from([encode6(hi), encode6(lo)]);
   }
 
