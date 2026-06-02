@@ -169,10 +169,15 @@ class Tn3270Session extends EventEmitter {
 
     const parts = [Buffer.from([aidByte])];
 
-    // Append cursor address (SBA + 2-byte buffer address)
-    parts.push(this._encodeSBA(this.cursorAddr));
+    // Append cursor address — RAW 2 bytes, NOT preceded by SBA order.
+    // Per IBM 3270 Data Stream Programmer's Reference (GA23-0059):
+    // "The Read Modified data stream begins with the AID byte, followed
+    // by the address of the cursor (2 bytes, not preceded by an SBA
+    // order), followed by the modified data fields (each preceded by an
+    // SBA order)."
+    parts.push(this._encodeAddrRaw(this.cursorAddr));
 
-    // Append all modified fields
+    // Append all modified fields (these DO get SBA prefixes)
     for (const f of fields) {
       parts.push(this._encodeSBA(f.addr));
       parts.push(Ebcdic.fromAscii(f.data, this.codepage));
@@ -866,15 +871,27 @@ _processWriteStructuredField(data) {
     return Buffer.from([ORDER_SBA, encode6(hi), encode6(lo)]);
   }
 
+  _encodeAddrRaw(addr) {
+    // Encode a 12-bit buffer address as two raw 6-bit bytes WITHOUT the
+    // SBA order prefix. Used for the cursor address in AID responses,
+    // which per IBM 3270 spec is sent as raw bytes, not as an SBA order.
+    const hi = (addr >> 6) & 0x3F;
+    const lo =  addr       & 0x3F;
+    const encode6 = n => 0x40 + (n & 0x3F);
+    return Buffer.from([encode6(hi), encode6(lo)]);
+  }
+
   _sendReadBuffer() {
     // Not typically needed for emulator-initiated sessions but included for completeness
     logger.debug(`[ws:${this.wsId}] Read Buffer requested by host`);
   }
 
   _sendReadModified() {
-   // Respond with AID NONE + cursor address (no modified fields)
+   // Respond with AID NONE + cursor address (no modified fields).
+   // Cursor address is raw 2 bytes, not preceded by SBA — same rule as
+   // the AID outbound in sendAid().
    const parts = [AIDS.NONE];
-   parts.push(...this._encodeSBA(this.cursorAddr));
+   parts.push(...this._encodeAddrRaw(this.cursorAddr));
    this._sendDataRecord(Buffer.from(parts));
    logger.debug(`[ws:${this.wsId}] Sent Read Modified response (AID NONE)`);
   }
