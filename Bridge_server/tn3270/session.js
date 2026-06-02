@@ -558,6 +558,13 @@ class Tn3270Session extends EventEmitter {
       logger.debug(`[ws:${this.wsId}] Read Modified command received`);
       this._sendReadModified();
 
+    } else if (cmd === 0x11) {
+      // Write Structured Field (host → terminal).
+      // Carries Query, ReadPartition, OutboundDS etc. We must reply with
+      // a QueryReply or the host falls back to a degraded display mode.
+      logger.debug(`[ws:${this.wsId}] Write Structured Field received`);
+      this._processWriteStructuredField(bytes.slice(1));
+
     }
   }
 
@@ -681,63 +688,152 @@ class Tn3270Session extends EventEmitter {
     this._emitScreen();
   }
 
-_processWriteStructuredField(data) {
-  logger.debug(`[ws:${this.wsId}] _processWSF: ${data.length} bytes, first 6: ${data.slice(0,6).toString('hex')}`);
-  let i = 0;
-  while (i + 2 < data.length) {
-    const len = (data[i] << 8) | data[i + 1];
-    logger.debug(`[ws:${this.wsId}] WSF field at i=${i} len=${len} sfId=0x${data[i+2]?.toString(16)}`);
-    if (len < 3 || i + len > data.length) {
-      logger.warn(`[ws:${this.wsId}] WSF bad length ${len} at i=${i}, stopping`);
-      break;
+  _processWriteStructuredField(data) {
+    logger.debug(`[ws:${this.wsId}] _processWSF: ${data.length} bytes, first 6: ${data.slice(0,6).toString('hex')}`);
+    let i = 0;
+    while (i + 2 < data.length) {
+      const len = (data[i] << 8) | data[i + 1];
+      if (len < 3 || i + len > data.length) {
+        // Some hosts send a 0-length terminator, others use single-byte
+        // structured fields. Stop cleanly rather than spamming warnings.
+        if (len !== 0) {
+          logger.warn(`[ws:${this.wsId}] WSF bad length ${len} at i=${i}, stopping`);
+        }
+        break;
+      }
+      const sfId = data[i + 2];
+      logger.debug(`[ws:${this.wsId}] WSF field at i=${i} len=${len} sfId=0x${sfId.toString(16)}`);
+      // 0x01 = Read Partition.  Inside it, byte[i+3]=partition ID, byte[i+4]=type.
+      // Type 0x02 = Query.  Type 0x03 = QueryList.  We treat both the same way
+      // (full QueryReply).  Some hosts send Read Partition with no partition
+      // byte at all (length=3); we still respond.
+      if (sfId === 0x01) {
+        const type = data[i + 4];
+        logger.info(`[ws:${this.wsId}] ReadPartition received (type=0x${type?.toString(16)}) — sending QueryReply`);
+        this._sendQueryReply();
+      }
+      i += len;
     }
-    const sfId = data[i + 2];
-    if (sfId === 0x01) {
-      this._sendQueryReply();
-    }
-    i += len;
   }
-}
 
-/**
-   * Sends a structured field Query Reply.
-   * This tells the mainframe our exact screen dimensions and capabilities.
+  /**
+   * Sends a structured field Query Reply telling the host our capabilities.
+   *
+   * Modeled after the QueryReply x3270 sends to BCBSSC's z/VM 7.3 host
+   * (captured via packet trace), with dimensions adjusted to match our
+   * current model. Lengths are computed from actual content so there's no
+   * room for length/content mismatch.
+   *
+   * Declares: Summary, UsableArea, AlphanumericPartitions, CharacterSets,
+   * Color, Highlighting, ReplyModes, DDM, RPQNames, ImplicitPartition.
    */
   _sendQueryReply() {
-    // We use the current session's row/col count (from the model)
-    const w = Buffer.alloc(2);
-    const h = Buffer.alloc(2);
-    w.writeUInt16BE(this.cols);
-    h.writeUInt16BE(this.rows);
+    const cols = this.cols;
+    const rows = this.rows;
+    const u16  = n => [(n >> 8) & 0xFF, n & 0xFF];
 
-    const reply = Buffer.from([
-      0x88,        // AID — structured field reply
-      0x00, 0x00,  // cursor address (typically 0 for this reply)
-      
-      // Query Reply (Summary)
-      0x00, 0x0E,  // length of this sub-field (14 bytes)
-      0x81,        // Query Reply identifier
-      0x80,        // Summary type
-      0x80,        // Summary list follows
-      0x81, 0x84, 0x85, 0x86, 0x87, 0x88, 0x95, 0xA1,
-      
-      // Query Reply (Usable Area)
-      0x00, 0x16,  // length of this sub-field (22 bytes)
-      0x81,        // Query Reply identifier
-      0x01,        // Usable Area type
-      0x01,        // Addressing flags (12/14-bit)
-      0x00,        // No variable cells
-      w[0], w[1],  // Width in units (matches columns)
-      h[0], h[1],  // Height in units (matches rows)
-      0x01,        // Units = millimeters (standard for 3270)
-      0x00, 0x00, 0x06, 0x00, // X-density
-      0x00, 0x00, 0x06, 0x00, // Y-density
-      w[0], w[1],  // Actual Columns
-      h[0], h[1],  // Actual Rows
-    ]);
+    // Each SF is built as a body array; we prepend a 2-byte length covering
+    // the length field itself plus the body.
+    const sf = body => [...u16(2 + body.length), ...body];
 
-    this._sendDataRecord(reply);
-    logger.info(`[ws:${this.wsId}] Sent Query Reply for ${this.model} (${this.cols}x${this.rows})`);
+    const parts = [0x88]; // AID = Structured Field reply
+
+    // Summary — lists which other QueryReplies follow
+    parts.push(...sf([
+      0x81, 0x80,
+      0x80, 0x81, 0x84, 0x85, 0x86, 0x87, 0x88, 0x95, 0xA1, 0xA6
+    ]));
+
+    // UsableArea — screen geometry
+    parts.push(...sf([
+      0x81, 0x81,
+      0x01, 0x00,                  // flags: 12/14-bit addressing
+      ...u16(cols), ...u16(rows),  // width × height in chars
+      0x01,                        // units = millimeters
+      0x00, 0x0A, 0x02, 0xE5,      // Xr (X-units per AW)
+      0x00, 0x02, 0x00, 0x6F,      // Yr (Y-units per AH)
+      0x09, 0x0C,                  // AW = 9, AH = 12 (char-box units)
+      ...u16(cols * rows),         // total buffer size
+    ]));
+
+    // AlphanumericPartitions — one partition, max size
+    parts.push(...sf([
+      0x81, 0x84,
+      0x00,                        // NA = 0 partitions defined
+      ...u16(cols * rows),         // M = max partition size
+      0x00,                        // flags
+    ]));
+
+    // CharacterSets — EBCDIC codepage 037
+    parts.push(...sf([
+      0x81, 0x85,
+      0x82, 0x00,                  // flags
+      0x09, 0x0C,                  // SDW, SDH
+      0x00, 0x00, 0x00, 0x00,      // formtype
+      0x07,                        // length of descriptor
+      0x00, 0x10, 0x00, 0x02, 0xB9, 0x00, 0x25,  // PS 0x00, CGCSGID 697
+    ]));
+
+    // Color — 16 pairs (default + 7 colors, doubled for compat)
+    parts.push(...sf([
+      0x81, 0x86,
+      0x00,                        // flags
+      0x10,                        // np = 16 pairs
+      0x00, 0xF4, 0xF1, 0xF1, 0xF2, 0xF2, 0xF3, 0xF3,
+      0xF4, 0xF4, 0xF5, 0xF5, 0xF6, 0xF6, 0xF7, 0xF7,
+      0xF8, 0xF8, 0xF9, 0xF9, 0xFA, 0xFA, 0xFB, 0xFB,
+      0xFC, 0xFC, 0xFD, 0xFD, 0xFE, 0xFE, 0xFF, 0xFF,
+    ]));
+
+    // Highlighting — 5 supported highlight modes
+    parts.push(...sf([
+      0x81, 0x87,
+      0x05,                        // np = 5
+      0x00, 0xF0,                  // default → default
+      0xF1, 0xF1,                  // blink
+      0xF2, 0xF2,                  // reverse video
+      0xF4, 0xF4,                  // underscore
+      0xF8, 0xF8,                  // intensify
+    ]));
+
+    // ReplyModes — field, extended-field, character
+    parts.push(...sf([
+      0x81, 0x88,
+      0x00, 0x01, 0x02,
+    ]));
+
+    // DDM — 16384/16384 buffer limits
+    parts.push(...sf([
+      0x81, 0x95,
+      0x00, 0x00,                  // flags
+      0x40, 0x00,                  // INLIM = 16384
+      0x40, 0x00,                  // OUTLIM = 16384
+      0x01, 0x01,                  // NSS, DDMSS
+    ]));
+
+    // RPQNames — identify as 'web3270'
+    const name = [0xA6, 0x85, 0x82, 0xF3, 0xF2, 0xF7, 0xF0]; // 'web3270' in EBCDIC
+    parts.push(...sf([
+      0x81, 0xA1,
+      0x00, 0x00, 0x00, 0x00,      // device type
+      0x00, 0x00, 0x00, 0x00, 0x00, // model number
+      name.length,
+      ...name,
+    ]));
+
+    // ImplicitPartition — default partition matches our screen
+    parts.push(...sf([
+      0x81, 0xA6,
+      0x00, 0x00,                  // flags
+      0x0B,                        // length of SDP
+      0x01, 0x00,                  // SDP id, flags
+      ...u16(80),  ...u16(24),     // default W × H (3278-2 baseline)
+      ...u16(cols), ...u16(rows),  // alternate W × H (our actual model)
+    ]));
+
+    const buf = Buffer.from(parts);
+    this._sendDataRecord(buf);
+    logger.info(`[ws:${this.wsId}] Sent QueryReply (${buf.length} bytes) for ${this.model} (${cols}x${rows})`);
   }
 
  _eraseAllUnprotected() {
