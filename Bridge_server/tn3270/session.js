@@ -496,6 +496,7 @@ class Tn3270Session extends EventEmitter {
   // ── 3270 datastream processing ─────────────────────────────────
 
   _handle3270Record(bytes) {
+    console.log(`>>>>> CANARY: new code running, _handle3270Record cmd=0x${bytes[0]?.toString(16)} tn3270e=${this.tn3270eEnabled} <<<<<`);
     logger.debug(`[ws:${this.wsId}] _handler3270Record: ${bytes.length} bytes, cmd=0x${bytes[0]?.toString(16)}`);
     logger.debug(`[ws:${this.wsId} _handle3270Record: first 10 bytes: ${bytes.slice(0,10).toString('hex')}`);
     // Full hex dump for parser diagnostics — enable with TN3270_HEXDUMP=1
