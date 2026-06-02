@@ -179,6 +179,18 @@ class Tn3270Session extends EventEmitter {
     }
 
     const data = Buffer.concat(parts);
+
+    // ── Detailed outbound diagnostic ──────────────────────────────
+    // Always logged when investigating login/AID issues — comment out
+    // once login flow is verified working.
+    logger.info(`[ws:${this.wsId}] ── AID outbound ─── aid=${aidName} (0x${aidByte.toString(16)})  cursor=row${Math.floor(this.cursorAddr/this.cols)+1},col${this.cursorAddr%this.cols+1} (addr=${this.cursorAddr})`);
+    for (const f of fields) {
+      const r = Math.floor(f.addr / this.cols) + 1;
+      const c = (f.addr % this.cols) + 1;
+      logger.info(`[ws:${this.wsId}]   field @ addr=${f.addr} (row${r},col${c})  data="${f.data}"  len=${f.data.length}`);
+    }
+    logger.info(`[ws:${this.wsId}]   outbound bytes (${data.length}): ${data.toString('hex')}`);
+
     this._sendDataRecord(data);
     logger.debug(`[ws:${this.wsId}] AID ${aidName} sent (${fields.length} fields)`);
   }
