@@ -534,13 +534,13 @@ select:focus,input[type="text"]:focus,input[type="number"]:focus,input[type="pas
       <div class="setting-group">
         <div class="setting-label">Display</div>
         <div class="setting-row">
-          <label>Font Size</label>
-          <input type="range" min="10" max="18" value="13" style="width:80px" oninput="setFontSize(this.value)">
-          <span style="font-size:10px;color:var(--text-muted);min-width:24px" id="fontSizeLabel">13</span>
+          <label>Zoom</label>
+          <input type="range" min="50" max="200" value="100" style="width:80px" oninput="setZoom(this.value)">
+          <span style="font-size:10px;color:var(--text-muted);min-width:36px" id="fontSizeLabel">100%</span>
         </div>
-        <div class="setting-row"><label>CRT Scanlines</label><div class="toggle on" onclick="this.classList.toggle('on')"></div></div>
-        <div class="setting-row"><label>Cursor Blink</label><div class="toggle on" onclick="this.classList.toggle('on')"></div></div>
-        <div class="setting-row"><label>Field Highlights</label><div class="toggle on" onclick="this.classList.toggle('on')"></div></div>
+        <div class="setting-row"><label>CRT Scanlines</label><div class="toggle on" onclick="toggleScanlines(this)"></div></div>
+        <div class="setting-row"><label>Cursor Blink</label><div class="toggle on" onclick="toggleCursorBlink(this)"></div></div>
+        <div class="setting-row"><label>Field Highlights</label><div class="toggle on" onclick="toggleFieldHighlights(this)"></div></div>
       </div>
       <div class="setting-group">
         <div class="setting-label">Connection</div>
@@ -921,6 +921,7 @@ select:focus,input[type="text"]:focus,input[type="number"]:focus,input[type="pas
 <script src="js/macros.js"></script>
 <script src="js/profiles.js"></script>
 <script src="js/terminal.js"></script>
+<script src="js/settings.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/main.js"></script>
 </body>

@@ -25,7 +25,9 @@ function fitScreen() {
     const availW = wrapper.clientWidth  - 16;
     const availH = wrapper.clientHeight - 16;
     if (availW <= 0 || availH <= 0) return;
-    const scale       = Math.min(availW / intrinsicWidth, availH / intrinsicHeight);
+    const fitScale    = Math.min(availW / intrinsicWidth, availH / intrinsicHeight);
+    const zoom        = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--term-zoom')) || 1;
+    const scale       = fitScale * zoom;
     const newFontSize = Math.floor(baseFontSize * scale * 100) / 100;
     term.style.fontSize  = newFontSize + 'px';
     // Re-measure cell width at the new font size and re-lock terminal width
