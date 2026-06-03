@@ -2,7 +2,7 @@
 
 // ==================================================================
 //  js/settings.js — Panel control handlers (font, scanlines, blink,
-//                   field highlights, theme)
+//                   field highlights, theme, show-passwords)
 // ==================================================================
 
 // ── Font size / zoom ─────────────────────────────────────────────
@@ -41,6 +41,23 @@ function toggleCursorBlink(el) {
 function toggleFieldHighlights(el) {
   el.classList.toggle('on');
   document.body.classList.toggle('no-highlights', !el.classList.contains('on'));
+}
+
+// ── Show passwords toggle ────────────────────────────────────────
+// Nondisplay (password) fields are masked with '#' by default in the
+// terminal renderer. Toggling this on reveals the real characters.
+// IMPORTANT: this affects on-screen rendering ONLY. Bridge logs and
+// AI Copilot context (screenToText) always see masked values, so a
+// password never leaves the browser to disk or to an AI provider —
+// regardless of this toggle's state.
+function toggleShowPassword(el) {
+  el.classList.toggle('on');
+  document.body.classList.toggle('show-passwords', el.classList.contains('on'));
+  // Re-render the active session's screen so the change takes effect
+  // immediately, without waiting for the next screen update from host.
+  if (typeof liveScreen !== 'undefined' && liveScreen && typeof renderLiveScreen === 'function') {
+    renderLiveScreen(liveScreen);
+  }
 }
 
 // ── Theme selection ──────────────────────────────────────────────

@@ -85,7 +85,21 @@ const WCC_RESET  = 0x40;
 const FA_PROTECTED   = 0x20;
 const FA_NUMERIC     = 0x10;
 const FA_MDT         = 0x01;  // Modified Data Tag
-const FA_INTENSITY   = 0x0C;  // 2-bit intensity field
+const FA_INTENSITY   = 0x0C;  // 2-bit intensity field (bits 3,2)
+
+// Nondisplay is the intensity value 11 (both intensity bits set):
+//   00 = normal display
+//   01 = display, light-pen detectable
+//   10 = intensified display, detectable
+//   11 = nondisplay, nondetectable  ← passwords, hidden fields
+const FA_NONDISPLAY  = 0x0C;
+const isNonDisplayFa = fa => (fa & FA_INTENSITY) === FA_NONDISPLAY;
+
+// Character used to mask nondisplay-field content in bridge logs.
+// The frontend renders its own mask (configurable via the Show
+// Passwords toggle); this constant is for logger output only and is
+// never sent to the browser.
+const MASK_CHAR = '#';
 
 class Tn3270Session extends EventEmitter {
   constructor(opts) {
@@ -177,8 +191,18 @@ class Tn3270Session extends EventEmitter {
     // SBA order)."
     parts.push(this._encodeAddrRaw(this.cursorAddr));
 
+    // Tag each field with whether it lives inside a nondisplay
+    // (password) field, by walking back to its controlling SF.
+    // We do this here so the caller doesn't have to know — also so the
+    // log-masking applies whether the data came from getModifiedFields
+    // or from a script/macro.
+    const decorated = fields.map(f => ({
+      ...f,
+      nondisplay: f.nondisplay ?? this._addrIsInNonDisplayField(f.addr),
+    }));
+
     // Append all modified fields (these DO get SBA prefixes)
-    for (const f of fields) {
+    for (const f of decorated) {
       parts.push(this._encodeSBA(f.addr));
       parts.push(Ebcdic.fromAscii(f.data, this.codepage));
     }
@@ -187,17 +211,51 @@ class Tn3270Session extends EventEmitter {
 
     // ── Detailed outbound diagnostic ──────────────────────────────
     // Always logged when investigating login/AID issues — comment out
-    // once login flow is verified working.
+    // once login flow is verified working. Nondisplay-field content is
+    // ALWAYS masked here regardless of any client-side Show Passwords
+    // toggle; the toggle only affects on-screen rendering.
     logger.info(`[ws:${this.wsId}] ── AID outbound ─── aid=${aidName} (0x${aidByte.toString(16)})  cursor=row${Math.floor(this.cursorAddr/this.cols)+1},col${this.cursorAddr%this.cols+1} (addr=${this.cursorAddr})`);
-    for (const f of fields) {
+    for (const f of decorated) {
       const r = Math.floor(f.addr / this.cols) + 1;
       const c = (f.addr % this.cols) + 1;
-      logger.info(`[ws:${this.wsId}]   field @ addr=${f.addr} (row${r},col${c})  data="${f.data}"  len=${f.data.length}`);
+      const safeData = f.nondisplay ? MASK_CHAR.repeat(f.data.length) : f.data;
+      const ndTag    = f.nondisplay ? ' (nondisplay)' : '';
+      logger.info(`[ws:${this.wsId}]   field @ addr=${f.addr} (row${r},col${c})  data="${safeData}"  len=${f.data.length}${ndTag}`);
     }
-    logger.info(`[ws:${this.wsId}]   outbound bytes (${data.length}): ${data.toString('hex')}`);
+    logger.info(`[ws:${this.wsId}]   outbound bytes (${data.length}): ${this._maskOutboundHex(data, decorated)}`);
 
     this._sendDataRecord(data);
     logger.debug(`[ws:${this.wsId}] AID ${aidName} sent (${fields.length} fields)`);
+  }
+
+  /**
+   * Build a hex representation of the AID outbound buffer with each
+   * nondisplay field's EBCDIC data bytes replaced by '..' pairs. Layout
+   * is fixed: AID(1) + cursorAddr(2) + repeating[ SBA(3) + data(N) ].
+   */
+  _maskOutboundHex(data, decoratedFields) {
+    if (!decoratedFields.some(f => f.nondisplay)) {
+      return data.toString('hex');
+    }
+    const parts = [];
+    let pos = 0;
+    // AID (1 byte) + cursor address (2 bytes)
+    parts.push(data.slice(pos, pos + 3).toString('hex'));
+    pos += 3;
+    for (const f of decoratedFields) {
+      const dataLen = Ebcdic.fromAscii(f.data, this.codepage).length;
+      // SBA (3 bytes) — always shown
+      parts.push(data.slice(pos, pos + 3).toString('hex'));
+      pos += 3;
+      // Field data — masked if nondisplay
+      if (f.nondisplay) {
+        parts.push('..'.repeat(dataLen));
+      } else {
+        parts.push(data.slice(pos, pos + dataLen).toString('hex'));
+      }
+      pos += dataLen;
+    }
+    return parts.join('') + '  [nondisplay masked]';
   }
 
   typeAt(row, col, text) {
@@ -232,10 +290,11 @@ class Tn3270Session extends EventEmitter {
 
   getModifiedFields() {
    const fields = [];
-   let inField = false;
    let isProtected = true;
+   let isNonDisplayField = false;
    let fieldAddr = 0;
    let fieldData = '';
+   let fieldRawLen = 0; // for log accounting
 
    for (let a = 0; a < this.buffer.length; a++) {
      const cell = this.buffer[a];
@@ -244,13 +303,20 @@ class Tn3270Session extends EventEmitter {
      if (cell.fa !== undefined) {
        // Save previous unprotected field if it has modified content
        if (!isProtected && fieldData.length > 0) {
-        fields.push({ addr: fieldAddr, data: fieldData });
+        fields.push({ addr: fieldAddr, data: fieldData, nondisplay: isNonDisplayField });
        }
        isProtected = !!(cell.fa & FA_PROTECTED);
+       isNonDisplayField = isNonDisplayFa(cell.fa);
        fieldAddr = a + 1;
        fieldData = '';
      } else if (!isProtected && cell.modified && cell.char) {
-       logger.debug(`[ws:${this.wsId}] getModifiedFields: addr=${a} char=0x${cell.char.toString(16)}`);
+       // Per-cell debug log: mask the byte for nondisplay fields so
+       // passwords don't end up in docker compose logs.
+       if (isNonDisplayField) {
+         logger.debug(`[ws:${this.wsId}] getModifiedFields: addr=${a} char=** (nondisplay)`);
+       } else {
+         logger.debug(`[ws:${this.wsId}] getModifiedFields: addr=${a} char=0x${cell.char.toString(16)}`);
+       }
        fieldData += Ebcdic.toAscii(Buffer.from([cell.char]), this.codepage);
      }
    }
@@ -865,6 +931,21 @@ class Tn3270Session extends EventEmitter {
     return this.buffer[addr] && this.buffer[addr].fa !== undefined;
   }
 
+  /**
+   * Walk back from addr to the controlling SF and check whether the field
+   * is nondisplay (intensity bits 3,2 both set — used for passwords and
+   * other hidden input).
+   */
+  _addrIsInNonDisplayField(addr) {
+    for (let a = addr; a >= 0; a--) {
+      const cell = this.buffer[a];
+      if (cell && cell.fa !== undefined) {
+        return isNonDisplayFa(cell.fa);
+      }
+    }
+    return false;
+  }
+
   // ── Screen emission ────────────────────────────────────────────
 
   _emitScreen() {
@@ -872,9 +953,18 @@ class Tn3270Session extends EventEmitter {
   logger.debug(`[ws:${this.wsId}] _emitScreen called`);
     const fields = this._extractFields();
     const rows   = this._bufferToRows();
-    const nonEmpty = rows.map((cells, r) => ({ r, text: cells.map(c => c.char || ' ').join('') })).filter(x => x.text.trim().length > 0);
+    // Per-row text for logging — substitute MASK_CHAR for any non-empty
+    // cell that sits inside a nondisplay field so passwords don't appear
+    // in the bridge log. Empty cells stay as spaces.
+    const rowText = cells => cells.map(c => {
+      if (c.nondisplay && c.char && c.char !== ' ') return MASK_CHAR;
+      return c.char || ' ';
+    }).join('');
+    const nonEmpty = rows
+      .map((cells, r) => ({ r, text: rowText(cells) }))
+      .filter(x => x.text.trim().length > 0);
     // ── DEBUG: row/field counts ──────────────────────────────────────
-    const nonEmptyRows = rows.filter(cells => cells.map(c => c.char || ' ').join('').trim().length > 0);
+    const nonEmptyRows = rows.filter(cells => rowText(cells).trim().length > 0);
     logger.debug(`[ws:${this.wsId}] _emitScreen → rows=${this.rows} nonEmptyRows=${nonEmptyRows.length} fields=${fields.length} (protected=${fields.filter(f=>f.protected).length} input=${fields.filter(f=>!f.protected).length})`);
     // ────────────────────────────────────────────────────────────────
 
@@ -888,7 +978,14 @@ class Tn3270Session extends EventEmitter {
       inputFields.forEach((f, i) => {
         const row = Math.floor(f.startAddr / this.cols) + 1;
         const col = (f.startAddr % this.cols) + 1;
-        logger.info(`[ws:${this.wsId}]   [${i}] row=${row} col=${col} content='${f.content.substring(0,40)}'`);
+        // Mask nondisplay content for the log; the raw value still rides
+        // the screen event so the frontend can offer a Show Passwords
+        // toggle, but bridge logs are masked unconditionally.
+        const safeContent = f.nondisplay
+          ? MASK_CHAR.repeat(f.content.length)
+          : f.content;
+        const ndTag = f.nondisplay ? ' (nondisplay)' : '';
+        logger.info(`[ws:${this.wsId}]   [${i}] row=${row} col=${col} content='${safeContent.substring(0,40)}'${ndTag}`);
       });
     }
     logger.info(`[ws:${this.wsId}] ─────────────────────────────────────────────────`);
@@ -904,15 +1001,35 @@ class Tn3270Session extends EventEmitter {
   }
 
   _bufferToRows() {
+    // First pass: stamp each cell with the nondisplay flag of its
+    // enclosing field. We track current state as we walk the entire
+    // buffer (fields cross row boundaries).
+    const len = this.buffer.length;
+    const ndMap = new Array(len).fill(false);
+    let currentND = false;
+    for (let a = 0; a < len; a++) {
+      const cell = this.buffer[a];
+      if (cell && cell.fa !== undefined) {
+        // SF byte itself is rendered as a space and doesn't need masking;
+        // it also sets the state for following content cells.
+        currentND = isNonDisplayFa(cell.fa);
+        ndMap[a] = false;
+      } else {
+        ndMap[a] = currentND;
+      }
+    }
+
     const rows = [];
     for (let r = 0; r < this.rows; r++) {
       const cells = [];
       for (let c = 0; c < this.cols; c++) {
-        const cell = this.buffer[r * this.cols + c] || { char: 0x00, fa: undefined, modified: false };
+        const addr = r * this.cols + c;
+        const cell = this.buffer[addr] || { char: 0x00, fa: undefined, modified: false };
         cells.push({
           char: cell.char ? Ebcdic.toAscii(Buffer.from([cell.char]), this.codepage) : ' ',
           fa:   cell.fa,
           modified: cell.modified,
+          nondisplay: ndMap[addr],
         });
       }
       rows.push(cells);
@@ -934,6 +1051,7 @@ class Tn3270Session extends EventEmitter {
         protected: !!(cell.fa & FA_PROTECTED),
         numeric: !!(cell.fa & FA_NUMERIC),
         modified: !!(cell.fa & FA_MDT),
+        nondisplay: isNonDisplayFa(cell.fa),
         content: '',
       };
     } else if (currentField) {
