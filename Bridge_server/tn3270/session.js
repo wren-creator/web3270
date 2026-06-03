@@ -752,6 +752,7 @@ class Tn3270Session extends EventEmitter {
       }
     }
 
+    this._normalizeCursor();
     this._emitScreen();
   }
 
@@ -944,6 +945,31 @@ class Tn3270Session extends EventEmitter {
       }
     }
     return false;
+  }
+
+  /**
+   * If the cursor sits on a field-attribute (SF) byte, advance to the
+   * first content cell of that field. Real 3270 terminals do this on
+   * keyboard restore — the SF byte isn't a typable position, so the
+   * visible cursor must land just past it.
+   *
+   * Catches the z/VM CP-READ pattern where the host's IC lands on an
+   * address that becomes an SF byte later in the same write record
+   * (IC at X, then SBA X + SFE at X). The cursor was set before the SF
+   * was placed; this fixes it up after the whole record is processed.
+   */
+  _normalizeCursor() {
+    const max = this.rows * this.cols;
+    let c = this.cursorAddr % max;  // PT can leave addr === max; wrap it
+    for (let n = 0; n < max; n++) {
+      const cell = this.buffer[c];
+      if (cell && cell.fa !== undefined) {
+        c = (c + 1) % max;
+        continue;
+      }
+      break;
+    }
+    this.cursorAddr = c;
   }
 
   // ── Screen emission ────────────────────────────────────────────
