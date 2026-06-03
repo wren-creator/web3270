@@ -1013,14 +1013,15 @@ class Tn3270Session extends EventEmitter {
 // ── Utilities ──────────────────────────────────────────────────────
 
 function decode3270Address(b1, b2, cols) {
-  // 3270 12-bit buffer address: 6 bits per byte.
-  // Both 0x40-0x7F and 0xC0-0xFF are valid encodings of the same 0-63 value
-  // (they're alternate bit patterns chosen for EBCDIC printability). The
-  // 14-bit binary variant (top 2 bits = 00) is rare and we don't support it.
-  const decode6 = b => b & 0x3F;
-  return (decode6(b1) << 6) | decode6(b2);
+  // 3270 buffer address encoding per IBM 3270 Data Stream Programmer's Reference:
+  //   • b1 top 2 bits = 00 → 14-bit format: ((b1 & 0x3F) << 8) | b2
+  //   • b1 top 2 bits = 01 / 10 / 11 → 12-bit format using low 6 bits of each byte
+  // Hosts use 14-bit freely (not only for high addresses), so both branches matter.
+  if ((b1 & 0xC0) === 0) {
+    return ((b1 & 0x3F) << 8) | (b2 & 0xFF);
+  }
+  return ((b1 & 0x3F) << 6) | (b2 & 0x3F);
 }
-
 function newBuffer(rows, cols) {
   return Array.from({ length: rows * cols }, () => ({ char: 0x00, fa: undefined, modified: false }));
 }
