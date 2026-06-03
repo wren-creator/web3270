@@ -63,6 +63,7 @@ const FA_PROTECTED_NUM   = 0x62;
 const FA_UNPROTECTED     = 0x40;
 const FA_UNPROTECTED_NUM = 0x50;
 const FA_DIM             = 0x68;   // protected + non-display intensity
+const FA_UNPROTECTED_NONDISPLAY = 0x4C;   // unprotected + nondisplay intensity — passwords
 
 const AID_ENTER = 0x7D;
 const AID_CLEAR = 0x6D;
@@ -164,7 +165,7 @@ function screenLogon() {
     { row:9,  col:14, text: '        ' },
     { row:10, col:1,  fa: FA_PROTECTED },
     { row:10, col:1,  text: 'PASSWORD==>' },
-    { row:10, col:13, fa: FA_UNPROTECTED_NUM },
+    { row:10, col:13, fa: FA_UNPROTECTED_NONDISPLAY },
     { row:10, col:14, text: '        ' },
 
     { row:12, col:1,  fa: FA_PROTECTED },

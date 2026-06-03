@@ -59,6 +59,13 @@ function measureCellWidth() {
 
 document.fonts.ready.then(() => { measureCellWidth(); fitScreen(); });
 
+// Mask character used for nondisplay (password) field rendering. The
+// bridge sets cell.nondisplay = true for each cell that sits inside a
+// host-marked nondisplay field (FA intensity bits = 11). When the user
+// toggles "Show passwords" on, body gains the .show-passwords class
+// and rendering reveals the real character.
+const NONDISPLAY_MASK = '#';
+
 function renderLiveScreen(screenData) {
   const term    = document.getElementById('terminal');
   term.innerHTML = '';
@@ -67,13 +74,18 @@ function renderLiveScreen(screenData) {
   const numCols = screenData.cols || 80;
   const cRow    = screenData.cursorRow ?? 0;
   const cCol    = screenData.cursorCol ?? 0;
+  const showPw  = document.body.classList.contains('show-passwords');
   rows.forEach((row, ri) => {
     const rowEl = document.createElement('div');
     rowEl.className = 'screen-row';
     const cells = Array.isArray(row) ? row : [];
     for (let ci = 0; ci < numCols; ci++) {
       const cell   = cells[ci] || { char: ' ' };
-      const ch     = cell.char && cell.char !== '\x00' ? cell.char : ' ';
+      let   ch     = cell.char && cell.char !== '\x00' ? cell.char : ' ';
+      // Mask nondisplay (password) content unless the user has opted in
+      // via the Show Passwords toggle. Empty cells stay as spaces — only
+      // typed characters get the mask.
+      if (cell.nondisplay && ch !== ' ' && !showPw) ch = NONDISPLAY_MASK;
       const cellEl = document.createElement('span');
       cellEl.className   = 'screen-cell';
       cellEl.textContent = ch;
@@ -86,6 +98,9 @@ function renderLiveScreen(screenData) {
         else if (prot)                 cellEl.className = 'screen-cell field-protected';
         else                           cellEl.className = 'screen-cell field-label';
       }
+      // Mark nondisplay cells for any styling hooks (e.g. dimmer color
+      // when shown). Purely cosmetic; safe to ignore.
+      if (cell.nondisplay) cellEl.classList.add('field-nondisplay');
       rowEl.appendChild(cellEl);
     }
     term.appendChild(rowEl);
@@ -95,8 +110,19 @@ function renderLiveScreen(screenData) {
   requestAnimationFrame(() => { measureCellWidth(); fitScreen(); });
 }
 
+// Plain-text dump of the screen, used for AI Copilot context and any
+// other external/serialized consumer. Nondisplay fields are ALWAYS
+// masked here regardless of the Show Passwords toggle — that toggle
+// only affects on-screen rendering, not what we ship to an AI provider
+// or store as text.
 function screenToText(screenData) {
-  return (screenData.rows || []).map(row => (Array.isArray(row) ? row : []).map(c => c.char && c.char !== '\x00' ? c.char : ' ').join('')).join('\n');
+  return (screenData.rows || []).map(row =>
+    (Array.isArray(row) ? row : []).map(c => {
+      const ch = c.char && c.char !== '\x00' ? c.char : ' ';
+      if (c.nondisplay && ch !== ' ') return NONDISPLAY_MASK;
+      return ch;
+    }).join('')
+  ).join('\n');
 }
 
 function updateOIA(oia) {
