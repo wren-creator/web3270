@@ -144,17 +144,29 @@ async function xferSend() {
   if (!dataset) { xferSetStatus('Enter a mainframe dataset name','error'); document.getElementById('xferDataset').focus(); return; }
   if (!xferFileData) { xferSetStatus('Select a local file first','error'); return; }
   let cmd = "IND$FILE PUT '" + dataset + "' " + mode; if (recfm) cmd += ' RECFM(' + recfm + ')';
-  xferSetStatus('Sending to host\u2026','working'); xferLog('UPLOAD \u2192 ' + dataset + ' [' + mode + ']','var(--accent-amber)');
+  xferSetStatus('Queuing file for upload\u2026','working'); xferLog('UPLOAD \u2192 ' + dataset + ' [' + mode + ']','var(--accent-amber)');
   const btn = document.getElementById('xferSendBtn'); btn.disabled = true; btn.textContent = '\u27F3';
   try {
+    // Step 1: Queue the file data in the bridge BEFORE typing the command.
+    // The bridge needs the data ready when IND$FILE sends its first WSF.
+    session.ws.send(JSON.stringify({
+      type: 'xfer.queue-upload',
+      filename: xferFileName,
+      data: xferToBase64(xferFileData)
+    }));
+    await new Promise(r => setTimeout(r, 300));
+
+    // Step 2: Type the IND$FILE PUT command and press ENTER.
+    // The host runs IND$FILE which exchanges WSF D0 records with the bridge.
+    xferSetStatus('Sending IND$FILE command\u2026','working');
     session.ws.send(JSON.stringify({ type:'type', row:cursorRow, col:cursorCol, text:cmd }));
-    await new Promise(r => setTimeout(r,200));
+    await new Promise(r => setTimeout(r, 200));
     session.ws.send(JSON.stringify({ type:'key', aid:'ENTER', fields:[] }));
-    await new Promise(r => setTimeout(r,1500));
-    session.ws.send(JSON.stringify({ type:'xfer.upload', dataset, mode, recfm:recfm||null, filename:xferFileName, data:xferToBase64(xferFileData) }));
-    xferSetStatus('\u2713 Upload sent \u2192 ' + dataset,'ok'); xferLog('\u2713 Sent ' + (xferFileData.byteLength/1024).toFixed(1) + ' KB \u2192 ' + dataset,'var(--accent-green)');
+
+    // Transfer progress and completion come via xfer.progress / xfer.ok / xfer.error events
+    xferSetStatus('Transfer in progress\u2026','working');
+    xferLog('IND$FILE PUT issued \u2014 waiting for WSF exchange\u2026','var(--text-dim)');
   } catch (err) { xferSetStatus('Upload failed: ' + err.message,'error'); xferLog('ERROR: ' + err.message,'var(--t-red)'); }
-  finally { btn.disabled = false; btn.textContent = '\u2B06 Send \u2192'; }
 }
 
 async function xferReceive() {
@@ -166,22 +178,39 @@ async function xferReceive() {
   xferSetStatus('Receiving from host\u2026','working'); xferLog('DOWNLOAD \u2190 ' + dataset + ' [' + mode + ']','var(--t-blue)');
   const btn = document.getElementById('xferRecvBtn'); btn.disabled = true; btn.textContent = '\u27F3';
   try {
-    session.ws.send(JSON.stringify({ type:'type', row:cursorRow, col:cursorCol, text:"IND$FILE GET '" + dataset + "' " + mode }));
-    await new Promise(r => setTimeout(r,200));
-    session.ws.send(JSON.stringify({ type:'key', aid:'ENTER', fields:[] }));
+    // Step 1: Register the saveAs filename in the bridge
     session.ws.send(JSON.stringify({ type:'xfer.download', dataset, mode, saveAs }));
-    xferSetStatus('Waiting for ' + dataset + '\u2026','working'); xferLog('Waiting for data stream\u2026','var(--text-dim)');
+    await new Promise(r => setTimeout(r, 100));
+
+    // Step 2: Type the IND$FILE GET command and press ENTER
+    session.ws.send(JSON.stringify({ type:'type', row:cursorRow, col:cursorCol, text:"IND$FILE GET '" + dataset + "' " + mode }));
+    await new Promise(r => setTimeout(r, 200));
+    session.ws.send(JSON.stringify({ type:'key', aid:'ENTER', fields:[] }));
+
+    // Download completion comes via xfer.data event from the WSF handler
+    xferSetStatus('Waiting for ' + dataset + '\u2026','working');
+    xferLog('IND$FILE GET issued \u2014 waiting for WSF exchange\u2026','var(--text-dim)');
   } catch (err) { xferSetStatus('Receive failed: ' + err.message,'error'); xferLog('ERROR: ' + err.message,'var(--t-red)'); btn.disabled = false; btn.textContent = '\u2190 \u2B07 Recv'; }
 }
 
 function handleXferMsg(msg) {
   const sb = document.getElementById('xferSendBtn'); const rb = document.getElementById('xferRecvBtn');
-  if (sb) { sb.disabled = false; sb.textContent = '\u2B06 Send \u2192'; }
-  if (rb) { rb.disabled = false; rb.textContent = '\u2190 \u2B07 Recv'; }
+  // Re-enable buttons on terminal events (ok, error, data)
+  if (msg.type === 'xfer.ok' || msg.type === 'xfer.error' || msg.type === 'xfer.data') {
+    if (sb) { sb.disabled = false; sb.textContent = '\u2B06 Send \u2192'; }
+    if (rb) { rb.disabled = false; rb.textContent = '\u2190 \u2B07 Recv'; }
+  }
+  if (msg.type === 'xfer.queued') {
+    xferLog('\u2713 ' + (msg.message || 'File queued'), 'var(--accent-cyan)');
+  }
+  if (msg.type === 'xfer.progress') {
+    const kb = (msg.bytes / 1024).toFixed(1);
+    xferSetStatus(msg.direction + ': ' + kb + ' KB transferred\u2026', 'working');
+  }
   if (msg.type === 'xfer.data') {
     const bytes = xferFromBase64(msg.data);
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([bytes],{type:'application/octet-stream'})); a.download = msg.saveAs||'mainframe-file.txt'; a.click(); URL.revokeObjectURL(a.href);
-    xferSetStatus('\u2713 Downloaded ' + msg.saveAs + ' (' + (bytes.length/1024).toFixed(1) + ' KB)','ok'); xferLog('\u2713 Received ' + (bytes.length/1024).toFixed(1) + ' KB \u2192 ' + msg.saveAs,'var(--accent-green)');
+    xferSetStatus('\u2713 Downloaded ' + (msg.saveAs||'file') + ' (' + (bytes.length/1024).toFixed(1) + ' KB)','ok'); xferLog('\u2713 Received ' + (bytes.length/1024).toFixed(1) + ' KB \u2192 ' + (msg.saveAs||'file'),'var(--accent-green)');
   }
   if (msg.type === 'xfer.datasets') { xferRenderDatasets(msg.datasets, msg.sessionType); xferSetStatus('\u2713 Found ' + msg.datasets.length + ' datasets','ok'); xferLog('\u2713 ' + msg.datasets.length + ' datasets listed','var(--accent-green)'); }
   if (msg.type === 'xfer.ok')    { xferSetStatus('\u2713 ' + (msg.message||'Transfer complete'),'ok');    xferLog('\u2713 ' + (msg.message||'Transfer complete'),'var(--accent-green)'); }

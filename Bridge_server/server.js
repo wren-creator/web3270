@@ -341,6 +341,26 @@ wss.on('connection', (ws, req) => {
       send(ws, { type: 'status', state: 'disconnected', reason });
     });
 
+    // ── IND$FILE transfer events ──────────────────────────────────
+    session.on('indfile-complete', info => {
+      if (info.direction === 'download') {
+        const encoded = info.data.toString('base64');
+        const saveAs = session._indFileSaveAs || 'transfer.bin';
+        send(ws, { type: 'xfer.data', data: encoded, saveAs, bytes: info.bytes });
+        logger.info(`[ws:${wsId}] IND$FILE download complete: ${info.bytes} bytes → ${saveAs}`);
+      } else {
+        send(ws, { type: 'xfer.ok', message: `Upload complete (${info.bytes} bytes)` });
+        logger.info(`[ws:${wsId}] IND$FILE upload complete: ${info.bytes} bytes`);
+      }
+      session._indFileSaveAs = null;
+    });
+    session.on('indfile-error', info => {
+      send(ws, { type: 'xfer.error', message: info.message });
+    });
+    session.on('indfile-progress', info => {
+      send(ws, { type: 'xfer.progress', direction: info.direction, bytes: info.bytes });
+    });
+
     // ── Browser → Session / Handlers ──────────────────────────────
     ws.on('message', rawMsg => {
       let msg;
@@ -359,11 +379,13 @@ wss.on('connection', (ws, req) => {
       }
 
       // ── Transfer messages ──────────────────────────────────────
-      if (msg.type === 'xfer.upload') {
-        handleXferUpload(msg, ws, wsId, session);
+      if (msg.type === 'xfer.queue-upload') {
+        // Queue file data in session BEFORE the user types IND$FILE PUT
+        handleXferQueueUpload(msg, ws, wsId, session);
         return;
       }
       if (msg.type === 'xfer.download') {
+        // Register the saveAs filename for when the download completes
         handleXferDownload(msg, ws, wsId, session);
         return;
       }
@@ -448,69 +470,26 @@ function buildTlsOptions(params) {
 
 // ── IND$FILE Transfer Handlers ────────────────────────────────────
 
-function handleXferUpload(msg, ws, wsId, session) {
-  const { dataset, mode, recfm, filename, data } = msg;
-  logger.info(`[ws:${wsId}] xfer.upload → ${dataset} mode=${mode}`);
+function handleXferQueueUpload(msg, ws, wsId, session) {
+  const { data, filename } = msg;
   try {
-    const buf  = Buffer.from(data, 'base64');
-    const text = mode === 'BINARY'
-      ? buf.toString('base64')
-      : buf.toString('utf8').replace(/\r\n/g, '\n');
-
-    // Type IND$FILE PUT command then data
-    session.typeAt(0, 0, `IND$FILE PUT '${dataset}' ${mode || 'TEXT'}${recfm ? ' RECFM(' + recfm + ')' : ''}`);
-    setTimeout(() => {
-      session.sendAid('ENTER', []);
-      setTimeout(() => {
-        session.typeAt(0, 0, text);
-        session.sendAid('ENTER', []);
-        send(ws, { type: 'xfer.ok', message: `Upload of ${filename} to ${dataset} initiated` });
-        logger.info(`[ws:${wsId}] xfer.upload complete → ${dataset} (${buf.length} bytes)`);
-      }, 1000);
-    }, 500);
+    const buf = Buffer.from(data, 'base64');
+    session.indFileQueueUpload(buf);
+    send(ws, { type: 'xfer.queued', message: `${filename || 'file'} queued (${buf.length} bytes) — type the IND$FILE command now` });
+    logger.info(`[ws:${wsId}] xfer.queue-upload: ${buf.length} bytes queued for IND$FILE PUT`);
   } catch (err) {
-    logger.error(`[ws:${wsId}] xfer.upload error: ${err.message}`);
+    logger.error(`[ws:${wsId}] xfer.queue-upload error: ${err.message}`);
     send(ws, { type: 'xfer.error', message: err.message });
   }
 }
 
 function handleXferDownload(msg, ws, wsId, session) {
-  const { dataset, mode, saveAs } = msg;
-  logger.info(`[ws:${wsId}] xfer.download ← ${dataset} mode=${mode}`);
-  try {
-    let accumulated = '';
-    const filename  = saveAs || dataset.split('.').pop().toLowerCase() + '.txt';
-
-    const timeout = setTimeout(() => {
-      session.removeListener('screen', onScreen);
-      send(ws, { type: 'xfer.error', message: `Timeout waiting for data from ${dataset}` });
-    }, 30000);
-
-    function onScreen(screenData) {
-      const text = (screenData.rows || [])
-        .map(row => (Array.isArray(row) ? row : [])
-          .map(c => c.char && c.char !== '\x00' ? c.char : ' ').join(''))
-        .join('\n');
-
-      // IND$FILE signals completion with these strings
-      if (text.includes('TRANSFER COMPLETE') || text.includes('EWS032I')) {
-        clearTimeout(timeout);
-        session.removeListener('screen', onScreen);
-        const encoded = Buffer.from(accumulated, 'utf8').toString('base64');
-        send(ws, { type: 'xfer.data', data: encoded, saveAs: filename });
-        logger.info(`[ws:${wsId}] xfer.download complete ← ${dataset}`);
-      } else {
-        accumulated += text;
-      }
-    }
-
-    session.on('screen', onScreen);
-    session.sendAid('ENTER', []);
-
-  } catch (err) {
-    logger.error(`[ws:${wsId}] xfer.download error: ${err.message}`);
-    send(ws, { type: 'xfer.error', message: err.message });
-  }
+  // Just register the saveAs filename — the actual transfer is handled
+  // by the IND$FILE WSF protocol in session.js.  The indfile-complete
+  // event (wired up at session creation) sends xfer.data to the client.
+  const saveAs = msg.saveAs || msg.dataset?.split('.').pop().toLowerCase() + '.txt' || 'transfer.txt';
+  session._indFileSaveAs = saveAs;
+  logger.info(`[ws:${wsId}] xfer.download: saveAs=${saveAs} — waiting for IND$FILE WSF exchange`);
 }
 
 // ── Dataset listing handler ───────────────────────────────────────
@@ -523,7 +502,7 @@ function detectScreenState(screenLines) {
   if (text.includes('z/VM CP')  || (text.includes('CP')  && text.includes('Ready;'))) return 'zvm-cp';
   if (text.includes('Enter LOGON') || text.includes('CP Logon'))     return 'zvm-logon';
   if (text.includes('RUNNING') && !text.includes('ISPF'))            return 'zvm-cp';
-  if (text.includes('Data Set List Utility'))                         return 'ispf34';
+  if (text.includes('Data Set List Utility') || text.includes('RFE DSLIST') || text.includes('DSLIST'))  return 'ispf34';
   if (text.includes('ISPF Primary Option Menu'))                      return 'ispf-menu';
   if (text.includes('TSO/E LOGON'))                                   return 'tso-logon';
   if (text.includes('READY') || text.includes('***'))                 return 'tso-ready';
@@ -553,31 +532,31 @@ function handleXferListDatasets(msg, ws, wsId, session) {
     const state   = detectScreenState(lines);
     logger.info(`[ws:${wsId}] screen state: ${state}`);
 
-    if (sessionType === 'ZVM') {
-      if (state !== 'zvm-filelist') {
-        send(ws, { type: 'xfer.error', message: 'Navigate to FILELIST in CMS then press \u21BA' });
-        return;
-      }
+    // Auto-detect from screen content rather than relying solely on
+    // session type — a ZVM-typed profile might be on an ISPF screen
+    // (e.g. MVS CE accessed via a profile originally set to ZVM).
+    if (state === 'zvm-filelist') {
       const datasets = parseFilelistScreen(lines);
       if (!datasets.length) {
         send(ws, { type: 'xfer.error', message: 'FILELIST screen found but no files could be parsed' });
         return;
       }
       logger.info(`[ws:${wsId}] xfer.listdatasets found ${datasets.length} CMS files`);
-      send(ws, { type: 'xfer.datasets', datasets, sessionType });
+      send(ws, { type: 'xfer.datasets', datasets, sessionType: 'ZVM' });
 
-    } else {
-      if (state !== 'ispf34') {
-        send(ws, { type: 'xfer.error', message: 'Navigate to ISPF 3.4 (Dataset List) then press \u21BA' });
-        return;
-      }
+    } else if (state === 'ispf34') {
       const datasets = parseIspf34Screen(lines);
       if (!datasets.length) {
-        send(ws, { type: 'xfer.error', message: 'ISPF 3.4 screen found but no datasets could be parsed' });
+        send(ws, { type: 'xfer.error', message: 'ISPF 3.4 / RFE DSLIST screen found but no datasets could be parsed' });
         return;
       }
       logger.info(`[ws:${wsId}] xfer.listdatasets found ${datasets.length} datasets`);
-      send(ws, { type: 'xfer.datasets', datasets, sessionType });
+      send(ws, { type: 'xfer.datasets', datasets, sessionType: 'TSO' });
+
+    } else if (sessionType === 'ZVM') {
+      send(ws, { type: 'xfer.error', message: 'Navigate to FILELIST in CMS then press \u21BA' });
+    } else {
+      send(ws, { type: 'xfer.error', message: 'Navigate to ISPF 3.4 (Dataset List) then press \u21BA' });
     }
 
   } catch (err) {
@@ -591,29 +570,48 @@ function parseIspf34Screen(lines) {
   let inList = false;
 
   for (const line of lines) {
-    // Header row signals start of data
-    if (line.includes('ISPF  Data Set List') || line.includes('Data Set List Utility')) {
+    // Header row signals start of data — handle standard ISPF 3.4 AND RFE DSLIST
+    if (line.includes('ISPF  Data Set List') || line.includes('Data Set List Utility')
+        || line.includes('RFE DSLIST') || line.includes('DSLIST')) {
       inList = true;
       continue;
     }
     if (!inList) continue;
     if (line.includes('**END**')) break;
     // Skip header/separator rows
-    if (line.match(/^\s*(Name|Command|Dsname|Volume|Row|Scroll|F1=)/i)) continue;
+    if (line.match(/^\s*(Name|Command|Dsname|Volume|Row|Scroll|F1=|S\s+DATA-SET)/i)) continue;
     if (line.trim() === '') continue;
 
-    // Dataset lines start with a space then the name
-    // Format: " NAME.WITH.QUAL    tracks  XT used XT Dsorg Recfm Lrecl BlkSz"
-    const match = line.match(/^\s{1,2}([A-Z$#@][A-Z0-9$#@.]{1,43})\s+(\d+)\s+\d+\s+(\d+)\s+\d+\s+(\w+)\s+(\w+)\s+(\d+)/);
-    if (match) {
+    // ── Standard ISPF 3.4 format ──
+    // " NAME.WITH.QUAL    tracks  XT used XT Dsorg Recfm Lrecl BlkSz"
+    const stdMatch = line.match(/^\s{1,2}([A-Z$#@][A-Z0-9$#@.]{1,43})\s+(\d+)\s+\d+\s+(\d+)\s+\d+\s+(\w+)\s+(\w+)\s+(\d+)/);
+    if (stdMatch) {
       datasets.push({
-        name:   match[1].trim(),
-        tracks: parseInt(match[2]),
-        used:   parseInt(match[3]),
-        dsorg:  match[4].trim(),
-        recfm:  match[5].trim(),
-        lrecl:  parseInt(match[6]),
+        name:   stdMatch[1].trim(),
+        tracks: parseInt(stdMatch[2]),
+        used:   parseInt(stdMatch[3]),
+        dsorg:  stdMatch[4].trim(),
+        recfm:  stdMatch[5].trim(),
+        lrecl:  parseInt(stdMatch[6]),
       });
+      continue;
+    }
+
+    // ── RFE DSLIST format (MVS CE / RPF) ──
+    // "' MVSCE01.CLIST        PUB000    15     1 PO  FB   6  1    80 19040 ..."
+    // Lines start with apostrophe + space, dataset name, volume, altrk, ustrk, org, frmt, %, xt, lrecl
+    const rfeMatch = line.match(/^\s*'\s+([A-Z$#@][A-Z0-9$#@.]{1,43})\s+(\w+)\s+(\d+)\s+(\d+)\s+(\w+)\s+(\w+)\s+(\d+)\s+(\d+)\s*(\d*)/);
+    if (rfeMatch) {
+      datasets.push({
+        name:   rfeMatch[1].trim(),
+        volume: rfeMatch[2].trim(),
+        tracks: parseInt(rfeMatch[3]),
+        used:   parseInt(rfeMatch[4]),
+        dsorg:  rfeMatch[5].trim(),
+        recfm:  rfeMatch[6].trim(),
+        lrecl:  parseInt(rfeMatch[9]) || 0,
+      });
+      continue;
     }
   }
 
