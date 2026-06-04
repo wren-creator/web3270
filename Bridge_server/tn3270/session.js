@@ -95,11 +95,40 @@ const FA_INTENSITY   = 0x0C;  // 2-bit intensity field (bits 3,2)
 const FA_NONDISPLAY  = 0x0C;
 const isNonDisplayFa = fa => (fa & FA_INTENSITY) === FA_NONDISPLAY;
 
+// 3270 12-bit buffer address encoding table (IBM GA23-0059).
+// Maps 6-bit values 0-63 to their canonical EBCDIC code points.
+// The pattern mirrors EBCDIC letter/digit ranges: values 1-9→0xC1-0xC9,
+// 17-25→0xD1-0xD9, 33-41→0xE1-0xE9, 48-57→0xF0-0xF9, with the
+// remaining values in the 0x4x-0x7x gaps.  Using raw 0x40+n is WRONG
+// for about half the entries and produces bytes the host can't decode.
+const ADDR12 = [
+  0x40, 0xC1, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6, 0xC7,  //  0- 7
+  0xC8, 0xC9, 0x4A, 0x4B, 0x4C, 0x4D, 0x4E, 0x4F,  //  8-15
+  0x50, 0xD1, 0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD7,  // 16-23
+  0xD8, 0xD9, 0x5A, 0x5B, 0x5C, 0x5D, 0x5E, 0x5F,  // 24-31
+  0x60, 0xE1, 0xE2, 0xE3, 0xE4, 0xE5, 0xE6, 0xE7,  // 32-39
+  0xE8, 0xE9, 0x6A, 0x6B, 0x6C, 0x6D, 0x6E, 0x6F,  // 40-47
+  0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7,  // 48-55
+  0xF8, 0xF9, 0x7A, 0x7B, 0x7C, 0x7D, 0x7E, 0x7F,  // 56-63
+];
+
 // Character used to mask nondisplay-field content in bridge logs.
 // The frontend renders its own mask (configurable via the Show
 // Passwords toggle); this constant is for logger output only and is
 // never sent to the browser.
 const MASK_CHAR = '#';
+
+// ── IND$FILE file-transfer protocol (WSF type 0xD0) ─────────────
+const INDFILE_TYPE = 0xD0;
+const INDFILE_CHUNK = 2048;
+const INDFILE_REC = {
+  CONTENTS:   0x03,
+  RECORDSIZE: 0x08,
+  RECORDNUM:  0x63,
+  ERROR:      0x69,
+  DATA:       0xC0,
+};
+const INDFILE_ERR = { EOF: 0x2200, CANCEL: 0x4700 };
 
 class Tn3270Session extends EventEmitter {
   constructor(opts) {
@@ -139,6 +168,18 @@ class Tn3270Session extends EventEmitter {
 
     this.socket    = null;
     this._destroyed = false;
+
+    // IND$FILE transfer state
+    this.indFile = {
+      state: 'idle',
+      direction: null,
+      contents: null,
+      uploadBuffer: null,
+      uploadOffset: 0,
+      downloadChunks: [],
+      downloadBytes: 0,
+      maxChunk: INDFILE_CHUNK,
+    };
   }
 
   // ── Public API ─────────────────────────────────────────────────
@@ -294,31 +335,47 @@ class Tn3270Session extends EventEmitter {
    let isNonDisplayField = false;
    let fieldAddr = 0;
    let fieldData = '';
-   let fieldRawLen = 0; // for log accounting
+   let fieldMDT = false;
 
    for (let a = 0; a < this.buffer.length; a++) {
      const cell = this.buffer[a];
      if (!cell) continue;
 
      if (cell.fa !== undefined) {
-       // Save previous unprotected field if it has modified content
-       if (!isProtected && fieldData.length > 0) {
-        fields.push({ addr: fieldAddr, data: fieldData, nondisplay: isNonDisplayField });
+       // Save previous unprotected field if MDT is set (either in FA byte
+       // OR via our per-cell modified tracking) and it has content.
+       if (!isProtected && fieldMDT && fieldData.length > 0) {
+         fields.push({ addr: fieldAddr, data: fieldData, nondisplay: isNonDisplayField });
        }
-       isProtected = !!(cell.fa & FA_PROTECTED);
+       isProtected       = !!(cell.fa & FA_PROTECTED);
        isNonDisplayField = isNonDisplayFa(cell.fa);
+       // MDT is authoritative from the FA byte; WCC_RESET clears per-cell
+       // modified flags but does NOT clear the FA MDT bit.
+       fieldMDT  = !!(cell.fa & FA_MDT);
        fieldAddr = a + 1;
        fieldData = '';
-     } else if (!isProtected && cell.modified && cell.char) {
-       // Per-cell debug log: mask the byte for nondisplay fields so
-       // passwords don't end up in docker compose logs.
-       if (isNonDisplayField) {
-         logger.debug(`[ws:${this.wsId}] getModifiedFields: addr=${a} char=** (nondisplay)`);
-       } else {
-         logger.debug(`[ws:${this.wsId}] getModifiedFields: addr=${a} char=0x${cell.char.toString(16)}`);
+     } else if (!isProtected) {
+       // Set MDT if user typed here (per-cell flag), even if FA hasn't been
+       // updated yet.
+       if (cell.modified) fieldMDT = true;
+
+       if ((fieldMDT || cell.modified) && cell.char) {
+         // Per-cell debug log: mask the byte for nondisplay fields so
+         // passwords don't end up in docker compose logs.
+         if (isNonDisplayField) {
+           logger.debug(`[ws:${this.wsId}] getModifiedFields: addr=${a} char=** (nondisplay)`);
+         } else {
+           logger.debug(`[ws:${this.wsId}] getModifiedFields: addr=${a} char=0x${cell.char.toString(16)}`);
+         }
+         fieldData += Ebcdic.toAscii(Buffer.from([cell.char]), this.codepage);
        }
-       fieldData += Ebcdic.toAscii(Buffer.from([cell.char]), this.codepage);
      }
+   }
+
+   // Flush the last field — the loop only saves on SF transitions, so the
+   // final field in the buffer would be dropped without this.
+   if (!isProtected && fieldMDT && fieldData.length > 0) {
+     fields.push({ addr: fieldAddr, data: fieldData, nondisplay: isNonDisplayField });
    }
 
    return fields;
@@ -779,6 +836,10 @@ class Tn3270Session extends EventEmitter {
         const type = data[i + 4];
         logger.info(`[ws:${this.wsId}] ReadPartition received (type=0x${type?.toString(16)}) — sending QueryReply`);
         this._sendQueryReply();
+      } else if (sfId === INDFILE_TYPE) {
+        // IND$FILE structured field — extract the body after sfId
+        const sfBody = data.slice(i + 3, i + len);
+        this._processIndFile(sfBody);
       }
       i += len;
     }
@@ -1104,24 +1165,17 @@ class Tn3270Session extends EventEmitter {
   }
 
   _encodeSBA(addr) {
-    // Encode a 12-bit buffer address as two 6-bit bytes in the 0x40-0x7F range.
-    // Both 0x40-0x7F and 0xC0-0xFF are valid 6-bit encodings (low 6 bits hold
-    // the value); we use the lower range exclusively per IBM 3270 spec
-    // canonical form. The decoder side handles both for inbound parsing.
-    const hi = (addr >> 6) & 0x3F;
-    const lo =  addr       & 0x3F;
-    const encode6 = n => 0x40 + (n & 0x3F);
-    return Buffer.from([ORDER_SBA, encode6(hi), encode6(lo)]);
+    // Encode buffer address in 14-bit format (top 2 bits of byte 1 = 00),
+    // preceded by the SBA order byte. 14-bit is unambiguous and universally
+    // accepted; avoids the EBCDIC-table pitfalls of 12-bit encoding.
+    return Buffer.from([ORDER_SBA, (addr >> 8) & 0x3F, addr & 0xFF]);
   }
 
   _encodeAddrRaw(addr) {
-    // Encode a 12-bit buffer address as two raw 6-bit bytes WITHOUT the
-    // SBA order prefix. Used for the cursor address in AID responses,
-    // which per IBM 3270 spec is sent as raw bytes, not as an SBA order.
-    const hi = (addr >> 6) & 0x3F;
-    const lo =  addr       & 0x3F;
-    const encode6 = n => 0x40 + (n & 0x3F);
-    return Buffer.from([encode6(hi), encode6(lo)]);
+    // Encode buffer address in 14-bit format WITHOUT the SBA order prefix.
+    // Used for the cursor address in AID responses, which per IBM 3270
+    // spec is sent as raw bytes, not as an SBA order.
+    return Buffer.from([(addr >> 8) & 0x3F, addr & 0xFF]);
   }
 
   _sendReadBuffer() {
@@ -1151,6 +1205,249 @@ class Tn3270Session extends EventEmitter {
       this.socket.destroy();
       this.socket = null;
     }
+  }
+
+  // ── IND$FILE protocol engine ──────────────────────────────────────
+
+  /**
+   * Queue file data for the next IND$FILE PUT.
+   * Call this BEFORE the user types the IND$FILE command.
+   */
+  indFileQueueUpload(buf) {
+    this.indFile.uploadBuffer = Buffer.isBuffer(buf) ? buf : Buffer.from(buf);
+    this.indFile.uploadOffset = 0;
+    logger.info(`[ws:${this.wsId}] IND$FILE: upload queued (${this.indFile.uploadBuffer.length} bytes)`);
+  }
+
+  _indFileReset() {
+    this.indFile.state = 'idle';
+    this.indFile.direction = null;
+    this.indFile.contents = null;
+    this.indFile.uploadBuffer = null;
+    this.indFile.uploadOffset = 0;
+    this.indFile.downloadChunks = [];
+    this.indFile.downloadBytes = 0;
+  }
+
+  /**
+   * Process an incoming IND$FILE structured field (body after the 0xD0 byte).
+   * Format: RT ST [sub-records...]
+   */
+  _processIndFile(body) {
+    if (body.length < 2) return;
+    const rt = body[0], st = body[1];
+    const records = this._indFileParseRecords(body, 2);
+    logger.info(`[ws:${this.wsId}] IND$FILE: RT=0x${rt.toString(16)} ST=0x${st.toString(16)} records=${records.length} state=${this.indFile.state}`);
+
+    if (rt === 0x00 && st === 0x12) {
+      // OPEN — host is starting a transfer
+      this._indFileOpen(records);
+    } else if (rt === 0x41 && st === 0x12) {
+      // CLOSE — host finished
+      this._indFileClose();
+    } else if (rt === 0x46 && (st === 0x11 || st === 0x05)) {
+      // Upload request — host wants the next chunk
+      this._indFileSendChunk(records);
+    } else if (rt === 0x47 && st === 0x04) {
+      // Download data — host is sending a chunk
+      this._indFileReceiveChunk(records);
+    } else {
+      logger.warn(`[ws:${this.wsId}] IND$FILE: unhandled RT=0x${rt.toString(16)} ST=0x${st.toString(16)}`);
+    }
+  }
+
+  _indFileOpen(records) {
+    // Determine if this is a real data transfer or a status message
+    const cr = records.find(r => r.tag === INDFILE_REC.CONTENTS);
+    if (cr) {
+      const text = cr.data.toString('ascii').trim();
+      this.indFile.contents = text.includes('FT:DATA') ? 'data' : 'msg';
+      logger.info(`[ws:${this.wsId}] IND$FILE OPEN: contents=${this.indFile.contents}`);
+    } else {
+      this.indFile.contents = 'data';
+    }
+
+    // Check for RecordSize (max chunk the host accepts)
+    const rs = records.find(r => r.tag === INDFILE_REC.RECORDSIZE);
+    if (rs && rs.data.length >= 2) {
+      this.indFile.maxChunk = (rs.data[0] << 8) | rs.data[1];
+      logger.debug(`[ws:${this.wsId}] IND$FILE: host max record size = ${this.indFile.maxChunk}`);
+    }
+
+    // Is this upload or download? If we have queued upload data, it's upload.
+    if (this.indFile.uploadBuffer) {
+      this.indFile.direction = 'upload';
+      this.indFile.uploadOffset = 0;
+    } else {
+      this.indFile.direction = 'download';
+      this.indFile.downloadChunks = [];
+      this.indFile.downloadBytes = 0;
+    }
+    this.indFile.state = 'open';
+
+    // ACK the OPEN: reply 00/09
+    this._indFileSendReply(0x00, 0x09);
+    logger.info(`[ws:${this.wsId}] IND$FILE: OPEN acknowledged, direction=${this.indFile.direction}`);
+  }
+
+  _indFileReceiveChunk(records) {
+    const dr = records.find(r => r.tag === INDFILE_REC.DATA);
+    if (!dr) return;
+
+    // Check if compressed (byte 2 of header: 0x00=compressed, 0x61=uncompressed)
+    if (dr.header && dr.header[2] === 0x00) {
+      logger.warn(`[ws:${this.wsId}] IND$FILE: compressed data not supported`);
+      this._indFileAbort(INDFILE_ERR.CANCEL);
+      this.emit('indfile-error', { message: 'Compressed IND$FILE data not supported' });
+      return;
+    }
+
+    if (this.indFile.contents === 'msg') {
+      // Status message from host — accumulate and wait for CLOSE
+      this.indFile.downloadChunks.push(dr.data);
+      this.indFile.downloadBytes += dr.data.length;
+    } else {
+      this.indFile.downloadChunks.push(dr.data);
+      this.indFile.downloadBytes += dr.data.length;
+      this.indFile.state = 'transferring';
+      this.emit('indfile-progress', { direction: 'download', bytes: this.indFile.downloadBytes });
+    }
+
+    // ACK with buffer number: reply 47/05 + RecordNumber
+    const bufNum = this.indFile.downloadChunks.length;
+    this._indFileSendReply(0x47, 0x05, this._indFileRecordNumber(bufNum));
+    logger.debug(`[ws:${this.wsId}] IND$FILE: received chunk ${bufNum}, ${dr.data.length} bytes (total ${this.indFile.downloadBytes})`);
+  }
+
+  _indFileSendChunk(records) {
+    if (!this.indFile.uploadBuffer) {
+      logger.warn(`[ws:${this.wsId}] IND$FILE: host requested upload but no data queued`);
+      this._indFileAbort(INDFILE_ERR.CANCEL);
+      this.emit('indfile-error', { message: 'Host requested upload data but none was queued — select a file first' });
+      return;
+    }
+
+    const remaining = this.indFile.uploadBuffer.length - this.indFile.uploadOffset;
+    if (remaining <= 0) {
+      // All data sent — signal EOF
+      this._indFileSendReply(0x46, 0x08, this._indFileErrorRecord(INDFILE_ERR.EOF));
+      logger.info(`[ws:${this.wsId}] IND$FILE: upload EOF sent (${this.indFile.uploadOffset} bytes total)`);
+      return;
+    }
+
+    const chunkSize = Math.min(this.indFile.maxChunk, remaining);
+    const chunk = this.indFile.uploadBuffer.slice(this.indFile.uploadOffset, this.indFile.uploadOffset + chunkSize);
+    this.indFile.uploadOffset += chunkSize;
+    this.indFile.state = 'transferring';
+    this.emit('indfile-progress', { direction: 'upload', bytes: this.indFile.uploadOffset });
+
+    // Reply 46/05 + RecordNumber + DataRecord
+    const bufIdx = Math.ceil(this.indFile.uploadOffset / this.indFile.maxChunk);
+    const rn = this._indFileRecordNumber(bufIdx);
+    const dr = this._indFileDataRecord(chunk);
+    const extra = Buffer.concat([rn, dr]);
+    this._indFileSendReply(0x46, 0x05, extra);
+    logger.debug(`[ws:${this.wsId}] IND$FILE: sent chunk ${bufIdx}, ${chunkSize} bytes (${this.indFile.uploadOffset}/${this.indFile.uploadBuffer.length})`);
+  }
+
+  _indFileClose() {
+    const dir = this.indFile.direction;
+    const wasMsg = this.indFile.contents === 'msg';
+
+    // Always ACK the close: reply 41/09
+    this._indFileSendReply(0x41, 0x09);
+    logger.info(`[ws:${this.wsId}] IND$FILE: CLOSE acknowledged (direction=${dir}, contents=${this.indFile.contents})`);
+
+    if (dir === 'download' && !wasMsg) {
+      const data = Buffer.concat(this.indFile.downloadChunks);
+      this.emit('indfile-complete', { direction: 'download', data, bytes: data.length });
+    } else if (dir === 'download' && wasMsg) {
+      const text = Buffer.concat(this.indFile.downloadChunks).toString('latin1');
+      logger.info(`[ws:${this.wsId}] IND$FILE message: ${text}`);
+      this.emit('indfile-error', { message: `IND$FILE: ${text}` });
+    } else if (dir === 'upload') {
+      this.emit('indfile-complete', { direction: 'upload', bytes: this.indFile.uploadOffset });
+    }
+
+    this._indFileReset();
+  }
+
+  _indFileAbort(errCode) {
+    this._indFileSendReply(0x47, 0x08, this._indFileErrorRecord(errCode));
+    this._indFileReset();
+  }
+
+  /**
+   * Send an IND$FILE structured field reply.
+   * Wire format: 88 LL LL D0 cmd subcmd [extra...]
+   */
+  _indFileSendReply(cmd, subcmd, extra) {
+    const extraLen = extra ? extra.length : 0;
+    const sfLen = 1 + 1 + 1 + extraLen;  // D0 + cmd + subcmd + extra
+    const total = 1 + 2 + sfLen;          // AID + LL(2) + SF body
+    const buf = Buffer.alloc(total);
+    buf[0] = 0x88;                        // AID = Structured Field
+    buf[1] = (sfLen + 2) >> 8;            // Length high (includes the 2 length bytes)
+    buf[2] = (sfLen + 2) & 0xFF;          // Length low
+    buf[3] = INDFILE_TYPE;                // 0xD0
+    buf[4] = cmd;
+    buf[5] = subcmd;
+    if (extra) extra.copy(buf, 6);
+    this._sendDataRecord(buf);
+    logger.debug(`[ws:${this.wsId}] IND$FILE reply: cmd=0x${cmd.toString(16)} sub=0x${subcmd.toString(16)} ${total} bytes`);
+  }
+
+  _indFileRecordNumber(n) {
+    const r = Buffer.alloc(6);
+    r[0] = INDFILE_REC.RECORDNUM;
+    r[1] = 6;
+    r.writeUInt32BE(n, 2);
+    return r;
+  }
+
+  _indFileErrorRecord(code) {
+    const r = Buffer.alloc(4);
+    r[0] = INDFILE_REC.ERROR;
+    r[1] = 4;
+    r.writeUInt16BE(code, 2);
+    return r;
+  }
+
+  _indFileDataRecord(chunk) {
+    const r = Buffer.alloc(5 + chunk.length);
+    r[0] = INDFILE_REC.DATA;
+    r[1] = 0x80;
+    r[2] = 0x61;                          // uncompressed
+    r.writeUInt16BE(5 + chunk.length, 3);  // total length incl header
+    chunk.copy(r, 5);
+    return r;
+  }
+
+  /**
+   * Parse type-tagged sub-records from an IND$FILE SF body.
+   */
+  _indFileParseRecords(buf, offset) {
+    const out = [];
+    let p = offset;
+    while (p < buf.length) {
+      const tag = buf[p];
+      if (tag === INDFILE_REC.DATA) {
+        // DataRecord: C0 80 [00|61] totalLenHi totalLenLo data...
+        if (p + 5 > buf.length) break;
+        const totalLen = (buf[p + 3] << 8) | buf[p + 4];
+        if (totalLen < 5 || p + totalLen > buf.length) break;
+        out.push({ tag, header: buf.slice(p, p + 5), data: buf.slice(p + 5, p + totalLen) });
+        p += totalLen;
+      } else {
+        // Generic record: tag len data...
+        if (p + 1 >= buf.length) break;
+        const len = buf[p + 1] || 2;
+        if (p + len > buf.length) break;
+        out.push({ tag, data: buf.slice(p + 2, p + len) });
+        p += len;
+      }
+    }
+    return out;
   }
 }
 
