@@ -143,27 +143,37 @@ async function xferSend() {
   const recfm   = document.getElementById('xferRecfm').value;
   if (!dataset) { xferSetStatus('Enter a mainframe dataset name','error'); document.getElementById('xferDataset').focus(); return; }
   if (!xferFileData) { xferSetStatus('Select a local file first','error'); return; }
+
+  const sessionType = session.profile?.type || 'TSO';
+  const btn = document.getElementById('xferSendBtn'); btn.disabled = true; btn.textContent = '\u27F3';
+
+  // TSO sessions use the conversational EDIT path (MVS CE has no IND$FILE).
+  // ZVM sessions use IND$FILE WSF protocol.
+  if (sessionType === 'TSO') {
+    xferSetStatus('UPLOAD \u2192 ' + dataset + ' (TSO EDIT)\u2026', 'working');
+    xferLog('UPLOAD \u2192 ' + dataset + ' (TSO EDIT)', 'var(--accent-amber)');
+    try {
+      session.ws.send(JSON.stringify({
+        type:     'xfer.tso-upload',
+        dataset,
+        filename: xferFileName,
+        data:     xferToBase64(xferFileData),
+      }));
+      xferLog('TSO EDIT sequence started \u2014 ALLOCATE \u2192 EDIT \u2192 INPUT \u2192 SAVE\u2026', 'var(--text-dim)');
+    } catch (err) { xferSetStatus('Upload failed: ' + err.message, 'error'); xferLog('ERROR: ' + err.message, 'var(--t-red)'); btn.disabled = false; btn.textContent = '\u2B06 Send \u2192'; }
+    return;
+  }
+
+  // ZVM / IND$FILE path
   let cmd = "IND$FILE PUT '" + dataset + "' " + mode; if (recfm) cmd += ' RECFM(' + recfm + ')';
   xferSetStatus('Queuing file for upload\u2026','working'); xferLog('UPLOAD \u2192 ' + dataset + ' [' + mode + ']','var(--accent-amber)');
-  const btn = document.getElementById('xferSendBtn'); btn.disabled = true; btn.textContent = '\u27F3';
   try {
-    // Step 1: Queue the file data in the bridge BEFORE typing the command.
-    // The bridge needs the data ready when IND$FILE sends its first WSF.
-    session.ws.send(JSON.stringify({
-      type: 'xfer.queue-upload',
-      filename: xferFileName,
-      data: xferToBase64(xferFileData)
-    }));
+    session.ws.send(JSON.stringify({ type: 'xfer.queue-upload', filename: xferFileName, data: xferToBase64(xferFileData) }));
     await new Promise(r => setTimeout(r, 300));
-
-    // Step 2: Type the IND$FILE PUT command and press ENTER.
-    // The host runs IND$FILE which exchanges WSF D0 records with the bridge.
     xferSetStatus('Sending IND$FILE command\u2026','working');
     session.ws.send(JSON.stringify({ type:'type', row:cursorRow, col:cursorCol, text:cmd }));
     await new Promise(r => setTimeout(r, 200));
     session.ws.send(JSON.stringify({ type:'key', aid:'ENTER', fields:[] }));
-
-    // Transfer progress and completion come via xfer.progress / xfer.ok / xfer.error events
     xferSetStatus('Transfer in progress\u2026','working');
     xferLog('IND$FILE PUT issued \u2014 waiting for WSF exchange\u2026','var(--text-dim)');
   } catch (err) { xferSetStatus('Upload failed: ' + err.message,'error'); xferLog('ERROR: ' + err.message,'var(--t-red)'); }
@@ -204,8 +214,12 @@ function handleXferMsg(msg) {
     xferLog('\u2713 ' + (msg.message || 'File queued'), 'var(--accent-cyan)');
   }
   if (msg.type === 'xfer.progress') {
-    const kb = (msg.bytes / 1024).toFixed(1);
-    xferSetStatus(msg.direction + ': ' + kb + ' KB transferred\u2026', 'working');
+    if (msg.step) {
+      xferSetStatus(msg.step, 'working');
+      xferLog(msg.step, 'var(--text-dim)');
+    } else if (msg.bytes != null) {
+      xferSetStatus((msg.direction || 'transfer') + ': ' + (msg.bytes / 1024).toFixed(1) + ' KB\u2026', 'working');
+    }
   }
   if (msg.type === 'xfer.data') {
     const bytes = xferFromBase64(msg.data);

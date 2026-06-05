@@ -324,6 +324,7 @@ wss.on('connection', (ws, req) => {
 
     session.on('screen', screenData => {
       session.lastScreen = screenData;  // cache for dataset listing
+      session.lastScreen.fields = screenData.fields || [];
       send(ws, { type: 'screen', ...screenData });
     });
 
@@ -387,6 +388,10 @@ wss.on('connection', (ws, req) => {
       if (msg.type === 'xfer.download') {
         // Register the saveAs filename for when the download completes
         handleXferDownload(msg, ws, wsId, session);
+        return;
+      }
+      if (msg.type === 'xfer.tso-upload') {
+        handleXferTsoUpload(msg, ws, wsId, session);
         return;
       }
       if (msg.type === 'xfer.listdatasets') {
@@ -490,6 +495,160 @@ function handleXferDownload(msg, ws, wsId, session) {
   const saveAs = msg.saveAs || msg.dataset?.split('.').pop().toLowerCase() + '.txt' || 'transfer.txt';
   session._indFileSaveAs = saveAs;
   logger.info(`[ws:${wsId}] xfer.download: saveAs=${saveAs} — waiting for IND$FILE WSF exchange`);
+}
+
+// ── TSO EDIT Upload ──────────────────────────────────────────────
+// Uses original TSO EDIT conversational flow (MVS 3.8j).
+// Confirmed manual sequence:
+//   EDIT
+//   ENTER DATA SET NAME - SOURCE(MEMBER)
+//   ENTER DATA SET TYPE - DATA
+//   00010  ← INPUT mode, line number prompt
+//   ... type lines, each followed by screen response ...
+//   [bare ENTER exits INPUT]
+//   EDIT   ← subcommand prompt
+//   END
+//   NOTHING SAVED / ENTER SAVE OR END-
+//   SAVE
+//   EDIT
+//   END
+//   READY
+
+async function handleXferTsoUpload(msg, ws, wsId, session) {
+  const { dataset, data, lrecl: msgLrecl } = msg;
+  const lrecl = msgLrecl || 80;
+
+  logger.info(`[ws:${wsId}] xfer.tso-upload → ${dataset}`);
+
+  const fileLines = Buffer.from(data, 'base64')
+    .toString('utf8').replace(/\r\n/g, '\n').split('\n');
+  if (fileLines.length && fileLines[fileLines.length - 1] === '') fileLines.pop();
+
+  logger.info(`[ws:${wsId}] xfer.tso-upload: ${fileLines.length} lines, lrecl=${lrecl}`);
+
+  // Member name for EDIT prompt — strip HLQ and parens, max 8 chars
+  const memberName     = dataset.replace(/^.*\./, '').replace(/[()]/g, '').substring(0, 8).toUpperCase();
+  const editDsName     = `SOURCE(${memberName})`;
+  const resolvedDataset = `MVSCE01.SOURCE(${memberName})`;
+
+  // ── Helpers ──────────────────────────────────────────────────────
+
+  let lastScreenSnapshot = '';
+
+  // typeCmd: move cursor to last input field (TSO command line), type, ENTER.
+  const typeCmd = (text) => {
+    lastScreenSnapshot = session.lastScreen
+      ? screenToLines(session.lastScreen).join('\n') : '';
+    try {
+      const fields = (session.lastScreen && session.lastScreen.fields) || [];
+      // Field property is 'startAddr' (not 'start') — verified from _emitScreen source.
+      // TSO command input is the last unprotected field; earlier ones are scrollback.
+      const inputs = fields.filter(f => !f.protected && f.startAddr !== undefined);
+      const f = inputs[inputs.length - 1];
+      if (f) {
+        session.moveCursor(
+          Math.floor((f.startAddr + 1) / session.cols),
+          (f.startAddr + 1) % session.cols
+        );
+      }
+    } catch {}
+    const row = Math.floor(session.cursorAddr / session.cols);
+    const col = session.cursorAddr % session.cols;
+    if (text) session.typeAt(row, col, text);
+    session.sendAid('ENTER', []);
+  };
+
+  // waitScr: wait for a screen that differs from pre-command snapshot
+  // and matches the optional predicate.
+  const waitScr = (predicate, timeoutMs = 15000) => {
+    const snapBefore = lastScreenSnapshot;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        session.removeListener('screen', check);
+        reject(new Error('Timeout waiting for host response'));
+      }, timeoutMs);
+      function check(sd) {
+        const text = screenToLines(sd).join('\n');
+        if (text === snapBefore) return;
+        if (!predicate || predicate(text)) {
+          clearTimeout(timer);
+          session.removeListener('screen', check);
+          resolve(text);
+        }
+      }
+      session.on('screen', check);
+    });
+  };
+
+  // waitLine: wait for EDIT's per-line cursor-advance screen event.
+  const waitLine = () => new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(''), 600);
+    session.once('screen', (sd) => {
+      clearTimeout(timer);
+      resolve(screenToLines(sd).join('\n'));
+    });
+  });
+
+  // typeLine: send data line to EDIT INPUT mode via raw AID+cursor+data packet.
+  const typeLine = (text) => {
+    if (text) session.sendInputLine(text);
+    else      session.sendAid('ENTER', []);
+  };
+
+  try {
+    // Step 1: start EDIT
+    send(ws, { type: 'xfer.progress', direction: 'upload', step: 'Starting EDIT...' });
+    typeCmd('EDIT');
+    await waitScr(t => t.includes('ENTER DATA SET NAME'), 10000);
+    logger.info(`[ws:${wsId}] xfer.tso-upload: EDIT started`);
+
+    // Step 2: dataset name prompt
+    send(ws, { type: 'xfer.progress', direction: 'upload', step: 'Opening dataset...' });
+    typeCmd(editDsName);
+    await waitScr(t => t.includes('ENTER DATA SET TYPE'), 10000);
+    logger.info(`[ws:${wsId}] xfer.tso-upload: dataset name accepted`);
+
+    // Step 3: dataset type — enters INPUT mode, shows line number prompt
+    typeCmd('DATA');
+    await waitScr(t => /\d{5}/.test(t), 10000);
+    logger.info(`[ws:${wsId}] xfer.tso-upload: in INPUT mode`);
+
+    // Step 4: send lines
+    send(ws, { type: 'xfer.progress', direction: 'upload', step: `Sending ${fileLines.length} lines...` });
+    for (let i = 0; i < fileLines.length; i++) {
+      const line = fileLines[i].substring(0, lrecl) || ' ';
+      if (i % 5 === 0) send(ws, { type: 'xfer.progress', direction: 'upload',
+        step: `Line ${i + 1} of ${fileLines.length}`, bytes: i });
+      typeLine(line);
+      await waitLine();
+    }
+
+    // Step 5: bare ENTER exits INPUT mode
+    send(ws, { type: 'xfer.progress', direction: 'upload', step: 'Saving...' });
+    session.sendAid('ENTER', []);
+    const afterInput = await waitScr(t => t.includes('EDIT') || t.includes('READY') || t.includes('SAVE'), 15000);
+
+    // Step 6: END
+    typeCmd('END');
+    const afterEnd = await waitScr(t => t.includes('SAVE') || t.includes('READY'), 10000);
+
+    // Step 7: if EDIT asks ENTER SAVE OR END, answer SAVE then END
+    if (afterEnd.includes('SAVE') && !afterEnd.includes('READY')) {
+      typeCmd('SAVE');
+      await waitScr(t => t.includes('EDIT') || t.includes('READY'), 10000);
+      typeCmd('END');
+      await waitScr(t => t.includes('READY'), 10000);
+    }
+
+    send(ws, { type: 'xfer.ok', message: `Uploaded ${fileLines.length} lines to ${resolvedDataset}` });
+    logger.info(`[ws:${wsId}] xfer.tso-upload complete → ${resolvedDataset}`);
+
+  } catch (err) {
+    logger.error(`[ws:${wsId}] xfer.tso-upload error: ${err.message}`);
+    send(ws, { type: 'xfer.error', message: `TSO EDIT upload failed: ${err.message}` });
+    try { session.sendAid('ENTER', []); } catch {}
+    try { typeCmd('END'); } catch {}
+  }
 }
 
 // ── Dataset listing handler ───────────────────────────────────────

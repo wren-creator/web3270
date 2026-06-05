@@ -1153,6 +1153,20 @@ class Tn3270Session extends EventEmitter {
 
   // ── Sending data ───────────────────────────────────────────────
 
+  /**
+   * Send a single line to MVS original TSO EDIT INPUT mode.
+   * Original TSO EDIT reads the data stream as: AID(1) + cursorAddr(2) + lineData(N).
+   * No SBA order, no field envelope — raw EBCDIC data after the cursor address.
+   */
+  sendInputLine(text) {
+    const aidByte   = AIDS['ENTER'];
+    const cursorBytes = this._encodeAddrRaw(this.cursorAddr);
+    const dataBytes   = Ebcdic.fromAscii(text, this.codepage);
+    const packet      = Buffer.concat([Buffer.from([aidByte]), cursorBytes, dataBytes]);
+    logger.info(`[ws:${this.wsId}] sendInputLine: ${text.length} chars → ${packet.length} bytes addr=${this.cursorAddr}`);
+    this._sendDataRecord(packet);
+  }
+
   _sendDataRecord(data) {
     // Escape IAC bytes and wrap with IAC EOR
     const escaped = [];
