@@ -14,6 +14,7 @@ function switchPanelTab(el, name) {
     panel.style.display = (name === 'Copilot' || name === 'Xfer') ? 'flex' : 'block';
     if (name === 'Copilot' || name === 'Xfer') { panel.style.flexDirection = 'column'; panel.style.padding = '0'; }
     else { panel.style.flexDirection = ''; panel.style.padding = '12px'; }
+    if (name === 'Xfer') { xferRenderPanel(); }
   }
 }
 
