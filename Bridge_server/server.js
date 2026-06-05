@@ -20,6 +20,7 @@ const logger        = require('./logger');
 const MacroHandler  = require('./macros/handler');
 const MacroStore    = require('./macros/store');
 const CopilotHandler = require('./copilot/copilot-handler');
+const Ebcdic         = require('./tn3270/ebcdic');
 
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
