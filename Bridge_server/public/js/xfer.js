@@ -489,16 +489,8 @@ function xferLoadFileList() {
   xferSetStatus('Loading file list…', 'working');
 
   if (sysType === 'ZVM') {
-    // Type FILELIST, Enter, then scrape
-    session.ws.send(JSON.stringify({ type: 'type', row: cursorRow, col: cursorCol, text: 'FILELIST' }));
-    setTimeout(() => {
-      session.ws.send(JSON.stringify({ type: 'key', aid: 'ENTER', fields: [] }));
-      setTimeout(() => {
-        session.ws.send(JSON.stringify({ type: 'xfer.listdatasets', sessionType: 'ZVM' }));
-      }, 1500);
-    }, 200);
+    session.ws.send(JSON.stringify({ type: 'xfer.ensure-cms' }));
   } else {
-    // TSO: scrape current ISPF 3.4 screen
     session.ws.send(JSON.stringify({ type: 'xfer.listdatasets', sessionType: 'TSO' }));
   }
 }
@@ -681,6 +673,21 @@ function handleXferMsg(msg) {
     if (listEl && listEl.innerHTML.includes('Loading')) {
       listEl.innerHTML = `<div class="xfer-filelist-empty">&#9888; ${msg.message}<br><br>Make sure you are at CMS Ready, then click &#x21BA; Refresh</div>`;
     }
+  }
+  if (msg.type === 'xfer.cms-ready') {
+    // Bridge confirmed CMS Ready — now type FILELIST and scrape
+    const session = sessions.get(activeSession);
+    if (!session) return;
+    const listEl = document.getElementById('xferFileListPanel');
+    if (listEl) listEl.innerHTML = '<div class="xfer-filelist-empty">&#x23F3; Loading files from host&hellip;</div>';
+    xferSetStatus('Loading file list…', 'working');
+    session.ws.send(JSON.stringify({ type: 'type', row: cursorRow, col: cursorCol, text: 'FILELIST' }));
+    setTimeout(() => {
+      session.ws.send(JSON.stringify({ type: 'key', aid: 'ENTER', fields: [] }));
+      setTimeout(() => {
+        session.ws.send(JSON.stringify({ type: 'xfer.listdatasets', sessionType: 'ZVM' }));
+      }, 1500);
+    }, 200);
   }
   if (msg.type === 'xfer.queued') {
     xferLog(`✓ ${msg.message}`, 'var(--accent-green)');
