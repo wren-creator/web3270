@@ -244,61 +244,8 @@
         </div>
       </div>
     </div>
-
     <!-- Transfer -->
-    <div class="panel-content" id="panelXfer" style="display:none;flex-direction:column">
-      <div id="xferStatus" style="display:none;padding:5px 8px;font-size:10px;font-family:'IBM Plex Mono',monospace;border-bottom:1px solid var(--border);flex-shrink:0"></div>
-      <div style="display:flex;flex-direction:column;flex:1;overflow:hidden;padding:8px;gap:6px">
-        <div style="display:flex;flex-direction:column;flex:1;min-height:0">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-            <span style="font-size:9px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted)">Local</span>
-            <div style="display:flex;align-items:center;gap:4px">
-              <span id="xferLocalPath" style="font-size:9px;font-family:'IBM Plex Mono',monospace;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px;text-align:right"></span>
-              <button onclick="xferPickDir()" style="font-size:9px;padding:1px 6px;background:transparent;border:1px solid var(--border);color:var(--text-muted);border-radius:2px;cursor:pointer;white-space:nowrap;font-family:'IBM Plex Mono',monospace" title="Open a local folder">&#128193; Open</button>
-            </div>
-          </div>
-          <div id="xferLocalList" style="flex:1;background:#060c14;border:1px solid var(--border);border-radius:3px;overflow-y:auto;font-family:'IBM Plex Mono',monospace;font-size:10px;min-height:120px;max-height:160px;scrollbar-width:thin;scrollbar-color:#1a3050 transparent">
-            <div style="padding:20px;text-align:center;color:var(--text-muted);font-size:10px;line-height:1.6">Click &#128193; Open to browse<br>your local files</div>
-          </div>
-          <div style="margin-top:4px;display:flex;gap:4px;align-items:center">
-            <span id="xferLocalSelected" style="flex:1;font-size:9px;font-family:'IBM Plex Mono',monospace;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">No file selected</span>
-            <input type="file" id="xferFileInput" style="display:none" onchange="xferFileSelected(event)">
-            <button onclick="document.getElementById('xferFileInput').click()" style="font-size:9px;padding:2px 6px;background:var(--bg-elevated);border:1px solid var(--border-bright);color:var(--text-dim);border-radius:2px;cursor:pointer;white-space:nowrap;font-family:'IBM Plex Mono',monospace">Browse&hellip;</button>
-          </div>
-        </div>
-        <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
-          <button id="xferSendBtn" onclick="xferSend()" style="flex:1;padding:5px;border-radius:3px;cursor:pointer;font-size:10px;font-family:'IBM Plex Mono',monospace;text-align:center;background:#060f08;border:1px solid #1a4020;color:var(--accent-green)">&#x2B06; Send &rarr;</button>
-          <div style="flex:1;display:flex;flex-direction:column;gap:3px">
-            <select id="xferMode" style="font-size:9px;padding:2px 4px;width:100%"><option value="TEXT">TEXT</option><option value="BINARY">BINARY</option></select>
-            <select id="xferRecfm" style="font-size:9px;padding:2px 4px;width:100%"><option value="">RECFM: Default</option><option value="FB">FB</option><option value="VB">VB</option><option value="FBA">FBA</option></select>
-          </div>
-          <button id="xferRecvBtn" onclick="xferReceive()" style="flex:1;padding:5px;border-radius:3px;cursor:pointer;font-size:10px;font-family:'IBM Plex Mono',monospace;text-align:center;background:#06080f;border:1px solid #1a2a40;color:var(--t-blue)">&larr; &#x2B07; Recv</button>
-        </div>
-        <div style="display:flex;flex-direction:column;flex:1;min-height:0">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-            <span style="font-size:9px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted)">Mainframe Dataset</span>
-            <button onclick="xferRefreshMainframe()" style="font-size:9px;padding:1px 5px;background:transparent;border:1px solid var(--border);color:var(--text-muted);border-radius:2px;cursor:pointer;font-family:'IBM Plex Mono',monospace">&#x21BA;</button>
-          </div>
-          <input type="text" id="xferDataset" placeholder="USER.DATA.FILE" style="font-family:'IBM Plex Mono',monospace;font-size:10px;text-transform:uppercase;margin-bottom:4px;padding:4px 7px;background:var(--bg-elevated);border:1px solid var(--border-bright);color:var(--text-primary);border-radius:3px;width:100%;outline:none" oninput="this.value=this.value.toUpperCase()">
-          <div id="xferMainframeList" style="flex:1;background:#060c14;border:1px solid var(--border);border-radius:3px;overflow-y:auto;font-family:'IBM Plex Mono',monospace;font-size:10px;min-height:80px;max-height:120px;scrollbar-width:thin;scrollbar-color:#1a3050 transparent">
-            <div style="padding:16px;text-align:center;color:var(--text-muted);font-size:10px;line-height:1.6">z/OS: go to ISPF 3.4<br>z/VM: run FILELIST<br>then press &#x21BA;</div>
-          </div>
-          <div style="margin-top:4px">
-            <input type="text" id="xferSaveAs" placeholder="Save as (auto)" style="font-family:'IBM Plex Mono',monospace;font-size:9px;padding:3px 6px;background:var(--bg-elevated);border:1px solid var(--border);color:var(--text-dim);border-radius:2px;width:100%;outline:none">
-          </div>
-        </div>
-        <div style="flex-shrink:0">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
-            <span style="font-size:9px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted)">Log</span>
-            <span onclick="xferClearLog()" style="font-size:9px;color:var(--text-muted);cursor:pointer;font-family:'IBM Plex Mono',monospace">clear</span>
-          </div>
-          <div id="xferLog" style="background:#060c14;border:1px solid var(--border);border-radius:3px;padding:5px 7px;font-family:'IBM Plex Mono',monospace;font-size:9px;color:#3a7050;max-height:70px;overflow-y:auto;line-height:1.8;scrollbar-width:thin;scrollbar-color:#1a3050 transparent">
-            <span style="color:var(--text-muted)">No transfers yet.</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
+    <div class="panel-content" id="panelXfer" style="display:none;flex-direction:column"></div>
     <!-- AI Config -->
     <div class="panel-content" id="panelAIConfig">
       <div class="ai-chip">
