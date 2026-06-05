@@ -16,8 +16,7 @@
 // ==================================================================
 
 // ── State ──────────────────────────────────────────────────────────
-let xferFileData    = null;   // ArrayBuffer of selected local file
-let xferFileName    = null;   // original local filename
+// xferFileData and xferFileName are declared in state.js
 let xferExpertMode  = false;  // novice / expert toggle
 
 // ── Detect system type from the active session profile ────────────
@@ -153,14 +152,6 @@ function xferRenderPanel() {
              placeholder="e.g. myfile.txt  (leave blank for auto)">
     </div>
 
-    <div class="xfer-list-row">
-      <button class="btn xfer-btn xfer-btn-list" id="xferListBtn"
-              onclick="xferListDatasets()" ${!connected ? 'disabled' : ''}
-              title="Scrape file list from current mainframe screen (navigate to FILELIST or ISPF 3.4 first)">
-        &#x21BA; List files on host
-      </button>
-    </div>
-
     <button class="btn btn-blue xfer-btn" id="xferRecvBtn"
             onclick="xferReceive()" ${!connected ? 'disabled' : ''}>
       &#x2190; &#x2B07; Recv
@@ -203,11 +194,6 @@ function xferRenderPanel() {
                     color:var(--text-dim); cursor:pointer; padding:2px 7px; border-radius:3px;
                     font-family:'IBM Plex Mono',monospace; }
 .xfer-mode-toggle:hover { border-color:var(--accent-green); color:var(--accent-green); }
-.xfer-list-row    { display:flex; gap:4px; }
-.xfer-btn-list    { background:#0a1a0a; border:1px solid #1a3a1a; color:#7ec88a;
-                    font-size:10px; flex:1; }
-.xfer-btn-list:hover:not(:disabled) { border-color:var(--accent-green); color:var(--accent-green); }
-.xfer-btn-list:disabled { opacity:.4; cursor:not-allowed; }
 .xfer-warn { background:#1a0a04; border:1px solid #3a1a10; color:#c86060;
              padding:5px 8px; border-radius:3px; font-size:10px; }
 .xfer-dir-tabs { display:flex; gap:4px; }
@@ -631,16 +617,6 @@ async function xferSend() {
 }
 
 // ── Receive (download) ─────────────────────────────────────────────
-// ── List files on host ─────────────────────────────────────────────
-function xferListDatasets() {
-  if (!xferCheckSession()) return;
-  const session = sessions.get(activeSession);
-  const sysType = xferGetSystemType();
-  xferSetStatus('Scraping host file list…', 'working');
-  xferLog('↺ Requesting file list from host screen…', 'var(--t-blue)');
-  session.ws.send(JSON.stringify({ type: 'xfer.listdatasets', sessionType: sysType }));
-}
-
 async function xferReceive() {
   const session = xferCheckSession(); if (!session) return;
   const cmd = xferBuildCommand('download');
