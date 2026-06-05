@@ -594,6 +594,7 @@ async function xferSend() {
     session.ws.send(JSON.stringify({
       type:     'xfer.queue-upload',
       filename: xferFileName,
+      mode,
       data:     xferToBase64(xferFileData)
     }));
     await new Promise(r => setTimeout(r, 200));
