@@ -16,8 +16,6 @@
 // ==================================================================
 
 // ── State ──────────────────────────────────────────────────────────
-let xferFileData    = null;   // ArrayBuffer of selected local file
-let xferFileName    = null;   // original local filename
 let xferExpertMode  = false;  // novice / expert toggle
 
 // ── Detect system type from the active session profile ────────────
