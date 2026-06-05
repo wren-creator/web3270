@@ -476,9 +476,13 @@ function buildTlsOptions(params) {
 // ── IND$FILE Transfer Handlers ────────────────────────────────────
 
 function handleXferQueueUpload(msg, ws, wsId, session) {
-  const { data, filename } = msg;
+  const { data, filename, mode } = msg;
   try {
-    const buf = Buffer.from(data, 'base64');
+    let buf = Buffer.from(data, 'base64');
+    if ((mode || 'TEXT') === 'TEXT') {
+      // Convert ASCII → EBCDIC before queuing so the mainframe sees text
+      buf = Buffer.from(Ebcdic.fromAscii(buf.toString('utf8')));
+    }
     session.indFileQueueUpload(buf);
     send(ws, { type: 'xfer.queued', message: `${filename || 'file'} queued (${buf.length} bytes) — type the IND$FILE command now` });
     logger.info(`[ws:${wsId}] xfer.queue-upload: ${buf.length} bytes queued for IND$FILE PUT`);
