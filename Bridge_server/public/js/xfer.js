@@ -4,38 +4,35 @@
 //  js/xfer.js — IND$FILE Transfer Panel
 //  WebTerm/3270
 //
-//  Smart transfer panel that detects TSO vs z/VM from the active
-//  session profile and adjusts the UI and command syntax accordingly.
+//  Profile-aware: reads session.profile.type (TSO vs ZVM) and builds
+//  the correct IND$FILE command syntax automatically.
 //
-//  TSO  command: IND$FILE PUT 'HLQ.DATASET.NAME' TEXT|BINARY [RECFM(F|V) LRECL(nn)]
-//  zVM  command: IND$FILE PUT filename filetype filemode TEXT|BINARY
+//  TSO: IND$FILE PUT 'HLQ.DATASET' TEXT|BINARY [RECFM(x) LRECL(nn)]
+//  ZVM: IND$FILE PUT filename filetype filemode [BINARY]
 //
 //  Modes:
-//    NOVICE  — Guided form, labels, tooltips, smart defaults
-//    EXPERT  — Raw command preview + direct edit, full options visible
+//    NOVICE  — Guided form with file browser (auto-loads FILELIST/DSLIST)
+//    EXPERT  — Raw command input with syntax reference
 // ==================================================================
 
-// ── State ──────────────────────────────────────────────────────────
-let xferExpertMode  = false;  // novice / expert toggle
+// ── State (xferFileData / xferFileName live in state.js) ──────────
+let xferExpertMode  = false;
+let xferCurrentDir  = 'upload';
 
-// ── Detect system type from the active session profile ────────────
+// ── Detect system type from active session profile ────────────────
 function xferGetSystemType() {
   const session = sessions.get(activeSession);
   if (!session) return 'TSO';
   const t = (session.profile?.type || 'TSO').toUpperCase().trim();
-  // Normalise: anything containing "VM" → zVM, else TSO
   return (t === 'ZVM' || t === 'VM' || t === 'Z/VM' || t === 'CMS') ? 'ZVM' : 'TSO';
 }
 
 // ── Command builder ────────────────────────────────────────────────
-// Returns the full IND$FILE command string to type into the terminal.
 function xferBuildCommand(direction) {
   const sysType = xferGetSystemType();
 
   if (xferExpertMode) {
-    // Expert: read the raw command field directly
-    const raw = (document.getElementById('xferExpertCmd')?.value || '').trim();
-    return raw;
+    return (document.getElementById('xferExpertCmd')?.value || '').trim() || null;
   }
 
   const mode  = document.getElementById('xferMode')?.value  || 'TEXT';
@@ -43,21 +40,17 @@ function xferBuildCommand(direction) {
   const lrecl = document.getElementById('xferLrecl')?.value || '';
 
   if (sysType === 'ZVM') {
-    const fn   = (document.getElementById('xferVmFilename')?.value || '').trim().toUpperCase();
-    const ft   = (document.getElementById('xferVmFiletype')?.value || '').trim().toUpperCase() || 'TEXT';
-    const fm   = (document.getElementById('xferVmFilemode')?.value || '').trim().toUpperCase() || 'A';
+    const fn = (document.getElementById('xferVmFilename')?.value || '').trim().toUpperCase();
+    const ft = (document.getElementById('xferVmFiletype')?.value || '').trim().toUpperCase() || 'TEXT';
+    const fm = (document.getElementById('xferVmFilemode')?.value || '').trim().toUpperCase() || 'A';
     if (!fn) return null;
-    // z/VM: IND$FILE PUT|GET fn ft fm [TEXT|BINARY]
     const verb = direction === 'upload' ? 'PUT' : 'GET';
     let cmd = `IND$FILE ${verb} ${fn} ${ft} ${fm}`;
     if (mode === 'BINARY') cmd += ' BINARY';
-    // TEXT is default on CMS, no need to add it
     return cmd;
   } else {
-    // TSO
     const ds = (document.getElementById('xferDataset')?.value || '').trim().toUpperCase();
     if (!ds) return null;
-    // Quote only if not already quoted and contains dots (fully-qualified)
     const quoted = /^'.*'$/.test(ds) ? ds : ds.includes('.') ? `'${ds}'` : ds;
     const verb   = direction === 'upload' ? 'PUT' : 'GET';
     let cmd = `IND$FILE ${verb} ${quoted} ${mode}`;
@@ -68,106 +61,85 @@ function xferBuildCommand(direction) {
   }
 }
 
-// ── Render the panel (called on tab open + on session change) ──────
+// ── Render panel ───────────────────────────────────────────────────
 function xferRenderPanel() {
   const panel = document.getElementById('panelXfer');
   if (!panel) return;
 
-  const sysType = xferGetSystemType();
-  const session = sessions.get(activeSession);
+  const sysType  = xferGetSystemType();
+  const session  = sessions.get(activeSession);
   const sysLabel = sysType === 'ZVM' ? 'z/VM CMS' : 'TSO/ISPF';
   const connected = session && session.ws.readyState === WebSocket.OPEN;
 
   panel.innerHTML = `
 <div class="xfer-root">
 
-  <!-- ── Header bar ── -->
   <div class="xfer-header">
-    <div class="xfer-title">
-      <span class="xfer-icon">&#x21C4;</span>
-      IND$FILE Transfer
-    </div>
-    <div class="xfer-sys-badge xfer-sys-${sysType.toLowerCase()}" title="Detected from LPAR profile">
-      ${sysLabel}
-    </div>
-    <button class="xfer-mode-toggle" id="xferModeToggle"
-            onclick="xferToggleExpert()"
-            title="${xferExpertMode ? 'Switch to guided mode' : 'Switch to expert (raw command) mode'}">
+    <div class="xfer-title">&#x21C4; IND$FILE Transfer</div>
+    <div class="xfer-sys-badge xfer-sys-${sysType.toLowerCase()}" title="Detected from LPAR profile">${sysLabel}</div>
+    <button class="xfer-mode-toggle" onclick="xferToggleExpert()"
+            title="${xferExpertMode ? 'Switch to guided mode' : 'Switch to expert mode'}">
       ${xferExpertMode ? '&#9670; Guided' : '&#9671; Expert'}
     </button>
   </div>
 
   ${!connected ? `<div class="xfer-warn">&#9888; Not connected &mdash; connect to an LPAR first</div>` : ''}
 
-  <!-- ── Direction tabs ── -->
   <div class="xfer-dir-tabs">
-    <button class="xfer-dir-tab active" id="xferTabUp"   onclick="xferSetDir('upload')">
+    <button class="xfer-dir-tab active" id="xferTabUp" onclick="xferSetDir('upload')">
       &#x2B06; Upload <span class="xfer-dir-sub">PC &rarr; Host</span>
     </button>
-    <button class="xfer-dir-tab"        id="xferTabDown" onclick="xferSetDir('download')">
+    <button class="xfer-dir-tab" id="xferTabDown" onclick="xferSetDir('download')">
       &#x2B07; Download <span class="xfer-dir-sub">Host &rarr; PC</span>
     </button>
   </div>
 
-  <!-- ── Upload panel ── -->
+  <!-- Upload section -->
   <div class="xfer-section" id="xferSectionUp">
-
     ${xferExpertMode ? xferExpertBlock('upload', sysType) : xferGuidedUpload(sysType)}
-
-    <!-- Local file picker -->
     <div class="xfer-field-group">
       <label class="xfer-label">
         Local file
-        <span class="xfer-tip" title="The file on your PC you want to send to the mainframe">?</span>
+        <span class="xfer-tip" title="File on your PC to send to the mainframe">?</span>
       </label>
-      <div class="xfer-file-row">
-        <div class="xfer-file-drop" id="xferDropZone"
-             onclick="document.getElementById('xferFilePick').click()"
-             ondragover="event.preventDefault()"
-             ondrop="xferHandleDrop(event)">
-          <span id="xferFileLabel">&#128196; Drop file here or click to browse</span>
-        </div>
-        <input type="file" id="xferFilePick" style="display:none" onchange="xferHandleFilePick(this)">
+      <div class="xfer-file-drop" id="xferDropZone"
+           onclick="document.getElementById('xferFilePick').click()"
+           ondragover="event.preventDefault()" ondrop="xferHandleDrop(event)">
+        <span id="xferFileLabel">&#128196; Drop file here or click to browse</span>
       </div>
+      <input type="file" id="xferFilePick" style="display:none" onchange="xferHandleFilePick(this)">
     </div>
-
     <button class="btn btn-green xfer-btn" id="xferSendBtn"
             onclick="xferSend()" ${!connected ? 'disabled' : ''}>
       &#x2B06; Send &#x2192;
     </button>
   </div>
 
-  <!-- ── Download panel ── -->
+  <!-- Download section -->
   <div class="xfer-section xfer-hidden" id="xferSectionDown">
-
     ${xferExpertMode ? xferExpertBlock('download', sysType) : xferGuidedDownload(sysType)}
-
     <div class="xfer-field-group">
       <label class="xfer-label">
         Save as
-        <span class="xfer-tip" title="Filename for the downloaded file on your PC. Defaults to the dataset/filename.">?</span>
+        <span class="xfer-tip" title="Filename to save on your PC. Auto-filled from the selected file.">?</span>
       </label>
       <input class="xfer-input" type="text" id="xferSaveAs"
              placeholder="e.g. myfile.txt  (leave blank for auto)">
     </div>
-
     <button class="btn btn-blue xfer-btn" id="xferRecvBtn"
             onclick="xferReceive()" ${!connected ? 'disabled' : ''}>
       &#x2190; &#x2B07; Recv
     </button>
   </div>
 
-  <!-- ── Command preview (novice: read-only; expert: editable above) ── -->
   ${!xferExpertMode ? `
   <div class="xfer-cmd-preview" id="xferCmdPreview">
     <span class="xfer-cmd-label">Command preview</span>
     <code id="xferCmdText">&#8212;</code>
   </div>` : ''}
 
-  <!-- ── Status ── -->
   <div class="xfer-status" id="xferStatus" style="display:none"></div>
 
-  <!-- ── Transfer log ── -->
   <div class="xfer-log-header">
     <span>Transfer log</span>
     <button class="xfer-clear-btn" onclick="xferClearLog()">Clear</button>
@@ -177,18 +149,15 @@ function xferRenderPanel() {
   </div>
 
 </div>
-
 <style>
-/* ── Transfer panel styles ── */
 .xfer-root { display:flex; flex-direction:column; gap:8px; padding:8px 10px 12px; font-size:11px; }
 .xfer-header { display:flex; align-items:center; gap:6px; margin-bottom:2px; }
 .xfer-title  { font-size:12px; font-weight:600; color:var(--accent-green); flex:1;
                font-family:'IBM Plex Mono',monospace; letter-spacing:.04em; }
-.xfer-icon   { font-size:14px; }
 .xfer-sys-badge { font-size:9px; font-family:'IBM Plex Mono',monospace; padding:2px 6px;
                   border-radius:3px; border:1px solid; font-weight:700; letter-spacing:.05em; }
-.xfer-sys-tso  { color:#7ec8e3; border-color:#1a3a4a; background:#060e14; }
-.xfer-sys-zvm  { color:#c8a84b; border-color:#3a2a10; background:#0f0b04; }
+.xfer-sys-tso { color:#7ec8e3; border-color:#1a3a4a; background:#060e14; }
+.xfer-sys-zvm { color:#c8a84b; border-color:#3a2a10; background:#0f0b04; }
 .xfer-mode-toggle { font-size:9px; background:transparent; border:1px solid var(--border);
                     color:var(--text-dim); cursor:pointer; padding:2px 7px; border-radius:3px;
                     font-family:'IBM Plex Mono',monospace; }
@@ -198,10 +167,8 @@ function xferRenderPanel() {
 .xfer-dir-tabs { display:flex; gap:4px; }
 .xfer-dir-tab  { flex:1; padding:5px 4px; background:var(--bg-elevated); border:1px solid var(--border);
                  color:var(--text-dim); cursor:pointer; border-radius:3px;
-                 font-family:'IBM Plex Mono',monospace; font-size:10px; line-height:1.3;
-                 transition:all .12s; }
-.xfer-dir-tab.active { border-color:var(--accent-green); color:var(--accent-green);
-                       background:#050f07; }
+                 font-family:'IBM Plex Mono',monospace; font-size:10px; line-height:1.3; transition:all .12s; }
+.xfer-dir-tab.active { border-color:var(--accent-green); color:var(--accent-green); background:#050f07; }
 .xfer-dir-sub { display:block; font-size:9px; color:var(--text-muted); }
 .xfer-section { display:flex; flex-direction:column; gap:7px; }
 .xfer-hidden  { display:none !important; }
@@ -211,12 +178,11 @@ function xferRenderPanel() {
 .xfer-tip { display:inline-flex; align-items:center; justify-content:center;
             width:13px; height:13px; border-radius:50%; border:1px solid var(--text-muted);
             color:var(--text-muted); font-size:8px; cursor:help; }
-.xfer-input  { background:var(--bg-input,#0a0f14); border:1px solid var(--border);
-               color:var(--text); padding:4px 7px; border-radius:3px; font-size:11px;
-               font-family:'IBM Plex Mono',monospace; width:100%; box-sizing:border-box; }
+.xfer-input { background:var(--bg-input,#0a0f14); border:1px solid var(--border);
+              color:var(--text); padding:4px 7px; border-radius:3px; font-size:11px;
+              font-family:'IBM Plex Mono',monospace; width:100%; box-sizing:border-box; }
 .xfer-input:focus { outline:none; border-color:var(--accent-green); }
-.xfer-input-hint { font-size:9px; color:var(--text-muted); font-family:'IBM Plex Mono',monospace;
-                   margin-top:1px; }
+.xfer-input-hint { font-size:9px; color:var(--text-muted); font-family:'IBM Plex Mono',monospace; margin-top:1px; }
 .xfer-row-3 { display:grid; grid-template-columns:1fr 1fr 60px; gap:5px; }
 .xfer-row-2 { display:grid; grid-template-columns:1fr 1fr; gap:5px; }
 .xfer-col   { display:flex; flex-direction:column; gap:3px; }
@@ -224,26 +190,21 @@ function xferRenderPanel() {
                color:var(--text); padding:4px 6px; border-radius:3px; font-size:11px;
                font-family:'IBM Plex Mono',monospace; width:100%; box-sizing:border-box; }
 .xfer-select:focus { outline:none; border-color:var(--accent-green); }
-.xfer-file-row   { display:flex; gap:5px; }
-.xfer-file-drop  { flex:1; border:1px dashed var(--border); border-radius:3px;
-                   padding:8px 10px; color:var(--text-muted); cursor:pointer;
-                   font-family:'IBM Plex Mono',monospace; font-size:10px; text-align:center;
-                   transition:border-color .15s, color .15s; min-height:36px;
-                   display:flex; align-items:center; justify-content:center; }
+.xfer-file-drop { border:1px dashed var(--border); border-radius:3px; padding:8px 10px;
+                  color:var(--text-muted); cursor:pointer; font-family:'IBM Plex Mono',monospace;
+                  font-size:10px; text-align:center; transition:border-color .15s, color .15s;
+                  min-height:36px; display:flex; align-items:center; justify-content:center; }
 .xfer-file-drop:hover { border-color:var(--accent-green); color:var(--accent-green); }
 .xfer-file-drop.has-file { border-color:#2a4a2a; color:var(--accent-green); background:#050f07; }
 .xfer-btn { width:100%; padding:6px; font-size:11px; margin-top:2px; }
-.xfer-cmd-preview { background:#050a08; border:1px solid #1a2a1a; border-radius:3px;
-                    padding:5px 8px; }
-.xfer-cmd-label   { font-size:9px; color:var(--text-muted); font-family:'IBM Plex Mono',monospace;
-                    display:block; margin-bottom:3px; }
-.xfer-cmd-preview code { font-family:'IBM Plex Mono',monospace; font-size:10px;
-                         color:#7ec88a; word-break:break-all; }
+.xfer-cmd-preview { background:#050a08; border:1px solid #1a2a1a; border-radius:3px; padding:5px 8px; }
+.xfer-cmd-label { font-size:9px; color:var(--text-muted); font-family:'IBM Plex Mono',monospace;
+                  display:block; margin-bottom:3px; }
+.xfer-cmd-preview code { font-family:'IBM Plex Mono',monospace; font-size:10px; color:#7ec88a; word-break:break-all; }
 .xfer-expert-block { display:flex; flex-direction:column; gap:4px; }
-.xfer-expert-label { font-size:9px; color:var(--text-muted); font-family:'IBM Plex Mono',monospace; }
-.xfer-expert-help  { font-size:9px; color:#4a7a4a; font-family:'IBM Plex Mono',monospace;
-                     background:#040c06; border:1px solid #1a3a1a; border-radius:3px;
-                     padding:5px 7px; line-height:1.6; margin-top:2px; }
+.xfer-expert-help { font-size:9px; color:#4a7a4a; font-family:'IBM Plex Mono',monospace;
+                    background:#040c06; border:1px solid #1a3a1a; border-radius:3px;
+                    padding:5px 7px; line-height:1.6; margin-top:2px; }
 .xfer-expert-help b { color:#7ec88a; }
 .xfer-status { padding:5px 8px; border-radius:3px; border:1px solid; font-size:10px;
                font-family:'IBM Plex Mono',monospace; }
@@ -255,18 +216,35 @@ function xferRenderPanel() {
 .xfer-log { background:#050a07; border:1px solid var(--border); border-radius:3px;
             padding:6px 8px; font-family:'IBM Plex Mono',monospace; font-size:10px;
             min-height:64px; max-height:160px; overflow-y:auto; line-height:1.7; }
+.xfer-filelist { background:#060c14; border:1px solid var(--border); border-radius:3px;
+                 min-height:80px; max-height:150px; overflow-y:auto;
+                 font-family:'IBM Plex Mono',monospace; font-size:10px; }
+.xfer-filelist-row { padding:4px 8px; cursor:pointer; color:var(--t-green);
+                     border-bottom:1px solid #0a1a0a; display:flex; gap:8px; align-items:baseline; }
+.xfer-filelist-row:hover { background:#0a2010; }
+.xfer-filelist-row.selected { background:#0a2010; border-left:2px solid var(--accent-green); }
+.xfer-filelist-fn { font-weight:600; min-width:70px; }
+.xfer-filelist-ft { color:#7ec88a; min-width:60px; }
+.xfer-filelist-fm { color:var(--text-muted); min-width:24px; }
+.xfer-filelist-meta { color:var(--text-muted); font-size:9px; margin-left:auto; }
+.xfer-filelist-empty { padding:20px; text-align:center; color:var(--text-muted); line-height:1.8; }
+.xfer-filelist-hdr { display:flex; align-items:center; justify-content:space-between; margin-bottom:3px; }
+.xfer-refresh-btn { font-size:9px; padding:1px 6px; background:transparent;
+                    border:1px solid var(--border); color:var(--text-muted); border-radius:2px;
+                    cursor:pointer; font-family:'IBM Plex Mono',monospace; }
+.xfer-refresh-btn:hover { border-color:var(--accent-green); color:var(--accent-green); }
+.xfer-selected-id { display:none; }
+.xfer-selected-id.visible { display:grid; }
 </style>
 `;
 
-  // Wire up live command preview updates
   if (!xferExpertMode) {
     const inputs = panel.querySelectorAll('.xfer-input, .xfer-select');
     inputs.forEach(el => el.addEventListener('input', xferUpdateCmdPreview));
     xferUpdateCmdPreview();
   }
 
-  // Restore active direction
-  xferSetDir(xferCurrentDir || 'upload', /* noRender */ true);
+  xferSetDir(xferCurrentDir || 'upload', true);
 }
 
 // ── Guided upload fields ───────────────────────────────────────────
@@ -276,27 +254,21 @@ function xferGuidedUpload(sysType) {
 <div class="xfer-field-group">
   <label class="xfer-label">
     CMS file identifier
-    <span class="xfer-tip" title="z/VM CMS uses three-part names: Filename Filetype Filemode. Think of Filename as the name, Filetype as the extension, and Filemode as the disk (usually A).">?</span>
+    <span class="xfer-tip" title="z/VM CMS uses three-part names: Filename Filetype Filemode. Filename=name, Filetype=extension, Filemode=disk (usually A).">?</span>
   </label>
   <div class="xfer-row-3">
     <div class="xfer-col">
-      <input class="xfer-input" type="text" id="xferVmFilename"
-             placeholder="TESTFILE" maxlength="8"
-             title="CMS Filename — up to 8 chars, no spaces"
+      <input class="xfer-input" type="text" id="xferVmFilename" placeholder="TESTFILE" maxlength="8"
              oninput="this.value=this.value.toUpperCase();xferUpdateCmdPreview()">
       <div class="xfer-input-hint">Filename</div>
     </div>
     <div class="xfer-col">
-      <input class="xfer-input" type="text" id="xferVmFiletype"
-             placeholder="TEXT" maxlength="8"
-             title="CMS Filetype — e.g. TEXT, DATA, REXX, EXEC, JOB"
+      <input class="xfer-input" type="text" id="xferVmFiletype" placeholder="TEXT" maxlength="8"
              oninput="this.value=this.value.toUpperCase();xferUpdateCmdPreview()">
       <div class="xfer-input-hint">Filetype</div>
     </div>
     <div class="xfer-col">
-      <input class="xfer-input" type="text" id="xferVmFilemode"
-             placeholder="A" maxlength="2"
-             title="CMS Filemode — usually A (your A-disk). R = read-only."
+      <input class="xfer-input" type="text" id="xferVmFilemode" placeholder="A" maxlength="2"
              oninput="this.value=this.value.toUpperCase();xferUpdateCmdPreview()">
       <div class="xfer-input-hint">Mode</div>
     </div>
@@ -308,11 +280,9 @@ ${xferModeField()}`;
 <div class="xfer-field-group">
   <label class="xfer-label">
     TSO dataset name
-    <span class="xfer-tip" title="Fully-qualified dataset name without quotes, e.g. USER01.JCL.CNTL — the HLQ is your TSO user ID. For a partitioned dataset member use USER01.JCL.CNTL(MYMEMBER).">?</span>
+    <span class="xfer-tip" title="Fully-qualified dataset name, e.g. USER01.JCL.CNTL. Use USER01.PDS(MEMBER) for a PDS member.">?</span>
   </label>
-  <input class="xfer-input" type="text" id="xferDataset"
-         placeholder="USER01.JCL.CNTL"
-         title="Fully-qualified dataset name, no quotes needed"
+  <input class="xfer-input" type="text" id="xferDataset" placeholder="USER01.JCL.CNTL"
          oninput="this.value=this.value.toUpperCase();xferUpdateCmdPreview()">
   <div class="xfer-input-hint">HLQ.NAME — use HLQ.PDS(MEMBER) for a PDS member</div>
 </div>
@@ -321,48 +291,58 @@ ${xferRecfmField()}`;
   }
 }
 
-// ── Guided download fields ─────────────────────────────────────────
+// ── Guided download fields — file browser ─────────────────────────
 function xferGuidedDownload(sysType) {
   if (sysType === 'ZVM') {
     return `
 <div class="xfer-field-group">
-  <label class="xfer-label">
-    CMS file identifier
-    <span class="xfer-tip" title="Three-part CMS name: Filename Filetype Filemode. Run FILELIST from CMS Ready to see your files.">?</span>
-  </label>
-  <div class="xfer-row-3">
-    <div class="xfer-col">
-      <input class="xfer-input" type="text" id="xferVmFilename"
-             placeholder="TESTFILE" maxlength="8"
-             oninput="this.value=this.value.toUpperCase();xferUpdateCmdPreview();xferAutoSaveAs()">
-      <div class="xfer-input-hint">Filename</div>
-    </div>
-    <div class="xfer-col">
-      <input class="xfer-input" type="text" id="xferVmFiletype"
-             placeholder="TEXT" maxlength="8"
-             oninput="this.value=this.value.toUpperCase();xferUpdateCmdPreview();xferAutoSaveAs()">
-      <div class="xfer-input-hint">Filetype</div>
-    </div>
-    <div class="xfer-col">
-      <input class="xfer-input" type="text" id="xferVmFilemode"
-             placeholder="A" maxlength="2"
-             oninput="this.value=this.value.toUpperCase();xferUpdateCmdPreview()">
-      <div class="xfer-input-hint">Mode</div>
-    </div>
+  <div class="xfer-filelist-hdr">
+    <label class="xfer-label" style="margin:0">
+      Mainframe files
+      <span class="xfer-tip" title="Files on your CMS A-disk. Click a file to select it, then hit Recv.">?</span>
+    </label>
+    <button class="xfer-refresh-btn" onclick="xferLoadFileList()">&#x21BA; Refresh</button>
+  </div>
+  <div class="xfer-filelist" id="xferFileListPanel">
+    <div class="xfer-filelist-empty">Click &#x21BA; Refresh to load your CMS files</div>
+  </div>
+</div>
+<div class="xfer-selected-id xfer-row-3" id="xferSelectedFileRow">
+  <div class="xfer-col">
+    <input class="xfer-input" type="text" id="xferVmFilename" placeholder="TESTFILE" maxlength="8"
+           oninput="this.value=this.value.toUpperCase();xferUpdateCmdPreview();xferAutoSaveAs()">
+    <div class="xfer-input-hint">Filename</div>
+  </div>
+  <div class="xfer-col">
+    <input class="xfer-input" type="text" id="xferVmFiletype" placeholder="TEXT" maxlength="8"
+           oninput="this.value=this.value.toUpperCase();xferUpdateCmdPreview();xferAutoSaveAs()">
+    <div class="xfer-input-hint">Filetype</div>
+  </div>
+  <div class="xfer-col">
+    <input class="xfer-input" type="text" id="xferVmFilemode" placeholder="A" maxlength="2"
+           oninput="this.value=this.value.toUpperCase();xferUpdateCmdPreview()">
+    <div class="xfer-input-hint">Mode</div>
   </div>
 </div>
 ${xferModeField()}`;
   } else {
     return `
 <div class="xfer-field-group">
-  <label class="xfer-label">
-    TSO dataset name
-    <span class="xfer-tip" title="Fully-qualified dataset name, e.g. USER01.JCL.CNTL — or USER01.PDS(MEMBER) for a PDS member. Run LISTCAT in TSO to find your datasets.">?</span>
-  </label>
-  <input class="xfer-input" type="text" id="xferDataset"
-         placeholder="USER01.DATA.FILE"
+  <div class="xfer-filelist-hdr">
+    <label class="xfer-label" style="margin:0">
+      Datasets
+      <span class="xfer-tip" title="Navigate to ISPF 3.4 then click Refresh, or type a dataset name directly.">?</span>
+    </label>
+    <button class="xfer-refresh-btn" onclick="xferLoadFileList()">&#x21BA; Refresh</button>
+  </div>
+  <div class="xfer-filelist" id="xferFileListPanel">
+    <div class="xfer-filelist-empty">Go to ISPF 3.4 then click &#x21BA; Refresh<br>or type a dataset name below</div>
+  </div>
+</div>
+<div class="xfer-field-group">
+  <input class="xfer-input" type="text" id="xferDataset" placeholder="USER01.DATA.FILE"
          oninput="this.value=this.value.toUpperCase();xferUpdateCmdPreview();xferAutoSaveAs()">
-  <div class="xfer-input-hint">HLQ.NAME — use HLQ.PDS(MEMBER) for a PDS member</div>
+  <div class="xfer-input-hint">Or type a dataset name directly</div>
 </div>
 ${xferModeField()}`;
   }
@@ -374,7 +354,7 @@ function xferModeField() {
 <div class="xfer-field-group">
   <label class="xfer-label">
     Transfer mode
-    <span class="xfer-tip" title="TEXT: converts EBCDIC↔ASCII and line endings (use for source code, JCL, scripts). BINARY: no conversion (use for load modules, images, zip files).">?</span>
+    <span class="xfer-tip" title="TEXT: converts EBCDIC↔ASCII (use for source, JCL, scripts). BINARY: no conversion (use for load modules, images, zip).">?</span>
   </label>
   <select class="xfer-select" id="xferMode" onchange="xferUpdateCmdPreview()">
     <option value="TEXT">TEXT — source code, JCL, scripts (EBCDIC ↔ ASCII)</option>
@@ -387,9 +367,8 @@ function xferRecfmField() {
   return `
 <div class="xfer-row-2">
   <div class="xfer-col">
-    <label class="xfer-label">
-      RECFM
-      <span class="xfer-tip" title="Record format. F=Fixed, V=Variable, U=Undefined. Leave blank to use host default (usually F for JCL).">?</span>
+    <label class="xfer-label">RECFM
+      <span class="xfer-tip" title="Record format. Leave blank for host default.">?</span>
     </label>
     <select class="xfer-select" id="xferRecfm" onchange="xferUpdateCmdPreview()">
       <option value="">— host default —</option>
@@ -401,9 +380,8 @@ function xferRecfmField() {
     </select>
   </div>
   <div class="xfer-col">
-    <label class="xfer-label">
-      LRECL
-      <span class="xfer-tip" title="Logical record length. 80 for JCL/source. 133 for print. Leave blank for host default.">?</span>
+    <label class="xfer-label">LRECL
+      <span class="xfer-tip" title="Record length. 80 for JCL/source. Blank = host default.">?</span>
     </label>
     <input class="xfer-input" type="number" id="xferLrecl"
            placeholder="80 (blank = default)" min="1" max="32760"
@@ -414,11 +392,10 @@ function xferRecfmField() {
 
 // ── Expert mode blocks ─────────────────────────────────────────────
 function xferExpertBlock(direction, sysType) {
-  const verb    = direction === 'upload' ? 'PUT' : 'GET';
-  const tsoEx   = direction === 'upload'
+  const tsoEx = direction === 'upload'
     ? `IND$FILE PUT 'HLQ.DATASET' TEXT RECFM(F) LRECL(80)`
     : `IND$FILE GET 'HLQ.DATASET' TEXT CRLF`;
-  const zvmEx   = direction === 'upload'
+  const zvmEx = direction === 'upload'
     ? `IND$FILE PUT FILENAME TEXT A`
     : `IND$FILE GET FILENAME TEXT A`;
   const example = sysType === 'ZVM' ? zvmEx : tsoEx;
@@ -426,34 +403,28 @@ function xferExpertBlock(direction, sysType) {
   return `
 <div class="xfer-expert-block">
   <label class="xfer-label">IND\$FILE command</label>
-  <input class="xfer-input" type="text" id="xferExpertCmd"
-         placeholder="${example}"
-         style="font-size:11px">
+  <input class="xfer-input" type="text" id="xferExpertCmd" placeholder="${example}">
   <div class="xfer-expert-help">
     ${sysType === 'ZVM' ? `
 <b>z/VM CMS syntax:</b><br>
-IND$FILE PUT <b>filename</b> <b>filetype</b> <b>filemode</b> [TEXT|BINARY]<br>
-IND$FILE GET <b>filename</b> <b>filetype</b> <b>filemode</b> [TEXT|BINARY]<br><br>
+IND$FILE PUT <b>fn</b> <b>ft</b> <b>fm</b> [BINARY]<br>
+IND$FILE GET <b>fn</b> <b>ft</b> <b>fm</b> [BINARY]<br><br>
 <b>Examples:</b><br>
-PUT MYREXX EXEC A<br>
-GET TESTFILE DATA A BINARY<br>
-PUT MYJCL JCL A TEXT<br>
+PUT MYREXX EXEC A &nbsp;&nbsp; GET TESTFILE TXT A<br>
+PUT MYJCL JCL A &nbsp;&nbsp;&nbsp;&nbsp; GET PROFILE EXEC A BINARY
     ` : `
 <b>TSO syntax:</b><br>
 IND$FILE PUT '<b>HLQ.DSN</b>' [TEXT|BINARY] [RECFM(x)] [LRECL(nn)]<br>
 IND$FILE GET '<b>HLQ.DSN</b>' [TEXT|BINARY] [CRLF]<br><br>
 <b>Examples:</b><br>
 PUT 'USER01.JCL.CNTL' TEXT RECFM(F) LRECL(80)<br>
-GET 'USER01.DATA.CSV' TEXT CRLF<br>
-PUT 'USER01.LOAD(MYPROG)' BINARY<br>
+GET 'USER01.DATA.CSV' TEXT CRLF
     `}
   </div>
 </div>`;
 }
 
 // ── Direction toggle ───────────────────────────────────────────────
-let xferCurrentDir = 'upload';
-
 function xferSetDir(dir, noRender) {
   xferCurrentDir = dir;
   const up   = document.getElementById('xferSectionUp');
@@ -465,7 +436,10 @@ function xferSetDir(dir, noRender) {
   down.classList.toggle('xfer-hidden', dir !== 'download');
   tabU?.classList.toggle('active', dir === 'upload');
   tabD?.classList.toggle('active', dir === 'download');
-  if (!noRender) xferUpdateCmdPreview();
+  if (!noRender) {
+    xferUpdateCmdPreview();
+    if (dir === 'download') xferLoadFileList();
+  }
 }
 
 // ── Expert mode toggle ─────────────────────────────────────────────
@@ -478,15 +452,14 @@ function xferToggleExpert() {
 function xferUpdateCmdPreview() {
   const el = document.getElementById('xferCmdText');
   if (!el) return;
-  const cmd = xferBuildCommand(xferCurrentDir);
-  el.textContent = cmd || '—';
+  el.textContent = xferBuildCommand(xferCurrentDir) || '—';
 }
 
-// ── Auto-populate save-as from dataset/filename fields ────────────
+// ── Auto-populate save-as ──────────────────────────────────────────
 function xferAutoSaveAs() {
-  const sysType = xferGetSystemType();
-  const saveEl  = document.getElementById('xferSaveAs');
+  const saveEl = document.getElementById('xferSaveAs');
   if (!saveEl || saveEl.dataset.userEdited) return;
+  const sysType = xferGetSystemType();
   let name = '';
   if (sysType === 'ZVM') {
     const fn = (document.getElementById('xferVmFilename')?.value || '').trim().toLowerCase();
@@ -494,31 +467,52 @@ function xferAutoSaveAs() {
     if (fn) name = ft ? `${fn}.${ft}` : fn;
   } else {
     const ds = (document.getElementById('xferDataset')?.value || '').trim();
-    if (ds) {
-      // Use last qualifier, strip parens for PDS member
-      name = ds.split('.').pop().replace(/\(.*\)/, '').toLowerCase() + '.txt';
-    }
+    if (ds) name = ds.split('.').pop().replace(/\(.*\)/, '').toLowerCase() + '.txt';
   }
   if (name) saveEl.value = name;
 }
 
-// Mark save-as as user-edited so auto-fill stops overwriting it
 document.addEventListener('input', e => {
   if (e.target?.id === 'xferSaveAs') e.target.dataset.userEdited = '1';
 });
 
+// ── Load file list from host ───────────────────────────────────────
+function xferLoadFileList() {
+  const session = sessions.get(activeSession);
+  if (!session || session.ws.readyState !== WebSocket.OPEN) {
+    xferSetStatus('Not connected', 'error');
+    return;
+  }
+  const sysType = xferGetSystemType();
+  const listEl  = document.getElementById('xferFileListPanel');
+  if (listEl) listEl.innerHTML = '<div class="xfer-filelist-empty">&#x23F3; Loading files from host&hellip;</div>';
+  xferSetStatus('Loading file list…', 'working');
+
+  if (sysType === 'ZVM') {
+    // Type FILELIST, Enter, then scrape
+    session.ws.send(JSON.stringify({ type: 'type', row: cursorRow, col: cursorCol, text: 'FILELIST' }));
+    setTimeout(() => {
+      session.ws.send(JSON.stringify({ type: 'key', aid: 'ENTER', fields: [] }));
+      setTimeout(() => {
+        session.ws.send(JSON.stringify({ type: 'xfer.listdatasets', sessionType: 'ZVM' }));
+      }, 1500);
+    }, 200);
+  } else {
+    // TSO: scrape current ISPF 3.4 screen
+    session.ws.send(JSON.stringify({ type: 'xfer.listdatasets', sessionType: 'TSO' }));
+  }
+}
+
 // ── File picker / drag-drop ────────────────────────────────────────
 function xferHandleFilePick(input) {
   const file = input.files[0];
-  if (!file) return;
-  xferLoadFile(file);
+  if (file) xferLoadFile(file);
 }
 
 function xferHandleDrop(event) {
   event.preventDefault();
   const file = event.dataTransfer.files[0];
-  if (!file) return;
-  xferLoadFile(file);
+  if (file) xferLoadFile(file);
 }
 
 function xferLoadFile(file) {
@@ -526,38 +520,34 @@ function xferLoadFile(file) {
   reader.onload = e => {
     xferFileData = e.target.result;
     xferFileName = file.name;
-    const label  = document.getElementById('xferFileLabel');
-    const zone   = document.getElementById('xferDropZone');
+    const label = document.getElementById('xferFileLabel');
+    const zone  = document.getElementById('xferDropZone');
     if (label) label.textContent = `✓ ${file.name}  (${(file.size / 1024).toFixed(1)} KB)`;
     if (zone)  zone.classList.add('has-file');
     xferLog(`Loaded: ${file.name}  (${(file.size / 1024).toFixed(1)} KB)`, 'var(--accent-green)');
-    // Auto-fill mainframe name from local filename if fields are empty
     xferAutoFillFromLocalName(file.name);
     xferUpdateCmdPreview();
   };
   reader.readAsArrayBuffer(file);
 }
 
-// Smart auto-fill of host name fields from local filename
 function xferAutoFillFromLocalName(localName) {
   const sysType = xferGetSystemType();
-  // Strip path
   const base = localName.replace(/.*[/\\]/, '');
   const dot  = base.lastIndexOf('.');
-  const stem = dot >= 0 ? base.slice(0, dot).toUpperCase() : base.toUpperCase();
-  const ext  = dot >= 0 ? base.slice(dot + 1).toUpperCase() : 'TEXT';
+  const stem = (dot >= 0 ? base.slice(0, dot) : base).toUpperCase();
+  const ext  = (dot >= 0 ? base.slice(dot + 1) : 'TEXT').toUpperCase();
 
   if (sysType === 'ZVM') {
     const fn = document.getElementById('xferVmFilename');
     const ft = document.getElementById('xferVmFiletype');
     const fm = document.getElementById('xferVmFilemode');
     if (fn && !fn.value) fn.value = stem.slice(0, 8);
-    if (ft && !ft.value) ft.value = (ext.slice(0, 8) || 'TEXT');
+    if (ft && !ft.value) ft.value = ext.slice(0, 8) || 'TEXT';
     if (fm && !fm.value) fm.value = 'A';
   } else {
     const ds = document.getElementById('xferDataset');
     if (ds && !ds.value) {
-      // Build a basic HLQ.STEM from local name
       const session = sessions.get(activeSession);
       const userid  = (session?.profile?.id || 'USER').toUpperCase().slice(0, 8);
       ds.value = `${userid}.${stem.slice(0, 8)}`;
@@ -570,38 +560,29 @@ async function xferSend() {
   const session = xferCheckSession(); if (!session) return;
   const cmd = xferBuildCommand('upload');
   if (!cmd) {
-    xferSetStatus(
-      xferGetSystemType() === 'ZVM'
-        ? 'Enter Filename, Filetype and Filemode'
-        : 'Enter a dataset name',
-      'error');
+    xferSetStatus(xferGetSystemType() === 'ZVM'
+      ? 'Enter Filename, Filetype and Filemode' : 'Enter a dataset name', 'error');
     return;
   }
   if (!xferFileData) { xferSetStatus('Select a local file first', 'error'); return; }
 
-  const mode  = xferExpertMode ? xferGuessMode(cmd) : (document.getElementById('xferMode')?.value || 'TEXT');
-  const recfm = xferExpertMode ? null : (document.getElementById('xferRecfm')?.value || null);
-  const dataset = cmd; // pass whole command; server.js xfer.upload handler now receives it
-
-  const btn = document.getElementById('xferSendBtn');
+  const mode = xferExpertMode ? xferGuessMode(cmd) : (document.getElementById('xferMode')?.value || 'TEXT');
+  const btn  = document.getElementById('xferSendBtn');
   if (btn) { btn.disabled = true; btn.textContent = '⟳'; }
-
   xferSetStatus('Sending to host…', 'working');
   xferLog(`UPLOAD → ${cmd}`, 'var(--accent-amber)');
 
   try {
-    // 1. Queue file in bridge IND$FILE driver BEFORE typing the command
+    // 1. Queue file in bridge BEFORE typing the command
     session.ws.send(JSON.stringify({
-      type:     'xfer.queue-upload',
-      filename: xferFileName,
-      mode,
-      data:     xferToBase64(xferFileData)
+      type: 'xfer.queue-upload', filename: xferFileName, mode,
+      data: xferToBase64(xferFileData)
     }));
     await new Promise(r => setTimeout(r, 200));
-    // 2. Type the IND$FILE command
+    // 2. Type IND$FILE command
     session.ws.send(JSON.stringify({ type: 'type', row: cursorRow, col: cursorCol, text: cmd }));
     await new Promise(r => setTimeout(r, 200));
-    // 3. Hit Enter — host sends OPEN, driver responds with chunks
+    // 3. Enter — host sends OPEN, driver responds with chunks
     session.ws.send(JSON.stringify({ type: 'key', aid: 'ENTER', fields: [] }));
     xferSetStatus(`✓ Upload queued → ${xferFileName}`, 'ok');
     xferLog(`✓ Queued ${(xferFileData.byteLength / 1024).toFixed(1)} KB — waiting for host`, 'var(--accent-green)');
@@ -618,21 +599,15 @@ async function xferReceive() {
   const session = xferCheckSession(); if (!session) return;
   const cmd = xferBuildCommand('download');
   if (!cmd) {
-    xferSetStatus(
-      xferGetSystemType() === 'ZVM'
-        ? 'Enter Filename, Filetype and Filemode'
-        : 'Enter a dataset name',
-      'error');
+    xferSetStatus(xferGetSystemType() === 'ZVM'
+      ? 'Select a file from the list or click Refresh' : 'Enter a dataset name', 'error');
     return;
   }
 
   const mode   = xferExpertMode ? xferGuessMode(cmd) : (document.getElementById('xferMode')?.value || 'TEXT');
   const saveAs = (document.getElementById('xferSaveAs')?.value.trim()) || xferDefaultSaveName();
-  const dataset = cmd;
-
-  const btn = document.getElementById('xferRecvBtn');
+  const btn    = document.getElementById('xferRecvBtn');
   if (btn) { btn.disabled = true; btn.textContent = '⟳'; }
-
   xferSetStatus('Receiving from host…', 'working');
   xferLog(`DOWNLOAD ← ${cmd}`, 'var(--t-blue)');
 
@@ -640,7 +615,7 @@ async function xferReceive() {
     session.ws.send(JSON.stringify({ type: 'type', row: cursorRow, col: cursorCol, text: cmd }));
     await new Promise(r => setTimeout(r, 200));
     session.ws.send(JSON.stringify({ type: 'key', aid: 'ENTER', fields: [] }));
-    session.ws.send(JSON.stringify({ type: 'xfer.download', dataset, mode, saveAs }));
+    session.ws.send(JSON.stringify({ type: 'xfer.download', dataset: cmd, mode, saveAs }));
     xferSetStatus(`Waiting for ${saveAs}…`, 'working');
     xferLog('Waiting for data stream…', 'var(--text-dim)');
   } catch (err) {
@@ -650,7 +625,7 @@ async function xferReceive() {
   }
 }
 
-// ── Derive a sensible save-as name ────────────────────────────────
+// ── Derive save-as name ────────────────────────────────────────────
 function xferDefaultSaveName() {
   const sysType = xferGetSystemType();
   if (sysType === 'ZVM') {
@@ -659,19 +634,15 @@ function xferDefaultSaveName() {
     return fn ? (ft ? `${fn}.${ft}` : fn + '.txt') : 'download.txt';
   } else {
     const ds = (document.getElementById('xferDataset')?.value || '').trim();
-    if (!ds) return 'download.txt';
-    return ds.split('.').pop().replace(/\(.*\)/, '').toLowerCase() + '.txt';
+    return ds ? ds.split('.').pop().replace(/\(.*\)/, '').toLowerCase() + '.txt' : 'download.txt';
   }
 }
 
-// ── Guess TEXT/BINARY from a raw command string ───────────────────
 function xferGuessMode(cmd) {
-  const u = cmd.toUpperCase();
-  if (u.includes('BINARY')) return 'BINARY';
-  return 'TEXT';
+  return cmd.toUpperCase().includes('BINARY') ? 'BINARY' : 'TEXT';
 }
 
-// ── Inbound message handler (called from main ws message handler) ──
+// ── Inbound message handler ────────────────────────────────────────
 function handleXferMsg(msg) {
   const sb = document.getElementById('xferSendBtn');
   const rb = document.getElementById('xferRecvBtn');
@@ -680,7 +651,7 @@ function handleXferMsg(msg) {
 
   if (msg.type === 'xfer.data') {
     const bytes = xferFromBase64(msg.data);
-    const a     = document.createElement('a');
+    const a = document.createElement('a');
     a.href     = URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' }));
     a.download = msg.saveAs || 'mainframe-file.txt';
     a.click();
@@ -690,8 +661,8 @@ function handleXferMsg(msg) {
   }
   if (msg.type === 'xfer.datasets') {
     xferRenderDatasets(msg.datasets, msg.sessionType);
-    xferSetStatus(`✓ Found ${msg.datasets.length} datasets`, 'ok');
-    xferLog(`✓ ${msg.datasets.length} datasets listed`, 'var(--accent-green)');
+    xferSetStatus(`✓ Found ${msg.datasets.length} file(s)`, 'ok');
+    xferLog(`✓ ${msg.datasets.length} file(s) listed`, 'var(--accent-green)');
   }
   if (msg.type === 'xfer.ok') {
     xferSetStatus(`✓ ${msg.message || 'Transfer complete'}`, 'ok');
@@ -700,12 +671,85 @@ function handleXferMsg(msg) {
   if (msg.type === 'xfer.error') {
     xferSetStatus('Transfer error: ' + msg.message, 'error');
     xferLog('ERROR: ' + msg.message, 'var(--t-red)');
+    // If FILELIST failed (e.g. not at CMS ready), clear the spinner
+    const listEl = document.getElementById('xferFileListPanel');
+    if (listEl && listEl.innerHTML.includes('Loading')) {
+      listEl.innerHTML = `<div class="xfer-filelist-empty">&#9888; ${msg.message}<br><br>Make sure you are at CMS Ready, then click &#x21BA; Refresh</div>`;
+    }
+  }
+  if (msg.type === 'xfer.queued') {
+    xferLog(`✓ ${msg.message}`, 'var(--accent-green)');
   }
 }
 
-// ── Dataset list renderer ──────────────────────────────────────────
+// ── Dataset / file list renderer ───────────────────────────────────
 function xferRenderDatasets(datasets, sessionType) {
-  const panel   = document.getElementById('panelXfer');
+  const isZVM = (sessionType || xferGetSystemType()) === 'ZVM';
+
+  // Prefer the inline file browser panel
+  const listEl = document.getElementById('xferFileListPanel');
+  if (listEl) {
+    listEl.innerHTML = '';
+    if (!datasets.length) {
+      listEl.innerHTML = '<div class="xfer-filelist-empty">No files found</div>';
+      return;
+    }
+    datasets.forEach(ds => {
+      const row = document.createElement('div');
+      row.className = 'xfer-filelist-row';
+      if (isZVM) {
+        const parts = ds.name.split(/\s+/);
+        const fn = parts[0] || '';
+        const ft = parts[1] || ds.filetype || '';
+        const fm = ds.filemode || ds.mode || 'A';
+        row.innerHTML = `
+          <span class="xfer-filelist-fn">${fn}</span>
+          <span class="xfer-filelist-ft">${ft}</span>
+          <span class="xfer-filelist-fm">${fm}</span>
+          <span class="xfer-filelist-meta">${ds.records ? ds.records + ' rec' : ''}</span>`;
+        row.addEventListener('click', () => {
+          // Highlight selected row
+          listEl.querySelectorAll('.xfer-filelist-row').forEach(r => r.classList.remove('selected'));
+          row.classList.add('selected');
+          // Fill in the fields
+          const fnEl = document.getElementById('xferVmFilename');
+          const ftEl = document.getElementById('xferVmFiletype');
+          const fmEl = document.getElementById('xferVmFilemode');
+          if (fnEl) fnEl.value = fn;
+          if (ftEl) ftEl.value = ft;
+          if (fmEl) fmEl.value = fm;
+          // Show selected file row
+          const selRow = document.getElementById('xferSelectedFileRow');
+          if (selRow) selRow.classList.add('visible');
+          // Auto-fill save-as
+          const saveEl = document.getElementById('xferSaveAs');
+          if (saveEl && !saveEl.dataset.userEdited) saveEl.value = `${fn.toLowerCase()}.${ft.toLowerCase()}`;
+          xferUpdateCmdPreview();
+          xferLog(`Selected: ${fn} ${ft} ${fm}`, 'var(--t-blue)');
+        });
+      } else {
+        row.innerHTML = `<span class="xfer-filelist-fn" style="min-width:unset">${ds.name}</span>
+          <span class="xfer-filelist-meta">${ds.dsorg || ''} ${ds.recfm || ''} ${ds.lrecl ? 'LRECL='+ds.lrecl : ''}</span>`;
+        row.addEventListener('click', () => {
+          listEl.querySelectorAll('.xfer-filelist-row').forEach(r => r.classList.remove('selected'));
+          row.classList.add('selected');
+          const el = document.getElementById('xferDataset');
+          if (el) el.value = ds.name.toUpperCase();
+          const saveEl = document.getElementById('xferSaveAs');
+          if (saveEl && !saveEl.dataset.userEdited) {
+            saveEl.value = ds.name.split('.').pop().replace(/\(.*\)/, '').toLowerCase() + '.txt';
+          }
+          xferUpdateCmdPreview();
+          xferLog(`Selected: ${ds.name}`, 'var(--t-blue)');
+        });
+      }
+      listEl.appendChild(row);
+    });
+    return;
+  }
+
+  // Fallback: append a list below the panel root (legacy path)
+  const panel = document.getElementById('panelXfer');
   if (!panel) return;
   let list = panel.querySelector('.xfer-ds-list');
   if (!list) {
@@ -715,11 +759,10 @@ function xferRenderDatasets(datasets, sessionType) {
     panel.querySelector('.xfer-root')?.appendChild(list);
   }
   list.innerHTML = '';
-  const isZVM = (sessionType || xferGetSystemType()) === 'ZVM';
   datasets.forEach(ds => {
     const row = document.createElement('div');
     row.style.cssText = 'padding:3px 8px;cursor:pointer;font-family:"IBM Plex Mono",monospace;font-size:10px;color:var(--t-green);border-bottom:1px solid #0a1a0a;';
-    row.textContent = isZVM ? `${ds.name}  ${ds.type || ''}  ${ds.mode || 'A'}` : ds.name;
+    row.textContent = ds.name;
     row.addEventListener('click', () => {
       if (isZVM) {
         const parts = ds.name.split(/\s+/);
@@ -727,22 +770,14 @@ function xferRenderDatasets(datasets, sessionType) {
         const ft = document.getElementById('xferVmFiletype');
         const fm = document.getElementById('xferVmFilemode');
         if (fn) fn.value = parts[0] || '';
-        if (ft) ft.value = parts[1] || ds.type || '';
-        if (fm) fm.value = ds.mode || 'A';
+        if (ft) ft.value = parts[1] || '';
+        if (fm) fm.value = ds.filemode || 'A';
       } else {
         const el = document.getElementById('xferDataset');
         if (el) el.value = ds.name.toUpperCase();
-        const saveAs = document.getElementById('xferSaveAs');
-        if (saveAs && !saveAs.dataset.userEdited) {
-          const parts = ds.name.split('.');
-          saveAs.value = parts[parts.length - 1].toLowerCase() + '.txt';
-        }
       }
-      xferLog('Selected: ' + ds.name, 'var(--t-blue)');
       xferUpdateCmdPreview();
     });
-    row.addEventListener('mouseenter', () => row.style.background = '#0a1020');
-    row.addEventListener('mouseleave', () => row.style.background = '');
     list.appendChild(row);
   });
 }
@@ -804,20 +839,14 @@ function xferFromBase64(b64) {
   return bytes;
 }
 
-// ── Re-render panel when active session changes ────────────────────
-// Hook into whatever session-switch function already exists.
-// If openSession / activateSession exist, patch them; otherwise
-// call xferRenderPanel() after session switch in your own code.
+// ── Re-render panel on session switch ─────────────────────────────
 (function patchSessionSwitch() {
-  // Guard: only patch once
   if (window._xferPatched) return;
   window._xferPatched = true;
-
   const _orig = window.activateSession;
   if (typeof _orig === 'function') {
     window.activateSession = function(...args) {
       const result = _orig.apply(this, args);
-      // Re-render if the transfer panel is visible
       if (!document.getElementById('panelXfer')?.classList.contains('xfer-hidden')) {
         xferRenderPanel();
       }
