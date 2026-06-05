@@ -612,6 +612,11 @@ async function xferReceive() {
   xferLog(`DOWNLOAD ← ${cmd}`, 'var(--t-blue)');
 
   try {
+    // For ZVM: exit FILELIST (PF3) before typing IND$FILE GET
+    if (xferGetSystemType() === 'ZVM') {
+      session.ws.send(JSON.stringify({ type: 'key', aid: 'PF3', fields: [] }));
+      await new Promise(r => setTimeout(r, 1000));
+    }
     session.ws.send(JSON.stringify({ type: 'type', row: cursorRow, col: cursorCol, text: cmd }));
     await new Promise(r => setTimeout(r, 200));
     session.ws.send(JSON.stringify({ type: 'key', aid: 'ENTER', fields: [] }));
