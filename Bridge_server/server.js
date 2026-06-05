@@ -398,6 +398,11 @@ wss.on('connection', (ws, req) => {
         handleXferTsoUpload(msg, ws, wsId, session);
         return;
       }
+      if (msg.type === 'xfer.ensure-cms') {
+        ensureCmsReady(session, ws, wsId)
+          .then(() => send(ws, { type: 'xfer.cms-ready' }))
+          .catch(err => send(ws, { type: 'xfer.error', message: err.message }));
+      }
       if (msg.type === 'xfer.listdatasets') {
         handleXferListDatasets(msg, ws, wsId, session);
         return;
@@ -519,7 +524,6 @@ function ensureCmsReady(session, ws, wsId) {
       return reject(new Error('Not logged on — please log on first'));
     }
     if (state === 'zvm-cp') {
-    if (state === 'zvm-filelist') {
       // Send IPL CMS and wait for CMS Ready
       logger.info(`[ws:${wsId}] ensureCmsReady: at CP, sending IPL CMS`);
       send(ws, { type: 'xfer.status', message: 'At CP prompt — sending IPL CMS…' });
@@ -538,6 +542,7 @@ function ensureCmsReady(session, ws, wsId) {
       }, 500);
       return;
     }
+    if (state === 'zvm-filelist') {
       // Send PF3 to exit FILELIST and wait for CMS Ready
       logger.info(`[ws:${wsId}] ensureCmsReady: in FILELIST, sending PF3`);
       send(ws, { type: 'xfer.status', message: 'In FILELIST — exiting to CMS Ready…' });
