@@ -346,8 +346,11 @@ wss.on('connection', (ws, req) => {
     // ── IND$FILE transfer events ──────────────────────────────────
     session.on('indfile-complete', info => {
       if (info.direction === 'download') {
-        const encoded = info.data.toString('base64');
+        // Convert EBCDIC → ASCII for TEXT transfers
         const saveAs = session._indFileSaveAs || 'transfer.bin';
+        const isText = !saveAs.match(/\.(bin|exe|obj|load|zip|gz|tar)$/i);
+        const outBuf = isText ? Buffer.from(Ebcdic.toAscii(info.data)) : info.data;
+        const encoded = outBuf.toString('base64');
         send(ws, { type: 'xfer.data', data: encoded, saveAs, bytes: info.bytes });
         logger.info(`[ws:${wsId}] IND$FILE download complete: ${info.bytes} bytes → ${saveAs}`);
       } else {
@@ -484,6 +487,10 @@ function handleXferQueueUpload(msg, ws, wsId, session) {
       // Convert ASCII → EBCDIC before queuing so the mainframe sees text
       buf = Buffer.from(Ebcdic.fromAscii(buf.toString('utf8')));
     }
+    // Ensure CMS Ready before queuing
+    ensureCmsReady(session, ws, wsId).catch(err => {
+      send(ws, { type: 'xfer.error', message: err.message });
+    });
     session.indFileQueueUpload(buf);
     send(ws, { type: 'xfer.queued', message: `${filename || 'file'} queued (${buf.length} bytes) — type the IND$FILE command now` });
     logger.info(`[ws:${wsId}] xfer.queue-upload: ${buf.length} bytes queued for IND$FILE PUT`);
@@ -493,6 +500,67 @@ function handleXferQueueUpload(msg, ws, wsId, session) {
   }
 }
 
+// ── Ensure CMS Ready before IND$FILE ──────────────────────────────
+// Returns a promise that resolves when the screen is at CMS Ready,
+// sending IPL CMS or PF3 as needed. Rejects if ZVM but unrecoverable.
+function ensureCmsReady(session, ws, wsId) {
+  return new Promise((resolve, reject) => {
+    if (!session.lastScreen || !session.lastScreen.rows) {
+      return reject(new Error('No screen data — connect to an LPAR first'));
+    }
+    const lines = screenToLines(session.lastScreen);
+    const state = detectScreenState(lines);
+    logger.info(`[ws:${wsId}] ensureCmsReady: screen state is ${state}`);
+
+    if (state === 'zvm-cms') {
+      return resolve(); // Already at CMS Ready
+    }
+    if (state === 'zvm-logon') {
+      return reject(new Error('Not logged on — please log on first'));
+    }
+    if (state === 'zvm-cp') {
+    if (state === 'zvm-filelist') {
+      // Send IPL CMS and wait for CMS Ready
+      logger.info(`[ws:${wsId}] ensureCmsReady: at CP, sending IPL CMS`);
+      send(ws, { type: 'xfer.status', message: 'At CP prompt — sending IPL CMS…' });
+      session.sendAid('ENTER', [{ addr: session.cursorAddr || 0, value: 'IPL CMS' }]);
+      const deadline = Date.now() + 15000;
+      const poll = setInterval(() => {
+        if (!session.lastScreen) return;
+        const s = detectScreenState(screenToLines(session.lastScreen));
+        if (s === 'zvm-cms') {
+          clearInterval(poll);
+          resolve();
+        } else if (Date.now() > deadline) {
+          clearInterval(poll);
+          reject(new Error('Timed out waiting for CMS Ready after IPL CMS'));
+        }
+      }, 500);
+      return;
+    }
+      // Send PF3 to exit FILELIST and wait for CMS Ready
+      logger.info(`[ws:${wsId}] ensureCmsReady: in FILELIST, sending PF3`);
+      send(ws, { type: 'xfer.status', message: 'In FILELIST — exiting to CMS Ready…' });
+      session.sendAid('PF3', []);
+      const deadline = Date.now() + 8000;
+      const poll = setInterval(() => {
+        if (!session.lastScreen) return;
+        const s = detectScreenState(screenToLines(session.lastScreen));
+        if (s === 'zvm-cms') {
+          clearInterval(poll);
+          resolve();
+        } else if (Date.now() > deadline) {
+          clearInterval(poll);
+          reject(new Error('Timed out waiting for CMS Ready after PF3'));
+        }
+      }, 500);
+      return;
+    }
+    // Unknown state — try to proceed anyway (might be TSO or CICS)
+    resolve();
+  });
+}
+
 function handleXferDownload(msg, ws, wsId, session) {
   // Just register the saveAs filename — the actual transfer is handled
   // by the IND$FILE WSF protocol in session.js.  The indfile-complete
@@ -500,6 +568,10 @@ function handleXferDownload(msg, ws, wsId, session) {
   const saveAs = msg.saveAs || msg.dataset?.split('.').pop().toLowerCase() + '.txt' || 'transfer.txt';
   session._indFileSaveAs = saveAs;
   logger.info(`[ws:${wsId}] xfer.download: saveAs=${saveAs} — waiting for IND$FILE WSF exchange`);
+  // Ensure CMS Ready before the transfer
+  ensureCmsReady(session, ws, wsId).catch(err => {
+    send(ws, { type: 'xfer.error', message: err.message });
+  });
 }
 
 // ── TSO EDIT Upload ──────────────────────────────────────────────
