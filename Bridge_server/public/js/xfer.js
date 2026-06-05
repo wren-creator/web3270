@@ -590,23 +590,20 @@ async function xferSend() {
   xferLog(`UPLOAD → ${cmd}`, 'var(--accent-amber)');
 
   try {
-    // 1. Type the IND$FILE command
-    session.ws.send(JSON.stringify({ type: 'type', row: cursorRow, col: cursorCol, text: cmd }));
-    await new Promise(r => setTimeout(r, 200));
-    // 2. Hit Enter
-    session.ws.send(JSON.stringify({ type: 'key', aid: 'ENTER', fields: [] }));
-    await new Promise(r => setTimeout(r, 1500));
-    // 3. Send the data payload via the bridge xfer.upload handler
+    // 1. Queue file in bridge IND$FILE driver BEFORE typing the command
     session.ws.send(JSON.stringify({
-      type:     'xfer.upload',
-      dataset:  cmd,         // full command (bridge parses if needed)
-      mode,
-      recfm:    recfm || null,
+      type:     'xfer.queue-upload',
       filename: xferFileName,
       data:     xferToBase64(xferFileData)
     }));
-    xferSetStatus(`✓ Upload sent → ${xferFileName}`, 'ok');
-    xferLog(`✓ Sent ${(xferFileData.byteLength / 1024).toFixed(1)} KB → host`, 'var(--accent-green)');
+    await new Promise(r => setTimeout(r, 200));
+    // 2. Type the IND$FILE command
+    session.ws.send(JSON.stringify({ type: 'type', row: cursorRow, col: cursorCol, text: cmd }));
+    await new Promise(r => setTimeout(r, 200));
+    // 3. Hit Enter — host sends OPEN, driver responds with chunks
+    session.ws.send(JSON.stringify({ type: 'key', aid: 'ENTER', fields: [] }));
+    xferSetStatus(`✓ Upload queued → ${xferFileName}`, 'ok');
+    xferLog(`✓ Queued ${(xferFileData.byteLength / 1024).toFixed(1)} KB — waiting for host`, 'var(--accent-green)');
   } catch (err) {
     xferSetStatus('Upload failed: ' + err.message, 'error');
     xferLog('ERROR: ' + err.message, 'var(--t-red)');
