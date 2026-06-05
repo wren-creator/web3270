@@ -1,33 +1,38 @@
 [
   {
-    "name": "z/VM FILELIST",
-    "description": "cms to filelist",
+    "name": "TSO-LOGON",
+    "description": "Gets me though the mess to the LOGON prompt",
+    "created": "2026-06-04T00:00:00.000Z",
     "steps": [
       {
-        "op": "comment",
-        "text": "Ensure we are at CMS Ready prompt"
+        "op": "aid",
+        "aid": "ENTER",
+        "fields": []
       },
       {
         "op": "wait",
-        "condition": "unlock"
-      },
-      {
-        "op": "type",
-        "row": 21,
-        "col": 14,
-        "text": "FILELIST"
+        "condition": "screen",
+        "timeoutMs": 5000
       },
       {
         "op": "aid",
-        "aid": "ENTER"
+        "aid": "PA1",
+        "fields": []
       },
       {
         "op": "wait",
-        "condition": "unlock"
+        "condition": "screen",
+        "timeoutMs": 5000
       },
       {
-        "op": "comment",
-        "text": "FILELIST screen is now active — click the refresh button in the Transfer panel"
+        "op": "aid",
+        "aid": "PA1",
+        "fields": []
+      },
+      {
+        "op": "wait",
+        "condition": "screen",
+        "timeoutMs": 5000
       }
     ],
     "id": "mp17efzred08"
