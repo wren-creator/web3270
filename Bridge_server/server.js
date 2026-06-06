@@ -492,10 +492,11 @@ function handleXferQueueUpload(msg, ws, wsId, session) {
       // Convert ASCII → EBCDIC before queuing so the mainframe sees text
       buf = Buffer.from(Ebcdic.fromAscii(buf.toString('utf8')));
     }
+    // Took this out as it was part of the automatic pipeline for the filelist that is broken.
     // Ensure CMS Ready before queuing
-    ensureCmsReady(session, ws, wsId).catch(err => {
-      send(ws, { type: 'xfer.error', message: err.message });
-    });
+    // ensureCmsReady(session, ws, wsId).catch(err => {
+    //  send(ws, { type: 'xfer.error', message: err.message });
+   // });
     session.indFileQueueUpload(buf);
     send(ws, { type: 'xfer.queued', message: `${filename || 'file'} queued (${buf.length} bytes) — type the IND$FILE command now` });
     logger.info(`[ws:${wsId}] xfer.queue-upload: ${buf.length} bytes queued for IND$FILE PUT`);
