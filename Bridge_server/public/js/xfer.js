@@ -438,7 +438,11 @@ function xferSetDir(dir, noRender) {
   tabD?.classList.toggle('active', dir === 'download');
   if (!noRender) {
     xferUpdateCmdPreview();
-    if (dir === 'download') xferLoadFileList();
+  if (dir === 'download') {
+      const listEl = document.getElementById('xferFileListPanel');
+      const isEmpty = !listEl || listEl.querySelector('.xfer-filelist-empty') || !listEl.children.length;
+      if (isEmpty) xferLoadFileList();
+    }
   }
 }
 
