@@ -575,9 +575,9 @@ function handleXferDownload(msg, ws, wsId, session) {
   session._indFileSaveAs = saveAs;
   logger.info(`[ws:${wsId}] xfer.download: saveAs=${saveAs} — waiting for IND$FILE WSF exchange`);
   // Ensure CMS Ready before the transfer
-  ensureCmsReady(session, ws, wsId).catch(err => {
-    send(ws, { type: 'xfer.error', message: err.message });
-  });
+  // ensureCmsReady(session, ws, wsId).catch(err => {
+    // send(ws, { type: 'xfer.error', message: err.message });
+  // });
 }
 
 // ── TSO EDIT Upload ──────────────────────────────────────────────
