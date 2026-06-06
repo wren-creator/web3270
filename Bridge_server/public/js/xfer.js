@@ -493,7 +493,8 @@ function xferLoadFileList() {
   xferSetStatus('Loading file list…', 'working');
 
   if (sysType === 'ZVM') {
-    session.ws.send(JSON.stringify({ type: 'xfer.ensure-cms' }));
+    //session.ws.send(JSON.stringify({ type: 'xfer.ensure-cms' }));
+    session.ws.send(JSON.stringify({ type: 'xfer.listdatasets', sessionType: 'ZVM' }));
   } else {
     session.ws.send(JSON.stringify({ type: 'xfer.listdatasets', sessionType: 'TSO' }));
   }
