@@ -348,8 +348,9 @@ wss.on('connection', (ws, req) => {
       if (info.direction === 'download') {
         // Convert EBCDIC → ASCII for TEXT transfers
         const saveAs = session._indFileSaveAs || 'transfer.bin';
-        const isText = !saveAs.match(/\.(bin|exe|obj|load|zip|gz|tar)$/i);
-        const outBuf = isText ? Buffer.from(Ebcdic.toAscii(info.data)) : info.data;
+        // const isText = !saveAs.match(/\.(bin|exe|obj|load|zip|gz|tar)$/i);
+        // const outBuf = isText ? Buffer.from(Ebcdic.toAscii(info.data)) : info.data;
+        const outBuf = info.data;
         const encoded = outBuf.toString('base64');
         send(ws, { type: 'xfer.data', data: encoded, saveAs, bytes: info.bytes });
         logger.info(`[ws:${wsId}] IND$FILE download complete: ${info.bytes} bytes → ${saveAs}`);
