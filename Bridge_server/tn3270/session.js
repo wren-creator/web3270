@@ -1276,6 +1276,7 @@ class Tn3270Session extends EventEmitter {
     if (cr) {
       const text = cr.data.toString('ascii').trim();
       this.indFile.contents = text.includes('FT:DATA') ? 'data' : 'msg';
+      this.indFile.isText = !text.includes('BINARY');
       logger.info(`[ws:${this.wsId}] IND$FILE OPEN: contents=${this.indFile.contents}`);
     } else {
       this.indFile.contents = 'data';
@@ -1371,10 +1372,17 @@ class Tn3270Session extends EventEmitter {
     // Always ACK the close: reply 41/09
     this._indFileSendReply(0x41, 0x09);
     logger.info(`[ws:${this.wsId}] IND$FILE: CLOSE acknowledged (direction=${dir}, contents=${this.indFile.contents})`);
-
     if (dir === 'download' && !wasMsg) {
-      const data = Buffer.concat(this.indFile.downloadChunks);
-      this.emit('indfile-complete', { direction: 'download', data, bytes: data.length });
+    let data;
+    if (this.indFile.isText) {
+      const lines = this.indFile.downloadChunks.map(chunk =>
+       Ebcdic.toAscii(chunk, this.codepage).trimEnd()
+      );
+      data = Buffer.from(lines.join('\n') + '\n');
+  } else {
+    data = Buffer.concat(this.indFile.downloadChunks);
+  }
+  this.emit('indfile-complete', { direction: 'download', data, bytes: data.length });
     } else if (dir === 'download' && wasMsg) {
       const text = Buffer.concat(this.indFile.downloadChunks).toString('latin1');
       logger.info(`[ws:${this.wsId}] IND$FILE message: ${text}`);
