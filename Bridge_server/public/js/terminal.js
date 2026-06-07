@@ -224,6 +224,7 @@ function addSessionTab(name, type, sid) {
   tab.innerHTML = `<div class="tab-dot" style="background:#ffaa00;box-shadow:0 0 4px #ffaa00"></div>${esc(name)} \u00b7 ${esc(type)}<span class="tab-close" onclick="closeSessionTab(event,this)">&times;</span>`;
   tab.onclick = () => activateTabEl(tab, sid);
   tabs.insertBefore(tab, addBtn);
+  activateTabEl(tab, sid);
   return tab;
 }
 
