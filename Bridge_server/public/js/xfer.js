@@ -18,6 +18,7 @@
 // ── State (xferFileData / xferFileName live in state.js) ──────────
 let xferExpertMode  = false;
 let xferCurrentDir  = 'upload';
+let xferUseTsoEdit  = false;  // use TSO EDIT path instead of IND$FILE
 
 // ── Detect system type from active session profile ────────────────
 function xferGetSystemType() {
@@ -109,6 +110,12 @@ function xferRenderPanel() {
       </div>
       <input type="file" id="xferFilePick" style="display:none" onchange="xferHandleFilePick(this)">
     </div>
+    ${sysType === 'TSO' ? `
+    <label class="xfer-tso-edit-toggle" title="Use TSO EDIT conversational upload instead of IND\$FILE. Required for hosts where IND\$FILE is not installed.">
+      <input type="checkbox" id="xferTsoEditChk" onchange="xferUseTsoEdit=this.checked;xferUpdateCmdPreview()"
+             ${xferUseTsoEdit ? 'checked' : ''}>
+      Use TSO EDIT <span style="color:var(--text-muted)">(no IND\$FILE)</span>
+    </label>` : ''}
     <button class="btn btn-green xfer-btn" id="xferSendBtn"
             onclick="xferSend()" ${!connected ? 'disabled' : ''}>
       &#x2B06; Send &#x2192;
@@ -156,7 +163,9 @@ function xferRenderPanel() {
                font-family:'IBM Plex Mono',monospace; letter-spacing:.04em; }
 .xfer-sys-badge { font-size:9px; font-family:'IBM Plex Mono',monospace; padding:2px 6px;
                   border-radius:3px; border:1px solid; font-weight:700; letter-spacing:.05em; }
-.xfer-sys-tso { color:#7ec8e3; border-color:#1a3a4a; background:#060e14; }
+.xfer-tso-edit-toggle { display:flex; align-items:center; gap:6px; color:var(--text-dim);
+                        font-size:10px; cursor:pointer; padding:2px 0; }
+.xfer-tso-edit-toggle input { accent-color:var(--accent-amber); cursor:pointer; }
 .xfer-sys-zvm { color:#c8a84b; border-color:#3a2a10; background:#0f0b04; }
 .xfer-mode-toggle { font-size:9px; background:transparent; border:1px solid var(--border);
                     color:var(--text-dim); cursor:pointer; padding:2px 7px; border-radius:3px;
@@ -569,6 +578,28 @@ async function xferSend() {
   xferSetStatus('Sending to host…', 'working');
   xferLog(`UPLOAD → ${cmd}`, 'var(--accent-amber)');
 
+  // TSO EDIT path — for hosts without IND$FILE
+  if (xferGetSystemType() === 'TSO' && xferUseTsoEdit) {
+    const dataset = xferExpertMode
+      ? (cmd.match(/PUT\s+('?[^\s']+'?)/i)?.[1] || '')
+      : (document.getElementById('xferDataset')?.value || '').trim().toUpperCase();
+    try {
+      session.ws.send(JSON.stringify({
+        type: 'xfer.tso-upload',
+        dataset,
+        data: xferToBase64(xferFileData),
+        lrecl: parseInt(document.getElementById('xferLrecl')?.value || '80') || 80
+      }));
+      xferSetStatus('TSO EDIT upload in progress…', 'working');
+      xferLog(`TSO EDIT → ${dataset}`, 'var(--accent-amber)');
+    } catch (err) {
+      xferSetStatus('Upload failed: ' + err.message, 'error');
+      xferLog('ERROR: ' + err.message, 'var(--t-red)');
+      if (btn) { btn.disabled = false; btn.textContent = '⬆ Send →'; }
+    }
+    return;
+  }
+
   try {
     // 1. Queue file in bridge BEFORE typing the command
     session.ws.send(JSON.stringify({
@@ -648,8 +679,17 @@ function xferGuessMode(cmd) {
 function handleXferMsg(msg) {
   const sb = document.getElementById('xferSendBtn');
   const rb = document.getElementById('xferRecvBtn');
-  if (sb) { sb.disabled = false; sb.textContent = '⬆ Send →'; }
-  if (rb) { rb.disabled = false; rb.textContent = '← ⬇ Recv'; }
+
+  // Re-enable buttons on terminal messages (not progress)
+  if (msg.type !== 'xfer.progress') {
+    if (sb) { sb.disabled = false; sb.textContent = '⬆ Send →'; }
+    if (rb) { rb.disabled = false; rb.textContent = '← ⬇ Recv'; }
+  }
+
+  if (msg.type === 'xfer.progress') {
+    xferSetStatus(msg.step || 'Transferring…', 'working');
+    xferLog(msg.step || 'Transferring…', 'var(--accent-amber)');
+  }
 
   if (msg.type === 'xfer.data') {
     const bytes = xferFromBase64(msg.data);

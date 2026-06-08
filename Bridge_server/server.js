@@ -610,36 +610,30 @@ async function handleXferTsoUpload(msg, ws, wsId, session) {
 
   logger.info(`[ws:${wsId}] xfer.tso-upload: ${fileLines.length} lines, lrecl=${lrecl}`);
 
-  // Member name for EDIT prompt — strip HLQ and parens, max 8 chars
-  const memberName     = dataset.replace(/^.*\./, '').replace(/[()]/g, '').substring(0, 8).toUpperCase();
-  const editDsName     = `SOURCE(${memberName})`;
-  const resolvedDataset = `MVSCE01.SOURCE(${memberName})`;
+  // Build fully-qualified quoted dataset name for EDIT command.
+  // Input may be: MVSCE01.SOURCE(TESTF001) or 'MVSCE01.SOURCE(TESTF001)' or SOURCE(TESTF001)
+  const bare = dataset.replace(/^'|'$/g, '').trim().toUpperCase();
+  const resolvedDataset = bare.includes('.') ? bare : `MVSCE01.${bare}`;
+  const editCmd = `EDIT '${resolvedDataset}' DATA`;
 
   // ── Helpers ──────────────────────────────────────────────────────
 
   let lastScreenSnapshot = '';
 
-  // typeCmd: move cursor to last input field (TSO command line), type, ENTER.
+  // typeCmd: send text into the last unprotected field and press ENTER.
+  // Uses sendAid with field list — avoids typeAt truncation at field boundaries.
   const typeCmd = (text) => {
     lastScreenSnapshot = session.lastScreen
       ? screenToLines(session.lastScreen).join('\n') : '';
-    try {
-      const fields = (session.lastScreen && session.lastScreen.fields) || [];
-      // Field property is 'startAddr' (not 'start') — verified from _emitScreen source.
-      // TSO command input is the last unprotected field; earlier ones are scrollback.
-      const inputs = fields.filter(f => !f.protected && f.startAddr !== undefined);
-      const f = inputs[inputs.length - 1];
-      if (f) {
-        session.moveCursor(
-          Math.floor((f.startAddr + 1) / session.cols),
-          (f.startAddr + 1) % session.cols
-        );
-      }
-    } catch {}
-    const row = Math.floor(session.cursorAddr / session.cols);
-    const col = session.cursorAddr % session.cols;
-    if (text) session.typeAt(row, col, text);
-    session.sendAid('ENTER', []);
+    const fields = (session.lastScreen && session.lastScreen.fields) || [];
+    const inputs = fields.filter(f => !f.protected && f.startAddr !== undefined);
+    const f = inputs[inputs.length - 1];
+    if (f && text) {
+      // Send as a field value — no truncation at typeAt boundaries
+      session.sendAid('ENTER', [{ addr: f.startAddr + 1, data: text }]);
+    } else {
+      session.sendAid('ENTER', []);
+    }
   };
 
   // waitScr: wait for a screen that differs from pre-command snapshot
@@ -680,21 +674,14 @@ async function handleXferTsoUpload(msg, ws, wsId, session) {
   };
 
   try {
-    // Step 1: start EDIT
+    // Step 1: EDIT dataset — single command, enters INPUT mode directly
     send(ws, { type: 'xfer.progress', direction: 'upload', step: 'Starting EDIT...' });
-    typeCmd('EDIT');
-    await waitScr(t => t.includes('ENTER DATA SET NAME'), 10000);
-    logger.info(`[ws:${wsId}] xfer.tso-upload: EDIT started`);
-
-    // Step 2: dataset name prompt
-    send(ws, { type: 'xfer.progress', direction: 'upload', step: 'Opening dataset...' });
-    typeCmd(editDsName);
-    await waitScr(t => t.includes('ENTER DATA SET TYPE'), 10000);
-    logger.info(`[ws:${wsId}] xfer.tso-upload: dataset name accepted`);
-
-    // Step 3: dataset type — enters INPUT mode, shows line number prompt
-    typeCmd('DATA');
-    await waitScr(t => /\d{5}/.test(t), 10000);
+    typeCmd(editCmd);
+    await waitScr(t => /\d{5}/.test(t) || t.includes('INVALID DATA SET'), 10000);
+    const openScreen = screenToLines(session.lastScreen).join('\n');
+    if (openScreen.includes('INVALID DATA SET')) {
+      throw new Error(`EDIT rejected dataset: ${resolvedDataset}`);
+    }
     logger.info(`[ws:${wsId}] xfer.tso-upload: in INPUT mode`);
 
     // Step 4: send lines
