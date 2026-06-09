@@ -9,6 +9,11 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap">
 <link rel="stylesheet" href="css/terminal.css">
 </head>
+<style>
+.cmd-hist-item { padding: 2px 12px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--t-green, #33ff66); }
+.cmd-hist-item:hover { background: rgba(255,255,255,0.06); }
+.cmd-hist-latest { color: var(--accent-green, #33ff66); font-weight: 500; }
+</style>
 <body>
 
 <!-- TOP BAR -->
@@ -121,9 +126,9 @@
       <div id="sidebarMacroList" style="padding:4px 0 8px;max-height:180px;overflow-y:auto"></div>
     </div>
     <div class="sidebar-section" style="flex:1">
-      <div class="sidebar-header">Screen History</div>
-      <div style="padding:8px 12px;font-size:10px;color:var(--text-muted);font-family:'IBM Plex Mono',monospace;line-height:1.9">
-        <span style="color:var(--accent-green)">▶ Not connected</span>
+      <div class="sidebar-header">Command History <span style="font-size:9px;color:var(--text-muted);font-weight:normal">(F12=back F11=fwd)</span></div>
+      <div id="cmdHistoryList" style="padding:4px 0 8px;overflow-y:auto;font-size:10px;font-family:'IBM Plex Mono',monospace;line-height:1.8">
+        <span style="color:var(--text-muted)">▶ No commands yet</span>
       </div>
     </div>
   </div>
