@@ -19,6 +19,8 @@
 let xferExpertMode  = false;
 let xferCurrentDir  = 'upload';
 let xferUseTsoEdit  = false;  // use TSO EDIT path instead of IND$FILE
+let _xferDataset    = '';     // persists across panel re-renders
+let _xferSaveAs     = '';
 
 // ── Detect system type from active session profile ────────────────
 function xferGetSystemType() {
@@ -67,6 +69,12 @@ function xferRenderPanel() {
   const panel = document.getElementById('panelXfer');
   if (!panel) return;
 
+  // Flush any typed values to persistent state before wiping innerHTML
+  const _cur_ds = document.getElementById('xferDataset');
+  const _cur_sa = document.getElementById('xferSaveAs');
+  if (_cur_ds && _cur_ds.value) _xferDataset = _cur_ds.value;
+  if (_cur_sa && _cur_sa.value) _xferSaveAs  = _cur_sa.value;
+
   const sysType  = xferGetSystemType();
   const session  = sessions.get(activeSession);
   const sysLabel = sysType === 'ZVM' ? 'z/VM CMS' : 'TSO/ISPF';
@@ -110,12 +118,7 @@ function xferRenderPanel() {
       </div>
       <input type="file" id="xferFilePick" style="display:none" onchange="xferHandleFilePick(this)">
     </div>
-    ${sysType === 'TSO' ? `
-    <label class="xfer-tso-edit-toggle" title="Use TSO EDIT conversational upload instead of IND\$FILE. Required for hosts where IND\$FILE is not installed.">
-      <input type="checkbox" id="xferTsoEditChk" onchange="xferUseTsoEdit=this.checked;xferUpdateCmdPreview()"
-             ${xferUseTsoEdit ? 'checked' : ''}>
-      Use TSO EDIT <span style="color:var(--text-muted)">(no IND\$FILE)</span>
-    </label>` : ''}
+
     <button class="btn btn-green xfer-btn" id="xferSendBtn"
             onclick="xferSend()" ${!connected ? 'disabled' : ''}>
       &#x2B06; Send &#x2192;
@@ -138,6 +141,13 @@ function xferRenderPanel() {
       &#x2190; &#x2B07; Recv
     </button>
   </div>
+
+  ${sysType === 'TSO' && !xferExpertMode ? `
+  <label class="xfer-tso-edit-toggle" title="Use TSO EDIT instead of IND\$FILE. Required for hosts where IND\$FILE is not installed.">
+    <input type="checkbox" id="xferTsoEditChk" onchange="xferUseTsoEdit=this.checked;xferUpdateCmdPreview()"
+           ${xferUseTsoEdit ? 'checked' : ''}>
+    Use TSO EDIT <span style="color:var(--text-muted)">(no IND\$FILE)</span>
+  </label>` : ''}
 
   ${!xferExpertMode ? `
   <div class="xfer-cmd-preview" id="xferCmdPreview">
@@ -253,6 +263,13 @@ function xferRenderPanel() {
     xferUpdateCmdPreview();
   }
 
+  // Restore persistent field values after re-render
+  const _ds = document.getElementById('xferDataset'); if (_ds && _xferDataset) _ds.value = _xferDataset;
+  const _sa = document.getElementById('xferSaveAs');  if (_sa && _xferSaveAs)  _sa.value = _xferSaveAs;
+  // Wire fields to persist on change
+  if (_ds) _ds.addEventListener('input', () => { _xferDataset = _ds.value; });
+  if (_sa) _sa.addEventListener('input', () => { _xferSaveAs  = _sa.value; });
+
   xferSetDir(xferCurrentDir || 'upload', true);
 }
 
@@ -292,7 +309,7 @@ ${xferModeField()}`;
     <span class="xfer-tip" title="Fully-qualified dataset name, e.g. USER01.JCL.CNTL. Use USER01.PDS(MEMBER) for a PDS member.">?</span>
   </label>
   <input class="xfer-input" type="text" id="xferDataset" placeholder="USER01.JCL.CNTL"
-         oninput="this.value=this.value.toUpperCase();xferUpdateCmdPreview()">
+         oninput="this.value=this.value.toUpperCase();_xferDataset=this.value;xferUpdateCmdPreview()" value="${_xferDataset}">
   <div class="xfer-input-hint">HLQ.NAME — use HLQ.PDS(MEMBER) for a PDS member</div>
 </div>
 ${xferModeField()}
@@ -350,7 +367,7 @@ ${xferModeField()}`;
 </div>
 <div class="xfer-field-group">
   <input class="xfer-input" type="text" id="xferDataset" placeholder="USER01.DATA.FILE"
-         oninput="this.value=this.value.toUpperCase();xferUpdateCmdPreview();xferAutoSaveAs()">
+         oninput="this.value=this.value.toUpperCase();_xferDataset=this.value;xferUpdateCmdPreview();xferAutoSaveAs()" value="${_xferDataset}">
   <div class="xfer-input-hint">Or type a dataset name directly</div>
 </div>
 ${xferModeField()}`;
@@ -625,6 +642,26 @@ async function xferSend() {
 // ── Receive (download) ─────────────────────────────────────────────
 async function xferReceive() {
   const session = xferCheckSession(); if (!session) return;
+  const saveAs = (document.getElementById('xferSaveAs')?.value.trim()) || xferDefaultSaveName();
+  const btn    = document.getElementById('xferRecvBtn');
+
+  // TSO EDIT download path — bypasses IND$FILE entirely
+  if (xferGetSystemType() === 'TSO' && xferUseTsoEdit) {
+    const ds = (document.getElementById('xferDataset')?.value || _xferDataset || '').trim().toUpperCase();
+    if (!ds) { xferSetStatus('Enter a dataset name', 'error'); return; }
+    if (btn) { btn.disabled = true; btn.textContent = '⧳'; }
+    xferSetStatus('TSO EDIT download in progress…', 'working');
+    xferLog(`TSO EDIT ← ${ds}`, 'var(--t-blue)');
+    try {
+      session.ws.send(JSON.stringify({ type: 'xfer.tso-download', dataset: ds, saveAs }));
+    } catch (err) {
+      xferSetStatus('Download failed: ' + err.message, 'error');
+      xferLog('ERROR: ' + err.message, 'var(--t-red)');
+      if (btn) { btn.disabled = false; btn.textContent = '← ⬇ Recv'; }
+    }
+    return;
+  }
+
   const cmd = xferBuildCommand('download');
   if (!cmd) {
     xferSetStatus(xferGetSystemType() === 'ZVM'
@@ -633,9 +670,7 @@ async function xferReceive() {
   }
 
   const mode   = xferExpertMode ? xferGuessMode(cmd) : (document.getElementById('xferMode')?.value || 'TEXT');
-  const saveAs = (document.getElementById('xferSaveAs')?.value.trim()) || xferDefaultSaveName();
-  const btn    = document.getElementById('xferRecvBtn');
-  if (btn) { btn.disabled = true; btn.textContent = '⟳'; }
+  if (btn) { btn.disabled = true; btn.textContent = '⧳'; }
   xferSetStatus('Receiving from host…', 'working');
   xferLog(`DOWNLOAD ← ${cmd}`, 'var(--t-blue)');
 
@@ -705,6 +740,22 @@ function handleXferMsg(msg) {
     xferRenderDatasets(msg.datasets, msg.sessionType);
     xferSetStatus(`✓ Found ${msg.datasets.length} file(s)`, 'ok');
     xferLog(`✓ ${msg.datasets.length} file(s) listed`, 'var(--accent-green)');
+  }
+  if (msg.type === 'xfer.file') {
+    // Trigger browser file download
+    try {
+      const bytes = Uint8Array.from(atob(msg.data), c => c.charCodeAt(0));
+      const blob  = new Blob([bytes], { type: 'text/plain' });
+      const url   = URL.createObjectURL(blob);
+      const a     = document.createElement('a');
+      a.href = url; a.download = msg.filename || 'transfer.txt';
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      xferLog(`⬇ Saved: ${msg.filename}`, 'var(--accent-green)');
+    } catch (e) {
+      xferLog('ERROR saving file: ' + e.message, 'var(--t-red)');
+    }
   }
   if (msg.type === 'xfer.ok') {
     xferSetStatus(`✓ ${msg.message || 'Transfer complete'}`, 'ok');

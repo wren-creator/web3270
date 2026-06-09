@@ -399,6 +399,10 @@ wss.on('connection', (ws, req) => {
         handleXferTsoUpload(msg, ws, wsId, session);
         return;
       }
+      if (msg.type === 'xfer.tso-download') {
+        handleXferTsoDownload(msg, ws, wsId, session);
+        return;
+      }
       if (msg.type === 'xfer.ensure-cms') {
         ensureCmsReady(session, ws, wsId)
           .then(() => send(ws, { type: 'xfer.cms-ready' }))
@@ -717,6 +721,178 @@ async function handleXferTsoUpload(msg, ws, wsId, session) {
   } catch (err) {
     logger.error(`[ws:${wsId}] xfer.tso-upload error: ${err.message}`);
     send(ws, { type: 'xfer.error', message: `TSO EDIT upload failed: ${err.message}` });
+    try { session.sendAid('ENTER', []); } catch {}
+    try { typeCmd('END'); } catch {}
+  }
+}
+
+
+// ── TSO EDIT download handler ────────────────────────────────────
+async function handleXferTsoDownload(msg, ws, wsId, session) {
+  const { dataset, saveAs } = msg;
+
+  const bare = (dataset || '').replace(/^'|'$/g, '').trim().toUpperCase();
+  const resolvedDataset = bare.includes('.') ? bare : `MVSCE01.${bare}`;
+  const screenToLines = (scr) => {
+    if (!scr) return [];
+    const out = [];
+    for (let r = 0; r < scr.rows; r++) {
+      let line = '';
+      for (let c = 0; c < scr.cols; c++) line += scr.buffer[r][c]?.char || ' ';
+      out.push(line.trimEnd());
+    }
+    return out;
+  };
+
+  let _lastSnap = null;  // null means: resolve on first screen change regardless of content
+
+  const sdToText = (sd) => (sd.rows || []).map(row =>
+    (Array.isArray(row) ? row : []).map(c => c.char || ' ').join('')
+  ).join('\n');
+
+  const waitScr = (pred, timeout = 15000) => {
+    const snap = _lastSnap;
+    return new Promise((res, rej) => {
+      const t = setTimeout(() => { session.removeListener('screen', h); rej(new Error('Timeout waiting for host response')); }, timeout);
+      function h(sd) {
+        const txt = sdToText(sd);
+        if (snap !== null && txt === snap) return;
+        _lastSnap = txt;
+        if (pred(txt)) { clearTimeout(t); session.removeListener('screen', h); res(txt); }
+      }
+      session.on('screen', h);
+      // Check immediately in case screen already updated before listener registered
+      if (session.lastScreen) {
+        const cur = sdToText(session.lastScreen);
+        if ((snap === null || cur !== snap) && pred(cur)) {
+          clearTimeout(t);
+          session.removeListener('screen', h);
+          _lastSnap = cur;
+          res(cur);
+        }
+      }
+    });
+  };
+
+  const typeCmd = (text) => {
+    _lastSnap = session.lastScreen ? sdToText(session.lastScreen) : null;
+    const fields = (session.lastScreen && session.lastScreen.fields) || [];
+    const inputs = fields.filter(f => !f.protected && f.startAddr !== undefined);
+    const f = inputs[inputs.length - 1];
+    const row = f ? Math.floor((f.startAddr + 1) / session.cols) + 1 : '?';
+    const col = f ? ((f.startAddr + 1) % session.cols) + 1 : '?';
+    logger.info(`[ws:${wsId}] typeCmd: text="${text}" field=${f ? `addr=${f.startAddr} row=${row} col=${col}` : 'NONE'} totalFields=${inputs.length}`);
+    session.sendAid('ENTER', (f && text) ? [{ addr: f.startAddr + 1, data: text }] : []);
+  };
+
+  session.setMaxListeners(50);  // prevent MaxListenersExceededWarning during download
+  logger.info(`[ws:${wsId}] xfer.tso-download -> ${resolvedDataset}`);
+  send(ws, { type: 'xfer.progress', direction: 'download', step: 'Opening dataset...' });
+
+  // CANARY: verify screen events are firing and show content
+  const _canaryHandler = (sd) => {
+    const lines = (sd.rows || []).map(row =>
+      (Array.isArray(row) ? row : []).map(c => (c.char && c.char !== ' ') ? c.char : ' ').join('').trimEnd()
+    ).filter(l => l.trim());
+    const txt = lines.join(' | ');
+    logger.info(`[ws:${wsId}] CANARY screen event: rows=${sd.rows?.length} fields=${sd.fields?.length} text="${txt.substring(0,120)}"`);
+  };
+  session.on('screen', _canaryHandler);
+  setTimeout(() => session.removeListener('screen', _canaryHandler), 30000);
+
+  // Helper: scrape numbered data lines from current screen text
+  const scrapeLines = () => {
+    const lines = (_lastSnap || '').split('\n');
+    const out = [];
+    for (const line of lines) {
+      const m = line.match(/^\s*(\d{5})\s(.*)/);
+      if (m) out.push({ num: parseInt(m[1]), text: m[2].trimEnd() });
+    }
+    return out;
+  };
+
+  // Helper: send PF8 (scroll forward)
+  const sendPF8 = () => session.sendAid('PF8', []);
+
+  try {
+    // Step 1: open in EDIT DATA mode
+    typeCmd(`EDIT '${resolvedDataset}' DATA`);
+    await waitScr(t => t.includes('EDIT') || t.includes('INVALID DATA SET'), 15000);
+    let openScreen = _lastSnap || '';
+    if (openScreen.includes('INVALID DATA SET')) {
+      throw new Error(`Dataset not found: ${resolvedDataset}`);
+    }
+
+    // If INPUT mode appeared, send blank Enter to get to EDIT subcommand prompt
+    if (openScreen.includes('INPUT')) {
+      typeCmd('');
+      await waitScr(t => t.includes('EDIT') && !t.includes('INPUT'), 10000);
+    }
+
+    // Step 2: LIST to display all records with line numbers
+    send(ws, { type: 'xfer.progress', direction: 'download', step: 'Reading data...' });
+    typeCmd('LIST');
+    await waitScr(t => /\d{5}/.test(t) || t.includes('END OF DATA'), 10000);
+
+    // Step 4: scrape + scroll until END OF DATA
+    const allLines = new Map(); // line number -> text (deduplicates overlapping screens)
+    let lastMaxNum = -1;
+    let scrollAttempts = 0;
+    const MAX_SCROLLS = 50;
+
+    while (scrollAttempts < MAX_SCROLLS) {
+      const screenTxt = _lastSnap || '';
+      const scraped = scrapeLines();
+      for (const { num, text } of scraped) allLines.set(num, text);
+
+      if (screenTxt.includes('END OF DATA')) break;
+
+      // Check if PF8 advanced (new max line number)
+      const maxNum = scraped.length ? Math.max(...scraped.map(l => l.num)) : lastMaxNum;
+      sendPF8();
+      await waitScr(t => {
+        const s = scrapeLines();
+        if (!s.length) return false;
+        const newMax = Math.max(...s.map(l => l.num));
+        return newMax > maxNum || t.includes('END OF DATA');
+      }, 10000);
+      lastMaxNum = maxNum;
+      scrollAttempts++;
+    }
+
+    // Final scrape after last scroll
+    for (const { num, text } of scrapeLines()) allLines.set(num, text);
+
+    // Sort by line number and extract text
+    const dataLines = [...allLines.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([, text]) => text);
+
+    // Step 5: exit EDIT — send END repeatedly until READY
+    // Screen may have INPUT+EDIT both visible; just keep sending END
+    for (let exitTry = 0; exitTry < 4; exitTry++) {
+      const snap = _lastSnap || '';
+      if (snap.includes('READY') && !snap.includes('EDIT') && !snap.includes('INPUT')) break;
+      typeCmd('END');
+      await waitScr(t => t !== snap, 8000).catch(() => {});
+    }
+    // Final: if NOTHING SAVED prompt appeared, send END- or END one more time
+    if ((_lastSnap || '').includes('NOTHING SAVED') || (_lastSnap || '').includes('ENTER SAVE OR END')) {
+      typeCmd('END');
+      await waitScr(t => t.includes('READY'), 8000).catch(() => {});
+    }
+
+    const fileContent = dataLines.join('\n');
+    const b64 = Buffer.from(fileContent, 'utf8').toString('base64');
+    const fileName = saveAs || resolvedDataset.replace(/.*\(/, '').replace(')', '').toLowerCase() + '.txt';
+
+    send(ws, { type: 'xfer.file', filename: fileName, data: b64 });
+    send(ws, { type: 'xfer.ok', message: `Downloaded ${dataLines.length} lines from ${resolvedDataset}` });
+    logger.info(`[ws:${wsId}] xfer.tso-download complete -> ${resolvedDataset} (${dataLines.length} lines)`);
+
+  } catch (err) {
+    logger.error(`[ws:${wsId}] xfer.tso-download error: ${err.message}`);
+    send(ws, { type: 'xfer.error', message: `TSO EDIT download failed: ${err.message}` });
     try { session.sendAid('ENTER', []); } catch {}
     try { typeCmd('END'); } catch {}
   }
