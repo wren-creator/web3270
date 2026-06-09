@@ -271,7 +271,7 @@ function closeSessionTab(e, closeBtn) {
 function applyDemoMode() {
   const oiaSys = document.getElementById('oiaSys');
   const oiaLu  = document.getElementById('oiaLu');
-  const btn    = document.getElementById('demoBtnToolbar');
+  const btn    = document.getElementById('demoBtn');
   const session = sessions.get(activeSession);
   if (oiaSys) oiaSys.textContent = demoMode ? '***.***.***' : (session?.profile?.host || '\u2014');
   if (oiaLu)  oiaLu.textContent  = demoMode ? '******'      : (session?.lastLu        || '\u2014');
