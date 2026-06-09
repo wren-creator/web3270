@@ -1379,7 +1379,7 @@ class Tn3270Session extends EventEmitter {
       const lines = this.indFile.downloadChunks.map(chunk =>
        Ebcdic.toAscii(chunk, this.codepage).trimEnd()
       );
-      data = Buffer.from(lines.join('\n') + '\n');
+      data = Buffer.from(lines.join('\r\n') + '\r\n');
   } else {
     data = Buffer.concat(this.indFile.downloadChunks);
   }
