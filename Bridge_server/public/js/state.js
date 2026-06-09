@@ -61,6 +61,5 @@ let xferDirStack      = [];
 // ── Demo mode ──────────────────────────────────────────────────────
 let demoMode          = false;   // when true, masks host IP/hostname in OIA bar
 
-// ── Command history ────────────────────────────────────────────────
-let cmdHistory        = [];      // commands typed this session (most recent last)
-let cmdHistoryIndex   = -1;      // -1 = not cycling; counts back from end
+// ── Command history index (ui cycling state only) ──────────────────
+let cmdHistoryIndex   = -1;      // -1 = not cycling; per active session
