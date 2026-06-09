@@ -150,16 +150,20 @@ function termClick(e) {
 function sendKey(aid, fields = []) {
   const session = sessions.get(activeSession);
   if (!session || session.ws.readyState !== WebSocket.OPEN) return;
-  // Capture command from row 23 col 0 on Enter
+  // Capture command from row 23 on Enter — skip if any nondisplay cell present (password screen)
   if (aid === 'ENTER' && liveScreen && liveScreen.rows) {
-    const cmdRow = liveScreen.rows[22]; // row 23 is index 22
+    const cmdRow = liveScreen.rows[22];
     if (cmdRow) {
-      const cmd = cmdRow.map(c => (c && c.char && c.char !== '\x00') ? c.char : ' ').join('').trimEnd();
-      if (cmd.trim().length > 0) {
-        cmdHistory.push(cmd);
-        if (cmdHistory.length > 100) cmdHistory.shift();
-        cmdHistoryIndex = -1;
-        renderCmdHistory();
+      const hasNondisplay = cmdRow.some(c => c && c.nondisplay);
+      if (!hasNondisplay) {
+        const cmd = cmdRow.map(c => (c && c.char && c.char !== '\x00') ? c.char : ' ').join('').trimEnd();
+        if (cmd.trim().length > 0) {
+          if (!session.cmdHistory) session.cmdHistory = [];
+          session.cmdHistory.push(cmd);
+          if (session.cmdHistory.length > 100) session.cmdHistory.shift();
+          cmdHistoryIndex = -1;
+          renderCmdHistory();
+        }
       }
     }
   }
@@ -169,22 +173,26 @@ function sendKey(aid, fields = []) {
 function renderCmdHistory() {
   const el = document.getElementById('cmdHistoryList');
   if (!el) return;
-  if (cmdHistory.length === 0) {
-    el.innerHTML = '<span style="color:var(--text-muted)">▶ No commands yet</span>';
+  const session = sessions.get(activeSession);
+  const history = session?.cmdHistory || [];
+  if (history.length === 0) {
+    el.innerHTML = '<span style="color:var(--text-muted);padding:4px 12px;display:block">▶ No commands yet</span>';
     return;
   }
-  el.innerHTML = [...cmdHistory].reverse().map((cmd, i) =>
-    `<div class="cmd-hist-item${i === 0 ? ' cmd-hist-latest' : ''}" onclick="cmdHistoryRecall(${cmdHistory.length - 1 - i})" title="Click to recall">${esc(cmd)}</div>`
+  el.innerHTML = [...history].reverse().map((cmd, i) =>
+    `<div class="cmd-hist-item${i === 0 ? ' cmd-hist-latest' : ''}" onclick="cmdHistoryRecall(${history.length - 1 - i})" title="Click to recall">${esc(cmd)}</div>`
   ).join('');
 }
 
 function cmdHistoryRecall(idx) {
-  const cmd = cmdHistory[idx];
+  const session = sessions.get(activeSession);
+  if (!session || !session.cmdHistory) return;
+  const cmd = session.cmdHistory[idx];
   if (!cmd || !liveScreen || !liveScreen.rows) return;
-  // Place the command into row 23, starting at col 0
+  const cols = liveScreen.cols || 80;
+  // Update local screen display
   const row = liveScreen.rows[22];
   if (!row) return;
-  const cols = liveScreen.cols || 80;
   for (let i = 0; i < cols; i++) {
     if (!row[i]) row[i] = {};
     row[i].char = i < cmd.length ? cmd[i] : ' ';
@@ -193,9 +201,9 @@ function cmdHistoryRecall(idx) {
   cursorRow = 22; cursorCol = cmd.length;
   liveScreen.cursorRow = cursorRow; liveScreen.cursorCol = cursorCol;
   renderLiveScreen(liveScreen);
-  const session = sessions.get(activeSession);
-  if (session && session.ws.readyState === WebSocket.OPEN)
-    session.ws.send(JSON.stringify({ type: 'setField', row: 22, col: 0, text: cmd }));
+  // Send to bridge using fillField so the host buffer is also updated
+  if (session.ws.readyState === WebSocket.OPEN)
+    session.ws.send(JSON.stringify({ type: 'fillField', row: 22, col: 0, text: cmd }));
 }
 
 function sendType(row, col, text) {
@@ -296,6 +304,8 @@ function activateSession(sid) {
     renderLiveScreen(session.lastScreen); liveScreenText = screenToText(session.lastScreen);
     liveScreen = session.lastScreen; cursorRow = session.lastScreen.cursorRow ?? 0; cursorCol = session.lastScreen.cursorCol ?? 0;
   } else { document.getElementById('terminal').innerHTML = ''; }
+  cmdHistoryIndex = -1;
+  renderCmdHistory();
 }
 
 function closeSessionTab(e, closeBtn) {

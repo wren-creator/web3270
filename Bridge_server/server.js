@@ -439,6 +439,15 @@ wss.on('connection', (ws, req) => {
           session.eraseAt(msg.row, msg.col);
           break;
 
+        case 'fillField':
+          // { type:'fillField', row, col, text } — clear from col to end of row then type text
+          { const cols = session.cols || 80;
+            const endCol = cols - 1;
+            for (let c = msg.col; c <= endCol; c++) session.eraseAt(msg.row, c);
+            for (let i = 0; i < msg.text.length; i++) session.typeAt(msg.row, msg.col + i, msg.text[i]);
+          }
+          break;
+
         case 'disconnect':
           session.disconnect('client request');
           break;
