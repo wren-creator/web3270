@@ -1280,6 +1280,7 @@ class Tn3270Session extends EventEmitter {
       logger.info(`[ws:${this.wsId}] IND$FILE OPEN: contents=${this.indFile.contents}`);
     } else {
       this.indFile.contents = 'data';
+      this.indFile.isText = true;  // no CONTENTS record → assume text (z/VM TEXT mode)
     }
 
     // Check for RecordSize (max chunk the host accepts)
