@@ -57,3 +57,6 @@ let xferSelectedLocal = null;
 let xferCurrentPath   = null;
 let xferDirHandle     = null;
 let xferDirStack      = [];
+
+// ── Demo mode ──────────────────────────────────────────────────────
+let demoMode          = false;   // when true, masks host IP/hostname in OIA bar

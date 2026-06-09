@@ -150,7 +150,7 @@
       <button class="t-btn" title="SysReq" style="color:var(--t-red);border-color:#3a1010" onclick="sendKey('SYSREQ')">SysReq</button>
       <button class="t-btn" title="Clear" onclick="sendKey('CLEAR')">Clear</button>
       <div class="t-spacer"></div>
-    </div>
+      <button class="t-btn" id="demoBtnToolbar" title="Demo Mode — masks host IP in OIA bar" onclick="toggleDemoMode()" style="color:var(--text-muted);border-color:#333">DEMO</button>
     <div class="screen-wrapper" id="screenWrapper">
       <div class="t3270-screen" id="terminal" onclick="termClick(event)"></div>
     </div>
