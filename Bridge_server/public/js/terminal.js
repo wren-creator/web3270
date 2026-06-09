@@ -243,8 +243,8 @@ function activateSession(sid) {
   const oiaSys   = document.getElementById('oiaSys');
   const oiaLu    = document.getElementById('oiaLu');
   const oiaModel = document.getElementById('oiaModel');
-  if (oiaSys)   oiaSys.textContent   = session.profile?.host  || '\u2014';
-  if (oiaLu)    oiaLu.textContent    = session.lastLu          || '\u2014';
+  if (oiaSys)   oiaSys.textContent   = demoMode ? '***.***.***' : (session.profile?.host  || '\u2014');
+  if (oiaLu)    oiaLu.textContent    = demoMode ? '******'      : (session.lastLu          || '\u2014');
   if (oiaModel) oiaModel.textContent = session.profile?.model  || '\u2014';
 
   if (session.lastScreen) {
@@ -266,6 +266,21 @@ function closeSessionTab(e, closeBtn) {
   const remaining = [...tabs.querySelectorAll('.session-tab')];
   if (remaining.length) { const next = remaining[Math.max(0, idx-1)]; activateTabEl(next, Number(next.dataset.sid)); }
   else { activeSession = null; document.getElementById('terminal').innerHTML = ''; setConnStatus('', 'disconnected'); }
+}
+
+function applyDemoMode() {
+  const oiaSys = document.getElementById('oiaSys');
+  const oiaLu  = document.getElementById('oiaLu');
+  const btn    = document.getElementById('demoBtnToolbar');
+  const session = sessions.get(activeSession);
+  if (oiaSys) oiaSys.textContent = demoMode ? '***.***.***' : (session?.profile?.host || '\u2014');
+  if (oiaLu)  oiaLu.textContent  = demoMode ? '******'      : (session?.lastLu        || '\u2014');
+  if (btn) { btn.style.color = demoMode ? 'var(--accent-amber)' : 'var(--text-muted)'; btn.style.borderColor = demoMode ? 'var(--accent-amber)' : '#333'; }
+}
+
+function toggleDemoMode() {
+  demoMode = !demoMode;
+  applyDemoMode();
 }
 
 function cycleSession(direction) {
