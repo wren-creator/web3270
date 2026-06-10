@@ -645,10 +645,10 @@ class Tn3270Session extends EventEmitter {
         const bindBytes = bytes.slice(5);
         const bindStr = bindBytes.toString('ascii');
 
-       // Typical format: IBM-3278-x
-       const match = bindStr.match(/IBM-3278-(\d)/);
+       // Match IBM-3278-x or IBM-3279-x or IBM-3279-x-E
+       const match = bindStr.match(/IBM-(3278|3279)-(\d)(-E)?/);
         if (match) {
-          const model = `3278-${match[1]}`;
+          const model = `${match[1]}-${match[2]}${match[3] || ''}`;
           this._applyModel(model);
         }
 
@@ -1508,11 +1508,21 @@ function newBuffer(rows, cols) {
 
 function modelDimensions(model) {
   const map = {
+    // 3278 family
     '3278-2': { rows: 24,  cols: 80  },
     '3278-3': { rows: 32,  cols: 80  },
     '3278-4': { rows: 43,  cols: 80  },
     '3278-5': { rows: 27,  cols: 132 },
-    '3178': { rows: 24,  cols: 80 }, // Standard 3178 is Model 2 equivalent
+    '3178':   { rows: 24,  cols: 80  },
+    // 3279 color family — same dimensions as 3278 equivalents
+    '3279-2':   { rows: 24,  cols: 80  },
+    '3279-2-E': { rows: 24,  cols: 80  },
+    '3279-3':   { rows: 32,  cols: 80  },
+    '3279-3-E': { rows: 32,  cols: 80  },
+    '3279-4':   { rows: 43,  cols: 132 },
+    '3279-4-E': { rows: 43,  cols: 132 },
+    '3279-5':   { rows: 27,  cols: 132 },
+    '3279-5-E': { rows: 27,  cols: 132 },
   };
   return map[model] || { rows: 24, cols: 80 };
 }
