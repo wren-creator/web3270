@@ -421,8 +421,10 @@ wss.on('connection', (ws, req) => {
 
         case 'key':
           // { type:'key', aid:'ENTER'|'PF1'…'PF24'|'PA1'|'PA2'|'CLEAR', fields:[{addr,data}] }
-         // session.sendAid(msg.aid, msg.fields || []);
-          session.sendAid(msg.aid, session.getModifiedFields());
+          // Use includeAll=true: send all unprotected fields regardless of MDT.
+          // Required for z/VM CP LOGO screen — CP falls back to unformatted CP READ
+          // if any unprotected field (e.g. empty COMMAND field) is omitted.
+          session.sendAid(msg.aid, session.getModifiedFields(true));
           break;
 
         case 'type':

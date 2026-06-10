@@ -329,7 +329,11 @@ class Tn3270Session extends EventEmitter {
    this._emitScreen();
   }
 
-  getModifiedFields() {
+  getModifiedFields(includeAll = false) {
+   // includeAll=true: send all unprotected fields (Read Modified All semantics).
+   // Some hosts (e.g. z/VM CP LOGO screen) require all unprotected fields to
+   // be present in the AID response even when MDT is not set, otherwise CP
+   // falls back to the unformatted CP READ prompt.
    const fields = [];
    let isProtected = true;
    let isNonDisplayField = false;
@@ -342,9 +346,11 @@ class Tn3270Session extends EventEmitter {
      if (!cell) continue;
 
      if (cell.fa !== undefined) {
-       // Save previous unprotected field if MDT is set (either in FA byte
-       // OR via our per-cell modified tracking) and it has content.
-       if (!isProtected && fieldMDT && fieldData.length > 0) {
+       // Save previous unprotected field if eligible.
+       // In includeAll mode: save any unprotected field regardless of MDT.
+       // In normal mode: only save if MDT set AND field has content.
+       const saveField = !isProtected && (includeAll ? true : (fieldMDT && fieldData.length > 0));
+       if (saveField) {
          fields.push({ addr: fieldAddr, data: fieldData, nondisplay: isNonDisplayField });
        }
        isProtected       = !!(cell.fa & FA_PROTECTED);
@@ -359,7 +365,7 @@ class Tn3270Session extends EventEmitter {
        // updated yet.
        if (cell.modified) fieldMDT = true;
 
-       if ((fieldMDT || cell.modified) && cell.char) {
+       if ((includeAll || fieldMDT || cell.modified) && cell.char) {
          // Per-cell debug log: mask the byte for nondisplay fields so
          // passwords don't end up in docker compose logs.
          if (isNonDisplayField) {
@@ -372,9 +378,9 @@ class Tn3270Session extends EventEmitter {
      }
    }
 
-   // Flush the last field — the loop only saves on SF transitions, so the
-   // final field in the buffer would be dropped without this.
-   if (!isProtected && fieldMDT && fieldData.length > 0) {
+   // Flush the last field.
+   const saveField = !isProtected && (includeAll ? true : (fieldMDT && fieldData.length > 0));
+   if (saveField) {
      fields.push({ addr: fieldAddr, data: fieldData, nondisplay: isNonDisplayField });
    }
 
