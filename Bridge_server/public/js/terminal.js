@@ -150,13 +150,17 @@ function termClick(e) {
 function sendKey(aid, fields = []) {
   const session = sessions.get(activeSession);
   if (!session || session.ws.readyState !== WebSocket.OPEN) return;
-  // Capture command from row 23 on Enter — skip if any nondisplay cell present (password screen)
+  // Capture command on Enter — use the cursor row, collect only unprotected
+  // non-nondisplay content. Works regardless of screen model/size.
   if (aid === 'ENTER' && liveScreen && liveScreen.rows) {
-    const cmdRow = liveScreen.rows[22];
+    const cmdRow = liveScreen.rows[cursorRow];
     if (cmdRow) {
       const hasNondisplay = cmdRow.some(c => c && c.nondisplay);
       if (!hasNondisplay) {
-        const cmd = cmdRow.map(c => (c && c.char && c.char !== '\x00') ? c.char : ' ').join('').trimEnd();
+        const cmd = cmdRow.map(c => {
+          if (!c || c.protected) return ' ';
+          return (c.char && c.char !== '\x00') ? c.char : ' ';
+        }).join('').trimEnd();
         if (cmd.trim().length > 0) {
           if (!session.cmdHistory) session.cmdHistory = [];
           session.cmdHistory.push(cmd);
