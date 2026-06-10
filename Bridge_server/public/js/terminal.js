@@ -150,13 +150,17 @@ function termClick(e) {
 function sendKey(aid, fields = []) {
   const session = sessions.get(activeSession);
   if (!session || session.ws.readyState !== WebSocket.OPEN) return;
-  // Capture command from row 23 on Enter — skip if any nondisplay cell present (password screen)
+  // Capture command on Enter — use the cursor row, collect only unprotected
+  // non-nondisplay content. Works regardless of screen model/size.
   if (aid === 'ENTER' && liveScreen && liveScreen.rows) {
-    const cmdRow = liveScreen.rows[22];
+    const cmdRow = liveScreen.rows[cursorRow];
     if (cmdRow) {
       const hasNondisplay = cmdRow.some(c => c && c.nondisplay);
       if (!hasNondisplay) {
-        const cmd = cmdRow.map(c => (c && c.char && c.char !== '\x00') ? c.char : ' ').join('').trimEnd();
+        const cmd = cmdRow.map(c => {
+          if (!c || c.protected) return ' ';
+          return (c.char && c.char !== '\x00') ? c.char : ' ';
+        }).join('').trimEnd();
         if (cmd.trim().length > 0) {
           if (!session.cmdHistory) session.cmdHistory = [];
           session.cmdHistory.push(cmd);
@@ -190,20 +194,38 @@ function cmdHistoryRecall(idx) {
   const cmd = session.cmdHistory[idx];
   if (!cmd || !liveScreen || !liveScreen.rows) return;
   const cols = liveScreen.cols || 80;
+
+  // Find the current input field — prefer the field the cursor is in,
+  // fall back to the first unprotected non-nondisplay field.
+  let targetRow = cursorRow;
+  let targetCol = 0;
+  if (liveScreen.fields) {
+    const curAddr = cursorRow * cols + cursorCol;
+    const inputFields = liveScreen.fields.filter(f => !f.protected && !f.nondisplay);
+    if (inputFields.length > 0) {
+      // Field cursor is currently in, or last input field before cursor
+      const f = inputFields.reduce((best, f) =>
+        f.startAddr <= curAddr && f.startAddr > (best ? best.startAddr : -1) ? f : best
+      , null) || inputFields[0];
+      targetRow = Math.floor((f.startAddr + 1) / cols);
+      targetCol = (f.startAddr + 1) % cols;
+    }
+  }
+
   // Update local screen display
-  const row = liveScreen.rows[22];
+  const row = liveScreen.rows[targetRow];
   if (!row) return;
   for (let i = 0; i < cols; i++) {
     if (!row[i]) row[i] = {};
     row[i].char = i < cmd.length ? cmd[i] : ' ';
     row[i].modified = true;
   }
-  cursorRow = 22; cursorCol = cmd.length;
+  cursorRow = targetRow; cursorCol = cmd.length;
   liveScreen.cursorRow = cursorRow; liveScreen.cursorCol = cursorCol;
   renderLiveScreen(liveScreen);
-  // Send to bridge using fillField so the host buffer is also updated
+  // Send to bridge so host buffer is also updated
   if (session.ws.readyState === WebSocket.OPEN)
-    session.ws.send(JSON.stringify({ type: 'fillField', row: 22, col: 0, text: cmd }));
+    session.ws.send(JSON.stringify({ type: 'fillField', row: targetRow, col: targetCol, text: cmd }));
 }
 
 function sendType(row, col, text) {

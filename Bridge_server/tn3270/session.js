@@ -329,7 +329,11 @@ class Tn3270Session extends EventEmitter {
    this._emitScreen();
   }
 
-  getModifiedFields() {
+  getModifiedFields(includeAll = false) {
+   // includeAll=true: send all unprotected fields (Read Modified All semantics).
+   // Some hosts (e.g. z/VM CP LOGO screen) require all unprotected fields to
+   // be present in the AID response even when MDT is not set, otherwise CP
+   // falls back to the unformatted CP READ prompt.
    const fields = [];
    let isProtected = true;
    let isNonDisplayField = false;
@@ -342,9 +346,11 @@ class Tn3270Session extends EventEmitter {
      if (!cell) continue;
 
      if (cell.fa !== undefined) {
-       // Save previous unprotected field if MDT is set (either in FA byte
-       // OR via our per-cell modified tracking) and it has content.
-       if (!isProtected && fieldMDT && fieldData.length > 0) {
+       // Save previous unprotected field if eligible.
+       // In includeAll mode: save any unprotected field regardless of MDT.
+       // In normal mode: only save if MDT set AND field has content.
+       const saveField = !isProtected && (includeAll ? true : (fieldMDT && fieldData.length > 0));
+       if (saveField) {
          fields.push({ addr: fieldAddr, data: fieldData, nondisplay: isNonDisplayField });
        }
        isProtected       = !!(cell.fa & FA_PROTECTED);
@@ -359,7 +365,7 @@ class Tn3270Session extends EventEmitter {
        // updated yet.
        if (cell.modified) fieldMDT = true;
 
-       if ((fieldMDT || cell.modified) && cell.char) {
+       if ((includeAll || fieldMDT || cell.modified) && cell.char) {
          // Per-cell debug log: mask the byte for nondisplay fields so
          // passwords don't end up in docker compose logs.
          if (isNonDisplayField) {
@@ -372,9 +378,9 @@ class Tn3270Session extends EventEmitter {
      }
    }
 
-   // Flush the last field — the loop only saves on SF transitions, so the
-   // final field in the buffer would be dropped without this.
-   if (!isProtected && fieldMDT && fieldData.length > 0) {
+   // Flush the last field.
+   const saveField = !isProtected && (includeAll ? true : (fieldMDT && fieldData.length > 0));
+   if (saveField) {
      fields.push({ addr: fieldAddr, data: fieldData, nondisplay: isNonDisplayField });
    }
 
@@ -639,10 +645,10 @@ class Tn3270Session extends EventEmitter {
         const bindBytes = bytes.slice(5);
         const bindStr = bindBytes.toString('ascii');
 
-       // Typical format: IBM-3278-x
-       const match = bindStr.match(/IBM-3278-(\d)/);
+       // Match IBM-3278-x or IBM-3279-x or IBM-3279-x-E
+       const match = bindStr.match(/IBM-(3278|3279)-(\d)(-E)?/);
         if (match) {
-          const model = `3278-${match[1]}`;
+          const model = `${match[1]}-${match[2]}${match[3] || ''}`;
           this._applyModel(model);
         }
 
@@ -658,34 +664,30 @@ class Tn3270Session extends EventEmitter {
 
     const cmd = bytes[0];
 
-    if (cmd === 0xF5 || cmd === 0x7E || cmd === 0x05 || cmd === 0x01 || cmd === 0xF1) {
-      // Write / Erase Write family.
-      // Erase commands: 0x05 (Erase Write), 0xF5 (SNA Erase Write),
-      //                 0x7E (Erase Write Alternate, both encodings)
-      // Plain Write: 0x01 (overlay, do NOT clear buffer)
-      // 0xF1 is also documented as Write in some references.
-      const erase = (cmd === 0x05 || cmd === 0xF5 || cmd === 0x7E);
+    if (cmd === 0x01 || cmd === 0xF1 ||
+        cmd === 0x05 || cmd === 0xF5 ||
+        cmd === 0x0D || cmd === 0x7E) {
+      // Write / Erase Write family (CCW and SNA encodings):
+      // Write:               CCW=0x01  SNA=0xF1
+      // Erase Write:         CCW=0x05  SNA=0xF5
+      // Erase Write Alt:     CCW=0x0D  SNA=0x7E
+      const erase = (cmd === 0x05 || cmd === 0xF5 || cmd === 0x0D || cmd === 0x7E);
       this._processWriteCommand(bytes.slice(1), erase);
-    } else if (cmd === 0xF3) {
-      // Erase All Unprotected
+    } else if (cmd === 0x0F || cmd === 0x6F) {
+      // Erase All Unprotected: CCW=0x0F  SNA=0x6F
       this._eraseAllUnprotected();
-    } else if (cmd === 0x6F) {
-      // Read Buffer
-      // (host polling — we respond with our buffer)
-      this._sendReadBuffer();
-    } else if (cmd === 0x02) {
-      // Read Buffer — respond with current buffer contents
+    } else if (cmd === 0x02 || cmd === 0xF2) {
+      // Read Buffer: CCW=0x02  SNA=0xF2
       logger.debug(`[ws:${this.wsId}] Read Buffer command received`);
       this._sendReadBuffer();
-    } else if (cmd === 0x0D || cmd === 0x6E) {
-      // Read Modified / Read Modified All — respond with AID + modified fields
-      logger.debug(`[ws:${this.wsId}] Read Modified command received`);
-      this._sendReadModified();
-
-    } else if (cmd === 0x11) {
-      // Write Structured Field (host → terminal).
-      // Carries Query, ReadPartition, OutboundDS etc. We must reply with
-      // a QueryReply or the host falls back to a degraded display mode.
+    } else if (cmd === 0x06 || cmd === 0xF6 || cmd === 0x6E) {
+      // Read Modified: CCW=0x06  SNA=0xF6
+      // Read Modified All: CCW=0x6E
+      // Host is entering read-wait mode — do NOT auto-respond.
+      // Wait for user to press an AID key.
+      logger.debug(`[ws:${this.wsId}] Read Modified — keyboard unlocked, waiting for user AID`);
+    } else if (cmd === 0x11 || cmd === 0xF3) {
+      // Write Structured Field: CCW=0x11  SNA=0xF3
       logger.debug(`[ws:${this.wsId}] Write Structured Field received`);
       this._processWriteStructuredField(bytes.slice(1));
 
@@ -1502,11 +1504,21 @@ function newBuffer(rows, cols) {
 
 function modelDimensions(model) {
   const map = {
+    // 3278 family
     '3278-2': { rows: 24,  cols: 80  },
     '3278-3': { rows: 32,  cols: 80  },
     '3278-4': { rows: 43,  cols: 80  },
     '3278-5': { rows: 27,  cols: 132 },
-    '3178': { rows: 24,  cols: 80 }, // Standard 3178 is Model 2 equivalent
+    '3178':   { rows: 24,  cols: 80  },
+    // 3279 color family — same dimensions as 3278 equivalents
+    '3279-2':   { rows: 24,  cols: 80  },
+    '3279-2-E': { rows: 24,  cols: 80  },
+    '3279-3':   { rows: 32,  cols: 80  },
+    '3279-3-E': { rows: 32,  cols: 80  },
+    '3279-4':   { rows: 43,  cols: 132 },
+    '3279-4-E': { rows: 43,  cols: 132 },
+    '3279-5':   { rows: 27,  cols: 132 },
+    '3279-5-E': { rows: 27,  cols: 132 },
   };
   return map[model] || { rows: 24, cols: 80 };
 }

@@ -37,6 +37,54 @@ function closeAllMenus() {
 }
 document.addEventListener('click', e => { if (!e.target.closest('.menu-item')) closeAllMenus(); });
 
+// ======================================================================
+//  FIELD COLLECTION
+//  Gather modified unprotected fields from liveScreen before sending AID.
+//  PA keys and CLEAR do NOT transmit field data per 3270 spec.
+// ======================================================================
+const AIDS_WITH_FIELDS = new Set([
+  'ENTER',
+  'PF1','PF2','PF3','PF4','PF5','PF6','PF7','PF8','PF9','PF10','PF11','PF12',
+  'PF13','PF14','PF15','PF16','PF17','PF18','PF19','PF20','PF21','PF22','PF23','PF24',
+]);
+
+function collectModifiedFields() {
+  if (!liveScreen || !liveScreen.rows || !liveScreen.fields) return [];
+  const cols = liveScreen.cols || 80;
+  const rows = liveScreen.rows;
+  const screenFields = liveScreen.fields;
+  const result = [];
+
+  for (let fi = 0; fi < screenFields.length; fi++) {
+    const f = screenFields[fi];
+    if (f.protected) continue;
+
+    // Data starts one cell after the FA byte (startAddr is the FA cell itself)
+    const dataStart = f.startAddr + 1;
+    // Data ends one cell before the next field's FA, or at end of buffer
+    const nextFa = screenFields[fi + 1] ? screenFields[fi + 1].startAddr : (rows.length * cols);
+    const dataEnd = nextFa - 1;
+
+    let data = '';
+    let hasModified = false;
+    for (let addr = dataStart; addr <= dataEnd; addr++) {
+      const r = Math.floor(addr / cols);
+      const c = addr % cols;
+      const cell = rows[r] && rows[r][c];
+      if (!cell) { data += ' '; continue; }
+      const ch = (cell.char && cell.char !== '\x00') ? cell.char : ' ';
+      data += ch;
+      if (cell.modified) hasModified = true;
+    }
+
+    // Only include fields that have been modified (MDT set by user input)
+    if (hasModified) {
+      result.push({ addr: dataStart, data: data.trimEnd() });
+    }
+  }
+  return result;
+}
+
 document.addEventListener('keydown', e => {
   if (e.repeat) return;
   if (e.ctrlKey && e.key === 'k') {
@@ -61,11 +109,9 @@ document.addEventListener('keydown', e => {
     if ((aid === 'PF11' || aid === 'PF12') && history.length > 0) {
       e.preventDefault();
       if (aid === 'PF12') {
-        // PF12 = go back (older)
         if (cmdHistoryIndex === -1) cmdHistoryIndex = history.length - 1;
         else if (cmdHistoryIndex > 0) cmdHistoryIndex--;
       } else {
-        // PF11 = go forward (newer)
         if (cmdHistoryIndex === -1) return;
         if (cmdHistoryIndex < history.length - 1) cmdHistoryIndex++;
         else { cmdHistoryIndex = -1; return; }
@@ -73,10 +119,13 @@ document.addEventListener('keydown', e => {
       cmdHistoryRecall(cmdHistoryIndex);
       return;
     }
-    e.preventDefault(); sendKey(aid); return;
+    e.preventDefault();
+    const fields = AIDS_WITH_FIELDS.has(aid) ? collectModifiedFields() : [];
+    sendKey(aid, fields);
+    return;
   }
-  if (e.key === 'PageUp')   { e.preventDefault(); sendKey('PF7'); return; }
-  if (e.key === 'PageDown') { e.preventDefault(); sendKey('PF8'); return; }
+  if (e.key === 'PageUp')   { e.preventDefault(); sendKey('PF7', collectModifiedFields()); return; }
+  if (e.key === 'PageDown') { e.preventDefault(); sendKey('PF8', collectModifiedFields()); return; }
   if (e.key === 'Tab') {
     e.preventDefault();
     if (liveScreen && liveScreen.fields) {
@@ -152,7 +201,6 @@ function menuOpenPanel(name) {
   closeAllMenus();
   const rightPanel = document.getElementById('rightPanel');
   if (rightPanel.classList.contains('hidden')) { rightPanel.classList.remove('hidden'); setTimeout(fitScreen, 210); }
-  // Tab index map: Settings=0, Keys=1, Xfer=2, AIConfig=3, Copilot=4
   const idxMap = { Settings: 0, Keys: 1, Xfer: 2, AIConfig: 3, Copilot: 4 };
   const tabs = [...document.querySelectorAll('.panel-tab')];
   const idx  = idxMap[name] ?? 0;
