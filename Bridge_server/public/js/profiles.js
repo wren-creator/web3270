@@ -211,7 +211,7 @@ function handleBridgeMsg(sid, msg) {
     case 'copilot.error':      handleCopilotReply('\u26a0 Copilot error: ' + msg.message); break;
     case 'copilot.models':     aiHandleModelsReply(msg); break;
     case 'copilot.configured': aiHandleConfigured(msg); break;
-    case 'xfer.data': case 'xfer.ok': case 'xfer.error': case 'xfer.datasets':
+    case 'xfer.data': case 'xfer.ok': case 'xfer.error': case 'xfer.datasets': case 'xfer.file': case 'xfer.progress':
       if (sid === activeSession) handleXferMsg(msg); break;
     case 'error': showBridgeError('Bridge error: ' + msg.message); break;
   }

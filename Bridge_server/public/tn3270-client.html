@@ -9,6 +9,11 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap">
 <link rel="stylesheet" href="css/terminal.css">
 </head>
+<style>
+.cmd-hist-item { padding: 2px 12px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--t-green, #33ff66); }
+.cmd-hist-item:hover { background: rgba(255,255,255,0.06); }
+.cmd-hist-latest { color: var(--accent-green, #33ff66); font-weight: 500; }
+</style>
 <body>
 
 <!-- TOP BAR -->
@@ -121,9 +126,9 @@
       <div id="sidebarMacroList" style="padding:4px 0 8px;max-height:180px;overflow-y:auto"></div>
     </div>
     <div class="sidebar-section" style="flex:1">
-      <div class="sidebar-header">Screen History</div>
-      <div style="padding:8px 12px;font-size:10px;color:var(--text-muted);font-family:'IBM Plex Mono',monospace;line-height:1.9">
-        <span style="color:var(--accent-green)">▶ Not connected</span>
+      <div class="sidebar-header">Command History <span style="font-size:9px;color:var(--text-muted);font-weight:normal">(F12=back F11=fwd)</span></div>
+      <div id="cmdHistoryList" style="padding:4px 0 8px;overflow-y:auto;font-size:10px;font-family:'IBM Plex Mono',monospace;line-height:1.8">
+        <span style="color:var(--text-muted)">▶ No commands yet</span>
       </div>
     </div>
   </div>
@@ -161,6 +166,7 @@
       <div class="oia-field"><span class="oia-label">ROW</span><span class="oia-val" id="oiaRow">00</span></div>
       <div class="oia-field"><span class="oia-label">COL</span><span class="oia-val" id="oiaCol">00</span></div>
       <div class="oia-spacer"></div>
+      <div class="oia-field"><button id="demoBtn" onclick="toggleDemoMode()" title="Demo Mode — masks host IP/LU in OIA bar" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:1px 6px;cursor:pointer;letter-spacing:0.05em">DEMO</button></div>
       <div class="oia-field"><span class="oia-val blue" id="oiaMode">NOT CONNECTED</span></div>
       <div class="oia-field"><span class="oia-val">3270 · TLS 1.3</span></div>
       <div class="oia-field"><span class="oia-val" id="oiaTime">--:--:--</span></div>
@@ -244,61 +250,8 @@
         </div>
       </div>
     </div>
-
     <!-- Transfer -->
-    <div class="panel-content" id="panelXfer" style="display:none;flex-direction:column">
-      <div id="xferStatus" style="display:none;padding:5px 8px;font-size:10px;font-family:'IBM Plex Mono',monospace;border-bottom:1px solid var(--border);flex-shrink:0"></div>
-      <div style="display:flex;flex-direction:column;flex:1;overflow:hidden;padding:8px;gap:6px">
-        <div style="display:flex;flex-direction:column;flex:1;min-height:0">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-            <span style="font-size:9px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted)">Local</span>
-            <div style="display:flex;align-items:center;gap:4px">
-              <span id="xferLocalPath" style="font-size:9px;font-family:'IBM Plex Mono',monospace;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px;text-align:right"></span>
-              <button onclick="xferPickDir()" style="font-size:9px;padding:1px 6px;background:transparent;border:1px solid var(--border);color:var(--text-muted);border-radius:2px;cursor:pointer;white-space:nowrap;font-family:'IBM Plex Mono',monospace" title="Open a local folder">&#128193; Open</button>
-            </div>
-          </div>
-          <div id="xferLocalList" style="flex:1;background:#060c14;border:1px solid var(--border);border-radius:3px;overflow-y:auto;font-family:'IBM Plex Mono',monospace;font-size:10px;min-height:120px;max-height:160px;scrollbar-width:thin;scrollbar-color:#1a3050 transparent">
-            <div style="padding:20px;text-align:center;color:var(--text-muted);font-size:10px;line-height:1.6">Click &#128193; Open to browse<br>your local files</div>
-          </div>
-          <div style="margin-top:4px;display:flex;gap:4px;align-items:center">
-            <span id="xferLocalSelected" style="flex:1;font-size:9px;font-family:'IBM Plex Mono',monospace;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">No file selected</span>
-            <input type="file" id="xferFileInput" style="display:none" onchange="xferFileSelected(event)">
-            <button onclick="document.getElementById('xferFileInput').click()" style="font-size:9px;padding:2px 6px;background:var(--bg-elevated);border:1px solid var(--border-bright);color:var(--text-dim);border-radius:2px;cursor:pointer;white-space:nowrap;font-family:'IBM Plex Mono',monospace">Browse&hellip;</button>
-          </div>
-        </div>
-        <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
-          <button id="xferSendBtn" onclick="xferSend()" style="flex:1;padding:5px;border-radius:3px;cursor:pointer;font-size:10px;font-family:'IBM Plex Mono',monospace;text-align:center;background:#060f08;border:1px solid #1a4020;color:var(--accent-green)">&#x2B06; Send &rarr;</button>
-          <div style="flex:1;display:flex;flex-direction:column;gap:3px">
-            <select id="xferMode" style="font-size:9px;padding:2px 4px;width:100%"><option value="TEXT">TEXT</option><option value="BINARY">BINARY</option></select>
-            <select id="xferRecfm" style="font-size:9px;padding:2px 4px;width:100%"><option value="">RECFM: Default</option><option value="FB">FB</option><option value="VB">VB</option><option value="FBA">FBA</option></select>
-          </div>
-          <button id="xferRecvBtn" onclick="xferReceive()" style="flex:1;padding:5px;border-radius:3px;cursor:pointer;font-size:10px;font-family:'IBM Plex Mono',monospace;text-align:center;background:#06080f;border:1px solid #1a2a40;color:var(--t-blue)">&larr; &#x2B07; Recv</button>
-        </div>
-        <div style="display:flex;flex-direction:column;flex:1;min-height:0">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-            <span style="font-size:9px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted)">Mainframe Dataset</span>
-            <button onclick="xferRefreshMainframe()" style="font-size:9px;padding:1px 5px;background:transparent;border:1px solid var(--border);color:var(--text-muted);border-radius:2px;cursor:pointer;font-family:'IBM Plex Mono',monospace">&#x21BA;</button>
-          </div>
-          <input type="text" id="xferDataset" placeholder="USER.DATA.FILE" style="font-family:'IBM Plex Mono',monospace;font-size:10px;text-transform:uppercase;margin-bottom:4px;padding:4px 7px;background:var(--bg-elevated);border:1px solid var(--border-bright);color:var(--text-primary);border-radius:3px;width:100%;outline:none" oninput="this.value=this.value.toUpperCase()">
-          <div id="xferMainframeList" style="flex:1;background:#060c14;border:1px solid var(--border);border-radius:3px;overflow-y:auto;font-family:'IBM Plex Mono',monospace;font-size:10px;min-height:80px;max-height:120px;scrollbar-width:thin;scrollbar-color:#1a3050 transparent">
-            <div style="padding:16px;text-align:center;color:var(--text-muted);font-size:10px;line-height:1.6">z/OS: go to ISPF 3.4<br>z/VM: run FILELIST<br>then press &#x21BA;</div>
-          </div>
-          <div style="margin-top:4px">
-            <input type="text" id="xferSaveAs" placeholder="Save as (auto)" style="font-family:'IBM Plex Mono',monospace;font-size:9px;padding:3px 6px;background:var(--bg-elevated);border:1px solid var(--border);color:var(--text-dim);border-radius:2px;width:100%;outline:none">
-          </div>
-        </div>
-        <div style="flex-shrink:0">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
-            <span style="font-size:9px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted)">Log</span>
-            <span onclick="xferClearLog()" style="font-size:9px;color:var(--text-muted);cursor:pointer;font-family:'IBM Plex Mono',monospace">clear</span>
-          </div>
-          <div id="xferLog" style="background:#060c14;border:1px solid var(--border);border-radius:3px;padding:5px 7px;font-family:'IBM Plex Mono',monospace;font-size:9px;color:#3a7050;max-height:70px;overflow-y:auto;line-height:1.8;scrollbar-width:thin;scrollbar-color:#1a3050 transparent">
-            <span style="color:var(--text-muted)">No transfers yet.</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
+    <div class="panel-content" id="panelXfer" style="display:none;flex-direction:column"></div>
     <!-- AI Config -->
     <div class="panel-content" id="panelAIConfig">
       <div class="ai-chip">
