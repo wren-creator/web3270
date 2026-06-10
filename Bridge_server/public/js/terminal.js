@@ -150,7 +150,60 @@ function termClick(e) {
 function sendKey(aid, fields = []) {
   const session = sessions.get(activeSession);
   if (!session || session.ws.readyState !== WebSocket.OPEN) return;
+  // Capture command from row 23 on Enter — skip if any nondisplay cell present (password screen)
+  if (aid === 'ENTER' && liveScreen && liveScreen.rows) {
+    const cmdRow = liveScreen.rows[22];
+    if (cmdRow) {
+      const hasNondisplay = cmdRow.some(c => c && c.nondisplay);
+      if (!hasNondisplay) {
+        const cmd = cmdRow.map(c => (c && c.char && c.char !== '\x00') ? c.char : ' ').join('').trimEnd();
+        if (cmd.trim().length > 0) {
+          if (!session.cmdHistory) session.cmdHistory = [];
+          session.cmdHistory.push(cmd);
+          if (session.cmdHistory.length > 100) session.cmdHistory.shift();
+          cmdHistoryIndex = -1;
+          renderCmdHistory();
+        }
+      }
+    }
+  }
   session.ws.send(JSON.stringify({ type: 'key', aid, fields }));
+}
+
+function renderCmdHistory() {
+  const el = document.getElementById('cmdHistoryList');
+  if (!el) return;
+  const session = sessions.get(activeSession);
+  const history = session?.cmdHistory || [];
+  if (history.length === 0) {
+    el.innerHTML = '<span style="color:var(--text-muted);padding:4px 12px;display:block">▶ No commands yet</span>';
+    return;
+  }
+  el.innerHTML = [...history].reverse().map((cmd, i) =>
+    `<div class="cmd-hist-item${i === 0 ? ' cmd-hist-latest' : ''}" onclick="cmdHistoryRecall(${history.length - 1 - i})" title="Click to recall">${esc(cmd)}</div>`
+  ).join('');
+}
+
+function cmdHistoryRecall(idx) {
+  const session = sessions.get(activeSession);
+  if (!session || !session.cmdHistory) return;
+  const cmd = session.cmdHistory[idx];
+  if (!cmd || !liveScreen || !liveScreen.rows) return;
+  const cols = liveScreen.cols || 80;
+  // Update local screen display
+  const row = liveScreen.rows[22];
+  if (!row) return;
+  for (let i = 0; i < cols; i++) {
+    if (!row[i]) row[i] = {};
+    row[i].char = i < cmd.length ? cmd[i] : ' ';
+    row[i].modified = true;
+  }
+  cursorRow = 22; cursorCol = cmd.length;
+  liveScreen.cursorRow = cursorRow; liveScreen.cursorCol = cursorCol;
+  renderLiveScreen(liveScreen);
+  // Send to bridge using fillField so the host buffer is also updated
+  if (session.ws.readyState === WebSocket.OPEN)
+    session.ws.send(JSON.stringify({ type: 'fillField', row: 22, col: 0, text: cmd }));
 }
 
 function sendType(row, col, text) {
@@ -224,6 +277,7 @@ function addSessionTab(name, type, sid) {
   tab.innerHTML = `<div class="tab-dot" style="background:#ffaa00;box-shadow:0 0 4px #ffaa00"></div>${esc(name)} \u00b7 ${esc(type)}<span class="tab-close" onclick="closeSessionTab(event,this)">&times;</span>`;
   tab.onclick = () => activateTabEl(tab, sid);
   tabs.insertBefore(tab, addBtn);
+  activateTabEl(tab, sid);
   return tab;
 }
 
@@ -242,14 +296,16 @@ function activateSession(sid) {
   const oiaSys   = document.getElementById('oiaSys');
   const oiaLu    = document.getElementById('oiaLu');
   const oiaModel = document.getElementById('oiaModel');
-  if (oiaSys)   oiaSys.textContent   = session.profile?.host  || '\u2014';
-  if (oiaLu)    oiaLu.textContent    = session.lastLu          || '\u2014';
+  if (oiaSys)   oiaSys.textContent   = demoMode ? '***.***.***' : (session.profile?.host  || '\u2014');
+  if (oiaLu)    oiaLu.textContent    = demoMode ? '******'      : (session.lastLu          || '\u2014');
   if (oiaModel) oiaModel.textContent = session.profile?.model  || '\u2014';
 
   if (session.lastScreen) {
     renderLiveScreen(session.lastScreen); liveScreenText = screenToText(session.lastScreen);
     liveScreen = session.lastScreen; cursorRow = session.lastScreen.cursorRow ?? 0; cursorCol = session.lastScreen.cursorCol ?? 0;
   } else { document.getElementById('terminal').innerHTML = ''; }
+  cmdHistoryIndex = -1;
+  renderCmdHistory();
 }
 
 function closeSessionTab(e, closeBtn) {
@@ -265,6 +321,21 @@ function closeSessionTab(e, closeBtn) {
   const remaining = [...tabs.querySelectorAll('.session-tab')];
   if (remaining.length) { const next = remaining[Math.max(0, idx-1)]; activateTabEl(next, Number(next.dataset.sid)); }
   else { activeSession = null; document.getElementById('terminal').innerHTML = ''; setConnStatus('', 'disconnected'); }
+}
+
+function applyDemoMode() {
+  const oiaSys = document.getElementById('oiaSys');
+  const oiaLu  = document.getElementById('oiaLu');
+  const btn    = document.getElementById('demoBtn');
+  const session = sessions.get(activeSession);
+  if (oiaSys) oiaSys.textContent = demoMode ? '***.***.***' : (session?.profile?.host || '\u2014');
+  if (oiaLu)  oiaLu.textContent  = demoMode ? '******'      : (session?.lastLu        || '\u2014');
+  if (btn) { btn.style.color = demoMode ? 'var(--accent-amber)' : 'var(--text-muted)'; btn.style.borderColor = demoMode ? 'var(--accent-amber)' : '#333'; }
+}
+
+function toggleDemoMode() {
+  demoMode = !demoMode;
+  applyDemoMode();
 }
 
 function cycleSession(direction) {

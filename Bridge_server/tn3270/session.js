@@ -1276,9 +1276,11 @@ class Tn3270Session extends EventEmitter {
     if (cr) {
       const text = cr.data.toString('ascii').trim();
       this.indFile.contents = text.includes('FT:DATA') ? 'data' : 'msg';
+      this.indFile.isText = !text.includes('BINARY');
       logger.info(`[ws:${this.wsId}] IND$FILE OPEN: contents=${this.indFile.contents}`);
     } else {
       this.indFile.contents = 'data';
+      this.indFile.isText = true;  // no CONTENTS record → assume text (z/VM TEXT mode)
     }
 
     // Check for RecordSize (max chunk the host accepts)
@@ -1371,10 +1373,27 @@ class Tn3270Session extends EventEmitter {
     // Always ACK the close: reply 41/09
     this._indFileSendReply(0x41, 0x09);
     logger.info(`[ws:${this.wsId}] IND$FILE: CLOSE acknowledged (direction=${dir}, contents=${this.indFile.contents})`);
-
     if (dir === 'download' && !wasMsg) {
-      const data = Buffer.concat(this.indFile.downloadChunks);
-      this.emit('indfile-complete', { direction: 'download', data, bytes: data.length });
+    let data;
+    if (this.indFile.isText) {
+      // CMS sends the entire file as one blob with 0x15 (EBCDIC NL) as record separator
+      const raw = Buffer.concat(this.indFile.downloadChunks);
+      const lines = [];
+      let start = 0;
+      for (let i = 0; i < raw.length; i++) {
+        if (raw[i] === 0x15) {
+          lines.push(Ebcdic.toAscii(raw.slice(start, i), this.codepage).trimEnd());
+          start = i + 1;
+        }
+      }
+      if (start < raw.length) {
+        lines.push(Ebcdic.toAscii(raw.slice(start), this.codepage).trimEnd());
+      }
+      data = Buffer.from(lines.join('\r\n') + '\r\n');
+  } else {
+    data = Buffer.concat(this.indFile.downloadChunks);
+  }
+  this.emit('indfile-complete', { direction: 'download', data, bytes: data.length });
     } else if (dir === 'download' && wasMsg) {
       const text = Buffer.concat(this.indFile.downloadChunks).toString('latin1');
       logger.info(`[ws:${this.wsId}] IND$FILE message: ${text}`);

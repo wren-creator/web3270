@@ -20,6 +20,7 @@ const logger        = require('./logger');
 const MacroHandler  = require('./macros/handler');
 const MacroStore    = require('./macros/store');
 const CopilotHandler = require('./copilot/copilot-handler');
+const Ebcdic         = require('./tn3270/ebcdic');
 
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
@@ -345,8 +346,12 @@ wss.on('connection', (ws, req) => {
     // ── IND$FILE transfer events ──────────────────────────────────
     session.on('indfile-complete', info => {
       if (info.direction === 'download') {
-        const encoded = info.data.toString('base64');
+        // Convert EBCDIC → ASCII for TEXT transfers
         const saveAs = session._indFileSaveAs || 'transfer.bin';
+        // const isText = !saveAs.match(/\.(bin|exe|obj|load|zip|gz|tar)$/i);
+        // const outBuf = isText ? Buffer.from(Ebcdic.toAscii(info.data)) : info.data;
+        const outBuf = info.data;
+        const encoded = outBuf.toString('base64');
         send(ws, { type: 'xfer.data', data: encoded, saveAs, bytes: info.bytes });
         logger.info(`[ws:${wsId}] IND$FILE download complete: ${info.bytes} bytes → ${saveAs}`);
       } else {
@@ -394,6 +399,15 @@ wss.on('connection', (ws, req) => {
         handleXferTsoUpload(msg, ws, wsId, session);
         return;
       }
+      if (msg.type === 'xfer.tso-download') {
+        handleXferTsoDownload(msg, ws, wsId, session);
+        return;
+      }
+      if (msg.type === 'xfer.ensure-cms') {
+        ensureCmsReady(session, ws, wsId)
+          .then(() => send(ws, { type: 'xfer.cms-ready' }))
+          .catch(err => send(ws, { type: 'xfer.error', message: err.message }));
+      }
       if (msg.type === 'xfer.listdatasets') {
         handleXferListDatasets(msg, ws, wsId, session);
         return;
@@ -423,6 +437,15 @@ wss.on('connection', (ws, req) => {
 	
 	case 'erase':
           session.eraseAt(msg.row, msg.col);
+          break;
+
+        case 'fillField':
+          // { type:'fillField', row, col, text } — clear from col to end of row then type text
+          { const cols = session.cols || 80;
+            const endCol = cols - 1;
+            for (let c = msg.col; c <= endCol; c++) session.eraseAt(msg.row, c);
+            for (let i = 0; i < msg.text.length; i++) session.typeAt(msg.row, msg.col + i, msg.text[i]);
+          }
           break;
 
         case 'disconnect':
@@ -476,9 +499,18 @@ function buildTlsOptions(params) {
 // ── IND$FILE Transfer Handlers ────────────────────────────────────
 
 function handleXferQueueUpload(msg, ws, wsId, session) {
-  const { data, filename } = msg;
+  const { data, filename, mode } = msg;
   try {
-    const buf = Buffer.from(data, 'base64');
+    let buf = Buffer.from(data, 'base64');
+    if ((mode || 'TEXT') === 'TEXT') {
+      // Convert ASCII → EBCDIC before queuing so the mainframe sees text
+      buf = Buffer.from(Ebcdic.fromAscii(buf.toString('utf8')));
+    }
+    // Took this out as it was part of the automatic pipeline for the filelist that is broken.
+    // Ensure CMS Ready before queuing
+    // ensureCmsReady(session, ws, wsId).catch(err => {
+    //  send(ws, { type: 'xfer.error', message: err.message });
+   // });
     session.indFileQueueUpload(buf);
     send(ws, { type: 'xfer.queued', message: `${filename || 'file'} queued (${buf.length} bytes) — type the IND$FILE command now` });
     logger.info(`[ws:${wsId}] xfer.queue-upload: ${buf.length} bytes queued for IND$FILE PUT`);
@@ -488,6 +520,67 @@ function handleXferQueueUpload(msg, ws, wsId, session) {
   }
 }
 
+// ── Ensure CMS Ready before IND$FILE ──────────────────────────────
+// Returns a promise that resolves when the screen is at CMS Ready,
+// sending IPL CMS or PF3 as needed. Rejects if ZVM but unrecoverable.
+function ensureCmsReady(session, ws, wsId) {
+  return new Promise((resolve, reject) => {
+    if (!session.lastScreen || !session.lastScreen.rows) {
+      return reject(new Error('No screen data — connect to an LPAR first'));
+    }
+    const lines = screenToLines(session.lastScreen);
+    const state = detectScreenState(lines);
+    logger.info(`[ws:${wsId}] ensureCmsReady: screen state is ${state}`);
+
+    if (state === 'zvm-cms') {
+      return resolve(); // Already at CMS Ready
+    }
+    if (state === 'zvm-logon') {
+      return reject(new Error('Not logged on — please log on first'));
+    }
+    if (state === 'zvm-cp') {
+      // Send IPL CMS and wait for CMS Ready
+      logger.info(`[ws:${wsId}] ensureCmsReady: at CP, sending IPL CMS`);
+      send(ws, { type: 'xfer.status', message: 'At CP prompt — sending IPL CMS…' });
+      session.sendAid('ENTER', [{ addr: session.cursorAddr || 0, value: 'IPL CMS' }]);
+      const deadline = Date.now() + 15000;
+      const poll = setInterval(() => {
+        if (!session.lastScreen) return;
+        const s = detectScreenState(screenToLines(session.lastScreen));
+        if (s === 'zvm-cms') {
+          clearInterval(poll);
+          resolve();
+        } else if (Date.now() > deadline) {
+          clearInterval(poll);
+          reject(new Error('Timed out waiting for CMS Ready after IPL CMS'));
+        }
+      }, 500);
+      return;
+    }
+    if (state === 'zvm-filelist') {
+      // Send PF3 to exit FILELIST and wait for CMS Ready
+      logger.info(`[ws:${wsId}] ensureCmsReady: in FILELIST, sending PF3`);
+      send(ws, { type: 'xfer.status', message: 'In FILELIST — exiting to CMS Ready…' });
+      session.sendAid('PF3', []);
+      const deadline = Date.now() + 8000;
+      const poll = setInterval(() => {
+        if (!session.lastScreen) return;
+        const s = detectScreenState(screenToLines(session.lastScreen));
+        if (s === 'zvm-cms') {
+          clearInterval(poll);
+          resolve();
+        } else if (Date.now() > deadline) {
+          clearInterval(poll);
+          reject(new Error('Timed out waiting for CMS Ready after PF3'));
+        }
+      }, 500);
+      return;
+    }
+    // Unknown state — try to proceed anyway (might be TSO or CICS)
+    resolve();
+  });
+}
+
 function handleXferDownload(msg, ws, wsId, session) {
   // Just register the saveAs filename — the actual transfer is handled
   // by the IND$FILE WSF protocol in session.js.  The indfile-complete
@@ -495,6 +588,10 @@ function handleXferDownload(msg, ws, wsId, session) {
   const saveAs = msg.saveAs || msg.dataset?.split('.').pop().toLowerCase() + '.txt' || 'transfer.txt';
   session._indFileSaveAs = saveAs;
   logger.info(`[ws:${wsId}] xfer.download: saveAs=${saveAs} — waiting for IND$FILE WSF exchange`);
+  // Ensure CMS Ready before the transfer
+  // ensureCmsReady(session, ws, wsId).catch(err => {
+    // send(ws, { type: 'xfer.error', message: err.message });
+  // });
 }
 
 // ── TSO EDIT Upload ──────────────────────────────────────────────
@@ -526,36 +623,30 @@ async function handleXferTsoUpload(msg, ws, wsId, session) {
 
   logger.info(`[ws:${wsId}] xfer.tso-upload: ${fileLines.length} lines, lrecl=${lrecl}`);
 
-  // Member name for EDIT prompt — strip HLQ and parens, max 8 chars
-  const memberName     = dataset.replace(/^.*\./, '').replace(/[()]/g, '').substring(0, 8).toUpperCase();
-  const editDsName     = `SOURCE(${memberName})`;
-  const resolvedDataset = `MVSCE01.SOURCE(${memberName})`;
+  // Build fully-qualified quoted dataset name for EDIT command.
+  // Input may be: MVSCE01.SOURCE(TESTF001) or 'MVSCE01.SOURCE(TESTF001)' or SOURCE(TESTF001)
+  const bare = dataset.replace(/^'|'$/g, '').trim().toUpperCase();
+  const resolvedDataset = bare.includes('.') ? bare : `MVSCE01.${bare}`;
+  const editCmd = `EDIT '${resolvedDataset}' DATA`;
 
   // ── Helpers ──────────────────────────────────────────────────────
 
   let lastScreenSnapshot = '';
 
-  // typeCmd: move cursor to last input field (TSO command line), type, ENTER.
+  // typeCmd: send text into the last unprotected field and press ENTER.
+  // Uses sendAid with field list — avoids typeAt truncation at field boundaries.
   const typeCmd = (text) => {
     lastScreenSnapshot = session.lastScreen
       ? screenToLines(session.lastScreen).join('\n') : '';
-    try {
-      const fields = (session.lastScreen && session.lastScreen.fields) || [];
-      // Field property is 'startAddr' (not 'start') — verified from _emitScreen source.
-      // TSO command input is the last unprotected field; earlier ones are scrollback.
-      const inputs = fields.filter(f => !f.protected && f.startAddr !== undefined);
-      const f = inputs[inputs.length - 1];
-      if (f) {
-        session.moveCursor(
-          Math.floor((f.startAddr + 1) / session.cols),
-          (f.startAddr + 1) % session.cols
-        );
-      }
-    } catch {}
-    const row = Math.floor(session.cursorAddr / session.cols);
-    const col = session.cursorAddr % session.cols;
-    if (text) session.typeAt(row, col, text);
-    session.sendAid('ENTER', []);
+    const fields = (session.lastScreen && session.lastScreen.fields) || [];
+    const inputs = fields.filter(f => !f.protected && f.startAddr !== undefined);
+    const f = inputs[inputs.length - 1];
+    if (f && text) {
+      // Send as a field value — no truncation at typeAt boundaries
+      session.sendAid('ENTER', [{ addr: f.startAddr + 1, data: text }]);
+    } else {
+      session.sendAid('ENTER', []);
+    }
   };
 
   // waitScr: wait for a screen that differs from pre-command snapshot
@@ -596,21 +687,14 @@ async function handleXferTsoUpload(msg, ws, wsId, session) {
   };
 
   try {
-    // Step 1: start EDIT
+    // Step 1: EDIT dataset — single command, enters INPUT mode directly
     send(ws, { type: 'xfer.progress', direction: 'upload', step: 'Starting EDIT...' });
-    typeCmd('EDIT');
-    await waitScr(t => t.includes('ENTER DATA SET NAME'), 10000);
-    logger.info(`[ws:${wsId}] xfer.tso-upload: EDIT started`);
-
-    // Step 2: dataset name prompt
-    send(ws, { type: 'xfer.progress', direction: 'upload', step: 'Opening dataset...' });
-    typeCmd(editDsName);
-    await waitScr(t => t.includes('ENTER DATA SET TYPE'), 10000);
-    logger.info(`[ws:${wsId}] xfer.tso-upload: dataset name accepted`);
-
-    // Step 3: dataset type — enters INPUT mode, shows line number prompt
-    typeCmd('DATA');
-    await waitScr(t => /\d{5}/.test(t), 10000);
+    typeCmd(editCmd);
+    await waitScr(t => /\d{5}/.test(t) || t.includes('INVALID DATA SET'), 10000);
+    const openScreen = screenToLines(session.lastScreen).join('\n');
+    if (openScreen.includes('INVALID DATA SET')) {
+      throw new Error(`EDIT rejected dataset: ${resolvedDataset}`);
+    }
     logger.info(`[ws:${wsId}] xfer.tso-upload: in INPUT mode`);
 
     // Step 4: send lines
@@ -646,6 +730,178 @@ async function handleXferTsoUpload(msg, ws, wsId, session) {
   } catch (err) {
     logger.error(`[ws:${wsId}] xfer.tso-upload error: ${err.message}`);
     send(ws, { type: 'xfer.error', message: `TSO EDIT upload failed: ${err.message}` });
+    try { session.sendAid('ENTER', []); } catch {}
+    try { typeCmd('END'); } catch {}
+  }
+}
+
+
+// ── TSO EDIT download handler ────────────────────────────────────
+async function handleXferTsoDownload(msg, ws, wsId, session) {
+  const { dataset, saveAs } = msg;
+
+  const bare = (dataset || '').replace(/^'|'$/g, '').trim().toUpperCase();
+  const resolvedDataset = bare.includes('.') ? bare : `MVSCE01.${bare}`;
+  const screenToLines = (scr) => {
+    if (!scr) return [];
+    const out = [];
+    for (let r = 0; r < scr.rows; r++) {
+      let line = '';
+      for (let c = 0; c < scr.cols; c++) line += scr.buffer[r][c]?.char || ' ';
+      out.push(line.trimEnd());
+    }
+    return out;
+  };
+
+  let _lastSnap = null;  // null means: resolve on first screen change regardless of content
+
+  const sdToText = (sd) => (sd.rows || []).map(row =>
+    (Array.isArray(row) ? row : []).map(c => c.char || ' ').join('')
+  ).join('\n');
+
+  const waitScr = (pred, timeout = 15000) => {
+    const snap = _lastSnap;
+    return new Promise((res, rej) => {
+      const t = setTimeout(() => { session.removeListener('screen', h); rej(new Error('Timeout waiting for host response')); }, timeout);
+      function h(sd) {
+        const txt = sdToText(sd);
+        if (snap !== null && txt === snap) return;
+        _lastSnap = txt;
+        if (pred(txt)) { clearTimeout(t); session.removeListener('screen', h); res(txt); }
+      }
+      session.on('screen', h);
+      // Check immediately in case screen already updated before listener registered
+      if (session.lastScreen) {
+        const cur = sdToText(session.lastScreen);
+        if ((snap === null || cur !== snap) && pred(cur)) {
+          clearTimeout(t);
+          session.removeListener('screen', h);
+          _lastSnap = cur;
+          res(cur);
+        }
+      }
+    });
+  };
+
+  const typeCmd = (text) => {
+    _lastSnap = session.lastScreen ? sdToText(session.lastScreen) : null;
+    const fields = (session.lastScreen && session.lastScreen.fields) || [];
+    const inputs = fields.filter(f => !f.protected && f.startAddr !== undefined);
+    const f = inputs[inputs.length - 1];
+    const row = f ? Math.floor((f.startAddr + 1) / session.cols) + 1 : '?';
+    const col = f ? ((f.startAddr + 1) % session.cols) + 1 : '?';
+    logger.info(`[ws:${wsId}] typeCmd: text="${text}" field=${f ? `addr=${f.startAddr} row=${row} col=${col}` : 'NONE'} totalFields=${inputs.length}`);
+    session.sendAid('ENTER', (f && text) ? [{ addr: f.startAddr + 1, data: text }] : []);
+  };
+
+  session.setMaxListeners(50);  // prevent MaxListenersExceededWarning during download
+  logger.info(`[ws:${wsId}] xfer.tso-download -> ${resolvedDataset}`);
+  send(ws, { type: 'xfer.progress', direction: 'download', step: 'Opening dataset...' });
+
+  // CANARY: verify screen events are firing and show content
+  const _canaryHandler = (sd) => {
+    const lines = (sd.rows || []).map(row =>
+      (Array.isArray(row) ? row : []).map(c => (c.char && c.char !== ' ') ? c.char : ' ').join('').trimEnd()
+    ).filter(l => l.trim());
+    const txt = lines.join(' | ');
+    logger.info(`[ws:${wsId}] CANARY screen event: rows=${sd.rows?.length} fields=${sd.fields?.length} text="${txt.substring(0,120)}"`);
+  };
+  session.on('screen', _canaryHandler);
+  setTimeout(() => session.removeListener('screen', _canaryHandler), 30000);
+
+  // Helper: scrape numbered data lines from current screen text
+  const scrapeLines = () => {
+    const lines = (_lastSnap || '').split('\n');
+    const out = [];
+    for (const line of lines) {
+      const m = line.match(/^\s*(\d{5})\s(.*)/);
+      if (m) out.push({ num: parseInt(m[1]), text: m[2].trimEnd() });
+    }
+    return out;
+  };
+
+  // Helper: send PF8 (scroll forward)
+  const sendPF8 = () => session.sendAid('PF8', []);
+
+  try {
+    // Step 1: open in EDIT DATA mode
+    typeCmd(`EDIT '${resolvedDataset}' DATA`);
+    await waitScr(t => t.includes('EDIT') || t.includes('INVALID DATA SET'), 15000);
+    let openScreen = _lastSnap || '';
+    if (openScreen.includes('INVALID DATA SET')) {
+      throw new Error(`Dataset not found: ${resolvedDataset}`);
+    }
+
+    // If INPUT mode appeared, send blank Enter to get to EDIT subcommand prompt
+    if (openScreen.includes('INPUT')) {
+      typeCmd('');
+      await waitScr(t => t.includes('EDIT') && !t.includes('INPUT'), 10000);
+    }
+
+    // Step 2: LIST to display all records with line numbers
+    send(ws, { type: 'xfer.progress', direction: 'download', step: 'Reading data...' });
+    typeCmd('LIST');
+    await waitScr(t => /\d{5}/.test(t) || t.includes('END OF DATA'), 10000);
+
+    // Step 4: scrape + scroll until END OF DATA
+    const allLines = new Map(); // line number -> text (deduplicates overlapping screens)
+    let lastMaxNum = -1;
+    let scrollAttempts = 0;
+    const MAX_SCROLLS = 50;
+
+    while (scrollAttempts < MAX_SCROLLS) {
+      const screenTxt = _lastSnap || '';
+      const scraped = scrapeLines();
+      for (const { num, text } of scraped) allLines.set(num, text);
+
+      if (screenTxt.includes('END OF DATA')) break;
+
+      // Check if PF8 advanced (new max line number)
+      const maxNum = scraped.length ? Math.max(...scraped.map(l => l.num)) : lastMaxNum;
+      sendPF8();
+      await waitScr(t => {
+        const s = scrapeLines();
+        if (!s.length) return false;
+        const newMax = Math.max(...s.map(l => l.num));
+        return newMax > maxNum || t.includes('END OF DATA');
+      }, 10000);
+      lastMaxNum = maxNum;
+      scrollAttempts++;
+    }
+
+    // Final scrape after last scroll
+    for (const { num, text } of scrapeLines()) allLines.set(num, text);
+
+    // Sort by line number and extract text
+    const dataLines = [...allLines.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([, text]) => text);
+
+    // Step 5: exit EDIT — send END repeatedly until READY
+    // Screen may have INPUT+EDIT both visible; just keep sending END
+    for (let exitTry = 0; exitTry < 4; exitTry++) {
+      const snap = _lastSnap || '';
+      if (snap.includes('READY') && !snap.includes('EDIT') && !snap.includes('INPUT')) break;
+      typeCmd('END');
+      await waitScr(t => t !== snap, 8000).catch(() => {});
+    }
+    // Final: if NOTHING SAVED prompt appeared, send END- or END one more time
+    if ((_lastSnap || '').includes('NOTHING SAVED') || (_lastSnap || '').includes('ENTER SAVE OR END')) {
+      typeCmd('END');
+      await waitScr(t => t.includes('READY'), 8000).catch(() => {});
+    }
+
+    const fileContent = dataLines.join('\n');
+    const b64 = Buffer.from(fileContent, 'utf8').toString('base64');
+    const fileName = saveAs || resolvedDataset.replace(/.*\(/, '').replace(')', '').toLowerCase() + '.txt';
+
+    send(ws, { type: 'xfer.file', filename: fileName, data: b64 });
+    send(ws, { type: 'xfer.ok', message: `Downloaded ${dataLines.length} lines from ${resolvedDataset}` });
+    logger.info(`[ws:${wsId}] xfer.tso-download complete -> ${resolvedDataset} (${dataLines.length} lines)`);
+
+  } catch (err) {
+    logger.error(`[ws:${wsId}] xfer.tso-download error: ${err.message}`);
+    send(ws, { type: 'xfer.error', message: `TSO EDIT download failed: ${err.message}` });
     try { session.sendAid('ENTER', []); } catch {}
     try { typeCmd('END'); } catch {}
   }

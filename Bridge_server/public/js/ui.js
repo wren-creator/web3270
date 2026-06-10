@@ -14,7 +14,7 @@ function switchPanelTab(el, name) {
     panel.style.display = (name === 'Copilot' || name === 'Xfer') ? 'flex' : 'block';
     if (name === 'Copilot' || name === 'Xfer') { panel.style.flexDirection = 'column'; panel.style.padding = '0'; }
     else { panel.style.flexDirection = ''; panel.style.padding = '12px'; }
-    if (name === 'Xfer') xferRenderPanel();
+    if (name === 'Xfer') { xferRenderPanel(); }
   }
 }
 
@@ -54,7 +54,27 @@ document.addEventListener('keydown', e => {
   const tag = document.activeElement?.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
   const aid = AID_MAP[e.key];
-  if (aid) { e.preventDefault(); sendKey(aid); return; }
+  if (aid) {
+    // F11/F12 — cycle command history instead of sending to host
+    const session = sessions.get(activeSession);
+    const history = session?.cmdHistory || [];
+    if ((aid === 'PF11' || aid === 'PF12') && history.length > 0) {
+      e.preventDefault();
+      if (aid === 'PF12') {
+        // PF12 = go back (older)
+        if (cmdHistoryIndex === -1) cmdHistoryIndex = history.length - 1;
+        else if (cmdHistoryIndex > 0) cmdHistoryIndex--;
+      } else {
+        // PF11 = go forward (newer)
+        if (cmdHistoryIndex === -1) return;
+        if (cmdHistoryIndex < history.length - 1) cmdHistoryIndex++;
+        else { cmdHistoryIndex = -1; return; }
+      }
+      cmdHistoryRecall(cmdHistoryIndex);
+      return;
+    }
+    e.preventDefault(); sendKey(aid); return;
+  }
   if (e.key === 'PageUp')   { e.preventDefault(); sendKey('PF7'); return; }
   if (e.key === 'PageDown') { e.preventDefault(); sendKey('PF8'); return; }
   if (e.key === 'Tab') {
