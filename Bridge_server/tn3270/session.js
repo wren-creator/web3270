@@ -684,9 +684,12 @@ class Tn3270Session extends EventEmitter {
       logger.debug(`[ws:${this.wsId}] Read Buffer command received`);
       this._sendReadBuffer();
     } else if (cmd === 0x0D || cmd === 0x6E) {
-      // Read Modified / Read Modified All — respond with AID + modified fields
-      logger.debug(`[ws:${this.wsId}] Read Modified command received`);
-      this._sendReadModified();
+      // Read Modified / Read Modified All — host is entering read-wait mode.
+      // Do NOT auto-respond. In real 3270, the terminal unlocks the keyboard
+      // and waits for the user to press an AID key (Enter, PFn, etc.).
+      // Auto-responding with AID NONE causes z/VM CP to fall through to the
+      // unformatted CP READ prompt instead of waiting for logon credentials.
+      logger.debug(`[ws:${this.wsId}] Read Modified — keyboard unlocked, waiting for user AID`);
 
     } else if (cmd === 0x11) {
       // Write Structured Field (host → terminal).
