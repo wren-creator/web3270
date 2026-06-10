@@ -15,12 +15,14 @@
 //    EXPERT  — Raw command input with syntax reference
 // ==================================================================
 
+
 // ── State (xferFileData / xferFileName live in state.js) ──────────
 let xferExpertMode  = false;
 let xferCurrentDir  = 'upload';
 let xferUseTsoEdit  = false;  // use TSO EDIT path instead of IND$FILE
 let _xferDataset    = '';     // persists across panel re-renders
 let _xferSaveAs     = '';
+
 
 // ── Detect system type from active session profile ────────────────
 function xferGetSystemType() {
