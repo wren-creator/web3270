@@ -664,37 +664,30 @@ class Tn3270Session extends EventEmitter {
 
     const cmd = bytes[0];
 
-    if (cmd === 0xF5 || cmd === 0x7E || cmd === 0x05 || cmd === 0x01 || cmd === 0xF1) {
-      // Write / Erase Write family.
-      // Erase commands: 0x05 (Erase Write), 0xF5 (SNA Erase Write),
-      //                 0x7E (Erase Write Alternate, both encodings)
-      // Plain Write: 0x01 (overlay, do NOT clear buffer)
-      // 0xF1 is also documented as Write in some references.
-      const erase = (cmd === 0x05 || cmd === 0xF5 || cmd === 0x7E);
+    if (cmd === 0x01 || cmd === 0xF1 ||
+        cmd === 0x05 || cmd === 0xF5 ||
+        cmd === 0x0D || cmd === 0x7E) {
+      // Write / Erase Write family (CCW and SNA encodings):
+      // Write:               CCW=0x01  SNA=0xF1
+      // Erase Write:         CCW=0x05  SNA=0xF5
+      // Erase Write Alt:     CCW=0x0D  SNA=0x7E
+      const erase = (cmd === 0x05 || cmd === 0xF5 || cmd === 0x0D || cmd === 0x7E);
       this._processWriteCommand(bytes.slice(1), erase);
-    } else if (cmd === 0xF3) {
-      // Erase All Unprotected
+    } else if (cmd === 0x0F || cmd === 0x6F) {
+      // Erase All Unprotected: CCW=0x0F  SNA=0x6F
       this._eraseAllUnprotected();
-    } else if (cmd === 0x6F) {
-      // Read Buffer
-      // (host polling — we respond with our buffer)
-      this._sendReadBuffer();
-    } else if (cmd === 0x02) {
-      // Read Buffer — respond with current buffer contents
+    } else if (cmd === 0x02 || cmd === 0xF2) {
+      // Read Buffer: CCW=0x02  SNA=0xF2
       logger.debug(`[ws:${this.wsId}] Read Buffer command received`);
       this._sendReadBuffer();
-    } else if (cmd === 0x0D || cmd === 0x6E) {
-      // Read Modified / Read Modified All — host is entering read-wait mode.
-      // Do NOT auto-respond. In real 3270, the terminal unlocks the keyboard
-      // and waits for the user to press an AID key (Enter, PFn, etc.).
-      // Auto-responding with AID NONE causes z/VM CP to fall through to the
-      // unformatted CP READ prompt instead of waiting for logon credentials.
+    } else if (cmd === 0x06 || cmd === 0xF6 || cmd === 0x6E) {
+      // Read Modified: CCW=0x06  SNA=0xF6
+      // Read Modified All: CCW=0x6E
+      // Host is entering read-wait mode — do NOT auto-respond.
+      // Wait for user to press an AID key.
       logger.debug(`[ws:${this.wsId}] Read Modified — keyboard unlocked, waiting for user AID`);
-
-    } else if (cmd === 0x11) {
-      // Write Structured Field (host → terminal).
-      // Carries Query, ReadPartition, OutboundDS etc. We must reply with
-      // a QueryReply or the host falls back to a degraded display mode.
+    } else if (cmd === 0x11 || cmd === 0xF3) {
+      // Write Structured Field: CCW=0x11  SNA=0xF3
       logger.debug(`[ws:${this.wsId}] Write Structured Field received`);
       this._processWriteStructuredField(bytes.slice(1));
 
