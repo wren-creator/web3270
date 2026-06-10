@@ -421,7 +421,6 @@ wss.on('connection', (ws, req) => {
 
         case 'key':
           // { type:'key', aid:'ENTER'|'PF1'…'PF24'|'PA1'|'PA2'|'CLEAR', fields:[{addr,data}] }
-         // session.sendAid(msg.aid, msg.fields || []);
           session.sendAid(msg.aid, session.getModifiedFields());
           break;
 
