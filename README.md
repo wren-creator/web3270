@@ -3,11 +3,11 @@
 A Node.js WebSocket bridge that connects a browser-based 3270 terminal emulator to mainframe LPARs over TN3270(E). No plugins, no Java — just a browser and a small Node server (or Docker container).
 
 ```
-Browser (tn3270-client.html)
+Browser (public/tn3270-client.html + public/js/*.js)
     │  WebSocket JSON  ws://localhost:8081
     ▼
-server.js
-    ├── tn3270/session.js ──── TCP :339 / :992 ──► Mainframe LPAR
+server.js  (HTTP + WebSocket on the same port)
+    ├── tn3270/session.js ──── TCP :23 / :992 ──► Mainframe LPAR
     ├── macros/engine.js
     └── copilot/copilot-handler.js ──────────────► AI provider
 ```
@@ -16,26 +16,29 @@ server.js
 
 ## Features
 
-- Full TN3270(E) protocol — Telnet negotiation, LU binding, EBCDIC ↔ ASCII
-- Multi-session tabs, LPAR profile dropdown, PF1–PF24 / PA1–PA3 toolbar
-- Macro recorder/replayer (screen-synchronised)
-- Optional AI Copilot panel (Anthropic, Azure OpenAI, GitHub Models, or local Ollama)
-- 5 colour themes, OIA status bar
-- Single-file browser client — no build step
+- Full TN3270(E) protocol — Telnet negotiation, LU binding, WSF QueryReply, EBCDIC ↔ ASCII
+- IND$FILE file transfer (z/VM upload + download) and TSO EDIT upload (z/OS)
+- Multi-session tabs, LPAR profile dropdown (with CRUD), PF1–PF12 / PA1–PA2 toolbar
+- Macro recorder/replayer (screen-synchronised, JSON-persisted)
+- Multi-provider AI Assist panel (Anthropic, OpenAI, Gemini, GitHub Models, Ollama)
+- NONDISPLAY field masking (password fields hidden; "Show passwords" toggle)
+- 5 colour themes, OIA status bar, zoom, CRT scanline effect
+- Modular browser client (no build step, no npm in the browser)
 
 ---
 
 ## Quick Start (Docker — recommended)
 
-> **Prerequisites:** Docker Desktop installed and running. Network access to your LPAR on port 339 or 992.
+> **Prerequisites:** Docker Desktop installed and running. Network access to your LPAR on port 23 or 992.
 
-```powershell
-cd C:\tools\tn3270-bridge
+```bash
+cd Bridge_server
 
-# 1 · Configure your LPARs
-#   Edit lpars.txt — one LPAR per line:
-#   id, name, host/IP, port, tls, type
-#   e.g.: prod01, PROD01, 10.80.1.1, 339, false, TSO
+# 1 · Make sure these files exist as files (not directories) before first run
+touch lpars.txt macros.json
+echo '# id, name, host/IP, port, tls, type, model' > lpars.txt
+echo '[]' > macros.json
+chmod 666 lpars.txt macros.json
 
 # 2 · Build and start
 docker compose build
@@ -45,34 +48,35 @@ docker compose up -d
 #   http://localhost:8081
 ```
 
-Click **⊕ Connect to LPAR**, select your LPAR, and connect.
+Click **⊕ Connect to LPAR**, select or add an LPAR, and connect.
 
 ---
 
 ## Quick Start (WSL2 / Node directly)
 
-> Use this if your mainframe is only reachable over VPN (Docker Desktop's VM often can't route VPN traffic).
+> Use this if your mainframe is only reachable over VPN — Docker Desktop's VM often can't route VPN traffic.
 
 ```bash
 # Inside Ubuntu / WSL2
-cd ~/tn3270-bridge
+cd ~/Bridge_server
 npm install
-cp .env.example .env   # edit with your LPAR details
 node server.js
+# or: bash start.sh
 ```
 
-Open `http://localhost:8081` in your Windows browser.
+Open `http://localhost:8081` in your browser.
 
 ---
 
 ## LPAR Configuration
 
-LPARs are defined in `lpars.txt` (one per line, `#` for comments):
+LPARs are defined in `lpars.txt` (one per line, `#` for comments). They can also be added, edited, and deleted from the UI — changes are written back to `lpars.txt` immediately without a restart.
 
 ```
 # id, name, host/IP, port, tls, type, model
-prod01, PROD01, 10.80.1.1, 339, false, TSO, 3278-2
-dev01,  DEV01,  10.80.1.2, 339, false, TSO, 3278-2
+prod01,  PROD01,   10.80.1.1,   992, true,  TSO, 3278-2
+dev01,   DEV01,    10.80.1.2,   23,  false, TSO, 3278-2
+zvm01,   ZVM01,    10.80.1.3,   23,  false, VM,  3278-2
 ```
 
 Port guide:
@@ -80,90 +84,120 @@ Port guide:
 | Scenario | Port | TLS |
 |---|---|---|
 | Production mainframe (recommended) | 992 | ✅ yes |
-| Dev/test LPAR, internal network | 339 or 23 | ❌ no |
+| Dev/test LPAR, internal network | 23 | ❌ no |
 | SSH tunnel / localhost relay | any | ❌ no |
+
+**type** field: `TSO` (z/OS) or `VM` (z/VM). The client uses this to set TN3270E defaults and to route file transfers correctly.
 
 ---
 
 ## Project Structure
 
 ```
-tn3270-bridge/
+Bridge_server/
 │
-├── server.js                  ← WebSocket server entry point + HTTP static server
-├── config.js                  ← All runtime config (reads lpars.txt + env vars)
+├── server.js                  ← HTTP + WebSocket server; REST API (/api/profiles, /api/macros)
+├── config.js                  ← Runtime config: reads lpars.txt + env vars
 ├── logger.js                  ← Structured logger (LOG_LEVEL env var)
-├── package.json               ← Single runtime dep: ws (WebSocket)
-├── lpars.txt                  ← LPAR connection profiles
+├── package.json               ← Runtime dep: ws. Dev dep: nodemon.
+├── lpars.txt                  ← LPAR connection profiles (bind-mounted in Docker)
+├── macros.json                ← Saved macros (bind-mounted in Docker)
 ├── Dockerfile
 ├── docker-compose.yml
+├── start.sh / start.ps1       ← Convenience start scripts
 ├── .env.example               ← Copy to .env and configure
 │
 ├── tn3270/
 │   ├── session.js             ← Full TN3270(E) protocol engine
-│   │                              · Telnet negotiation (DO/WILL/WONT)
-│   │                              · TN3270E sub-negotiation + LU binding
-│   │                              · 3270 datastream parser (SF/SBA/IC/RA/EUA)
-│   │                              · Screen buffer → JSON, AID key encoding
+│   │                              · Telnet negotiation, TN3270E sub-negotiation, LU binding
+│   │                              · WSF QueryReply handshake (z/VM)
+│   │                              · 3270 datastream parser (SF/SBA/IC/RA/EUA/SFE)
+│   │                              · 14-bit SBA address decode/encode
+│   │                              · IND$FILE WSF transfer (upload + download)
+│   │                              · NONDISPLAY field detection
 │   └── ebcdic.js              ← EBCDIC ↔ ASCII (CP037 full table)
 │
 ├── macros/
 │   ├── engine.js              ← Record + replay state machine
-│   ├── handler.js             ← WebSocket router for macro messages
-│   └── store.js               ← Macro library persistence
+│   ├── handler.js             ← WebSocket router for macro.* messages
+│   └── store.js               ← Read/write macros.json
 │
 ├── copilot/
-│   ├── copilot-handler.js     ← Routes AI requests from browser
 │   ├── router.js              ← Selects provider from COPILOT_PROVIDER env var
-│   └── default/
-│       └── anthropic-default.js
+│   ├── copilot-handler.js     ← WebSocket handler for copilot.chat messages
+│   ├── default/
+│   │   └── anthropic-default.js  ← Default provider (Anthropic Claude)
+│   └── auxiliary/
+│       ├── github-models.js   ← GitHub Models API (Claude via Copilot licence)
+│       ├── azure-openai.js    ← Azure OpenAI
+│       ├── openai.js          ← OpenAI direct
+│       ├── gemini.js          ← Google Gemini
+│       └── ollama.js          ← Local Ollama (zero external calls)
 │
 ├── public/
-│   └── tn3270-client.html     ← Browser client (single file, no build step)
+│   ├── tn3270-client.html     ← UI shell (~550 lines HTML; loads JS modules below)
+│   ├── css/
+│   │   └── terminal.css       ← All styles: layout, themes, CRT effects, OIA
+│   └── js/
+│       ├── state.js           ← Shared globals, AI provider constants, BRIDGE_URL
+│       ├── copilot.js         ← AI Assist panel: chat, provider config, model list
+│       ├── xfer.js            ← File transfer: IND$FILE (z/VM), TSO EDIT upload
+│       ├── macros.js          ← Macro CRUD UI, import/export JSON
+│       ├── profiles.js        ← LPAR profile CRUD, sidebar, connect modal
+│       ├── terminal.js        ← Screen rendering, keyboard handler, cursor
+│       ├── settings.js        ← Theme, zoom, scanlines, password masking
+│       ├── ui.js              ← Layout: sidebar, panel tabs, menus, modals
+│       └── main.js            ← App init, WebSocket lifecycle, session tabs
 │
 └── mock-lpar/
-    └── mock-lpar.js           ← Lightweight TN3270 mock server for testing
+    ├── mock-lpar.js           ← Mock z/OS TN3270 daemon (port 3270)
+    └── mock-zvm.js            ← Mock z/VM TN3270 daemon (port 3271)
 ```
 
 ### Key files explained
 
-**`server.js`** — The entry point. Starts an HTTP server (serves `tn3270-client.html` and `/api/profiles`) and a WebSocket server. Each browser WebSocket connection creates one `Tn3270Session`. Routes macro and Copilot messages to their handlers. Nothing else should need to change here day-to-day.
+**`server.js`** — Entry point. Single HTTP server handles both static file serving (`public/`) and WebSocket upgrades. Exposes REST endpoints for LPAR profile and macro CRUD (`/api/profiles`, `/api/macros`). Each browser WebSocket connection creates one `Tn3270Session`. Routes macro, copilot, and file transfer messages to their handlers.
 
-**`config.js`** — All runtime configuration in one place. Reads `lpars.txt` for LPAR profiles and honours environment variables for ports, TLS, log level, max sessions, etc. If you need to change a default, this is the file.
+**`tn3270/session.js`** — The protocol engine. Full TN3270(E) lifecycle: raw TCP → Telnet negotiation → TN3270E sub-negotiation and LU binding → WSF QueryReply → 3270 datastream parsing → screen buffer management → JSON events to `server.js`. Most complex file in the project; only edit when adding protocol features.
 
-**`tn3270/session.js`** — The protocol engine. Handles the full TN3270(E) lifecycle: raw TCP connect → Telnet option negotiation → TN3270E sub-negotiation and LU binding → 3270 datastream parsing → screen buffer management → JSON emission to `server.js`. This is the most complex file in the project; you should not need to edit it unless you're adding protocol features.
+**`config.js`** — All runtime configuration in one place. Reads `lpars.txt` for LPAR profiles and honours environment variables. Hot-reloads `lpars.txt` in memory when profiles are saved via the API (no restart required).
 
-**`public/tn3270-client.html`** — The entire browser UI in one self-contained HTML file. 3270 terminal renderer, multi-session tabs, macro panel, Copilot panel, settings, key remapping. No npm, no webpack — just open it (or let `server.js` serve it).
+**`public/js/state.js`** — Must be the first JS module loaded. Declares all shared globals on `window` so the other modules can reference them without import/export.
 
 ---
 
 ## Environment Variables
 
-Set these in `docker-compose.yml` (Docker) or `.env` (WSL2/Node):
+Set in `docker-compose.yml` (Docker) or `.env` (Node/WSL2):
 
 | Variable | Default | Description |
 |---|---|---|
-| `BRIDGE_PORT` | `8081` | Port the bridge listens on |
+| `BRIDGE_PORT` | `8081` | Port the HTTP + WebSocket server listens on |
 | `LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error` |
 | `BRIDGE_VERIFY_TLS` | `true` | Set `false` for self-signed mainframe certs |
 | `BRIDGE_SOCKET_TIMEOUT_MS` | `300000` | Idle session timeout (ms) |
 | `BRIDGE_MAX_SESSIONS` | `100` | Max concurrent sessions |
 | `DEFAULT_MODEL` | `3278-2` | Default 3270 terminal model |
 | `DEFAULT_CODEPAGE` | `37` | Default EBCDIC codepage (37 = US English) |
-| `COPILOT_PROVIDER` | `anthropic` | `anthropic` / `azure` / `github` / `ollama` |
+| `COPILOT_PROVIDER` | `anthropic` | `anthropic` / `azure` / `github` / `openai` / `gemini` / `ollama` |
+| `TN3270_HEXDUMP` | `0` | Set `1` to dump raw TN3270 bytes to logs (noisy — for protocol debugging) |
 
 ---
 
-## Copilot AI Provider
+## AI Assist Provider
 
 One line in `.env`, restart the bridge:
 
 ```bash
 COPILOT_PROVIDER=anthropic   # default — requires ANTHROPIC_API_KEY
-COPILOT_PROVIDER=azure       # Azure OpenAI — requires AZURE_OPENAI_ENDPOINT + KEY
-COPILOT_PROVIDER=github      # GitHub Models — requires GITHUB_TOKEN
+COPILOT_PROVIDER=azure       # Azure OpenAI — requires AZURE_OPENAI_ENDPOINT + KEY + DEPLOYMENT
+COPILOT_PROVIDER=github      # GitHub Models — requires GITHUB_TOKEN (models:read scope)
+COPILOT_PROVIDER=openai      # OpenAI direct — requires OPENAI_API_KEY
+COPILOT_PROVIDER=gemini      # Google Gemini — requires GEMINI_API_KEY
 COPILOT_PROVIDER=ollama      # Local Ollama — zero external calls
 ```
+
+See `AI-notes.md` for corporate policy guidance and per-provider setup details.
 
 ---
 
@@ -171,7 +205,7 @@ COPILOT_PROVIDER=ollama      # Local Ollama — zero external calls
 
 ### Docker command reference
 
-```powershell
+```bash
 # Start the bridge (detached / background)
 docker compose up -d
 
@@ -181,69 +215,80 @@ docker compose down
 # View live logs (Ctrl+C to stop)
 docker compose logs -f
 
-# Check container status and ports
-docker compose ps
+# Rebuild after editing server.js, session.js, or any Bridge_server/ source file
+# (lpars.txt and macros.json are bind-mounted — no rebuild needed for those)
+docker compose build --no-cache && docker compose up -d
 
-# Restart after editing docker-compose.yml or lpars.txt
-docker compose up -d --force-recreate
-
-# Rebuild the image (after changing server.js, config.js, package.json)
-docker compose build
+# Restart after editing docker-compose.yml env vars only
 docker compose up -d
 
+# Confirm which code version is actually running inside the container
+docker compose exec tn3270-bridge grep -c "some-unique-string" /app/server.js
+
 # Open a shell inside the running container (for debugging)
-docker exec -it tn3270-bridge sh
+docker compose exec tn3270-bridge sh
 
-# Check CPU and memory usage
-docker stats tn3270-bridge
-
-# Remove containers and images entirely (start fresh)
-docker compose down --rmi all
+# Enable TN3270 protocol hex dump (set in docker-compose.yml environment)
+# TN3270_HEXDUMP: "1"   then: docker compose up -d  (no rebuild needed)
 ```
 
 ### Common errors
 
 **`docker: command not found`**
-→ Docker Desktop isn't installed or PATH isn't configured. Restart PowerShell after installing.
+→ Docker Desktop isn't installed or PATH isn't configured. Restart your terminal after installing.
 
 **`error during connect: ... pipe/docker_engine`**
-→ Docker Desktop isn't running. Open it from the Start menu and wait for the whale icon in the system tray to go solid.
+→ Docker Desktop isn't running. Open it from the Start menu and wait for it to fully start.
 
 **Container starts then immediately exits**
-→ Run `docker compose logs` to see the error. Usually a bad environment variable in `docker-compose.yml`.
+→ `docker compose logs` to see the error. Usually a bad environment variable or missing file.
+
+**`macros.json` or `lpars.txt` is a directory inside the container**
+→ Docker created them as directories before the bind mount was configured. Fix:
+```bash
+docker compose down
+rm -rf macros.json lpars.txt
+echo '[]' > macros.json
+echo '# id, name, host, port, tls, type, model' > lpars.txt
+chmod 666 macros.json lpars.txt
+docker compose up -d
+```
+
+**`EACCES` writing to `macros.json`**
+→ `chmod 666 macros.json` on the host file.
 
 **`EADDRINUSE: address already in use :8081`**
-→ Something else is on port 8081. Change `BRIDGE_PORT` in `docker-compose.yml` and update the `ports:` mapping to match, then `docker compose up -d --force-recreate`.
+→ Something else is on port 8081. Change `BRIDGE_PORT` in `docker-compose.yml` and update `BRIDGE_URL` in `public/js/state.js` to match.
 
 **Browser can't reach `http://localhost:8081`**
-→ Confirm the container is up: `docker compose ps`. The port column should show `0.0.0.0:8081->8081/tcp`. If it does, check Windows Firewall isn't blocking localhost loopback on that port.
+→ Confirm the container is up: `docker compose ps`. If the port column shows the mapping but the browser can't connect, check Windows Firewall isn't blocking the port.
 
 **Bridge can't reach the mainframe (from Docker)**
-→ Docker Desktop runs in a VM — many corporate VPNs don't route into it. Test from inside the container first:
-```powershell
-docker exec -it tn3270-bridge sh -c "nc -zv 10.x.x.x 339"
+→ Docker Desktop runs in a VM — many corporate VPNs don't route into it. Test from inside the container:
+```bash
+docker compose exec tn3270-bridge sh -c "nc -zv 10.x.x.x 23"
 ```
-If that fails but the same test works in PowerShell or WSL2, switch to the WSL2/Node option.
+If that fails but works from WSL2 or PowerShell, switch to the WSL2/Node option.
 
 **TLS certificate errors**
-→ Set `BRIDGE_VERIFY_TLS=false` in `docker-compose.yml` temporarily to confirm the issue is the cert, then obtain the correct CA certificate from your mainframe team.
+→ Set `BRIDGE_VERIFY_TLS=false` temporarily to confirm the issue is the cert, then obtain the correct CA certificate from your mainframe team.
 
-**Bridge connects but mainframe refuses the session**
-→ Test raw TCP from inside WSL2: `nc -zv your-mainframe.corp.com 339`. If that works, check the LPAR entry in `lpars.txt` — host, port, and TLS flag.
+**Stale code still running after rebuild**
+→ `docker compose down` first, then rebuild. If still wrong, do a full Docker Desktop restart.
 
 **VPN users — WSL2 vs Docker**
-→ WSL2 shares the Windows network stack, so VPN routing works natively. Docker Desktop uses a separate VM and often can't reach VPN-only hosts. If you're on VPN, run with `node server.js` inside WSL2 instead.
+→ WSL2 shares the Windows network stack, so VPN routing works natively. Use `node server.js` inside WSL2 if Docker can't reach your mainframe.
 
 ---
 
 ## Auto-start
 
-**Docker Desktop:** Settings → General → enable *"Start Docker Desktop when you log in"*. The `docker-compose.yml` already sets `restart: unless-stopped`, so the container comes back up automatically after reboots.
+**Docker Desktop:** Settings → General → enable *"Start Docker Desktop when you log in"*. The `docker-compose.yml` already sets `restart: unless-stopped`.
 
-**WSL2/Node:** Create a Windows Task Scheduler entry:
+**WSL2/Node:**
 ```powershell
 $action  = New-ScheduledTaskAction -Execute "wsl.exe" `
-             -Argument "-d Ubuntu -- bash -c 'cd ~/tn3270-bridge && node server.js >> ~/tn3270-bridge/bridge.log 2>&1'"
+             -Argument "-d Ubuntu -- bash -c 'cd ~/Bridge_server && node server.js >> ~/Bridge_server/bridge.log 2>&1'"
 $trigger = New-ScheduledTaskTrigger -AtLogOn
 Register-ScheduledTask -TaskName "WebTerm3270 Bridge" -Action $action -Trigger $trigger -RunLevel Highest
 ```

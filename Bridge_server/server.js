@@ -318,9 +318,9 @@ wss.on('connection', (ws, req) => {
     CopilotHandler.sendProviderInfo(ws);
 
     // ── Session → Browser events ───────────────────────────────────
-    session.on('connected', () => {
+    session.on('connected', ({ tlsVersion } = {}) => {
       logger.info(`[ws:${wsId}] TCP connected to ${host}:${port}`);
-      send(ws, { type: 'status', state: 'connected', host, port, lu: session.negotiatedLu, model });
+      send(ws, { type: 'status', state: 'connected', host, port, lu: session.negotiatedLu, model, tlsVersion });
     });
 
     session.on('screen', screenData => {
@@ -331,6 +331,9 @@ wss.on('connection', (ws, req) => {
 
     session.on('oia', oiaData => {
       send(ws, { type: 'oia', ...oiaData });
+    });
+    session.on('lu', lu => {
+      send(ws, { type: 'status', state: 'lu', lu });
     });
 
     session.on('error', err => {
