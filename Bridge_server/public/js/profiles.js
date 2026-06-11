@@ -186,17 +186,23 @@ function handleBridgeMsg(sid, msg) {
   if (!session) return;
   switch (msg.type) {
     case 'status':
-      if (msg.state === 'connected') {
-        setConnStatus(session.name, 'connected'); updateSessionDot(sid, 'connected');
-        if (msg.lu)    { const e = document.getElementById('oiaLu');    if (e) e.textContent = msg.lu; }
-        if (msg.model) { const e = document.getElementById('oiaModel'); if (e) e.textContent = msg.model; }
-        if (msg.host)  { const e = document.getElementById('oiaSys');   if (e) e.textContent = msg.host; }
-      } else if (msg.state === 'disconnected') {
-        setConnStatus(session.name, 'disconnected'); updateSessionDot(sid, 'disconnected');
-        const luE = document.getElementById('oiaLu'); const modelE = document.getElementById('oiaModel');
-        if (luE) luE.textContent = '-'; if (modelE) modelE.textContent = '-';
-      } else if (msg.state === 'connecting') { setConnStatus(session.name, 'connecting'); }
-      break;
+  if (msg.state === 'connected') {
+    setConnStatus(session.name, 'connected'); updateSessionDot(sid, 'connected');
+    if (msg.lu)         { const e = document.getElementById('oiaLu');    if (e) e.textContent = msg.lu; }
+    if (msg.model)      { const e = document.getElementById('oiaModel'); if (e) e.textContent = msg.model; }
+    if (msg.host)       { const e = document.getElementById('oiaSys');   if (e) e.textContent = msg.host; }
+    if (msg.tlsVersion) { const e = document.getElementById('oiaTls');   if (e) e.textContent = '3270 \u00b7 ' + msg.tlsVersion; }
+  } else if (msg.state === 'disconnected') {
+    setConnStatus(session.name, 'disconnected'); updateSessionDot(sid, 'disconnected');
+    const luE = document.getElementById('oiaLu'); const modelE = document.getElementById('oiaModel');
+    if (luE) luE.textContent = '-'; if (modelE) modelE.textContent = '-';
+    const tlsE = document.getElementById('oiaTls'); if (tlsE) tlsE.textContent = '3270';
+  } else if (msg.state === 'connecting') {
+    setConnStatus(session.name, 'connecting');
+  } else if (msg.state === 'lu') {
+    const e = document.getElementById('oiaLu'); if (e && msg.lu) e.textContent = msg.lu;
+  }
+  break;
     case 'screen':
       if (session) session.lastScreen = msg;
       if (sid === activeSession) { renderLiveScreen(msg); liveScreenText = screenToText(msg); liveScreen = msg; cursorRow = msg.cursorRow ?? 0; cursorCol = msg.cursorCol ?? 0; }

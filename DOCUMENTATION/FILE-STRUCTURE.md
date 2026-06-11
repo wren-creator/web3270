@@ -1,7 +1,7 @@
 # WebTerm/3270 — File Structure
 
 ```
-tn3270-bridge/
+Bridge_server/
 │
 │  ── GitHub ────────────────────────────────────────────────────────
 │
@@ -24,22 +24,40 @@ tn3270-bridge/
 ├── SETUP-WINDOWS.md                      Windows-specific notes
 ├── AI-notes.md                           AI provider options and approval guidance
 ├── FILE-STRUCTURE.md                     This file
+├── MOCK-SERVERS.md                       Mock LPAR daemon reference
+├── SBOM.md                               Software bill of materials
+├── TROUBLESHOOTING.md                    Known issues and diagnostic procedures
 │
 │  ── Bridge server ──────────────────────────────────────────────────
 │
-├── server.js                             WebSocket server entry point
-├── config.js                             All config — LPAR profiles, defaults
+├── server.js                             WebSocket + HTTP server entry point
+│                                           · http://localhost:8080  → tn3270-client.html
+│                                           · http://localhost:8080/demo  → demo page
+│                                           · http://localhost:8080/copilot → standalone copilot
+│                                           · ws://localhost:8080  → WebSocket bridge
+│                                           · GET/POST/DELETE /api/profiles (lpars.txt CRUD)
+│                                           · GET/POST/DELETE /api/macros (macros.json CRUD)
+├── config.js                             LPAR profile loader (lpars.txt parser + defaults)
 ├── logger.js                             Structured logger (LOG_LEVEL env var)
-├── package.json                          Single dep: ws (WebSocket)
+├── package.json                          Deps: ws (production), nodemon (dev)
+│
+│  ── Startup scripts ─────────────────────────────────────────────
+│
+├── start.sh                              Linux/Mac start script
+├── start.ps1                             Windows PowerShell start script
 │
 │  ── TN3270 protocol engine ─────────────────────────────────────────
 │
 ├── tn3270/
 │   ├── session.js                        Full TN3270(E) protocol implementation
-│   │                                       · Telnet negotiation (DO/WILL/WONT)
+│   │                                       · Telnet negotiation (DO/WILL/WONT/DONT)
 │   │                                       · TN3270E sub-negotiation + LU binding
-│   │                                       · 3270 datastream parser (SF/SBA/IC/RA/EUA)
+│   │                                       · WSF QueryReply handshake (z/VM)
+│   │                                       · 3270 datastream parser (SF/SBA/IC/RA/EUA/SFE)
+│   │                                       · 14-bit SBA address decode/encode
+│   │                                       · IND$FILE WSF transfer (upload + download)
 │   │                                       · Screen buffer → JSON, AID key encoding
+│   │                                       · NONDISPLAY field detection
 │   └── ebcdic.js                         EBCDIC ↔ ASCII (CP037 full table)
 │
 │  ── Macro engine ───────────────────────────────────────────────────
@@ -50,74 +68,83 @@ tn3270-bridge/
 │   │                                       · Ops: aid / type / wait / branch / comment
 │   │                                       · Pause / resume / stop
 │   ├── handler.js                        WebSocket router for macro.* messages
-│   ├── store.js                          Read/write .macro.json files to disk
-│   ├── macro-client.js                   Browser-side macro UI
+│   ├── store.js                          Read/write macros.json
+│   ├── macro-client.js                   Browser-side macro UI (legacy — see public/js/macros.js)
 │   ├── server-integration.js             Snippet: wiring into server.js
-│   └── library/                          Saved macro definitions
-│       ├── TSO ISPF Login.macro.json
-│       └── SDSF Job Query.macro.json
+│   ├── library/                          Saved macro definitions (gitignored personal macros)
+│   ├── TSO ISPF Login.macro.json         Example macro
+│   └── SDSF Job Query.macro.json         Example macro
 │
 │  ── AI Copilot ─────────────────────────────────────────────────────
 │
 ├── copilot/
 │   │
-│   ├── router.js                         Reads COPILOT_PROVIDER, loads provider
-│   │                                       COPILOT_PROVIDER=anthropic → default/
-│   │                                       COPILOT_PROVIDER=github    → auxiliary/
-│   │                                       COPILOT_PROVIDER=azure     → auxiliary/
-│   │                                       COPILOT_PROVIDER=ollama    → auxiliary/
-│   │
-│   ├── copilot-handler.js                WebSocket handler (copilot.chat messages)
-│   │                                       Uses router.js — provider-agnostic
+│   ├── router.js                         Reads COPILOT_PROVIDER, loads provider module
+│   ├── copilot-handler.js                WebSocket handler for copilot.chat messages
 │   │
 │   ├── default/                          ← ACTIVE BY DEFAULT
-│   │   └── anthropic-default.js          Anthropic API (Claude Sonnet/Opus)
+│   │   └── anthropic-default.js          Anthropic API (Claude Sonnet/Opus/Haiku)
 │   │                                       Requires: ANTHROPIC_API_KEY
-│   │                                       Best mainframe domain knowledge
 │   │
 │   └── auxiliary/                        ← REQUIRES IT APPROVAL OR EXTRA SETUP
-│       ├── README.md                     Setup guide for all three options
-│       ├── github-models.js              GitHub Models API  ← try this first
-│       │                                   Claude Opus via existing GitHub Copilot licence
-│       │                                   Requires: GITHUB_TOKEN (models:read scope)
-│       │                                   No new vendor approval needed
-│       │
-│       ├── azure-openai.js               Azure OpenAI
-│       │                                   Data stays in corporate Azure tenant
-│       │                                   Requires: AZURE_OPENAI_ENDPOINT + KEY + DEPLOYMENT
-│       │
-│       └── ollama.js                     Local Ollama (fully on-premises)
-│                                           Zero external calls
-│                                           Requires: ollama running locally + model pulled
+│       ├── README.md                     Setup guide for all providers
+│       ├── github-models.js              GitHub Models API (Claude via GitHub Copilot licence)
+│       ├── azure-openai.js               Azure OpenAI (data stays in corporate tenant)
+│       ├── openai.js                     OpenAI direct API
+│       ├── gemini.js                     Google Gemini API
+│       └── ollama.js                     Local Ollama (fully on-premises, zero external calls)
+│
+│  ── Runtime config (bind-mounted — no Docker rebuild needed) ────────
+│
+├── lpars.txt                             LPAR profiles: id, name, host, port, tls, type, model
+├── lpars.txt.bak                         Backup of lpars.txt
+├── macros.json                           Saved macros (CRUD via /api/macros)
 │
 │  ── Browser client ─────────────────────────────────────────────────
 │
 ├── public/
-│   ├── tn3270-client.html                Main UI — single file, no build step
+│   │
+│   ├── tn3270-client.html                Main UI shell (~550 lines HTML only)
 │   │                                       · 3270 terminal (80×24 / 132×27)
 │   │                                       · Multi-session tabs
 │   │                                       · LPAR dropdown (all profiles + status)
-│   │                                       · Left sidebar: LPARs / macros / history
-│   │                                       · Right panel — 4 tabs:
-│   │                                           Settings · Keys · Transfer · ⬡ Copilot
-│   │                                       · PF1–PF24, PA1–PA3 toolbar
+│   │                                       · Left sidebar: LPAR Profiles / Macros / Screen History
+│   │                                       · Right panel — 5 tabs:
+│   │                                           Settings · Keys · Transfer · ⚙ AI · ⬡ Assist
+│   │                                       · PF1–PF12, PA1–PA2, SysReq, Clear toolbar
 │   │                                       · 5 colour themes (green/blue/amber/white/teal)
-│   │                                       · OIA status bar
-│   │                                       · Ctrl+K → Copilot tab
+│   │                                       · OIA status bar with BH watermark
+│   │                                       · Connect modal (host/port/TLS/TN3270E/model)
+│   │                                       · Ctrl+K → AI Assist tab
+│   │                                       · Ctrl+T → New Session
+│   │                                       · Ctrl+B → Toggle Sidebar
 │   │
-│   └── copilot-panel-standalone.html     Standalone Copilot demo (no bridge needed)
-│                                           For demos without running the full stack
+│   ├── css/
+│   │   └── terminal.css                  All styles: layout, themes, CRT effects, OIA, panels
+│   │
+│   └── js/                              Modular client JS (loaded in order by HTML)
+│       ├── state.js                      Shared globals: session map, cursor, xfer state,
+│       │                                   AI provider constants, BRIDGE_URL (ws://localhost:8081)
+│       ├── copilot.js                    AI Assist panel: chat, provider config, model list
+│       ├── xfer.js                       File transfer: IND$FILE (z/VM), TSO EDIT upload,
+│       │                                   dataset listing, local file browser (File System API)
+│       ├── macros.js                     Macro CRUD UI, import/export JSON, run from sidebar
+│       ├── profiles.js                   LPAR profile CRUD, sidebar list, management panel
+│       ├── terminal.js                   Screen rendering, keyboard handler, cursor, field tracking
+│       ├── settings.js                   Theme, zoom, scanlines, cursor blink, password masking
+│       ├── ui.js                         Layout: sidebar toggle, panel tabs, menu, modals
+│       └── main.js                       App init, WebSocket lifecycle, session tab management
 │
-│  ── Mock LPAR daemon ───────────────────────────────────────────────
+│  ── Mock LPAR daemons ──────────────────────────────────────────────
 │
 └── mock-lpar/
-    ├── mock-lpar.js                      Lightweight TN3270 mock server
-    │                                       · Real Telnet / TN3270E negotiation
-    │                                       · EBCDIC-encoded screens
+    ├── mock-lpar.js                      TN3270 mock z/OS server (port 3270)
     │                                       · Screens: Logon → ISPF → Edit / SDSF
-    │                                       · No extra npm packages
-    ├── Dockerfile                        Container for the mock LPAR
-    └── README.md                         Setup + demo script
+    ├── mock-zvm.js                       TN3270 mock z/VM server (port 3271)
+    │                                       · Screens: CP Logon → CP → CMS → FILELIST / RDRLIST / XEDIT
+    ├── Dockerfile                        Container for mock z/OS LPAR
+    ├── Dockerfile.mock-zvm               Container for mock z/VM LPAR
+    └── README.md                         Mock daemon setup + demo script
 ```
 
 ---
@@ -130,32 +157,35 @@ tn3270-bridge/
 COPILOT_PROVIDER=anthropic    copilot/default/anthropic-default.js  ← DEFAULT
 COPILOT_PROVIDER=github       copilot/auxiliary/github-models.js
 COPILOT_PROVIDER=azure        copilot/auxiliary/azure-openai.js
+COPILOT_PROVIDER=openai       copilot/auxiliary/openai.js
+COPILOT_PROVIDER=gemini       copilot/auxiliary/gemini.js
 COPILOT_PROVIDER=ollama       copilot/auxiliary/ollama.js
 ```
 
-One line in `.env`, restart the bridge — the browser UI and all other
-code is completely unaffected by the change.
+One line in `.env`, restart the bridge — the browser UI is unaffected.
 
 ---
 
 ## Full data flow
 
 ```
-Browser  (public/tn3270-client.html)
-    │  WebSocket JSON  ws://localhost:8080
+Browser  (public/tn3270-client.html + public/js/*.js)
+    │  WebSocket JSON  ws://localhost:8081
     ▼
-server.js
-    ├── tn3270/session.js ──────────────── TCP :339 ──► Mainframe LPAR
-    │                                              (or mock-lpar/mock-lpar.js)
+server.js  (HTTP :8080 / WS :8081)
+    ├── tn3270/session.js ──────────────── TCP :23/:992 ──► Mainframe LPAR
+    │                                               (or mock-lpar/*.js)
     ├── macros/handler.js
     │       └── macros/engine.js
-    │               └── macros/store.js  (macros/library/*.macro.json)
+    │               └── macros/store.js  (macros.json)
     └── copilot/copilot-handler.js
             └── copilot/router.js
-                    ├── copilot/default/anthropic-default.js  ──► api.anthropic.com
-                    ├── copilot/auxiliary/github-models.js    ──► models.inference.ai.azure.com
-                    ├── copilot/auxiliary/azure-openai.js     ──► your-resource.openai.azure.com
-                    └── copilot/auxiliary/ollama.js           ──► localhost:11434
+                    ├── copilot/default/anthropic-default.js   ──► api.anthropic.com
+                    ├── copilot/auxiliary/github-models.js     ──► models.inference.ai.azure.com
+                    ├── copilot/auxiliary/azure-openai.js      ──► your-resource.openai.azure.com
+                    ├── copilot/auxiliary/openai.js            ──► api.openai.com
+                    ├── copilot/auxiliary/gemini.js            ──► generativelanguage.googleapis.com
+                    └── copilot/auxiliary/ollama.js            ──► localhost:11434
 ```
 
 ---
@@ -166,6 +196,20 @@ server.js
 |------|--------|
 | `.env` | Real credentials and LPAR IPs — use `.env.example` as template |
 | `node_modules/` | Regenerated by `npm install` |
-| `macros/library/*.macro.json` | Personal macros (example macros are kept) |
+| `macros/library/*.macro.json` | Personal macros (example macros are kept at root of macros/) |
 | `certs/` | TLS certificates — never commit private keys |
 | `*.log` | Runtime logs |
+| `backup-files/` | Local dev backups — not tracked |
+
+---
+
+## Bind-mounted files (Docker)
+
+These files are mounted directly into the container — changes take effect immediately without a rebuild:
+
+| File | Purpose |
+|------|---------|
+| `lpars.txt` | LPAR profiles |
+| `macros.json` | Saved macros |
+
+> Both files must exist as files on the host before `docker compose up` or Docker will create them as directories, breaking the bind mount.

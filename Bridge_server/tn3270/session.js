@@ -194,7 +194,8 @@ class Tn3270Session extends EventEmitter {
 
     this.socket = connectFn(opts, () => {
       logger.debug(`[ws:${this.wsId}] TCP socket open`);
-      this.emit('connected');
+      const tlsVersion = this.useTls ? (this.socket.getProtocol?.() || 'TLS') : 'PLAIN';
+      this.emit('connected', { tlsVersion });
       // Negotiation begins: host will send DO options
     });
 
@@ -595,6 +596,7 @@ class Tn3270Session extends EventEmitter {
       if (connIdx !== -1) {
         this.negotiatedLu = data.slice(connIdx + 1).toString('ascii');
         logger.info(`[ws:${this.wsId}] TN3270E active, LU=${this.negotiatedLu}`);
+        this.emit('lu', this.negotiatedLu);
       }
       this._send(Buffer.from([IAC, SB, OPT_TN3270E, TN3E_FUNCTIONS, TN3E_REQUEST, 0x00, 0x02, IAC, SE]));
       return;
