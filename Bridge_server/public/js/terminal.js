@@ -66,6 +66,40 @@ document.fonts.ready.then(() => { measureCellWidth(); fitScreen(); });
 // and rendering reveals the real character.
 const NONDISPLAY_MASK = '#';
 
+// ── Field Map Overlay ─────────────────────────────────────────────
+// When enabled, every field attribute byte cell is highlighted and
+// annotated with its decoded flags (protected, intensity, MDT).
+// Regular cells are tinted by their field type. Purely client-side —
+// no server changes required.
+let fieldMapOverlay = false;
+
+function toggleFieldMap() {
+  fieldMapOverlay = !fieldMapOverlay;
+  const btn = document.getElementById('fmoBtn');
+  if (btn) {
+    btn.style.color       = fieldMapOverlay ? 'var(--accent-amber)' : 'var(--text-muted)';
+    btn.style.borderColor = fieldMapOverlay ? 'var(--accent-amber)' : '#333';
+  }
+  document.body.classList.toggle('field-map-overlay', fieldMapOverlay);
+  if (liveScreen) renderLiveScreen(liveScreen);
+}
+
+// Decode a 3270 field attribute byte into human-readable flags.
+// FA byte layout (IBM GA23-0059):
+//   bit 5 (0x20): 1 = protected, 0 = unprotected
+//   bits 3-2 (0x0C): intensity  00/01=normal, 10=intensified, 11=nondisplay
+//   bit 0 (0x01): MDT — Modified Data Tag (field has been changed)
+function _decodeFa(fa) {
+  const prot    = !!(fa & 0x20);
+  const intens  = (fa & 0x0C) >> 2;
+  const mdt     = !!(fa & 0x01);
+  const numeric = !!(fa & 0x10);
+  let intensLabel = 'NORMAL';
+  if (intens === 2) intensLabel = 'INTENS';
+  if (intens === 3) intensLabel = 'HIDDEN';
+  return { prot, intens, mdt, numeric, intensLabel };
+}
+
 function renderLiveScreen(screenData) {
   const term    = document.getElementById('terminal');
   term.innerHTML = '';
@@ -101,6 +135,39 @@ function renderLiveScreen(screenData) {
       // Mark nondisplay cells for any styling hooks (e.g. dimmer color
       // when shown). Purely cosmetic; safe to ignore.
       if (cell.nondisplay) cellEl.classList.add('field-nondisplay');
+
+      // ── Field Map Overlay ───────────────────────────────────────
+      if (fieldMapOverlay) {
+        if (cell.fa !== undefined) {
+          // This cell IS a field attribute byte — show it prominently
+          const d = _decodeFa(cell.fa);
+          cellEl.classList.add('fmo-fa-cell');
+          cellEl.classList.add(d.prot ? 'fmo-protected' : 'fmo-unprotected');
+          if (d.intens === 3) cellEl.classList.add('fmo-nondisplay');
+          if (d.intens === 2) cellEl.classList.add('fmo-intensified');
+          if (d.mdt)          cellEl.classList.add('fmo-mdt');
+          // Replace blank FA cell with a visible marker glyph
+          cellEl.textContent = '▸';
+          // Tooltip showing full decoded flags
+          const hex   = '0x' + cell.fa.toString(16).toUpperCase().padStart(2,'0');
+          const flags = [
+            d.prot    ? 'PROT'    : 'UNPROT',
+            d.intensLabel,
+            d.numeric ? 'NUM'     : '',
+            d.mdt     ? 'MDT'     : '',
+          ].filter(Boolean).join(' · ');
+          cellEl.title = `FA ${hex} — ${flags}`;
+        } else if (cell.char !== undefined) {
+          // Regular data cell — tint it based on the field type it belongs to
+          // (reuse existing class names the server already sets on the cell)
+          const cls = cellEl.className;
+          if      (cls.includes('field-protected')) cellEl.classList.add('fmo-tint-protected');
+          else if (cls.includes('field-label'))     cellEl.classList.add('fmo-tint-unprotected');
+          else if (cls.includes('field-error'))     cellEl.classList.add('fmo-tint-error');
+          else if (cls.includes('field-dim'))       cellEl.classList.add('fmo-tint-dim');
+          else if (cell.nondisplay)                 cellEl.classList.add('fmo-tint-nondisplay');
+        }
+      }
       rowEl.appendChild(cellEl);
     }
     term.appendChild(rowEl);

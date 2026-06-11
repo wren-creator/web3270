@@ -335,3 +335,53 @@ select:focus,input[type="text"]:focus,input[type="number"]:focus,input[type="pas
 .btn-secondary:hover { border-color:var(--accent-blue);color:var(--text-primary); }
 .btn-primary { background:var(--accent-blue);border:1px solid var(--accent-blue);color:white; }
 .btn-primary:hover { background:#3d8de2; }
+
+/* ── Field Map Overlay (FMO) ───────────────────────────────────── */
+/* Activated by body.field-map-overlay. Highlights field attribute  */
+/* byte cells and tints data cells by field type.                   */
+
+/* FA cell — the attribute byte position itself */
+.field-map-overlay .fmo-fa-cell {
+  font-weight: 700;
+  font-size: 0.85em;
+  opacity: 1 !important;
+  cursor: help;
+  z-index: 2;
+  position: relative;
+}
+
+/* FA cell color by field type */
+.field-map-overlay .fmo-fa-cell.fmo-protected   { color: #ff6666; background: rgba(255,60,60,0.18); outline: 1px solid rgba(255,60,60,0.4); }
+.field-map-overlay .fmo-fa-cell.fmo-unprotected { color: #44ff88; background: rgba(40,255,100,0.15); outline: 1px solid rgba(40,255,100,0.35); }
+.field-map-overlay .fmo-fa-cell.fmo-nondisplay  { color: #cc88ff; background: rgba(160,80,255,0.18); outline: 1px solid rgba(160,80,255,0.4); }
+.field-map-overlay .fmo-fa-cell.fmo-intensified { color: #ffee44; background: rgba(255,220,40,0.15); outline: 1px solid rgba(255,220,40,0.35); }
+
+/* MDT dot — small indicator on modified fields */
+.field-map-overlay .fmo-fa-cell.fmo-mdt::after {
+  content: '•';
+  font-size: 0.6em;
+  vertical-align: super;
+  color: #ffb800;
+  margin-left: 1px;
+}
+
+/* Data cell tints — subtle background wash by field type */
+.field-map-overlay .fmo-tint-protected   { background: rgba(255,60,60,0.06); }
+.field-map-overlay .fmo-tint-unprotected { background: rgba(40,255,100,0.06); }
+.field-map-overlay .fmo-tint-error       { background: rgba(255,60,60,0.12); }
+.field-map-overlay .fmo-tint-dim         { background: rgba(100,100,120,0.10); }
+.field-map-overlay .fmo-tint-nondisplay  { background: rgba(160,80,255,0.08); }
+
+/* Legend — shown in OIA bar area when FMO is active */
+body.field-map-overlay .oia-bar::before {
+  content: '▸PROT  ▸UNPROT  ▸HIDDEN  ▸INTENS  •MDT';
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: transparent;
+  background: linear-gradient(90deg, #ff6666 0% 14%, #44ff88 15% 30%, #cc88ff 31% 46%, #ffee44 47% 62%, #ffb800 63% 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  margin-right: 10px;
+  white-space: nowrap;
+}
