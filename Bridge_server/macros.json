@@ -4,36 +4,12 @@
     "description": "Gets me though the mess to the LOGON prompt",
     "created": "2026-06-04T00:00:00.000Z",
     "steps": [
-      {
-        "op": "aid",
-        "aid": "ENTER",
-        "fields": []
-      },
-      {
-        "op": "wait",
-        "condition": "screen",
-        "timeoutMs": 5000
-      },
-      {
-        "op": "aid",
-        "aid": "PA1",
-        "fields": []
-      },
-      {
-        "op": "wait",
-        "condition": "screen",
-        "timeoutMs": 5000
-      },
-      {
-        "op": "aid",
-        "aid": "PA1",
-        "fields": []
-      },
-      {
-        "op": "wait",
-        "condition": "screen",
-        "timeoutMs": 5000
-      }
+      { "op": "aid", "aid": "ENTER", "fields": [] },
+      { "op": "wait", "condition": "screen", "timeoutMs": 5000 },
+      { "op": "aid", "aid": "PA1", "fields": [] },
+      { "op": "wait", "condition": "screen", "timeoutMs": 5000 },
+      { "op": "aid", "aid": "PA1", "fields": [] },
+      { "op": "wait", "condition": "screen", "timeoutMs": 5000 }
     ],
     "id": "mp17efzred08"
   },
@@ -41,50 +17,16 @@
     "name": "z/VM CP to FILELIST",
     "description": "cp to filelist for z\\vm",
     "steps": [
-      {
-        "op": "comment",
-        "text": "Start from CP Ready prompt"
-      },
-      {
-        "op": "wait",
-        "condition": "unlock"
-      },
-      {
-        "op": "type",
-        "row": 21,
-        "col": 13,
-        "text": "IPL CMS"
-      },
-      {
-        "op": "aid",
-        "aid": "ENTER"
-      },
-      {
-        "op": "wait",
-        "condition": "unlock"
-      },
-      {
-        "op": "comment",
-        "text": "Now at CMS Ready"
-      },
-      {
-        "op": "type",
-        "row": 21,
-        "col": 14,
-        "text": "FILELIST"
-      },
-      {
-        "op": "aid",
-        "aid": "ENTER"
-      },
-      {
-        "op": "wait",
-        "condition": "unlock"
-      },
-      {
-        "op": "comment",
-        "text": "FILELIST screen active — open Transfer panel and click refresh"
-      }
+      { "op": "comment", "text": "Start from CP Ready prompt" },
+      { "op": "wait", "condition": "unlock" },
+      { "op": "type", "row": 21, "col": 13, "text": "IPL CMS" },
+      { "op": "aid", "aid": "ENTER" },
+      { "op": "wait", "condition": "unlock" },
+      { "op": "comment", "text": "Now at CMS Ready" },
+      { "op": "type", "row": 21, "col": 14, "text": "FILELIST" },
+      { "op": "aid", "aid": "ENTER" },
+      { "op": "wait", "condition": "unlock" },
+      { "op": "comment", "text": "FILELIST screen active — open Transfer panel and click refresh" }
     ],
     "id": "mp17gc94ntij"
   },
@@ -92,196 +34,17 @@
     "name": "Z\\VM cp to CMS to filelist",
     "description": "this will bring up the filelist for Z\\VM to download files.",
     "steps": [
-      {
-        "op": "comment",
-        "text": "Start from CP Ready prompt"
-      },
-      {
-        "op": "wait",
-        "condition": "unlock"
-      },
-      {
-        "op": "type",
-        "row": 21,
-        "col": 13,
-        "text": "IPL CMS"
-      },
-      {
-        "op": "aid",
-        "aid": "ENTER"
-      },
-      {
-        "op": "wait",
-        "condition": "text",
-        "row": 28,
-        "col": 0,
-        "text": "Ready;",
-        "timeoutMs": 30000
-      },
-      {
-        "op": "comment",
-        "text": "Now at CMS Ready"
-      },
-      {
-        "op": "type",
-        "row": 21,
-        "col": 14,
-        "text": "FILELIST"
-      },
-      {
-        "op": "aid",
-        "aid": "ENTER"
-      },
-      {
-        "op": "wait",
-        "condition": "unlock"
-      },
-      {
-        "op": "comment",
-        "text": "FILELIST screen active — open Transfer panel and click refresh"
-      }
+      { "op": "comment", "text": "Start from CP Ready prompt" },
+      { "op": "wait", "condition": "unlock" },
+      { "op": "type", "row": 21, "col": 13, "text": "IPL CMS" },
+      { "op": "aid", "aid": "ENTER" },
+      { "op": "wait", "condition": "text", "row": 28, "col": 0, "text": "Ready;", "timeoutMs": 30000 },
+      { "op": "comment", "text": "Now at CMS Ready" },
+      { "op": "type", "row": 21, "col": 14, "text": "FILELIST" },
+      { "op": "aid", "aid": "ENTER" },
+      { "op": "wait", "condition": "unlock" },
+      { "op": "comment", "text": "FILELIST screen active — open Transfer panel and click refresh" }
     ],
     "id": "mq6u5eobquxq"
-  },
-  {
-    "name": "APF List Scanner",
-    "description": "Enumerates APF-authorized libraries via TSO LISTAPF. Navigates ISPF to the Command option (6) and runs LISTAPF. Requires a real z/OS system or extended mock with TSO command support. On the mock LPAR, this demonstrates the navigation pattern only.",
-    "source": "security",
-    "created": "2026-06-12T00:00:00.000Z",
-    "modified": "2026-06-12T00:00:00.000Z",
-    "steps": [
-      {
-        "op": "waitScr",
-        "text": "ISPF Primary Option Menu",
-        "timeout": 15000,
-        "comment": "Wait for ISPF Primary Option Menu"
-      },
-      {
-        "op": "type",
-        "row": 2,
-        "col": 13,
-        "text": "6"
-      },
-      {
-        "op": "aid",
-        "aid": "ENTER",
-        "fields": [],
-        "comment": "Select option 6 - Command"
-      },
-      {
-        "op": "waitScr",
-        "text": "COMMAND",
-        "timeout": 10000,
-        "comment": "Wait for TSO Command shell or ISPF Command panel"
-      },
-      {
-        "op": "type",
-        "row": 2,
-        "col": 13,
-        "text": "LISTAPF"
-      },
-      {
-        "op": "aid",
-        "aid": "ENTER",
-        "fields": [],
-        "comment": "Submit LISTAPF command"
-      },
-      {
-        "op": "pause",
-        "ms": 2000,
-        "comment": "Allow output to render — use Traffic Recorder to capture results"
-      }
-    ],
-    "readOnly": true
-  },
-  {
-    "name": "RACF Brute Force Template",
-    "description": "Automated RACF login attempts against the mock z/OS LPAR logon screen. Targets the Userid and Password fields at their exact screen positions. FOR AUTHORIZED TRAINING USE ONLY.",
-    "source": "security",
-    "created": "2026-06-12T00:00:00.000Z",
-    "modified": "2026-06-12T00:00:00.000Z",
-    "steps": [
-      {
-        "op": "waitScr",
-        "text": "TSO/E LOGON",
-        "timeout": 15000,
-        "comment": "Wait for mock z/OS logon screen"
-      },
-      {
-        "op": "type",
-        "row": 5,
-        "col": 15,
-        "text": "IBMUSER",
-        "comment": "Type userid into Userid ===> field (row 5, col 15 = first char of input)"
-      },
-      {
-        "op": "type",
-        "row": 6,
-        "col": 15,
-        "text": "SYS1",
-        "comment": "Attempt 1: SYS1 — common default. Add more steps below for additional candidates."
-      },
-      {
-        "op": "aid",
-        "aid": "ENTER",
-        "fields": [],
-        "comment": "Submit credentials"
-      },
-      {
-        "op": "waitScr",
-        "text": "ISPF Primary Option Menu",
-        "timeout": 5000,
-        "comment": "Success condition — ISPF loaded means logon succeeded"
-      }
-    ],
-    "readOnly": true
-  },
-  {
-    "name": "APF List Scanner",
-    "description": "Enumerates APF-authorized libraries via TSO LISTAPF. Navigates ISPF to the Command option (6) and runs LISTAPF. Requires a real z/OS system or extended mock with TSO command support. On the mock LPAR, this demonstrates the navigation pattern only.",
-    "steps": [
-      {
-        "op": "waitScr",
-        "text": "ISPF Primary Option Menu",
-        "timeout": 15000,
-        "comment": "Wait for ISPF Primary Option Menu"
-      },
-      {
-        "op": "type",
-        "row": 2,
-        "col": 13,
-        "text": "6"
-      },
-      {
-        "op": "aid",
-        "aid": "ENTER",
-        "fields": [],
-        "comment": "Select option 6 - Command"
-      },
-      {
-        "op": "waitScr",
-        "text": "COMMAND",
-        "timeout": 10000,
-        "comment": "Wait for TSO Command shell or ISPF Command panel"
-      },
-      {
-        "op": "type",
-        "row": 2,
-        "col": 13,
-        "text": "LISTAPF"
-      },
-      {
-        "op": "aid",
-        "aid": "ENTER",
-        "fields": [],
-        "comment": "Submit LISTAPF command"
-      },
-      {
-        "op": "pause",
-        "ms": 2000,
-        "comment": "Allow output to render — use Traffic Recorder to capture results"
-      }
-    ],
-    "id": "mqb4q0nfg8an"
   }
 ]
