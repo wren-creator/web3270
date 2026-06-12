@@ -18,7 +18,7 @@ const config        = require('./config');
 const Tn3270Session = require('./tn3270/session');
 const logger        = require('./logger');
 const MacroHandler  = require('./macros/handler');
-const MacroStore    = require('./macros/store');
+const { MacroStore } = require('./macros/store');
 const CopilotHandler = require('./copilot/copilot-handler');
 const Ebcdic         = require('./tn3270/ebcdic');
 
@@ -205,11 +205,20 @@ const httpServer = http.createServer((req, res) => {
     const macroId = decodeURIComponent(req.url.slice('/api/macros/'.length));
     try {
       const macroPath = path.join(__dirname, 'macros.json');
-      const macros = loadMacroFile();
-      const idx = macros.findIndex(m => m.id === macroId);
-      if (idx < 0) { res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Macro not found' })); return; }
-      macros.splice(idx, 1);
-      fs.writeFileSync(macroPath, JSON.stringify(macros, null, 2));
+      const mainMacros = (() => {
+        if (!fs.existsSync(macroPath)) return [];
+        try { return JSON.parse(fs.readFileSync(macroPath, 'utf8')); } catch { return []; }
+      })();
+      const idx = mainMacros.findIndex(m => m.id === macroId);
+      if (idx < 0) {
+        // Check if it's a security macro
+        const allMacros = loadMacroFile();
+        const isSec = allMacros.find(m => (m.id === macroId || m.name === macroId) && m.source === 'security');
+        if (isSec) { res.writeHead(403, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Security macros are read-only' })); return; }
+        res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Macro not found' })); return;
+      }
+      mainMacros.splice(idx, 1);
+      fs.writeFileSync(macroPath, JSON.stringify(mainMacros, null, 2));
       logger.info(`[api] Macro "${macroId}" deleted`);
       res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
       res.end(JSON.stringify({ ok: true }));
@@ -1145,9 +1154,20 @@ function parseFilelistScreen(lines) {
 // ── Macro file helpers ─────────────────────────────────────────────
 function loadMacroFile() {
   const macroPath = path.join(__dirname, 'macros.json');
-  if (!fs.existsSync(macroPath)) return [];
-  try { return JSON.parse(fs.readFileSync(macroPath, 'utf8')); }
-  catch { return []; }
+  let macros = [];
+  if (fs.existsSync(macroPath)) {
+    try { macros = JSON.parse(fs.readFileSync(macroPath, 'utf8')); } catch { macros = []; }
+  }
+  // Merge security macros (read-only, security branch only)
+  const secPath = config.macroSecurityFile;
+  if (fs.existsSync(secPath)) {
+    try {
+      const sec = JSON.parse(fs.readFileSync(secPath, 'utf8'));
+      const tagged = sec.map(m => ({ ...m, source: 'security', readOnly: true }));
+      macros = [...macros, ...tagged];
+    } catch { /* skip unreadable security file */ }
+  }
+  return macros;
 }
 
 // ── Graceful shutdown ──────────────────────────────────────────────

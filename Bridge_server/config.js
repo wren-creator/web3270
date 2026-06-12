@@ -93,4 +93,12 @@ profiles: loadLparFile(),
 
   // Exposed so server.js can hot-reload after a save
   loadLparFile,
+
+  /**
+   * Security macro library — separate from main macros.json.
+   * Only loaded in the security branch. Never merged into main.
+   * Override with MACRO_SECURITY_FILE env var.
+   */
+  macroSecurityFile: process.env.MACRO_SECURITY_FILE ||
+    path.join(__dirname, 'macros-security.json'),
 };
