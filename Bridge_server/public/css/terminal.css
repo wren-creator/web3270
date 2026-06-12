@@ -385,3 +385,87 @@ body.field-map-overlay .oia-bar::before {
   margin-right: 10px;
   white-space: nowrap;
 }
+
+/* ── Attribute Byte Inspector ────────────────────────────────────── */
+.attr-inspector {
+  position: fixed; z-index: 9999;
+  background: #0a1628; border: 1px solid #1e3a5f;
+  border-radius: 6px; box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+  font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+  color: var(--text-dim); min-width: 260px; max-width: 300px;
+  user-select: none;
+}
+.abi-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px 6px; border-bottom: 1px solid #1e3a5f;
+}
+.abi-title  { font-weight: 600; color: var(--accent-cyan); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; }
+.abi-addr   { font-size: 9px; color: var(--text-muted); }
+.abi-close  { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 12px; padding: 0 2px; line-height: 1; }
+.abi-close:hover { color: var(--text-primary); }
+
+.abi-hex    { display: flex; align-items: baseline; gap: 10px; padding: 8px 10px 4px; }
+.abi-hexval { font-size: 22px; font-weight: 600; color: var(--accent-cyan); letter-spacing: 0.04em; }
+.abi-bin    { font-size: 12px; color: var(--text-muted); letter-spacing: 0.15em; }
+.abi-bin b  { color: var(--accent-amber); }
+
+.abi-table  { width: 100%; border-collapse: collapse; padding: 0 10px; display: table; }
+.abi-table tr { border-top: 1px solid rgba(30,58,95,0.5); }
+.abi-bit    { padding: 4px 10px; color: var(--text-muted); font-size: 9px; width: 36px; }
+.abi-label  { padding: 4px 4px; color: var(--text-dim); }
+.abi-val    { padding: 4px 10px; text-align: right; color: var(--text-dim); }
+.abi-on     { color: var(--accent-green) !important; font-weight: 600; }
+.abi-off    { color: #2a3a50 !important; }
+
+.abi-footer {
+  display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 10px;
+  border-top: 1px solid #1e3a5f; align-items: center;
+}
+.abi-footer span { font-size: 9px; border-radius: 3px; padding: 1px 5px; letter-spacing: 0.06em; font-weight: 600; }
+.abi-tag-prot    { background: rgba(255,60,60,0.15);  color: #ff6666; border: 1px solid rgba(255,60,60,0.3); }
+.abi-tag-unprot  { background: rgba(40,255,100,0.12); color: #44ff88; border: 1px solid rgba(40,255,100,0.3); }
+.abi-tag-num     { background: rgba(0,180,255,0.12);  color: #44ccff; border: 1px solid rgba(0,180,255,0.3); }
+.abi-tag-hidden  { background: rgba(160,80,255,0.15); color: #cc88ff; border: 1px solid rgba(160,80,255,0.3); }
+.abi-tag-intens  { background: rgba(255,220,40,0.12); color: #ffee44; border: 1px solid rgba(255,220,40,0.3); }
+.abi-tag-mdt     { background: rgba(255,184,0,0.12);  color: #ffb800; border: 1px solid rgba(255,184,0,0.3); }
+.abi-len         { margin-left: auto; color: var(--text-muted) !important; font-weight: 400 !important; }
+
+/* ── Security Tools Toolbar ──────────────────────────────────────── */
+.sec-toolbar {
+  display: none; align-items: center; gap: 6px;
+  background: #05090f; border-top: 1px solid #0d1a2a;
+  padding: 4px 12px; flex-shrink: 0;
+  font-family: 'IBM Plex Mono', monospace;
+}
+.sec-toolbar.sec-toolbar-open { display: flex; }
+
+.sec-toolbar-label {
+  font-size: 9px; font-weight: 600; color: #2a4a6a;
+  letter-spacing: 0.1em; text-transform: uppercase; white-space: nowrap;
+}
+.sec-toolbar-sep {
+  width: 1px; height: 16px; background: #0d1f2d; margin: 0 4px; flex-shrink: 0;
+}
+
+.sec-tool-btn {
+  display: flex; align-items: center; gap: 5px;
+  background: none; border: 1px solid #1a2f44; border-radius: 3px;
+  color: var(--text-muted); font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px; font-weight: 600; letter-spacing: 0.06em;
+  padding: 2px 8px; cursor: pointer; transition: all 0.15s;
+  text-decoration: none; white-space: nowrap;
+}
+.sec-tool-btn:hover {
+  border-color: var(--accent-cyan); color: var(--text-dim);
+}
+.sec-tool-btn-active {
+  color: var(--accent-amber) !important;
+  border-color: var(--accent-amber) !important;
+  background: rgba(255,170,0,0.06) !important;
+}
+.stb-icon { font-size: 9px; opacity: 0.7; }
+.stb-label {
+  font-size: 9px; font-weight: 400; color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+.sec-tool-btn-active .stb-label { color: var(--accent-amber); opacity: 0.7; }
