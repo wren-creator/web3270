@@ -156,6 +156,7 @@ class Tn3270Session extends EventEmitter {
     // Screen buffer: array of {char, fa, color, highlight, protected}
     this.buffer    = newBuffer(this.rows, this.cols);
     this.cursorAddr = 0;
+    this._pendingAnomalies = [];  // anomalies collected until next _emitScreen
 
     // Telnet / TN3270E state
     this.tn3270eEnabled   = false;
@@ -674,9 +675,12 @@ class Tn3270Session extends EventEmitter {
       // Erase Write:         CCW=0x05  SNA=0xF5
       // Erase Write Alt:     CCW=0x0D  SNA=0x7E
       const erase = (cmd === 0x05 || cmd === 0xF5 || cmd === 0x0D || cmd === 0x7E);
+      const isAlt  = (cmd === 0x0D || cmd === 0x7E);
+      if (isAlt) this._pendingAnomalies.push({ code: 'EWA', severity: 'info', msg: 'Erase Write Alternate — host switched to alternate screen dimensions' });
       this._processWriteCommand(bytes.slice(1), erase);
     } else if (cmd === 0x0F || cmd === 0x6F) {
       // Erase All Unprotected: CCW=0x0F  SNA=0x6F
+      this._pendingAnomalies.push({ code: 'EAU', severity: 'warn', msg: 'Erase All Unprotected — host wiped all input fields without full redraw' });
       this._eraseAllUnprotected();
     } else if (cmd === 0x02 || cmd === 0xF2) {
       // Read Buffer: CCW=0x02  SNA=0xF2
@@ -705,6 +709,16 @@ class Tn3270Session extends EventEmitter {
     if (wcc & WCC_RESET) {
       this._resetModifiedTags();
     }
+    // ── Anomaly: alarm bit (bit 2 of WCC) ─────────────────────────
+    if (wcc & 0x04) {
+      this._pendingAnomalies.push({ code: 'ALARM', severity: 'warn', msg: `WCC alarm bit set (WCC=0x${wcc.toString(16).toUpperCase().padStart(2,'0')}) — host rang terminal bell` });
+    }
+    // ── Anomaly: keyboard restore without MDT reset ────────────────
+    // Bit 1 (0x02) = keyboard restore. If set but WCC_RESET (0x40) not set,
+    // host unlocked keyboard while preserving modified field data — uncommon.
+    if ((wcc & 0x02) && !(wcc & WCC_RESET)) {
+      this._pendingAnomalies.push({ code: 'KBD-RESTORE', severity: 'info', msg: `WCC keyboard restore without MDT reset (WCC=0x${wcc.toString(16).toUpperCase().padStart(2,'0')})` });
+    }
 
     let addr = 0;
     let i = 1;
@@ -732,7 +746,8 @@ class Tn3270Session extends EventEmitter {
         i++;
 
       } else if (b === ORDER_RA) {
-        // Repeat to Address
+        // Repeat to Address — uncommon, flags unusual screen construction
+        this._pendingAnomalies.push({ code: 'RA', severity: 'info', msg: 'Repeat to Address (RA) order — host used bulk-fill screen construction' });
         i++;
         const toAddr = decode3270Address(data[i], data[i + 1], this.cols);
         const charByte = data[i + 2];
@@ -1088,6 +1103,7 @@ class Tn3270Session extends EventEmitter {
       cursorRow: Math.floor(this.cursorAddr / this.cols),
       cursorCol: this.cursorAddr % this.cols,
       fields,
+      anomalies: this._pendingAnomalies.splice(0),  // flush and attach
     });
   }
 
