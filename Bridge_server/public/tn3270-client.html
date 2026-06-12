@@ -175,7 +175,17 @@
       <a class="sec-tool-btn" href="/replay" target="_blank" title="Open session replay viewer">
         <span class="stb-icon">▶</span> REPLAY <span class="stb-label">Viewer</span>
       </a>
+      <div class="sec-toolbar-sep"></div>
+      <button class="sec-tool-btn" onclick="toggleAnomalyLog()" title="Session anomaly log">
+        <span class="stb-icon">⚠</span> ANOM <span class="stb-label">Anomalies</span>
+        <span id="anomalyBadge" style="display:none;background:rgba(255,80,80,0.85);color:#fff;border-radius:8px;font-size:9px;padding:0 4px;margin-left:3px;min-width:14px;text-align:center;"></span>
+      </button>
+      <button class="sec-tool-btn" onclick="clearAnomalyLog()" title="Clear anomaly log" style="font-size:9px;padding:2px 5px;">✕</button>
     </div>
+    <!-- Anomaly flash bar — shows latest anomalies inline, auto-fades -->
+    <div id="anomalyBar" class="anomaly-bar"></div>
+    <!-- Anomaly log panel — expands on ANOM click -->
+    <div id="anomalyLogPanel" class="anomaly-log-panel"></div>
     <div class="oia-bar">
       <div class="oia-field"><span class="oia-label">SYS</span><span class="oia-val" id="oiaSys">—</span></div>
       <div class="oia-field"><span class="oia-label">LU</span><span class="oia-val" id="oiaLu">—</span></div>

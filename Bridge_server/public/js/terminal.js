@@ -223,6 +223,83 @@ function _dismissInspector() {
   if (_inspectorEl) { _inspectorEl.remove(); _inspectorEl = null; }
 }
 
+// ── Session Anomaly Annotations ───────────────────────────────────
+// Anomalies arrive with each screen event from session.js.
+// They are shown as a badge on the security toolbar and a dismissible
+// log panel that expands below the toolbar when anomalies are present.
+
+let _anomalyLog = [];   // cumulative log for the session
+
+function _showAnomalies(anomalies) {
+  if (!anomalies || anomalies.length === 0) {
+    _updateAnomalyBadge();
+    return;
+  }
+  const now = Date.now();
+  anomalies.forEach(a => _anomalyLog.push({ ...a, ts: now }));
+  _updateAnomalyBadge();
+  _flashAnomalyBar(anomalies);
+}
+
+function _updateAnomalyBadge() {
+  const badge = document.getElementById('anomalyBadge');
+  if (!badge) return;
+  const warns = _anomalyLog.filter(a => a.severity === 'warn').length;
+  if (_anomalyLog.length === 0) {
+    badge.style.display = 'none';
+  } else {
+    badge.style.display = 'inline-flex';
+    badge.textContent   = _anomalyLog.length;
+    badge.style.background = warns > 0 ? 'rgba(255,80,80,0.85)' : 'rgba(255,170,0,0.75)';
+    badge.title = `${_anomalyLog.length} anomaly event${_anomalyLog.length !== 1 ? 's' : ''} — click ANOM to view`;
+  }
+}
+
+function _flashAnomalyBar(anomalies) {
+  const bar = document.getElementById('anomalyBar');
+  if (!bar) return;
+  bar.innerHTML = '';
+  anomalies.forEach(a => {
+    const el = document.createElement('div');
+    el.className = `anomaly-item anomaly-${a.severity}`;
+    el.innerHTML = `<span class="anomaly-code">${a.code}</span><span class="anomaly-msg">${a.msg}</span>`;
+    bar.appendChild(el);
+  });
+  bar.classList.add('anomaly-flash');
+  setTimeout(() => bar.classList.remove('anomaly-flash'), 2000);
+}
+
+function toggleAnomalyLog() {
+  const panel = document.getElementById('anomalyLogPanel');
+  if (!panel) return;
+  const open = panel.classList.toggle('anomaly-log-open');
+  if (open) _renderAnomalyLog();
+}
+
+function _renderAnomalyLog() {
+  const panel = document.getElementById('anomalyLogPanel');
+  if (!panel) return;
+  if (_anomalyLog.length === 0) {
+    panel.innerHTML = '<div class="anomaly-empty">No anomalies detected this session.</div>';
+    return;
+  }
+  panel.innerHTML = _anomalyLog.slice().reverse().map(a => {
+    const t = new Date(a.ts).toLocaleTimeString();
+    return `<div class="anomaly-item anomaly-${a.severity}">
+      <span class="anomaly-time">${t}</span>
+      <span class="anomaly-code">${a.code}</span>
+      <span class="anomaly-msg">${a.msg}</span>
+    </div>`;
+  }).join('');
+}
+
+function clearAnomalyLog() {
+  _anomalyLog = [];
+  _updateAnomalyBadge();
+  const panel = document.getElementById('anomalyLogPanel');
+  if (panel) panel.classList.remove('anomaly-log-open');
+}
+
 function renderLiveScreen(screenData) {
   const term    = document.getElementById('terminal');
   term.innerHTML = '';
@@ -300,6 +377,7 @@ function renderLiveScreen(screenData) {
   document.getElementById('oiaRow').textContent = String(cRow + 1).padStart(2, '0');
   document.getElementById('oiaCol').textContent = String(cCol + 1).padStart(2, '0');
   _initInspectorListener();
+  _showAnomalies(screenData.anomalies || []);
   requestAnimationFrame(() => { measureCellWidth(); fitScreen(); });
 }
 

@@ -438,15 +438,11 @@ body.field-map-overlay .oia-bar::before {
   font-family: 'IBM Plex Mono', monospace;
 }
 .sec-toolbar.sec-toolbar-open { display: flex; }
-
 .sec-toolbar-label {
   font-size: 9px; font-weight: 600; color: #2a4a6a;
   letter-spacing: 0.1em; text-transform: uppercase; white-space: nowrap;
 }
-.sec-toolbar-sep {
-  width: 1px; height: 16px; background: #0d1f2d; margin: 0 4px; flex-shrink: 0;
-}
-
+.sec-toolbar-sep { width: 1px; height: 16px; background: #0d1f2d; margin: 0 4px; flex-shrink: 0; }
 .sec-tool-btn {
   display: flex; align-items: center; gap: 5px;
   background: none; border: 1px solid #1a2f44; border-radius: 3px;
@@ -455,17 +451,43 @@ body.field-map-overlay .oia-bar::before {
   padding: 2px 8px; cursor: pointer; transition: all 0.15s;
   text-decoration: none; white-space: nowrap;
 }
-.sec-tool-btn:hover {
-  border-color: var(--accent-cyan); color: var(--text-dim);
-}
+.sec-tool-btn:hover { border-color: var(--accent-cyan); color: var(--text-dim); }
 .sec-tool-btn-active {
   color: var(--accent-amber) !important;
   border-color: var(--accent-amber) !important;
   background: rgba(255,170,0,0.06) !important;
 }
 .stb-icon { font-size: 9px; opacity: 0.7; }
-.stb-label {
-  font-size: 9px; font-weight: 400; color: var(--text-muted);
-  letter-spacing: 0.04em;
-}
+.stb-label { font-size: 9px; font-weight: 400; color: var(--text-muted); letter-spacing: 0.04em; }
 .sec-tool-btn-active .stb-label { color: var(--accent-amber); opacity: 0.7; }
+
+/* ── Session Anomaly Annotations ─────────────────────────────────── */
+.anomaly-bar {
+  background: #04080e; border-top: 1px solid #0d1a2a;
+  padding: 0 12px; flex-shrink: 0; overflow: hidden;
+  max-height: 0; transition: max-height 0.3s ease, padding 0.3s ease;
+  font-family: 'IBM Plex Mono', monospace;
+}
+.anomaly-bar:not(:empty) { max-height: 80px; padding: 4px 12px; }
+.anomaly-bar.anomaly-flash { border-color: rgba(255,150,0,0.4); }
+
+.anomaly-log-panel {
+  background: #030508; border-top: 1px solid #0a1520;
+  font-family: 'IBM Plex Mono', monospace; font-size: 10px;
+  max-height: 0; overflow-y: auto; transition: max-height 0.25s ease;
+  flex-shrink: 0;
+  scrollbar-width: thin; scrollbar-color: #1a3050 transparent;
+}
+.anomaly-log-panel.anomaly-log-open { max-height: 140px; }
+
+.anomaly-item {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 3px 0; border-bottom: 1px solid rgba(10,25,40,0.6);
+  font-size: 10px;
+}
+.anomaly-time  { color: #2a4a6a; font-size: 9px; flex-shrink: 0; }
+.anomaly-code  { font-weight: 700; font-size: 10px; flex-shrink: 0; min-width: 80px; }
+.anomaly-msg   { color: var(--text-muted); }
+.anomaly-warn .anomaly-code  { color: #ff8844; }
+.anomaly-info .anomaly-code  { color: var(--accent-amber); }
+.anomaly-empty { color: var(--text-muted); font-size: 10px; padding: 8px 12px; }
