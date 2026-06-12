@@ -43,16 +43,17 @@
 
 'use strict';
 
-const MacroEngine = require('./engine');
-const MacroStore  = require('./store');
-const logger      = require('../logger');
+const MacroEngine                          = require('./engine');
+const { MacroStore, SecurityMacroStore }   = require('./store');
+const logger                               = require('../logger');
 
 class MacroHandler {
   constructor(session, ws, wsId, sharedStore = null) {
-    this.wsId    = wsId;
-    this.ws      = ws;
-    this.store   = sharedStore || new MacroStore();
-    this.engine  = new MacroEngine(session, this.store);
+    this.wsId     = wsId;
+    this.ws       = ws;
+    this.store    = sharedStore || new MacroStore();
+    this.secStore = new SecurityMacroStore();
+    this.engine   = new MacroEngine(session, this.store);
 
     this._wireEngineEvents();
   }
@@ -64,12 +65,18 @@ class MacroHandler {
       switch (msg.type) {
 
         case 'macro.list':
-          return this._send({ type: 'macro.list', macros: await this.store.list() });
+          return this._send({
+            type: 'macro.list',
+            macros: await SecurityMacroStore.listAll(this.store, this.secStore),
+          });
 
 	case 'macro.run':
           if (!msg.name) return this._error('macro.run requires "name"');
-          // Use macro object directly if provided, otherwise look up by name
-          this.engine.run(msg.macro || msg.name).catch(() => {});
+          // Load from either store — engine receives the full macro object
+          const macroToRun = msg.macro ||
+            await SecurityMacroStore.loadFromEither(msg.name, this.store, this.secStore);
+          if (!macroToRun) return this._error(`Macro not found: ${msg.name}`);
+          this.engine.run(macroToRun).catch(() => {});
           break;
 
         case 'macro.stop':
@@ -100,26 +107,31 @@ class MacroHandler {
 
         case 'macro.save':
           if (!msg.macro) return this._error('macro.save requires "macro" object');
+          if (msg.macro.source === 'security') return this._error('Security macros are read-only');
           await this.store.save(msg.macro);
-          this._send({ type: 'macro.list', macros: await this.store.list() });
+          this._send({ type: 'macro.list', macros: await SecurityMacroStore.listAll(this.store, this.secStore) });
           break;
 
         case 'macro.delete':
           if (!msg.name) return this._error('macro.delete requires "name"');
+          // Block delete if it's a security macro
+          const secCheck = await this.secStore.load(msg.name);
+          if (secCheck) return this._error('Security macros are read-only');
           await this.store.delete(msg.name);
-          this._send({ type: 'macro.list', macros: await this.store.list() });
+          this._send({ type: 'macro.list', macros: await SecurityMacroStore.listAll(this.store, this.secStore) });
           break;
 
         case 'macro.export':
           if (!msg.name) return this._error('macro.export requires "name"');
-          const json = await this.store.export(msg.name);
-          this._send({ type: 'macro.export', name: msg.name, json });
+          const exportMacro = await SecurityMacroStore.loadFromEither(msg.name, this.store, this.secStore);
+          if (!exportMacro) return this._error(`Macro not found: ${msg.name}`);
+          this._send({ type: 'macro.export', name: msg.name, json: JSON.stringify(exportMacro, null, 2) });
           break;
 
         case 'macro.import':
           if (!msg.json) return this._error('macro.import requires "json"');
           await this.store.import(msg.json, msg.overwrite ?? false);
-          this._send({ type: 'macro.list', macros: await this.store.list() });
+          this._send({ type: 'macro.list', macros: await SecurityMacroStore.listAll(this.store, this.secStore) });
           break;
 
         default:

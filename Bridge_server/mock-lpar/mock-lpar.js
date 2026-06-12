@@ -92,6 +92,7 @@ function buildScreen(eraseFirst, fields) {
   for (const f of fields) {
     parts.push(...sba(f.row, f.col));
     if (f.fa !== undefined) parts.push(ORDER_SF, f.fa);
+    if (f.ic) parts.push(0x13); // IC — Insert Cursor here
     if (f.text) for (const b of toEbcdic(f.text)) parts.push(b);
   }
   return Buffer.from(parts);
@@ -109,7 +110,7 @@ function screenLogon() {
     { row:3,  col:40, text: 'RACF LOGON parameters:' },
     { row:5,  col:2,  fa: FA_PROTECTED },
     { row:5,  col:2,  text: 'Userid  ===>' },
-    { row:5,  col:14, fa: FA_UNPROTECTED },
+    { row:5,  col:14, fa: FA_UNPROTECTED, ic: true },
     { row:5,  col:14, text: '        ' },
     { row:6,  col:2,  fa: FA_PROTECTED },
     { row:6,  col:2,  text: 'Password===>' },
@@ -136,7 +137,7 @@ function screenISPF(userid = 'DEMO') {
     { row:0,  col:25, text: 'ISPF Primary Option Menu' },
     { row:2,  col:2,  fa: FA_PROTECTED_HIGH },
     { row:2,  col:2,  text: 'Option ===>' },
-    { row:2,  col:13, fa: FA_UNPROTECTED },
+    { row:2,  col:13, fa: FA_UNPROTECTED, ic: true },
     { row:2,  col:13, text: '    ' },
     { row:4,  col:2,  fa: FA_PROTECTED },
     { row:4,  col:5,  text: '0' },
@@ -270,6 +271,146 @@ function screenError(cmd) {
   ]);
 }
 
+function screenReady(userid = 'DEMO', lastMsg = '') {
+  const fields = [
+    { row:0,  col:0,  fa: FA_PROTECTED_HIGH },
+    { row:0,  col:1,  text: `${SYSNAME} TSO/E - Ready` },
+    { row:0,  col:40, fa: FA_PROTECTED },
+    { row:0,  col:40, text: `User: ${userid.padEnd(8)}` },
+  ];
+  if (lastMsg) {
+    fields.push({ row:2, col:0, fa: FA_PROTECTED });
+    fields.push({ row:2, col:1, text: lastMsg });
+  }
+  fields.push(
+    { row:4,  col:0,  fa: FA_PROTECTED },
+    { row:4,  col:1,  text: 'Type a TSO command or ISPF to enter ISPF.' },
+    { row:4,  col:50, fa: FA_PROTECTED },
+    { row:4,  col:50, text: 'PF3=Logoff' },
+    { row:6,  col:0,  fa: FA_PROTECTED_HIGH },
+    { row:6,  col:1,  text: 'READY' },
+    { row:7,  col:0,  fa: FA_UNPROTECTED, ic: true },
+    { row:7,  col:1,  text: '                                                ' },
+    { row:23, col:0,  fa: FA_PROTECTED },
+    { row:23, col:0,  text: `${SYSNAME}  TSO READY  PF3=Logoff` },
+  );
+  return buildScreen(true, fields);
+}
+
+function screenListapf() {
+  return buildScreen(true, [
+    { row:0,  col:0,  fa: FA_PROTECTED_HIGH },
+    { row:0,  col:1,  text: 'LISTAPF Output' },
+    { row:1,  col:0,  fa: FA_PROTECTED },
+    { row:1,  col:1,  text: 'APF-Authorized Libraries:' },
+    { row:3,  col:1,  text: 'Volume  Dataset Name' },
+    { row:4,  col:1,  text: '------  --------------------------------------------------------' },
+    { row:5,  col:1,  text: 'SYSRES  SYS1.LINKLIB' },
+    { row:6,  col:1,  text: 'SYSRES  SYS1.LPALIB' },
+    { row:7,  col:1,  text: 'SYSRES  SYS1.MIGLIB' },
+    { row:8,  col:1,  text: 'SYSRES  SYS1.SVCLIB' },
+    { row:9,  col:1,  text: 'PROD01  CEE.SCEERUN' },
+    { row:10, col:1,  text: 'PROD01  ISP.SISPLOAD' },
+    { row:11, col:1,  text: 'PROD01  SYS1.CSSLIB' },
+    { row:12, col:1,  text: 'WORK01  USER.LOADLIB                    *** WRITABLE ***' },
+    { row:14, col:0,  fa: FA_PROTECTED_HIGH },
+    { row:14, col:1,  text: 'IKJ56250I 8 entries found. USER.LOADLIB on WORK01 may be writable.' },
+    { row:16, col:0,  fa: FA_PROTECTED },
+    { row:16, col:1,  text: 'READY' },
+    { row:23, col:0,  fa: FA_PROTECTED },
+    { row:23, col:0,  text: 'Press ENTER or PF3 to return to READY prompt.' },
+  ]);
+}
+
+function screenLista(userid = 'DEMO') {
+  return buildScreen(true, [
+    { row:0,  col:0,  fa: FA_PROTECTED_HIGH },
+    { row:0,  col:1,  text: 'LISTA Output - Allocated Datasets' },
+    { row:2,  col:0,  fa: FA_PROTECTED },
+    { row:2,  col:1,  text: `DDNAME   DSNAME                           DISP` },
+    { row:3,  col:1,  text: '-------- -------------------------------- ----' },
+    { row:4,  col:1,  text: `SYSPROC  ${userid.toUpperCase()}.CLIST                    SHR` },
+    { row:5,  col:1,  text: `ISPPLIB  ISP.SISPPENU                     SHR` },
+    { row:6,  col:1,  text: `ISPSLIB  ISP.SISPSLIB                     SHR` },
+    { row:7,  col:1,  text: `ISPTLIB  ISP.SISPTENU                     SHR` },
+    { row:8,  col:1,  text: `ISPLLIB  ISP.SISPLOAD                     SHR` },
+    { row:9,  col:1,  text: `SYSEXEC  ${userid.toUpperCase()}.REXX.EXEC               SHR` },
+    { row:10, col:1,  text: `SYSTSIN  NULLFILE                         OLD` },
+    { row:11, col:1,  text: `SYSTSPRT SYSOUT=*                         OLD` },
+    { row:13, col:0,  fa: FA_PROTECTED_HIGH },
+    { row:13, col:1,  text: 'IKJ56250I 8 DD allocations listed.' },
+    { row:15, col:0,  fa: FA_PROTECTED },
+    { row:15, col:1,  text: 'READY' },
+    { row:23, col:0,  fa: FA_PROTECTED },
+    { row:23, col:0,  text: 'Press ENTER or PF3 to return to READY prompt.' },
+  ]);
+}
+
+function screenLogonError(userid, attempts, maxAttempts = 3) {
+  const remaining = maxAttempts - attempts;
+  return buildScreen(true, [
+    { row:0,  col:0,  fa: FA_PROTECTED_HIGH },
+    { row:0,  col:1,  text: `IBM z/OS  -  ${SYSNAME}  -  TSO/E LOGON` },
+    { row:2,  col:2,  fa: FA_PROTECTED_HIGH },
+    { row:2,  col:2,  text: 'IKJ56425I PASSWORD NOT CORRECT' },
+    { row:3,  col:2,  fa: FA_PROTECTED },
+    { row:3,  col:2,  text: `IKJ56477I ${remaining} ATTEMPT${remaining !== 1 ? 'S' : ''} REMAINING BEFORE RACF LOCKOUT` },
+    { row:5,  col:2,  fa: FA_PROTECTED },
+    { row:5,  col:2,  text: 'Userid  ===>' },
+    { row:5,  col:14, fa: FA_UNPROTECTED },
+    { row:5,  col:15, text: userid.padEnd(8) },
+    { row:6,  col:2,  fa: FA_PROTECTED },
+    { row:6,  col:2,  text: 'Password===>' },
+    { row:6,  col:14, fa: FA_UNPROTECTED_NUM, ic: true },
+    { row:6,  col:14, text: '        ' },
+    { row:13, col:2,  fa: FA_PROTECTED },
+    { row:13, col:2,  text: 'PF1/PF13 ==> Help   PF3/PF15 ==> Logoff   PA1 ==> Attention' },
+    { row:23, col:0,  fa: FA_PROTECTED },
+    { row:23, col:0,  text: 'Re-enter password and press ENTER.' },
+  ]);
+}
+
+function screenRacfLockout(userid) {
+  return buildScreen(true, [
+    { row:0,  col:0,  fa: FA_PROTECTED_HIGH },
+    { row:0,  col:1,  text: `IBM z/OS  -  ${SYSNAME}  -  TSO/E LOGON` },
+    { row:3,  col:2,  fa: FA_PROTECTED_HIGH },
+    { row:3,  col:2,  text: 'IKJ56421I RACF AUTHORIZATION FAILURE' },
+    { row:4,  col:2,  fa: FA_PROTECTED },
+    { row:4,  col:2,  text: `IKJ56422I USERID ${userid.toUpperCase().padEnd(8)} HAS BEEN REVOKED` },
+    { row:5,  col:2,  text: 'IKJ56423I CONTACT YOUR SECURITY ADMINISTRATOR TO RESET' },
+    { row:8,  col:2,  fa: FA_PROTECTED_HIGH },
+    { row:8,  col:2,  text: '*** LOGON REJECTED - ACCOUNT LOCKED ***' },
+    { row:23, col:0,  fa: FA_PROTECTED },
+    { row:23, col:0,  text: 'PF3=Exit' },
+  ]);
+}
+
+function screenTsoCommand(userid = 'DEMO', lastOutput = '') {
+  const fields = [
+    { row:0,  col:0,  fa: FA_PROTECTED_HIGH },
+    { row:0,  col:1,  text: 'ISPF Command Shell' },
+    { row:1,  col:0,  fa: FA_PROTECTED },
+    { row:1,  col:1,  text: `Userid: ${userid.padEnd(8)}   System: ${SYSNAME}` },
+    { row:3,  col:0,  fa: FA_PROTECTED },
+    { row:3,  col:1,  text: 'TSO Command ===>' },
+    { row:3,  col:17, fa: FA_UNPROTECTED, ic: true },
+    { row:3,  col:17, text: '                                        ' },
+  ];
+  if (lastOutput) {
+    const lines = lastOutput.split('\n').slice(0, 14);
+    lines.forEach((line, i) => {
+      fields.push({ row: 5 + i, col: 0, fa: FA_PROTECTED });
+      fields.push({ row: 5 + i, col: 1, text: line.slice(0, 78) });
+    });
+  }
+  fields.push(
+    { row:23, col:0, fa: FA_PROTECTED },
+    { row:23, col:0, text: 'ENTER=Execute  PF3=Exit to ISPF  PF12=Cancel' },
+  );
+  return buildScreen(true, fields);
+}
+
 function wrapEOR(data) {
   const escaped = [];
   for (const b of data) {
@@ -297,7 +438,17 @@ function handleConnection(socket) {
   let clientWillTN3270E  = false;
   let clientFunctionsDone = false;
 
-  const state = { record: [], errorCmd: '' };
+  const state = { record: [], errorCmd: '', tsoOutput: '' };
+  let loginAttempts = 0;
+  let accountLocked = false;
+  const MAX_ATTEMPTS = 3;
+
+  // Valid credentials for the mock — userid: password (case-insensitive userid, exact password)
+  const VALID_CREDENTIALS = {
+    'IBMUSER': 'SYS1',
+    'DEMO':    'DEMO',
+    'USER1':   'PASS1',
+  };
 
   // Send initial negotiation — offer TN3270E, BINARY, EOR
   socket.write(Buffer.from([
@@ -318,6 +469,7 @@ function handleConnection(socket) {
   socket.on('error', err => log(`[${id}] Error: ${err.message}`));
 
   function processBuffer() {
+    // Strip and handle IAC telnet commands first, then find IAC EOR delimiters
     let i = 0;
     while (i < recvBuf.length) {
       if (recvBuf[i] !== IAC) { i++; continue; }
@@ -328,18 +480,24 @@ function handleConnection(socket) {
       if (cmd === NOP) { i += 2; continue; }
 
       if (cmd === EOR) {
-        if (state.record.length > 0) {
-          handle3270Record(Buffer.from(state.record));
-          state.record = [];
+        // IAC EOR — extract everything before this as a 3270 record
+        const record = [];
+        for (let j = 0; j < i; j++) {
+          // Un-escape IAC IAC → IAC
+          if (recvBuf[j] === IAC && recvBuf[j + 1] === IAC) { record.push(0xFF); j++; }
+          else record.push(recvBuf[j]);
         }
-        i += 2;
+        recvBuf = recvBuf.slice(i + 2);
+        if (record.length > 0) handle3270Record(Buffer.from(record));
+        i = 0;
         continue;
       }
 
       if ([DO, DONT, WILL, WONT].includes(cmd)) {
         if (i + 2 >= recvBuf.length) break;
         handleTelnetCmd(cmd, recvBuf[i + 2]);
-        i += 3;
+        // Remove the telnet command bytes from buffer
+        recvBuf = Buffer.concat([recvBuf.slice(0, i), recvBuf.slice(i + 3)]);
         continue;
       }
 
@@ -347,19 +505,12 @@ function handleConnection(socket) {
         const seIdx = findSE(i + 2);
         if (seIdx === -1) break;
         handleSubneg(recvBuf.slice(i + 2, seIdx));
-        i = seIdx + 2;
-        continue;
-      }
-
-      if (cmd === IAC) {
-        state.record.push(0xFF);
-        i += 2;
+        recvBuf = Buffer.concat([recvBuf.slice(0, i), recvBuf.slice(seIdx + 2)]);
         continue;
       }
 
       i += 2;
     }
-    recvBuf = recvBuf.slice(i);
   }
 
   function findSE(start) {
@@ -473,7 +624,9 @@ function handleConnection(socket) {
   }
 
   function handle3270Record(data) {
-    const payload = tn3270eMode ? data.slice(5) : data;
+    // Client→server data is raw 3270 (AID + cursor SBA + field SBAs + data)
+    // regardless of TN3270E negotiation — no header to strip.
+    const payload = data;
     if (payload.length === 0) return;
 
     const aid = payload[0];
@@ -481,13 +634,23 @@ function handleConnection(socket) {
 
     let inputText = '';
     if (payload.length > 3) {
-      let j = 3;
+      // 3270 AID record: AID(1) + cursor-address(2) + [SBA(3) + data]...
+      // The cursor address after AID is raw 2 bytes, NOT wrapped in SBA
+      let j = 3; // skip AID + 2-byte cursor address
       while (j < payload.length) {
-        if (payload[j] === 0x11 && j + 2 < payload.length) {
+        const b = payload[j];
+        if (b === 0x11 && j + 2 < payload.length) {
+          // SBA — field boundary, inject space then skip 3 bytes
+          inputText += ' ';
           j += 3;
+        } else if (b === 0x13 && j + 3 < payload.length) {
+          j += 4; // RA order
+        } else if ((b === 0x1C || b === 0x1D || b === 0x28 || b === 0x29) && j + 1 < payload.length) {
+          j += 2; // SA, SF, MF, SFE
+        } else if (b >= 0x40 || b === 0x00) {
+          inputText += String.fromCharCode(EBCDIC_TO_ASCII[b] || 0x20);
+          j++;
         } else {
-          const b = payload[j];
-          if (b >= 0x40) inputText += String.fromCharCode(EBCDIC_TO_ASCII[b] || 0x20);
           j++;
         }
       }
@@ -498,24 +661,105 @@ function handleConnection(socket) {
 
     switch (currentScreen) {
       case 'logon':
+      case 'logonError':
         if (aid === AID_ENTER) {
-          userid = (inputText || 'DEMO').slice(0, 8);
-          log(`[${id}] Logon: userid='${userid}'`);
-          currentScreen = 'ispf';
+          if (accountLocked) { sendCurrentScreen(); break; }
+          // Parse userid from first field, password from second
+          // inputText contains all field data concatenated — split on whitespace
+          const parts = inputText.split(/\s+/).filter(Boolean);
+          const enteredUser = (parts[0] || 'DEMO').toUpperCase().slice(0, 8);
+          const enteredPass = parts[1] || '';
+          userid = enteredUser;
+          const validPass = VALID_CREDENTIALS[enteredUser];
+          if (validPass && enteredPass === validPass) {
+            // Successful logon
+            loginAttempts = 0;
+            log(`[${id}] Logon success: userid='${userid}'`);
+            currentScreen = 'ready';
+            state.readyMsg = `IKJ56455I ${userid} LOGGED ON AT ${new Date().toLocaleTimeString('en-US',{hour12:false})}`;
+          } else {
+            loginAttempts++;
+            log(`[${id}] Logon failed for '${enteredUser}' — attempt ${loginAttempts}/${MAX_ATTEMPTS}`);
+            if (loginAttempts >= MAX_ATTEMPTS) {
+              accountLocked = true;
+              currentScreen = 'lockout';
+            } else {
+              currentScreen = 'logonError';
+            }
+          }
           sendCurrentScreen();
         } else if (aid === AID_PF3) {
           socket.end();
         }
         break;
 
+      case 'lockout':
+        if (aid === AID_PF3 || aid === AID_ENTER) socket.end();
+        break;
+
+      case 'ready':
+      case 'readyOutput':
+        if (aid === AID_ENTER) {
+          const cmd = inputText.toUpperCase().trim();
+          if (!cmd) { sendCurrentScreen(); break; }
+          log(`[${id}] TSO command: '${cmd}'`);
+          if (cmd === 'ISPF' || cmd === 'ISRDDN') {
+            currentScreen = 'ispf'; sendCurrentScreen();
+          } else if (cmd === 'LISTAPF') {
+            currentScreen = 'listapf'; sendCurrentScreen();
+          } else if (cmd === 'LISTA' || cmd === 'LISTA STATUS') {
+            currentScreen = 'lista'; sendCurrentScreen();
+          } else if (cmd === 'WHOAMI' || cmd === 'LISTUSER') {
+            state.tsoOutput = `USERID: ${userid}\nSYSTEM: ${SYSNAME}\nGROUPS: SYS1 DEMOGRP\nATTRIBUTES: NONE`;
+            currentScreen = 'tsoCmd'; sendCurrentScreen();
+          } else if (cmd.startsWith('PROFILE')) {
+            state.tsoOutput = `PROFILE NOINTERCOM MSGID NOPROMPT SIZE(32767) LINE(24)\n  MODE(LINE) WTPMSG INTERCOM NOHIGHLIGHT`;
+            currentScreen = 'tsoCmd'; sendCurrentScreen();
+          } else {
+            state.tsoOutput = `IKJ56500I COMMAND ${cmd} NOT FOUND\nIKJ56501I ENTER HELP for list of valid commands`;
+            currentScreen = 'tsoCmd'; sendCurrentScreen();
+          }
+        } else if (aid === AID_PF3) {
+          socket.end();
+        }
+        break;
+
+      case 'listapf':
+      case 'lista':
+        if (aid === AID_PF3 || aid === AID_ENTER) {
+          currentScreen = 'ready'; state.readyMsg = ''; sendCurrentScreen();
+        }
+        break;
+
+      case 'tsoCmd':
+        if (aid === AID_ENTER) {
+          const cmd = inputText.toUpperCase().trim();
+          if (!cmd) { sendCurrentScreen(); break; }
+          log(`[${id}] TSO command shell: '${cmd}'`);
+          if (cmd === 'LISTAPF') {
+            currentScreen = 'listapf'; sendCurrentScreen();
+          } else if (cmd === 'LISTA' || cmd === 'LISTA STATUS') {
+            currentScreen = 'lista'; sendCurrentScreen();
+          } else if (cmd === 'ISPF') {
+            currentScreen = 'ispf'; sendCurrentScreen();
+          } else {
+            state.tsoOutput = `IKJ56500I COMMAND ${cmd} NOT FOUND`;
+            sendCurrentScreen();
+          }
+        } else if (aid === AID_PF3) {
+          currentScreen = 'ispf'; sendCurrentScreen();
+        }
+        break;
+
       case 'ispf':
         if (aid === AID_ENTER) {
           const opt = inputText.toUpperCase();
-          if      (opt === '2')              { lastScreen = 'ispf'; currentScreen = 'edit'; }
+          if      (opt === '2')                { lastScreen = 'ispf'; currentScreen = 'edit'; }
           else if (opt === '3' || opt === '3.4') { lastScreen = 'ispf'; currentScreen = 'ispf34'; }
+          else if (opt === '6')                { lastScreen = 'ispf'; currentScreen = 'tsoCmd'; state.tsoOutput = ''; }
           else if (opt === 'M' || opt === 'SDSF') { lastScreen = 'ispf'; currentScreen = 'sdsf'; }
-          else if (opt === 'X')              { socket.end(); return; }
-          else if (opt !== '')               { lastScreen = 'ispf'; currentScreen = 'error'; state.errorCmd = opt; }
+          else if (opt === 'X')                { socket.end(); return; }
+          else if (opt !== '')                 { lastScreen = 'ispf'; currentScreen = 'error'; state.errorCmd = opt; }
           sendCurrentScreen();
         } else if (aid === AID_PF3) {
           socket.end();
@@ -539,13 +783,20 @@ function handleConnection(socket) {
   function sendCurrentScreen() {
     let ds;
     switch (currentScreen) {
-      case 'logon': ds = screenLogon();              break;
-      case 'ispf':  ds = screenISPF(userid);         break;
-      case 'edit':  ds = screenEdit();               break;
-      case 'ispf34': ds = screenISPF34(userid);      break;
-      case 'sdsf':  ds = screenSDSF();               break;
-      case 'error': ds = screenError(state.errorCmd); break;
-      default:      ds = screenISPF(userid);
+      case 'logon':     ds = screenLogon();                          break;
+      case 'logonError':ds = screenLogonError(userid, loginAttempts); break;
+      case 'lockout':   ds = screenRacfLockout(userid);              break;
+      case 'ready':
+      case 'readyOutput': ds = screenReady(userid, state.readyMsg || ''); state.readyMsg = ''; break;
+      case 'listapf':   ds = screenListapf();                        break;
+      case 'lista':     ds = screenLista(userid);                    break;
+      case 'tsoCmd':    ds = screenTsoCommand(userid, state.tsoOutput); break;
+      case 'ispf':      ds = screenISPF(userid);                     break;
+      case 'edit':      ds = screenEdit();                           break;
+      case 'ispf34':    ds = screenISPF34(userid);                   break;
+      case 'sdsf':      ds = screenSDSF();                           break;
+      case 'error':     ds = screenError(state.errorCmd);            break;
+      default:          ds = screenISPF(userid);
     }
 
     if (tn3270eMode) {

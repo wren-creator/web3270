@@ -434,9 +434,14 @@ body.field-map-overlay .oia-bar::before {
 .sec-toolbar {
   display: none; align-items: center; gap: 6px;
   background: #05090f; border-top: 1px solid #0d1a2a;
-  padding: 4px 12px; flex-shrink: 0;
+  padding: 6px 12px 10px; flex-shrink: 0;
   font-family: 'IBM Plex Mono', monospace;
+  overflow-x: auto; overflow-y: hidden;
+  scrollbar-width: thin; scrollbar-color: #1a3050 transparent;
 }
+.sec-toolbar::-webkit-scrollbar { height: 3px; }
+.sec-toolbar::-webkit-scrollbar-thumb { background: #1a3050; border-radius: 2px; }
+.sec-toolbar::-webkit-scrollbar-track { background: transparent; }
 .sec-toolbar.sec-toolbar-open { display: flex; }
 .sec-toolbar-label {
   font-size: 9px; font-weight: 600; color: #2a4a6a;
