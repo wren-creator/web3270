@@ -34,6 +34,9 @@ services:
       DEFAULT_MODEL:    "3278-2"
       DEFAULT_CODEPAGE: "37"
 
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
     depends_on:
       - mock-lpar
 
