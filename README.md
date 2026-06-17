@@ -201,6 +201,32 @@ See `AI-notes.md` for corporate policy guidance and per-provider setup details.
 
 ---
 
+## Connecting to GIBSON
+
+If you are using [GIBSON](https://github.com/wren-creator/GIBSON) as your TN3270 target, both repos share a Docker network (`gibson-net`) so the bridge reaches GIBSON directly by container name — no IP address needed. This works on Linux, WSL2, and macOS.
+
+**Startup order — GIBSON must start first (it creates the shared network):**
+
+```bash
+# 1 · Start GIBSON
+cd /path/to/GIBSON/gibson-mainframe
+docker compose up -d
+
+# 2 · Start the bridge — it joins gibson-net automatically
+cd /path/to/web3270/Bridge_server
+docker compose up -d
+```
+
+**LPAR entry** — add this to `lpars.txt` or via the UI:
+
+```
+gibson, GIBSON, gibson-mainframe, 3270, false, TSO, 3278-2
+```
+
+`gibson-mainframe` is the GIBSON container name. Docker resolves it directly over the shared network — no IP hunting required across platforms.
+
+---
+
 ## Troubleshooting
 
 ### Docker command reference

