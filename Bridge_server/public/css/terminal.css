@@ -107,6 +107,15 @@ body {
 .tab-close:hover { opacity:1 !important;color:var(--accent-amber); }
 .tab-add { display:flex;align-items:center;justify-content:center;width:34px;min-width:34px;font-size:18px;cursor:pointer;color:var(--text-muted);transition:color 0.15s; }
 .tab-add:hover { color:var(--accent-cyan); }
+.tab-split { display:flex;align-items:center;justify-content:center;padding:0 9px;height:34px;font-size:14px;cursor:pointer;color:var(--text-muted);border-right:1px solid var(--border);user-select:none;flex-shrink:0;transition:color 0.15s; }
+.tab-split:hover { color:var(--text-primary); }
+.tab-split.split-active { color:var(--accent-cyan); }
+
+/* ── Split-screen panes ─────────────────────────────────────────── */
+.split-pane-left { flex:1;display:flex;align-items:center;justify-content:flex-start;overflow:auto; }
+.screen-wrapper.split-mode { padding:0;gap:0; }
+.screen-wrapper.split-mode .split-pane-left { flex:1;padding:8px;border-right:1px solid var(--border); }
+.screen-wrapper.split-mode .split-pane-right { flex:1;padding:8px;align-items:center;justify-content:flex-start;overflow:auto; }
 
 /* ── MAIN LAYOUT ───────────────────────────────────────────────── */
 .main-layout { display:flex;flex:1;overflow:hidden; }

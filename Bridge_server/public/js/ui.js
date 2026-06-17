@@ -126,15 +126,45 @@ document.addEventListener('keydown', e => {
   }
   if (e.key === 'PageUp')   { e.preventDefault(); sendKey('PF7', collectModifiedFields()); return; }
   if (e.key === 'PageDown') { e.preventDefault(); sendKey('PF8', collectModifiedFields()); return; }
+  if (e.key === 'ArrowRight') {
+    e.preventDefault();
+    if (!liveScreen) return;
+    const cols = liveScreen.cols || 80; const numRows = liveScreen.rows?.length || 24;
+    cursorCol++; if (cursorCol >= cols) { cursorCol = 0; cursorRow = (cursorRow + 1) % numRows; }
+    liveScreen.cursorRow = cursorRow; liveScreen.cursorCol = cursorCol; renderLiveScreen(liveScreen); return;
+  }
+  if (e.key === 'ArrowLeft') {
+    e.preventDefault();
+    if (!liveScreen) return;
+    const cols = liveScreen.cols || 80; const numRows = liveScreen.rows?.length || 24;
+    cursorCol--; if (cursorCol < 0) { cursorCol = cols - 1; cursorRow = (cursorRow - 1 + numRows) % numRows; }
+    liveScreen.cursorRow = cursorRow; liveScreen.cursorCol = cursorCol; renderLiveScreen(liveScreen); return;
+  }
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    if (!liveScreen) return;
+    cursorRow = (cursorRow + 1) % (liveScreen.rows?.length || 24);
+    liveScreen.cursorRow = cursorRow; liveScreen.cursorCol = cursorCol; renderLiveScreen(liveScreen); return;
+  }
+  if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (!liveScreen) return;
+    const numRows = liveScreen.rows?.length || 24;
+    cursorRow = (cursorRow - 1 + numRows) % numRows;
+    liveScreen.cursorRow = cursorRow; liveScreen.cursorCol = cursorCol; renderLiveScreen(liveScreen); return;
+  }
   if (e.key === 'Tab') {
     e.preventDefault();
     if (liveScreen && liveScreen.fields) {
       const inputFields = liveScreen.fields.filter(f => !f.protected);
       if (inputFields.length > 0) {
-        const curAddr   = cursorRow * (liveScreen.cols || 80) + cursorCol;
+        const cols      = liveScreen.cols || 80;
+        const curAddr   = cursorRow * cols + cursorCol;
         const nextField = inputFields.find(f => f.startAddr > curAddr) || inputFields[0];
-        cursorRow = Math.floor(nextField.startAddr / (liveScreen.cols || 80));
-        cursorCol = (nextField.startAddr % (liveScreen.cols || 80)) + 1;
+        // startAddr is the FA byte; first writable position is startAddr+1, which may wrap to the next row
+        const dataAddr  = nextField.startAddr + 1;
+        cursorRow = Math.floor(dataAddr / cols);
+        cursorCol = dataAddr % cols;
         liveScreen.cursorRow = cursorRow; liveScreen.cursorCol = cursorCol;
         renderLiveScreen(liveScreen);
       }

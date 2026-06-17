@@ -159,6 +159,10 @@ function connectLpar(name) {
 
 function openSession(profile) {
   hideConnectModal();
+  if (splitMode && sessions.size >= 2) {
+    showBridgeError('Split-screen mode: max 2 sessions allowed.\nClose a session or turn off split mode first.');
+    return;
+  }
   const sid  = ++sessionSeq;
   const name = profile.id || 'Session ' + sid;
   setConnStatus(name, 'connecting');
@@ -178,7 +182,14 @@ function openSession(profile) {
   ws.onclose   = () => { if (sessions.has(sid)) { setConnStatus(name, 'disconnected'); updateSessionDot(sid, 'disconnected'); } };
   const tabEl = addSessionTab(name, profile.type || 'TSO', sid);
   sessions.set(sid, { ws, profile, tabEl, name });
-  activateSession(sid);
+  // In split mode the second session goes to the right pane; don't steal focus
+  if (splitMode && sessions.size === 2) {
+    splitSid = sid;
+    const paneR = document.getElementById('splitPaneRight');
+    if (paneR) paneR.style.display = 'flex';
+  } else {
+    activateSession(sid);
+  }
 }
 
 function handleBridgeMsg(sid, msg) {
@@ -200,7 +211,12 @@ function handleBridgeMsg(sid, msg) {
       break;
     case 'screen':
       if (session) session.lastScreen = msg;
-      if (sid === activeSession) { renderLiveScreen(msg); liveScreenText = screenToText(msg); liveScreen = msg; cursorRow = msg.cursorRow ?? 0; cursorCol = msg.cursorCol ?? 0; }
+      if (sid === activeSession) {
+        renderLiveScreen(msg); liveScreenText = screenToText(msg); liveScreen = msg; cursorRow = msg.cursorRow ?? 0; cursorCol = msg.cursorCol ?? 0;
+      } else if (splitMode && sid === splitSid) {
+        const term2 = document.getElementById('terminal-split');
+        if (term2) renderLiveScreen(msg, term2);
+      }
       break;
     case 'oia':
       if (sid === activeSession) updateOIA(msg);

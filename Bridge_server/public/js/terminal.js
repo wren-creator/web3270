@@ -22,7 +22,9 @@ function fitScreen() {
     const intrinsicWidth  = Math.ceil(cellCount * cellW);
     const intrinsicHeight = term.offsetHeight;
     term.style.width = term.style.minWidth = term.style.maxWidth = intrinsicWidth + 'px';
-    const availW = wrapper.clientWidth  - 16;
+    // In split mode each pane gets half the wrapper width
+    const paneW  = splitMode ? Math.floor(wrapper.clientWidth / 2) : wrapper.clientWidth;
+    const availW = paneW    - 16;
     const availH = wrapper.clientHeight - 16;
     if (availW <= 0 || availH <= 0) return;
     const fitScale    = Math.min(availW / intrinsicWidth, availH / intrinsicHeight);
@@ -30,7 +32,6 @@ function fitScreen() {
     const scale       = fitScale * zoom;
     const newFontSize = Math.floor(baseFontSize * scale * 100) / 100;
     term.style.fontSize  = newFontSize + 'px';
-    // Re-measure cell width at the new font size and re-lock terminal width
     measureCellWidth();
     const newCellW = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--cell-w').trim());
     if (newCellW > 0) {
@@ -38,6 +39,19 @@ function fitScreen() {
       term.style.width = term.style.minWidth = term.style.maxWidth = lockedW + 'px';
     }
     term.style.transform = 'none';
+    // Mirror font size and width onto the split terminal so it fits its pane
+    if (splitMode) {
+      const term2 = document.getElementById('terminal-split');
+      if (term2) {
+        term2.style.fontSize = newFontSize + 'px';
+        if (newCellW > 0) {
+          const rows2 = term2.querySelectorAll('.screen-row');
+          const cols2 = rows2.length ? rows2[0].querySelectorAll('.screen-cell').length : cellCount;
+          const w2 = Math.ceil(cols2 * newCellW);
+          term2.style.width = term2.style.minWidth = term2.style.maxWidth = w2 + 'px';
+        }
+      }
+    }
   } catch (err) { console.error('[fitScreen]', err); }
 }
 
@@ -300,10 +314,13 @@ function clearAnomalyLog() {
   if (panel) panel.classList.remove('anomaly-log-open');
 }
 
-function renderLiveScreen(screenData) {
-  const term    = document.getElementById('terminal');
+// termEl is optional — omit to render to the primary #terminal.
+// Passing the split terminal element renders there without touching OIA or fit.
+function renderLiveScreen(screenData, termEl) {
+  const isPrimary = !termEl;
+  const term = termEl || document.getElementById('terminal');
   term.innerHTML = '';
-  measureCellWidth();
+  if (isPrimary) measureCellWidth();
   const rows    = screenData.rows || [];
   const numCols = screenData.cols || 80;
   const cRow    = screenData.cursorRow ?? 0;
@@ -316,9 +333,6 @@ function renderLiveScreen(screenData) {
     for (let ci = 0; ci < numCols; ci++) {
       const cell   = cells[ci] || { char: ' ' };
       let   ch     = cell.char && cell.char !== '\x00' ? cell.char : ' ';
-      // Mask nondisplay (password) content unless the user has opted in
-      // via the Show Passwords toggle. Empty cells stay as spaces — only
-      // typed characters get the mask.
       if (cell.nondisplay && ch !== ' ' && !showPw) ch = NONDISPLAY_MASK;
       const cellEl = document.createElement('span');
       cellEl.className   = 'screen-cell';
@@ -334,23 +348,18 @@ function renderLiveScreen(screenData) {
         else if (prot)                 cellEl.className = 'screen-cell field-protected';
         else                           cellEl.className = 'screen-cell field-label';
       }
-      // Mark nondisplay cells for any styling hooks (e.g. dimmer color
-      // when shown). Purely cosmetic; safe to ignore.
       if (cell.nondisplay) cellEl.classList.add('field-nondisplay');
 
       // ── Field Map Overlay ───────────────────────────────────────
       if (fieldMapOverlay) {
         if (cell.fa !== undefined) {
-          // This cell IS a field attribute byte — show it prominently
           const d = _decodeFa(cell.fa);
           cellEl.classList.add('fmo-fa-cell');
           cellEl.classList.add(d.prot ? 'fmo-protected' : 'fmo-unprotected');
           if (d.intens === 3) cellEl.classList.add('fmo-nondisplay');
           if (d.intens === 2) cellEl.classList.add('fmo-intensified');
           if (d.mdt)          cellEl.classList.add('fmo-mdt');
-          // Replace blank FA cell with a visible marker glyph
           cellEl.textContent = '▸';
-          // Tooltip showing full decoded flags
           const hex   = '0x' + cell.fa.toString(16).toUpperCase().padStart(2,'0');
           const flags = [
             d.prot    ? 'PROT'    : 'UNPROT',
@@ -360,8 +369,6 @@ function renderLiveScreen(screenData) {
           ].filter(Boolean).join(' · ');
           cellEl.title = `FA ${hex} — ${flags}`;
         } else if (cell.char !== undefined) {
-          // Regular data cell — tint it based on the field type it belongs to
-          // (reuse existing class names the server already sets on the cell)
           const cls = cellEl.className;
           if      (cls.includes('field-protected')) cellEl.classList.add('fmo-tint-protected');
           else if (cls.includes('field-label'))     cellEl.classList.add('fmo-tint-unprotected');
@@ -374,11 +381,13 @@ function renderLiveScreen(screenData) {
     }
     term.appendChild(rowEl);
   });
-  document.getElementById('oiaRow').textContent = String(cRow + 1).padStart(2, '0');
-  document.getElementById('oiaCol').textContent = String(cCol + 1).padStart(2, '0');
-  _initInspectorListener();
-  _showAnomalies(screenData.anomalies || []);
-  requestAnimationFrame(() => { measureCellWidth(); fitScreen(); });
+  if (isPrimary) {
+    document.getElementById('oiaRow').textContent = String(cRow + 1).padStart(2, '0');
+    document.getElementById('oiaCol').textContent = String(cCol + 1).padStart(2, '0');
+    _initInspectorListener();
+    _showAnomalies(screenData.anomalies || []);
+    requestAnimationFrame(() => { measureCellWidth(); fitScreen(); });
+  }
 }
 
 // Plain-text dump of the screen, used for AI Copilot context and any
@@ -639,3 +648,59 @@ function cycleSession(direction) {
   activateTabEl(tabs[next], Number(tabs[next].dataset.sid));
 }
 function switchTab(el) { document.querySelectorAll('.session-tab').forEach(t => t.classList.remove('active')); el.classList.add('active'); }
+
+// ── Split-screen ──────────────────────────────────────────────────
+function toggleSplitMode() {
+  splitMode = !splitMode;
+  const wrapper  = document.getElementById('screenWrapper');
+  const paneR    = document.getElementById('splitPaneRight');
+  const splitBtn = document.getElementById('tabSplitBtn');
+  wrapper.classList.toggle('split-mode', splitMode);
+  if (splitBtn) splitBtn.classList.toggle('split-active', splitMode);
+
+  if (splitMode) {
+    // Pick a second session for the right pane (any session other than active)
+    const allSids = [...sessions.keys()];
+    splitSid = allSids.find(s => s !== activeSession) ?? null;
+    if (paneR) paneR.style.display = 'flex';
+    const term2 = document.getElementById('terminal-split');
+    if (splitSid && term2) {
+      const sess = sessions.get(splitSid);
+      if (sess?.lastScreen) renderLiveScreen(sess.lastScreen, term2);
+    } else if (term2) {
+      term2.innerHTML = '<div style="padding:24px;color:var(--text-muted);font-size:11px;font-family:\'IBM Plex Mono\',monospace">No second session open.<br>Open a second connection to compare.</div>';
+    }
+  } else {
+    if (paneR) paneR.style.display = 'none';
+    splitSid = null;
+  }
+  setTimeout(fitScreen, 50);
+}
+
+// Click inside the split (right) terminal — activate that session for input
+function splitTermClick(e) {
+  if (!splitSid) return;
+  // Swap: the clicked pane becomes the active session
+  const prevActive = activeSession;
+  activateSession(splitSid);
+  splitSid = prevActive;
+  // Re-render the right pane with the newly demoted session
+  const term2 = document.getElementById('terminal-split');
+  if (term2 && splitSid) {
+    const sess = sessions.get(splitSid);
+    if (sess?.lastScreen) renderLiveScreen(sess.lastScreen, term2);
+  }
+  // Also move cursor within the newly active session based on click position
+  const term = document.getElementById('terminal');
+  const rect = term.getBoundingClientRect();
+  const rows = term.querySelectorAll('.screen-row');
+  if (!rows.length) return;
+  const cellH = rows[0].offsetHeight || 1;
+  const cells = rows[0].querySelectorAll('.screen-cell');
+  const cellW = cells.length ? (rows[0].offsetWidth / cells.length) : 8;
+  cursorCol = Math.max(0, Math.min(Math.floor((e.clientX - rect.left) / cellW), (cells.length || 80) - 1));
+  cursorRow = Math.max(0, Math.min(Math.floor((e.clientY - rect.top)  / cellH), rows.length - 1));
+  const session = sessions.get(activeSession);
+  if (session && session.ws.readyState === WebSocket.OPEN)
+    session.ws.send(JSON.stringify({ type: 'cursor', row: cursorRow, col: cursorCol }));
+}
