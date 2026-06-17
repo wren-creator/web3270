@@ -109,6 +109,7 @@
 <!-- SESSION TABS -->
 <div class="session-tabs">
   3270 sessions
+  <div id="tabSplitBtn" class="tab-split" onclick="toggleSplitMode()" title="Split screen — compare two sessions side by side (max 2)">⊞</div>
   <div class="tab-add" onclick="showConnectModal()">＋</div>
 </div>
 
@@ -157,7 +158,12 @@
       <div class="t-spacer"></div>
     </div>
     <div class="screen-wrapper" id="screenWrapper">
-      <div class="t3270-screen" id="terminal" onclick="termClick(event)"></div>
+      <div class="split-pane split-pane-left" id="splitPaneLeft">
+        <div class="t3270-screen" id="terminal" onclick="termClick(event)"></div>
+      </div>
+      <div class="split-pane split-pane-right" id="splitPaneRight" style="display:none">
+        <div class="t3270-screen" id="terminal-split" onclick="splitTermClick(event)"></div>
+      </div>
     </div>
     <!-- Security Tools Toolbar (collapsed by default) -->
     <div class="sec-toolbar" id="secToolbar">
