@@ -109,6 +109,7 @@
 <!-- SESSION TABS -->
 <div class="session-tabs">
   3270 sessions
+  <div id="tabSplitBtn" class="tab-split" onclick="toggleSplitMode()" title="Split screen — compare two sessions side by side (max 2)">⊞</div>
   <div class="tab-add" onclick="showConnectModal()">＋</div>
 </div>
 
@@ -157,8 +158,40 @@
       <div class="t-spacer"></div>
     </div>
     <div class="screen-wrapper" id="screenWrapper">
-      <div class="t3270-screen" id="terminal" onclick="termClick(event)"></div>
+      <div class="split-pane split-pane-left" id="splitPaneLeft">
+        <div class="t3270-screen" id="terminal" onclick="termClick(event)"></div>
+      </div>
+      <div class="split-pane split-pane-right" id="splitPaneRight" style="display:none">
+        <div class="t3270-screen" id="terminal-split" onclick="splitTermClick(event)"></div>
+      </div>
     </div>
+    <!-- Security Tools Toolbar (collapsed by default) -->
+    <div class="sec-toolbar" id="secToolbar">
+      <span class="sec-toolbar-label">🔒 SECURITY TOOLS</span>
+      <div class="sec-toolbar-sep"></div>
+      <button id="fmoBtn" class="sec-tool-btn" onclick="toggleFieldMap()" title="Field Map Overlay — highlight field attribute bytes and field types">
+        <span class="stb-icon">▸</span> FMO <span class="stb-label">Field Map</span>
+      </button>
+      <button id="abiBtn" class="sec-tool-btn" onclick="toggleInspector()" title="Attribute Byte Inspector — click any field to inspect its FA byte">
+        <span class="stb-icon">⬡</span> ABI <span class="stb-label">Field Inspector</span>
+      </button>
+      <button id="recBtn" class="sec-tool-btn" onclick="toggleRecording()" title="Traffic Recorder — record session datastream to .rec.json">
+        <span class="stb-icon">●</span> REC <span class="stb-label">Recorder</span>
+      </button>
+      <a class="sec-tool-btn" href="/replay" target="_blank" title="Open session replay viewer">
+        <span class="stb-icon">▶</span> REPLAY <span class="stb-label">Viewer</span>
+      </a>
+      <div class="sec-toolbar-sep"></div>
+      <button class="sec-tool-btn" onclick="toggleAnomalyLog()" title="Session anomaly log">
+        <span class="stb-icon">⚠</span> ANOM <span class="stb-label">Anomalies</span>
+        <span id="anomalyBadge" style="display:none;background:rgba(255,80,80,0.85);color:#fff;border-radius:8px;font-size:9px;padding:0 4px;margin-left:3px;min-width:14px;text-align:center;"></span>
+      </button>
+      <button class="sec-tool-btn" onclick="clearAnomalyLog()" title="Clear anomaly log" style="font-size:9px;padding:2px 5px;">✕</button>
+    </div>
+    <!-- Anomaly flash bar — shows latest anomalies inline, auto-fades -->
+    <div id="anomalyBar" class="anomaly-bar"></div>
+    <!-- Anomaly log panel — expands on ANOM click -->
+    <div id="anomalyLogPanel" class="anomaly-log-panel"></div>
     <div class="oia-bar">
       <div class="oia-field"><span class="oia-label">SYS</span><span class="oia-val" id="oiaSys">—</span></div>
       <div class="oia-field"><span class="oia-label">LU</span><span class="oia-val" id="oiaLu">—</span></div>
@@ -166,6 +199,7 @@
       <div class="oia-field"><span class="oia-label">ROW</span><span class="oia-val" id="oiaRow">00</span></div>
       <div class="oia-field"><span class="oia-label">COL</span><span class="oia-val" id="oiaCol">00</span></div>
       <div class="oia-spacer"></div>
+      <div class="oia-field"><button id="secBtn" onclick="toggleSecBar()" title="Security Tools" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:11px;padding:1px 6px;cursor:pointer;">🔒</button></div>
       <div class="oia-field"><button id="demoBtn" onclick="toggleDemoMode()" title="Demo Mode — masks host IP/LU in OIA bar" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:1px 6px;cursor:pointer;letter-spacing:0.05em">DEMO</button></div>
       <div class="oia-field"><span class="oia-val blue" id="oiaMode">NOT CONNECTED</span></div>
       <div class="oia-field"><span class="oia-val" id="oiaTls">3270</span></div>
@@ -543,6 +577,7 @@
 </div>
 
 <script src="js/state.js"></script>
+<script src="js/recorder.js"></script>
 <script src="js/copilot.js"></script>
 <script src="js/xfer.js"></script>
 <script src="js/macros.js"></script>

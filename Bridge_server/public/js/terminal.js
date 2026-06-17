@@ -22,7 +22,9 @@ function fitScreen() {
     const intrinsicWidth  = Math.ceil(cellCount * cellW);
     const intrinsicHeight = term.offsetHeight;
     term.style.width = term.style.minWidth = term.style.maxWidth = intrinsicWidth + 'px';
-    const availW = wrapper.clientWidth  - 16;
+    // In split mode each pane gets half the wrapper width
+    const paneW  = splitMode ? Math.floor(wrapper.clientWidth / 2) : wrapper.clientWidth;
+    const availW = paneW    - 16;
     const availH = wrapper.clientHeight - 16;
     if (availW <= 0 || availH <= 0) return;
     const fitScale    = Math.min(availW / intrinsicWidth, availH / intrinsicHeight);
@@ -30,7 +32,6 @@ function fitScreen() {
     const scale       = fitScale * zoom;
     const newFontSize = Math.floor(baseFontSize * scale * 100) / 100;
     term.style.fontSize  = newFontSize + 'px';
-    // Re-measure cell width at the new font size and re-lock terminal width
     measureCellWidth();
     const newCellW = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--cell-w').trim());
     if (newCellW > 0) {
@@ -38,6 +39,19 @@ function fitScreen() {
       term.style.width = term.style.minWidth = term.style.maxWidth = lockedW + 'px';
     }
     term.style.transform = 'none';
+    // Mirror font size and width onto the split terminal so it fits its pane
+    if (splitMode) {
+      const term2 = document.getElementById('terminal-split');
+      if (term2) {
+        term2.style.fontSize = newFontSize + 'px';
+        if (newCellW > 0) {
+          const rows2 = term2.querySelectorAll('.screen-row');
+          const cols2 = rows2.length ? rows2[0].querySelectorAll('.screen-cell').length : cellCount;
+          const w2 = Math.ceil(cols2 * newCellW);
+          term2.style.width = term2.style.minWidth = term2.style.maxWidth = w2 + 'px';
+        }
+      }
+    }
   } catch (err) { console.error('[fitScreen]', err); }
 }
 
@@ -66,10 +80,247 @@ document.fonts.ready.then(() => { measureCellWidth(); fitScreen(); });
 // and rendering reveals the real character.
 const NONDISPLAY_MASK = '#';
 
-function renderLiveScreen(screenData) {
-  const term    = document.getElementById('terminal');
+// ── Field Map Overlay ─────────────────────────────────────────────
+// When enabled, every field attribute byte cell is highlighted and
+// annotated with its decoded flags (protected, intensity, MDT).
+// Regular cells are tinted by their field type. Purely client-side —
+// no server changes required.
+let fieldMapOverlay = false;
+
+function toggleFieldMap() {
+  fieldMapOverlay = !fieldMapOverlay;
+  const btn = document.getElementById('fmoBtn');
+  if (btn) btn.classList.toggle('sec-tool-btn-active', fieldMapOverlay);
+  document.body.classList.toggle('field-map-overlay', fieldMapOverlay);
+  if (liveScreen) renderLiveScreen(liveScreen);
+}
+
+// ── Security Toolbar ──────────────────────────────────────────────
+let _secBarOpen = false;
+function toggleSecBar() {
+  _secBarOpen = !_secBarOpen;
+  const bar = document.getElementById('secToolbar');
+  const btn = document.getElementById('secBtn');
+  if (bar) bar.classList.toggle('sec-toolbar-open', _secBarOpen);
+  if (btn) {
+    btn.style.color       = _secBarOpen ? 'var(--accent-amber)' : 'var(--text-muted)';
+    btn.style.borderColor = _secBarOpen ? 'var(--accent-amber)' : '#333';
+  }
+}
+
+// ── Attribute Byte Inspector toggle ───────────────────────────────
+let inspectorActive = false;
+function toggleInspector() {
+  inspectorActive = !inspectorActive;
+  const btn = document.getElementById('abiBtn');
+  if (btn) btn.classList.toggle('sec-tool-btn-active', inspectorActive);
+  if (!inspectorActive) _dismissInspector();
+}
+
+// Decode a 3270 field attribute byte into human-readable flags.
+// FA byte layout (IBM GA23-0059):
+//   bit 5 (0x20): 1 = protected, 0 = unprotected
+//   bits 3-2 (0x0C): intensity  00/01=normal, 10=intensified, 11=nondisplay
+//   bit 0 (0x01): MDT — Modified Data Tag (field has been changed)
+function _decodeFa(fa) {
+  const prot    = !!(fa & 0x20);
+  const intens  = (fa & 0x0C) >> 2;
+  const mdt     = !!(fa & 0x01);
+  const numeric = !!(fa & 0x10);
+  let intensLabel = 'NORMAL';
+  if (intens === 2) intensLabel = 'INTENS';
+  if (intens === 3) intensLabel = 'HIDDEN';
+  return { prot, intens, mdt, numeric, intensLabel };
+}
+
+// ── Attribute Byte Inspector ──────────────────────────────────────
+// Click any cell to inspect the FA byte governing that field.
+// Dismissed by clicking outside the panel or pressing Escape.
+
+let _inspectorEl = null;
+
+function _initInspectorListener() {
+  const term = document.getElementById('terminal');
+  if (!term || term.dataset.inspectorBound) return;
+  term.dataset.inspectorBound = '1';
+  term.addEventListener('click', e => {
+    if (!inspectorActive) return;
+    const cellEl = e.target.closest('.screen-cell');
+    if (!cellEl) return;
+    const ri = parseInt(cellEl.dataset.ri, 10);
+    const ci = parseInt(cellEl.dataset.ci, 10);
+    if (isNaN(ri) || isNaN(ci) || !liveScreen) return;
+    const row  = (liveScreen.rows || [])[ri] || [];
+    const cell = row[ci] || {};
+    // Find the FA byte governing this cell — scan left/wrap for nearest FA
+    const cols    = liveScreen.cols || 80;
+    const numRows = (liveScreen.rows || []).length;
+    let fa = null, faAddr = null;
+    // Walk backwards from current position to find owning FA
+    let pos = ri * cols + ci;
+    for (let i = 0; i <= numRows * cols; i++) {
+      const p   = ((pos - i) + numRows * cols) % (numRows * cols);
+      const r2  = Math.floor(p / cols);
+      const c2  = p % cols;
+      const c   = ((liveScreen.rows || [])[r2] || [])[c2] || {};
+      if (c.fa !== undefined) { fa = c.fa; faAddr = p; break; }
+    }
+    // Also check if this cell itself is an FA cell
+    const isFaCell = cell.fa !== undefined;
+    if (isFaCell) { fa = cell.fa; faAddr = ri * cols + ci; }
+    _showInspector(e.clientX, e.clientY, ri, ci, fa, faAddr, cell, isFaCell);
+  });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') _dismissInspector(); });
+  document.addEventListener('click',   e => {
+    if (_inspectorEl && !_inspectorEl.contains(e.target) && !e.target.closest('.screen-cell'))
+      _dismissInspector();
+  }, true);
+}
+
+function _showInspector(x, y, ri, ci, fa, faAddr, cell, isFaCell) {
+  _dismissInspector();
+  if (fa === null) return;
+
+  const d      = _decodeFa(fa);
+  const faHex  = '0x' + fa.toString(16).toUpperCase().padStart(2, '0');
+  const faBin  = fa.toString(2).padStart(8, '0');
+  const addr   = faAddr !== null ? faAddr : '?';
+  const row14  = faAddr !== null ? `R${String(Math.floor(faAddr / (liveScreen.cols||80)) + 1).padStart(2,'0')} C${String((faAddr % (liveScreen.cols||80)) + 1).padStart(2,'0')}` : '?';
+
+  // Find field from liveScreen.fields if available
+  const field  = (liveScreen.fields || []).find(f => f.startAddr === faAddr);
+  const contentLen = field ? field.content.trimEnd().length : '?';
+
+  const bit = (n, label, val) =>
+    `<tr><td class="abi-bit">bit ${n}</td><td class="abi-label">${label}</td><td class="abi-val ${val ? 'abi-on' : 'abi-off'}">${val ? '1 ✓' : '0'}</td></tr>`;
+
+  const el = document.createElement('div');
+  el.className = 'attr-inspector';
+  el.innerHTML = `
+    <div class="abi-header">
+      <span class="abi-title">Field Attribute Byte</span>
+      <span class="abi-addr">${row14} · addr ${addr}</span>
+      <button class="abi-close" onclick="_dismissInspector()">✕</button>
+    </div>
+    <div class="abi-hex">
+      <span class="abi-hexval">${faHex}</span>
+      <span class="abi-bin">${faBin.slice(0,2)}<b>${faBin.slice(2,4)}</b><b>${faBin[4]}</b>${faBin[5]}<b>${faBin[6]}</b><b>${faBin[7]}</b></span>
+    </div>
+    <table class="abi-table">
+      ${bit(5, 'Protected',   d.prot)}
+      ${bit(4, 'Numeric',     d.numeric)}
+      <tr><td class="abi-bit">3-2</td><td class="abi-label">Intensity</td><td class="abi-val">${['NORMAL','NORMAL','INTENSIFIED','NONDISPLAY'][d.intens]}</td></tr>
+      <tr><td class="abi-bit">1</td><td class="abi-label">Reserved</td><td class="abi-val abi-off">—</td></tr>
+      ${bit(0, 'MDT (modified)', d.mdt)}
+    </table>
+    <div class="abi-footer">
+      <span class="${d.prot ? 'abi-tag-prot' : 'abi-tag-unprot'}">${d.prot ? 'PROTECTED' : 'UNPROTECTED'}</span>
+      ${d.numeric     ? '<span class="abi-tag-num">NUMERIC</span>' : ''}
+      ${d.intens === 3 ? '<span class="abi-tag-hidden">NONDISPLAY</span>' : ''}
+      ${d.intens === 2 ? '<span class="abi-tag-intens">INTENSIFIED</span>' : ''}
+      ${d.mdt         ? '<span class="abi-tag-mdt">MDT SET</span>' : ''}
+      <span class="abi-len">content: ${contentLen} chars</span>
+    </div>`;
+
+  // Position near click, keep on screen
+  document.body.appendChild(el);
+  _inspectorEl = el;
+  const rect = el.getBoundingClientRect();
+  let px = x + 12, py = y + 12;
+  if (px + rect.width  > window.innerWidth  - 8) px = x - rect.width  - 12;
+  if (py + rect.height > window.innerHeight - 8) py = y - rect.height - 12;
+  el.style.left = px + 'px';
+  el.style.top  = py + 'px';
+}
+
+function _dismissInspector() {
+  if (_inspectorEl) { _inspectorEl.remove(); _inspectorEl = null; }
+}
+
+// ── Session Anomaly Annotations ───────────────────────────────────
+// Anomalies arrive with each screen event from session.js.
+// They are shown as a badge on the security toolbar and a dismissible
+// log panel that expands below the toolbar when anomalies are present.
+
+let _anomalyLog = [];   // cumulative log for the session
+
+function _showAnomalies(anomalies) {
+  if (!anomalies || anomalies.length === 0) {
+    _updateAnomalyBadge();
+    return;
+  }
+  const now = Date.now();
+  anomalies.forEach(a => _anomalyLog.push({ ...a, ts: now }));
+  _updateAnomalyBadge();
+  _flashAnomalyBar(anomalies);
+}
+
+function _updateAnomalyBadge() {
+  const badge = document.getElementById('anomalyBadge');
+  if (!badge) return;
+  const warns = _anomalyLog.filter(a => a.severity === 'warn').length;
+  if (_anomalyLog.length === 0) {
+    badge.style.display = 'none';
+  } else {
+    badge.style.display = 'inline-flex';
+    badge.textContent   = _anomalyLog.length;
+    badge.style.background = warns > 0 ? 'rgba(255,80,80,0.85)' : 'rgba(255,170,0,0.75)';
+    badge.title = `${_anomalyLog.length} anomaly event${_anomalyLog.length !== 1 ? 's' : ''} — click ANOM to view`;
+  }
+}
+
+function _flashAnomalyBar(anomalies) {
+  const bar = document.getElementById('anomalyBar');
+  if (!bar) return;
+  bar.innerHTML = '';
+  anomalies.forEach(a => {
+    const el = document.createElement('div');
+    el.className = `anomaly-item anomaly-${a.severity}`;
+    el.innerHTML = `<span class="anomaly-code">${a.code}</span><span class="anomaly-msg">${a.msg}</span>`;
+    bar.appendChild(el);
+  });
+  bar.classList.add('anomaly-flash');
+  setTimeout(() => bar.classList.remove('anomaly-flash'), 2000);
+}
+
+function toggleAnomalyLog() {
+  const panel = document.getElementById('anomalyLogPanel');
+  if (!panel) return;
+  const open = panel.classList.toggle('anomaly-log-open');
+  if (open) _renderAnomalyLog();
+}
+
+function _renderAnomalyLog() {
+  const panel = document.getElementById('anomalyLogPanel');
+  if (!panel) return;
+  if (_anomalyLog.length === 0) {
+    panel.innerHTML = '<div class="anomaly-empty">No anomalies detected this session.</div>';
+    return;
+  }
+  panel.innerHTML = _anomalyLog.slice().reverse().map(a => {
+    const t = new Date(a.ts).toLocaleTimeString();
+    return `<div class="anomaly-item anomaly-${a.severity}">
+      <span class="anomaly-time">${t}</span>
+      <span class="anomaly-code">${a.code}</span>
+      <span class="anomaly-msg">${a.msg}</span>
+    </div>`;
+  }).join('');
+}
+
+function clearAnomalyLog() {
+  _anomalyLog = [];
+  _updateAnomalyBadge();
+  const panel = document.getElementById('anomalyLogPanel');
+  if (panel) panel.classList.remove('anomaly-log-open');
+}
+
+// termEl is optional — omit to render to the primary #terminal.
+// Passing the split terminal element renders there without touching OIA or fit.
+function renderLiveScreen(screenData, termEl) {
+  const isPrimary = !termEl;
+  const term = termEl || document.getElementById('terminal');
   term.innerHTML = '';
-  measureCellWidth();
+  if (isPrimary) measureCellWidth();
   const rows    = screenData.rows || [];
   const numCols = screenData.cols || 80;
   const cRow    = screenData.cursorRow ?? 0;
@@ -82,13 +333,12 @@ function renderLiveScreen(screenData) {
     for (let ci = 0; ci < numCols; ci++) {
       const cell   = cells[ci] || { char: ' ' };
       let   ch     = cell.char && cell.char !== '\x00' ? cell.char : ' ';
-      // Mask nondisplay (password) content unless the user has opted in
-      // via the Show Passwords toggle. Empty cells stay as spaces — only
-      // typed characters get the mask.
       if (cell.nondisplay && ch !== ' ' && !showPw) ch = NONDISPLAY_MASK;
       const cellEl = document.createElement('span');
       cellEl.className   = 'screen-cell';
       cellEl.textContent = ch;
+      cellEl.dataset.ri  = ri;
+      cellEl.dataset.ci  = ci;
       if (ri === cRow && ci === cCol)           cellEl.className = 'screen-cell cursor-cell';
       else if (cell.fa !== undefined) {
         const prot   = !!(cell.fa & 0x20);
@@ -98,16 +348,46 @@ function renderLiveScreen(screenData) {
         else if (prot)                 cellEl.className = 'screen-cell field-protected';
         else                           cellEl.className = 'screen-cell field-label';
       }
-      // Mark nondisplay cells for any styling hooks (e.g. dimmer color
-      // when shown). Purely cosmetic; safe to ignore.
       if (cell.nondisplay) cellEl.classList.add('field-nondisplay');
+
+      // ── Field Map Overlay ───────────────────────────────────────
+      if (fieldMapOverlay) {
+        if (cell.fa !== undefined) {
+          const d = _decodeFa(cell.fa);
+          cellEl.classList.add('fmo-fa-cell');
+          cellEl.classList.add(d.prot ? 'fmo-protected' : 'fmo-unprotected');
+          if (d.intens === 3) cellEl.classList.add('fmo-nondisplay');
+          if (d.intens === 2) cellEl.classList.add('fmo-intensified');
+          if (d.mdt)          cellEl.classList.add('fmo-mdt');
+          cellEl.textContent = '▸';
+          const hex   = '0x' + cell.fa.toString(16).toUpperCase().padStart(2,'0');
+          const flags = [
+            d.prot    ? 'PROT'    : 'UNPROT',
+            d.intensLabel,
+            d.numeric ? 'NUM'     : '',
+            d.mdt     ? 'MDT'     : '',
+          ].filter(Boolean).join(' · ');
+          cellEl.title = `FA ${hex} — ${flags}`;
+        } else if (cell.char !== undefined) {
+          const cls = cellEl.className;
+          if      (cls.includes('field-protected')) cellEl.classList.add('fmo-tint-protected');
+          else if (cls.includes('field-label'))     cellEl.classList.add('fmo-tint-unprotected');
+          else if (cls.includes('field-error'))     cellEl.classList.add('fmo-tint-error');
+          else if (cls.includes('field-dim'))       cellEl.classList.add('fmo-tint-dim');
+          else if (cell.nondisplay)                 cellEl.classList.add('fmo-tint-nondisplay');
+        }
+      }
       rowEl.appendChild(cellEl);
     }
     term.appendChild(rowEl);
   });
-  document.getElementById('oiaRow').textContent = String(cRow + 1).padStart(2, '0');
-  document.getElementById('oiaCol').textContent = String(cCol + 1).padStart(2, '0');
-  requestAnimationFrame(() => { measureCellWidth(); fitScreen(); });
+  if (isPrimary) {
+    document.getElementById('oiaRow').textContent = String(cRow + 1).padStart(2, '0');
+    document.getElementById('oiaCol').textContent = String(cCol + 1).padStart(2, '0');
+    _initInspectorListener();
+    _showAnomalies(screenData.anomalies || []);
+    requestAnimationFrame(() => { measureCellWidth(); fitScreen(); });
+  }
 }
 
 // Plain-text dump of the screen, used for AI Copilot context and any
@@ -368,3 +648,59 @@ function cycleSession(direction) {
   activateTabEl(tabs[next], Number(tabs[next].dataset.sid));
 }
 function switchTab(el) { document.querySelectorAll('.session-tab').forEach(t => t.classList.remove('active')); el.classList.add('active'); }
+
+// ── Split-screen ──────────────────────────────────────────────────
+function toggleSplitMode() {
+  splitMode = !splitMode;
+  const wrapper  = document.getElementById('screenWrapper');
+  const paneR    = document.getElementById('splitPaneRight');
+  const splitBtn = document.getElementById('tabSplitBtn');
+  wrapper.classList.toggle('split-mode', splitMode);
+  if (splitBtn) splitBtn.classList.toggle('split-active', splitMode);
+
+  if (splitMode) {
+    // Pick a second session for the right pane (any session other than active)
+    const allSids = [...sessions.keys()];
+    splitSid = allSids.find(s => s !== activeSession) ?? null;
+    if (paneR) paneR.style.display = 'flex';
+    const term2 = document.getElementById('terminal-split');
+    if (splitSid && term2) {
+      const sess = sessions.get(splitSid);
+      if (sess?.lastScreen) renderLiveScreen(sess.lastScreen, term2);
+    } else if (term2) {
+      term2.innerHTML = '<div style="padding:24px;color:var(--text-muted);font-size:11px;font-family:\'IBM Plex Mono\',monospace">No second session open.<br>Open a second connection to compare.</div>';
+    }
+  } else {
+    if (paneR) paneR.style.display = 'none';
+    splitSid = null;
+  }
+  setTimeout(fitScreen, 50);
+}
+
+// Click inside the split (right) terminal — activate that session for input
+function splitTermClick(e) {
+  if (!splitSid) return;
+  // Swap: the clicked pane becomes the active session
+  const prevActive = activeSession;
+  activateSession(splitSid);
+  splitSid = prevActive;
+  // Re-render the right pane with the newly demoted session
+  const term2 = document.getElementById('terminal-split');
+  if (term2 && splitSid) {
+    const sess = sessions.get(splitSid);
+    if (sess?.lastScreen) renderLiveScreen(sess.lastScreen, term2);
+  }
+  // Also move cursor within the newly active session based on click position
+  const term = document.getElementById('terminal');
+  const rect = term.getBoundingClientRect();
+  const rows = term.querySelectorAll('.screen-row');
+  if (!rows.length) return;
+  const cellH = rows[0].offsetHeight || 1;
+  const cells = rows[0].querySelectorAll('.screen-cell');
+  const cellW = cells.length ? (rows[0].offsetWidth / cells.length) : 8;
+  cursorCol = Math.max(0, Math.min(Math.floor((e.clientX - rect.left) / cellW), (cells.length || 80) - 1));
+  cursorRow = Math.max(0, Math.min(Math.floor((e.clientY - rect.top)  / cellH), rows.length - 1));
+  const session = sessions.get(activeSession);
+  if (session && session.ws.readyState === WebSocket.OPEN)
+    session.ws.send(JSON.stringify({ type: 'cursor', row: cursorRow, col: cursorCol }));
+}

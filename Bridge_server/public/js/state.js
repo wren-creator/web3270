@@ -63,3 +63,7 @@ let demoMode          = false;   // when true, masks host IP/hostname in OIA bar
 
 // ── Command history index (ui cycling state only) ──────────────────
 let cmdHistoryIndex   = -1;      // -1 = not cycling; per active session
+
+// ── Split-screen ───────────────────────────────────────────────────
+let splitMode         = false;   // true when two terminals are shown side by side
+let splitSid          = null;    // session id rendered in the right (passive) pane

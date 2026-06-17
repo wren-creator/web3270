@@ -524,6 +524,36 @@ The `docker-compose.yml` already includes `restart: unless-stopped`, so once the
 
 ---
 
+## Connecting to GIBSON
+
+If you are using [GIBSON](https://github.com/wren-creator/GIBSON) as your TN3270 target alongside the web3270 bridge, both compose stacks are configured to share a Docker network called `gibson-net`. This lets the bridge reach GIBSON directly by container name without any host routing — and works identically on Linux, WSL2 on Windows, and macOS.
+
+**Why this matters on WSL2:** Each Docker Compose stack gets its own isolated network by default. Routing between stacks through the host (`host.docker.internal`) is unreliable on WSL2. The shared network sidesteps that entirely.
+
+**Startup order:**
+
+```bash
+# 1 · Start GIBSON first — it creates the gibson-net network
+cd /path/to/GIBSON/gibson-mainframe
+docker compose up -d
+
+# 2 · Start the web3270 bridge — it joins gibson-net automatically
+cd /path/to/web3270/Bridge_server
+docker compose up -d
+```
+
+**LPAR entry** — add this line to `lpars.txt` (or add it via the web UI):
+
+```
+gibson, GIBSON, gibson-mainframe, 3270, false, TSO, 3278-2
+```
+
+`gibson-mainframe` is the GIBSON container name. Docker resolves it over the shared network — no IP address or DNS configuration required.
+
+**If you start the bridge before GIBSON:** The bridge will start fine but connections to `gibson-mainframe` will fail until GIBSON is up. Just start GIBSON and retry the connection.
+
+---
+
 ## Docker Troubleshooting
 
 **`docker: command not found`**

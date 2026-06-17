@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WebTerm/3270 — Session Replay</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap">
+<link rel="stylesheet" href="css/terminal.css">
+<style>
+/* ── Replay-specific overrides ───────────────────────────────────── */
+body { overflow: hidden; }
+
+.replay-shell {
+  display: flex; flex-direction: column; height: 100vh;
+}
+
+/* Top bar */
+.replay-topbar {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--bg-secondary); border-bottom: 1px solid var(--border);
+  height: 42px; padding: 0 14px; flex-shrink: 0;
+}
+.replay-topbar .logo {
+  font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600;
+  color: var(--accent-cyan); letter-spacing: 0.05em; white-space: nowrap;
+}
+.replay-topbar .logo span { color: var(--text-dim); }
+.replay-badge {
+  font-family: 'IBM Plex Mono', monospace; font-size: 10px;
+  color: var(--accent-amber); border: 1px solid var(--accent-amber);
+  border-radius: 3px; padding: 1px 6px; letter-spacing: 0.08em;
+}
+.replay-meta {
+  font-size: 10px; color: var(--text-muted); font-family: 'IBM Plex Mono', monospace;
+  margin-left: 8px;
+}
+.replay-meta span { color: var(--text-dim); margin-right: 12px; }
+.tb-sep { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; }
+.t-spacer { flex: 1; }
+
+/* Load area (shown when no recording loaded) */
+.load-area {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 16px;
+}
+.drop-zone {
+  border: 2px dashed var(--border-bright); border-radius: 6px;
+  padding: 48px 64px; text-align: center; cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+.drop-zone:hover, .drop-zone.drag-over {
+  border-color: var(--accent-cyan); background: rgba(0,212,255,0.04);
+}
+.drop-zone-icon { font-size: 36px; margin-bottom: 12px; opacity: 0.5; }
+.drop-zone-label { font-size: 13px; color: var(--text-dim); }
+.drop-zone-sub { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
+
+/* Main replay layout */
+.replay-main {
+  flex: 1; display: flex; flex-direction: column; overflow: hidden;
+}
+
+/* Terminal area */
+.replay-screen-wrap {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  background: var(--t-bg); overflow: hidden; position: relative;
+}
+
+/* Event log sidebar */
+.event-log {
+  width: 280px; flex-shrink: 0;
+  background: var(--bg-secondary); border-left: 1px solid var(--border);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.event-log-header {
+  padding: 8px 12px; font-size: 10px; font-weight: 600;
+  color: var(--text-muted); letter-spacing: 0.08em; border-bottom: 1px solid var(--border);
+  text-transform: uppercase;
+}
+.event-list {
+  flex: 1; overflow-y: auto;
+  scrollbar-width: thin; scrollbar-color: #1a3050 transparent;
+}
+.event-list::-webkit-scrollbar { width: 3px; }
+.event-list::-webkit-scrollbar-thumb { background: #1a3050; border-radius: 2px; }
+.event-item {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 5px 10px; border-bottom: 1px solid rgba(30,45,69,0.5);
+  cursor: pointer; transition: background 0.1s; font-size: 10px;
+  font-family: 'IBM Plex Mono', monospace;
+}
+.event-item:hover { background: rgba(255,255,255,0.04); }
+.event-item.active { background: rgba(0,212,255,0.08); border-left: 2px solid var(--accent-cyan); }
+.event-t { color: var(--text-muted); width: 52px; flex-shrink: 0; }
+.event-dir-host { color: var(--accent-green); }
+.event-dir-client { color: var(--accent-amber); }
+.event-label { color: var(--text-dim); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Transport controls */
+.replay-controls {
+  background: var(--bg-secondary); border-top: 1px solid var(--border);
+  padding: 8px 14px; display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+}
+.ctrl-btn {
+  background: var(--bg-elevated); border: 1px solid var(--border-bright);
+  color: var(--text-dim); font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px; padding: 4px 10px; border-radius: 3px; cursor: pointer;
+  transition: all 0.1s;
+}
+.ctrl-btn:hover { border-color: var(--accent-cyan); color: var(--text-primary); }
+.ctrl-btn:disabled { opacity: 0.3; cursor: default; }
+.ctrl-btn.active { background: rgba(0,212,255,0.12); border-color: var(--accent-cyan); color: var(--accent-cyan); }
+
+.scrubber {
+  flex: 1; -webkit-appearance: none; appearance: none;
+  height: 3px; background: var(--border-bright); border-radius: 2px; outline: none; cursor: pointer;
+}
+.scrubber::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 12px; height: 12px;
+  border-radius: 50%; background: var(--accent-cyan); cursor: pointer;
+}
+.scrubber::-moz-range-thumb {
+  width: 12px; height: 12px; border-radius: 50%;
+  background: var(--accent-cyan); border: none; cursor: pointer;
+}
+
+.ctrl-time {
+  font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+  color: var(--text-dim); white-space: nowrap; min-width: 80px; text-align: right;
+}
+.speed-select {
+  background: var(--bg-elevated); border: 1px solid var(--border-bright);
+  color: var(--text-dim); font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px; padding: 3px 6px; border-radius: 3px; cursor: pointer;
+}
+
+/* FMO toggle in replay toolbar */
+.replay-fmo-btn {
+  background: none; border: 1px solid #333; border-radius: 3px;
+  color: var(--text-muted); font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px; padding: 2px 7px; cursor: pointer; letter-spacing: 0.05em;
+}
+
+/* OIA bar for replay */
+.replay-oia {
+  display: flex; align-items: center; gap: 12px;
+  background: #060a10; border-top: 1px solid #0f1a28;
+  padding: 3px 12px; flex-shrink: 0; font-size: 10px;
+  font-family: 'IBM Plex Mono', monospace;
+}
+.replay-oia .oia-label { color: var(--text-muted); margin-right: 4px; font-size: 9px; letter-spacing: 0.06em; }
+.replay-oia .oia-val { color: var(--text-dim); }
+.replay-oia .oia-spacer { flex: 1; }
+.replay-oia .oia-val.blue { color: var(--accent-cyan); }
+
+.horiz { display: flex; flex: 1; overflow: hidden; }
+</style>
+</head>
+<body>
+<div class="replay-shell">
+
+  <!-- TOP BAR -->
+  <div class="replay-topbar">
+    <div class="logo">WebTerm<span>/3270</span></div>
+    <div class="replay-badge">REPLAY</div>
+    <div class="tb-sep"></div>
+    <div class="replay-meta" id="replayMeta" style="display:none">
+      <span id="metaHost"></span>
+      <span id="metaLu"></span>
+      <span id="metaDate"></span>
+      <span id="metaEvents"></span>
+    </div>
+    <div class="t-spacer"></div>
+    <button class="replay-fmo-btn" id="fmoBtn" onclick="toggleFieldMap()" title="Field Map Overlay">FMO</button>
+    <label style="font-size:11px;color:var(--text-muted);cursor:pointer;display:flex;align-items:center;gap:6px">
+      <input type="file" accept=".rec.json,.json" style="display:none" id="fileInput" onchange="loadFile(this.files[0])">
+      <button class="ctrl-btn" onclick="document.getElementById('fileInput').click()">📂 Open…</button>
+    </label>
+  </div>
+
+  <!-- LOAD AREA (shown until a file is loaded) -->
+  <div class="load-area" id="loadArea">
+    <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+      <div class="drop-zone-icon">📼</div>
+      <div class="drop-zone-label">Drop a .rec.json recording here</div>
+      <div class="drop-zone-sub">or click to browse</div>
+    </div>
+  </div>
+
+  <!-- REPLAY MAIN (hidden until file loaded) -->
+  <div class="replay-main" id="replayMain" style="display:none; flex:1; flex-direction:column; overflow:hidden;">
+    <div class="horiz">
+      <!-- Terminal -->
+      <div class="replay-screen-wrap">
+        <div class="t3270-screen" id="terminal" style="cursor:default"></div>
+      </div>
+      <!-- Event log -->
+      <div class="event-log">
+        <div class="event-log-header">Events</div>
+        <div class="event-list" id="eventList"></div>
+      </div>
+    </div>
+
+    <!-- OIA bar -->
+    <div class="replay-oia">
+      <div><span class="oia-label">HOST</span><span class="oia-val" id="oiaHost">—</span></div>
+      <div><span class="oia-label">LU</span><span class="oia-val" id="oiaLu">—</span></div>
+      <div class="oia-spacer"></div>
+      <div><span class="oia-val blue" id="oiaEvt">—</span></div>
+    </div>
+
+    <!-- Transport controls -->
+    <div class="replay-controls">
+      <button class="ctrl-btn" id="btnFirst"  onclick="gotoFirst()"  title="First">⏮</button>
+      <button class="ctrl-btn" id="btnBack"   onclick="stepBack()"   title="Step back">◀</button>
+      <button class="ctrl-btn" id="btnPlay"   onclick="togglePlay()" title="Play/Pause">▶</button>
+      <button class="ctrl-btn" id="btnFwd"    onclick="stepFwd()"    title="Step forward">▶|</button>
+      <button class="ctrl-btn" id="btnLast"   onclick="gotoLast()"   title="Last">⏭</button>
+      <input type="range" class="scrubber" id="scrubber" min="0" value="0" oninput="scrub(this.value)">
+      <div class="ctrl-time" id="ctrlTime">0:00.000</div>
+      <select class="speed-select" id="speedSelect" onchange="setSpeed(this.value)">
+        <option value="0.25">0.25×</option>
+        <option value="0.5">0.5×</option>
+        <option value="1" selected>1×</option>
+        <option value="2">2×</option>
+        <option value="5">5×</option>
+        <option value="0">Max</option>
+      </select>
+    </div>
+  </div>
+
+</div><!-- /replay-shell -->
+
+<script>
+'use strict';
+
+// ── State ──────────────────────────────────────────────────────────
+let recording    = null;   // parsed .rec.json
+let screenEvents = [];     // only screen-type events, in order
+let allEvents    = [];     // all events
+let currentIdx   = -1;     // current screen event index
+let playing      = false;
+let playTimer    = null;
+let speed        = 1;
+let fieldMapOverlay = false;
+
+// ── File loading ───────────────────────────────────────────────────
+const dropZone = document.getElementById('dropZone');
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('drag-over'); if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]); });
+
+function loadFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const rec = JSON.parse(e.target.result);
+      if (!rec.events || !Array.isArray(rec.events)) throw new Error('Invalid recording format');
+      initRecording(rec);
+    } catch (err) {
+      alert('Failed to load recording: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+function initRecording(rec) {
+  recording    = rec;
+  allEvents    = rec.events;
+  screenEvents = allEvents.filter(ev => ev.type === 'screen');
+
+  if (screenEvents.length === 0) { alert('Recording contains no screen events.'); return; }
+
+  // Populate event log
+  const list = document.getElementById('eventList');
+  list.innerHTML = '';
+  allEvents.forEach((ev, i) => {
+    const el = document.createElement('div');
+    el.className = 'event-item';
+    el.dataset.idx = i;
+    const isHost = ev.dir === 'host→client';
+    el.innerHTML = `
+      <span class="event-t">${_fmtT(ev.t)}</span>
+      <span class="${isHost ? 'event-dir-host' : 'event-dir-client'}">${isHost ? '←' : '→'}</span>
+      <span class="event-label">${_eventLabel(ev)}</span>`;
+    el.onclick = () => {
+      // Jump to nearest screen event at or before this event
+      const screenIdx = _nearestScreenBefore(i);
+      if (screenIdx >= 0) gotoScreen(screenIdx);
+    };
+    list.appendChild(el);
+  });
+
+  // Scrubber range = number of screen events
+  const scrubber = document.getElementById('scrubber');
+  scrubber.max   = screenEvents.length - 1;
+  scrubber.value = 0;
+
+  // Meta bar
+  document.getElementById('metaHost').textContent   = '⊕ ' + (rec.host || '?') + ':' + (rec.port || '?');
+  document.getElementById('metaLu').textContent     = rec.lu   ? 'LU:' + rec.lu : '';
+  document.getElementById('metaDate').textContent   = rec.recorded ? new Date(rec.recorded).toLocaleString() : '';
+  document.getElementById('metaEvents').textContent = allEvents.length + ' events';
+  document.getElementById('replayMeta').style.display = '';
+
+  document.getElementById('oiaHost').textContent = (rec.host || '?') + ':' + (rec.port || '?');
+  document.getElementById('oiaLu').textContent   = rec.lu || '—';
+
+  document.getElementById('loadArea').style.display  = 'none';
+  document.getElementById('replayMain').style.display = 'flex';
+
+  gotoScreen(0);
+}
+
+// ── Navigation ─────────────────────────────────────────────────────
+function gotoScreen(idx) {
+  if (!screenEvents.length) return;
+  idx = Math.max(0, Math.min(screenEvents.length - 1, idx));
+  currentIdx = idx;
+  renderScreen(screenEvents[idx]);
+  document.getElementById('scrubber').value = idx;
+  _updateTime(screenEvents[idx].t);
+  _updateOiaEvt(idx);
+  _highlightEventLog(screenEvents[idx]);
+}
+
+function gotoFirst()  { stopPlay(); gotoScreen(0); }
+function gotoLast()   { stopPlay(); gotoScreen(screenEvents.length - 1); }
+function stepBack()   { stopPlay(); gotoScreen(currentIdx - 1); }
+function stepFwd()    { stopPlay(); gotoScreen(currentIdx + 1); }
+function scrub(v)     { stopPlay(); gotoScreen(parseInt(v, 10)); }
+
+function togglePlay() {
+  playing ? stopPlay() : startPlay();
+}
+
+function startPlay() {
+  if (currentIdx >= screenEvents.length - 1) gotoScreen(0);
+  playing = true;
+  document.getElementById('btnPlay').textContent = '⏸';
+  document.getElementById('btnPlay').classList.add('active');
+  _scheduleNext();
+}
+
+function stopPlay() {
+  playing = false;
+  clearTimeout(playTimer);
+  document.getElementById('btnPlay').textContent = '▶';
+  document.getElementById('btnPlay').classList.remove('active');
+}
+
+function setSpeed(v) { speed = parseFloat(v) || 0; }
+
+function _scheduleNext() {
+  if (!playing || currentIdx >= screenEvents.length - 1) { stopPlay(); return; }
+  const cur  = screenEvents[currentIdx];
+  const next = screenEvents[currentIdx + 1];
+  const gap  = next.t - cur.t;  // ms between events in recording
+  const delay = speed === 0 ? 0 : Math.max(0, gap / speed);
+  playTimer = setTimeout(() => {
+    gotoScreen(currentIdx + 1);
+    _scheduleNext();
+  }, delay);
+}
+
+// ── Rendering — mirrors live terminal DOM: screen-row divs + screen-cell spans
+function renderScreen(ev) {
+  const screenData = ev.data;
+  const term  = document.getElementById('terminal');
+  const numRows = screenData.numRows || (Array.isArray(screenData.rows) ? screenData.rows.length : 24);
+  const cols    = screenData.cols  || 80;
+  const rowData = Array.isArray(screenData.rows) ? screenData.rows : [];
+
+  // Rebuild row/cell structure if dimensions changed
+  if (term.children.length !== numRows || term.dataset.cols !== String(cols)) {
+    term.innerHTML = '';
+    for (let ri = 0; ri < numRows; ri++) {
+      const row = document.createElement('div');
+      row.className = 'screen-row';
+      for (let ci = 0; ci < cols; ci++) {
+        const cell = document.createElement('span');
+        cell.className = 'screen-cell';
+        row.appendChild(cell);
+      }
+      term.appendChild(row);
+    }
+    term.dataset.cols = String(cols);
+  }
+
+  const cRow = screenData.cursorRow ?? 0;
+  const cCol = screenData.cursorCol ?? 0;
+  let currentFa = null;
+
+  for (let ri = 0; ri < numRows; ri++) {
+    const rowEl  = term.children[ri];
+    const rowArr = rowData[ri] || [];
+    for (let ci = 0; ci < cols; ci++) {
+      const cell   = rowArr[ci] || {};
+      const cellEl = rowEl.children[ci];
+
+      if (cell.fa !== undefined) currentFa = cell.fa;
+
+      // Base class
+      if (ri === cRow && ci === cCol) {
+        cellEl.className = 'screen-cell cursor-cell';
+      } else if (cell.fa !== undefined) {
+        const prot   = !!(cell.fa & 0x20);
+        const intens = (cell.fa & 0x0C) >> 2;
+        if (prot && intens === 3)      cellEl.className = 'screen-cell field-error';
+        else if (prot && intens === 2) cellEl.className = 'screen-cell field-dim';
+        else if (prot)                 cellEl.className = 'screen-cell field-protected';
+        else                           cellEl.className = 'screen-cell field-label';
+      } else {
+        cellEl.className = 'screen-cell';
+        // Apply field color from current FA
+        if (currentFa !== null) {
+          const prot   = !!(currentFa & 0x20);
+          const intens = (currentFa & 0x0C) >> 2;
+          if (prot && intens === 3)      cellEl.classList.add('field-error');
+          else if (prot && intens === 2) cellEl.classList.add('field-dim');
+          else if (prot)                 cellEl.classList.add('field-protected');
+          else                           cellEl.classList.add('field-label');
+        }
+      }
+      if (cell.nondisplay) cellEl.classList.add('field-nondisplay');
+
+      // Field Map Overlay
+      if (fieldMapOverlay) {
+        if (cell.fa !== undefined) {
+          const d = _decodeFa(cell.fa);
+          cellEl.classList.add('fmo-fa-cell');
+          cellEl.classList.add(d.prot ? 'fmo-protected' : 'fmo-unprotected');
+          if (d.intens === 3) cellEl.classList.add('fmo-nondisplay');
+          if (d.intens === 2) cellEl.classList.add('fmo-intensified');
+          if (d.mdt)          cellEl.classList.add('fmo-mdt');
+          cellEl.textContent = '▸';
+          const hex   = '0x' + cell.fa.toString(16).toUpperCase().padStart(2,'0');
+          const flags = [d.prot ? 'PROT' : 'UNPROT', d.intensLabel, d.numeric ? 'NUM' : '', d.mdt ? 'MDT' : ''].filter(Boolean).join(' · ');
+          cellEl.title = `FA ${hex} — ${flags}`;
+        } else {
+          const cls = cellEl.className;
+          if      (cls.includes('field-protected')) cellEl.classList.add('fmo-tint-protected');
+          else if (cls.includes('field-label'))     cellEl.classList.add('fmo-tint-unprotected');
+          else if (cls.includes('field-error'))     cellEl.classList.add('fmo-tint-error');
+          else if (cls.includes('field-dim'))       cellEl.classList.add('fmo-tint-dim');
+          else if (cell.nondisplay)                 cellEl.classList.add('fmo-tint-nondisplay');
+          cellEl.textContent = cell.char || ' ';
+          cellEl.removeAttribute('title');
+        }
+      } else {
+        // Normal rendering
+        if (cell.fa !== undefined) {
+          cellEl.textContent = ' ';
+          cellEl.removeAttribute('title');
+        } else if (cell.nondisplay) {
+          cellEl.textContent = document.body.classList.contains('show-passwords') ? (cell.char || ' ') : '#';
+        } else {
+          cellEl.textContent = cell.char || ' ';
+          cellEl.removeAttribute('title');
+        }
+      }
+    }
+  }
+}
+
+// ── Field Map Overlay ──────────────────────────────────────────────
+function toggleFieldMap() {
+  fieldMapOverlay = !fieldMapOverlay;
+  const btn = document.getElementById('fmoBtn');
+  if (btn) {
+    btn.style.color       = fieldMapOverlay ? 'var(--accent-amber)' : 'var(--text-muted)';
+    btn.style.borderColor = fieldMapOverlay ? 'var(--accent-amber)' : '#333';
+  }
+  document.body.classList.toggle('field-map-overlay', fieldMapOverlay);
+  if (currentIdx >= 0 && screenEvents.length) renderScreen(screenEvents[currentIdx]);
+}
+
+function _decodeFa(fa) {
+  const prot    = !!(fa & 0x20);
+  const intens  = (fa & 0x0C) >> 2;
+  const mdt     = !!(fa & 0x01);
+  const numeric = !!(fa & 0x10);
+  let intensLabel = 'NORMAL';
+  if (intens === 2) intensLabel = 'INTENS';
+  if (intens === 3) intensLabel = 'HIDDEN';
+  return { prot, intens, mdt, numeric, intensLabel };
+}
+
+// ── Helpers ────────────────────────────────────────────────────────
+function _fmtT(ms) {
+  const s   = Math.floor(ms / 1000);
+  const m   = Math.floor(s / 60);
+  const rem = ms % 1000;
+  return `${m}:${String(s % 60).padStart(2,'0')}.${String(rem).padStart(3,'0')}`;
+}
+
+function _updateTime(ms) {
+  document.getElementById('ctrlTime').textContent = _fmtT(ms);
+}
+
+function _updateOiaEvt(idx) {
+  document.getElementById('oiaEvt').textContent =
+    `SCREEN ${idx + 1} / ${screenEvents.length}`;
+}
+
+function _eventLabel(ev) {
+  if (ev.type === 'screen') return `SCREEN ${ev.data.rows}×${ev.data.cols}`;
+  if (ev.type === 'key')    return `KEY ${ev.data.aid || ''}`;
+  if (ev.type === 'type')   return `TYPE "${(ev.data.text || '').slice(0,12)}"`;
+  return ev.type.toUpperCase();
+}
+
+function _nearestScreenBefore(allIdx) {
+  // Find the last screen event at or before allIdx
+  let best = -1;
+  for (let i = 0; i < screenEvents.length; i++) {
+    const evIdx = allEvents.indexOf(screenEvents[i]);
+    if (evIdx <= allIdx) best = i;
+    else break;
+  }
+  return best;
+}
+
+function _highlightEventLog(ev) {
+  const list  = document.getElementById('eventList');
+  const items = list.querySelectorAll('.event-item');
+  const evIdx = allEvents.indexOf(ev);
+  items.forEach(el => {
+    const active = parseInt(el.dataset.idx, 10) === evIdx;
+    el.classList.toggle('active', active);
+    if (active) el.scrollIntoView({ block: 'nearest' });
+  });
+}
+</script>
+</body>
+</html>

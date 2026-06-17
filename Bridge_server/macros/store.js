@@ -145,3 +145,87 @@ class MacroStore {
 }
 
 module.exports = MacroStore;
+
+// ── SecurityMacroStore ────────────────────────────────────────────
+// Reads from macros-security.json (flat array, bind-mounted).
+// All macros are tagged source:'security' and are read-only —
+// save/delete/import/rename are intentionally blocked.
+// Never import this file into the main branch.
+
+const config = require('../config');
+
+class SecurityMacroStore {
+  constructor(filePath = config.macroSecurityFile) {
+    this.filePath = filePath;
+  }
+
+  async _load() {
+    try {
+      const raw = await fs.readFile(this.filePath, 'utf8');
+      const arr = JSON.parse(raw);
+      return Array.isArray(arr) ? arr : [];
+    } catch (err) {
+      if (err.code === 'ENOENT') return [];
+      throw err;
+    }
+  }
+
+  /** List all security macros — tagged and marked read-only. */
+  async list() {
+    const macros = await this._load();
+    return macros.map(m => ({
+      name:        m.name,
+      description: m.description || '',
+      created:     m.created,
+      modified:    m.modified,
+      stepCount:   Array.isArray(m.steps) ? m.steps.length : 0,
+      source:      'security',
+      readOnly:    true,
+    }));
+  }
+
+  /** Load a single security macro by name for execution. */
+  async load(name) {
+    const macros = await this._load();
+    const m = macros.find(m => m.name === name);
+    return m ? { ...m, source: 'security', readOnly: true } : null;
+  }
+
+  /** Export a security macro as JSON string. */
+  async export(name) {
+    const m = await this.load(name);
+    if (!m) throw new Error(`Security macro not found: ${name}`);
+    return JSON.stringify(m, null, 2);
+  }
+
+  // ── Blocked operations ─────────────────────────────────────────
+  async save()   { throw new Error('Security macros are read-only'); }
+  async delete() { throw new Error('Security macros are read-only'); }
+  async rename() { throw new Error('Security macros are read-only'); }
+  async import() { throw new Error('Security macros are read-only'); }
+
+  /**
+   * Merge main and security stores for listing in the UI.
+   * Security macros appear after regular macros, tagged and locked.
+   */
+  static async listAll(mainStore, secStore) {
+    const [main, sec] = await Promise.all([mainStore.list(), secStore.list()]);
+    return [...main, ...sec];
+  }
+
+  /**
+   * Load a macro by name from either store — used by the engine.
+   * Security store is checked second so main macros take precedence
+   * if names somehow collide.
+   */
+  static async loadFromEither(name, mainStore, secStore) {
+    const m = await mainStore.load(name);
+    if (m) return m;
+    return secStore.load(name);
+  }
+}
+
+module.exports.MacroStore         = MacroStore;
+module.exports.SecurityMacroStore = SecurityMacroStore;
+// Keep default export for backwards compatibility with existing requires
+module.exports.default            = MacroStore;
