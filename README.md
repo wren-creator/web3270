@@ -21,7 +21,7 @@ server.js  (HTTP + WebSocket on the same port)
 - Multi-session tabs, LPAR profile dropdown (with CRUD), PF1–PF12 / PA1–PA2 toolbar
 - Split-screen mode — two live sessions side by side for settings comparison (⊞ toggle)
 - Macro recorder/replayer (screen-synchronised, JSON-persisted)
-- Multi-provider AI Assist panel (Anthropic, OpenAI, Gemini, GitHub Models, Ollama)
+- Multi-provider AI Assist panel (Anthropic, OpenAI, Gemini, GitHub Models, Ollama) — live model list auto-loads on provider switch; manual refresh busts cache
 - NONDISPLAY field masking (password fields hidden; "Show passwords" toggle)
 - 5 colour themes, OIA status bar, zoom, CRT scanline effect
 - Modular browser client (no build step, no npm in the browser)
@@ -32,7 +32,7 @@ server.js  (HTTP + WebSocket on the same port)
 - **Attribute Byte Inspector (ABI)** — click any cell to get a full bit-level breakdown of the FA byte governing that field
 - **Traffic Recorder** — records the live datastream to a timestamped `.rec.json` file for offline analysis
 - **Replay Viewer** — plays back recorded sessions frame by frame at `/replay`
-- **Anomaly Detector** — flags suspicious screen patterns (RACF lockouts, unexpected field changes, WCC anomalies) with an inline log
+- **Anomaly Detector** — flags suspicious screen patterns (RACF lockouts, unexpected field changes, WCC anomalies); on/off toggle (off by default to save toolbar space), ephemeral flash bar, scrollable session log, one-click clear
 - **Security Macros** — pre-built macro store for common security workflows (RACF auth probing, LISTAPF, TSO READY checks)
 - **RACF wordlist** — default credential list for lab/test environments
 - All tools live behind the 🔒 button in the OIA bar — hidden by default, collapsible
