@@ -51,7 +51,7 @@ function aiCfgSetProvider(p, autoLoad = true) {
   aiCfgResetStatus();
 
   // Auto-load models for providers with dynamic model lists
-  if (autoLoad && (p === 'ollama' || p === 'openai' || p === 'gemini')) {
+  if (autoLoad && (p === 'ollama' || p === 'openai' || p === 'gemini' || p === 'anthropic' || p === 'github')) {
     aiLoadModels(p);
   }
 }
@@ -284,10 +284,16 @@ async function aiOllamaProbe() {
 function aiFetchAnthropicModelsDirect() {
   // Anthropic has no public ListModels endpoint — return curated static list
   return [
-    'claude-opus-4-20250514',
-    'claude-sonnet-4-20250514',
-    'claude-haiku-4-5-20251001',
+    'claude-fable-5',
+    'claude-opus-4-8',
+    'claude-sonnet-4-6',
+    'claude-haiku-4-5',
   ];
+}
+
+function aiRefreshModels(provider) {
+  delete aiCachedModels[provider];
+  aiLoadModels(provider);
 }
 
 async function aiFetchOllamaModelsDirect() {
