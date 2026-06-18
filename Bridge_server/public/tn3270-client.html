@@ -182,10 +182,11 @@
         <span class="stb-icon">▶</span> REPLAY <span class="stb-label">Viewer</span>
       </a>
       <div class="sec-toolbar-sep"></div>
-      <button class="sec-tool-btn" onclick="toggleAnomalyLog()" title="Session anomaly log">
+      <button id="anomBtn" class="sec-tool-btn" onclick="toggleAnomalyEnabled()" title="Toggle anomaly tracking on/off">
         <span class="stb-icon">⚠</span> ANOM <span class="stb-label">Anomalies</span>
         <span id="anomalyBadge" style="display:none;background:rgba(255,80,80,0.85);color:#fff;border-radius:8px;font-size:9px;padding:0 4px;margin-left:3px;min-width:14px;text-align:center;"></span>
       </button>
+      <button id="anomViewBtn" class="sec-tool-btn" onclick="toggleAnomalyLog()" title="View anomaly log" style="display:none;font-size:9px;padding:2px 5px;">▾</button>
       <button class="sec-tool-btn" onclick="clearAnomalyLog()" title="Clear anomaly log" style="font-size:9px;padding:2px 5px;">✕</button>
     </div>
     <!-- Anomaly flash bar — shows latest anomalies inline, auto-fades -->

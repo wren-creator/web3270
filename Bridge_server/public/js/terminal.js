@@ -239,20 +239,35 @@ function _dismissInspector() {
 
 // ── Session Anomaly Annotations ───────────────────────────────────
 // Anomalies arrive with each screen event from session.js.
-// They are shown as a badge on the security toolbar and a dismissible
-// log panel that expands below the toolbar when anomalies are present.
+// Tracking is OFF by default to preserve toolbar real estate.
+// Click ANOM to enable; click ▾ to open the scrollable log panel.
 
-let _anomalyLog = [];   // cumulative log for the session
+let _anomalyLog     = [];
+let _anomalyEnabled = false;
+
+function toggleAnomalyEnabled() {
+  _anomalyEnabled = !_anomalyEnabled;
+  const btn     = document.getElementById('anomBtn');
+  const viewBtn = document.getElementById('anomViewBtn');
+  if (btn)     btn.classList.toggle('sec-tool-btn-active', _anomalyEnabled);
+  if (viewBtn) viewBtn.style.display = _anomalyEnabled ? '' : 'none';
+  if (!_anomalyEnabled) {
+    const bar   = document.getElementById('anomalyBar');
+    const panel = document.getElementById('anomalyLogPanel');
+    if (bar)   bar.innerHTML = '';
+    if (panel) panel.classList.remove('anomaly-log-open');
+  }
+}
 
 function _showAnomalies(anomalies) {
-  if (!anomalies || anomalies.length === 0) {
-    _updateAnomalyBadge();
-    return;
-  }
+  if (!_anomalyEnabled || !anomalies || anomalies.length === 0) return;
   const now = Date.now();
   anomalies.forEach(a => _anomalyLog.push({ ...a, ts: now }));
   _updateAnomalyBadge();
   _flashAnomalyBar(anomalies);
+  // Re-render log panel if it's already open
+  const panel = document.getElementById('anomalyLogPanel');
+  if (panel && panel.classList.contains('anomaly-log-open')) _renderAnomalyLog();
 }
 
 function _updateAnomalyBadge() {
@@ -265,7 +280,7 @@ function _updateAnomalyBadge() {
     badge.style.display = 'inline-flex';
     badge.textContent   = _anomalyLog.length;
     badge.style.background = warns > 0 ? 'rgba(255,80,80,0.85)' : 'rgba(255,170,0,0.75)';
-    badge.title = `${_anomalyLog.length} anomaly event${_anomalyLog.length !== 1 ? 's' : ''} — click ANOM to view`;
+    badge.title = `${_anomalyLog.length} anomaly event${_anomalyLog.length !== 1 ? 's' : ''}`;
   }
 }
 
@@ -280,7 +295,10 @@ function _flashAnomalyBar(anomalies) {
     bar.appendChild(el);
   });
   bar.classList.add('anomaly-flash');
-  setTimeout(() => bar.classList.remove('anomaly-flash'), 2000);
+  setTimeout(() => {
+    bar.classList.remove('anomaly-flash');
+    bar.innerHTML = '';  // collapse bar after flash — real estate released
+  }, 2000);
 }
 
 function toggleAnomalyLog() {
@@ -312,6 +330,8 @@ function clearAnomalyLog() {
   _updateAnomalyBadge();
   const panel = document.getElementById('anomalyLogPanel');
   if (panel) panel.classList.remove('anomaly-log-open');
+  const bar = document.getElementById('anomalyBar');
+  if (bar) bar.innerHTML = '';
 }
 
 // termEl is optional — omit to render to the primary #terminal.
