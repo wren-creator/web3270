@@ -16,7 +16,7 @@
  * github-models.js gives Claude Opus via your GitHub Copilot licence.
  *
  * Required:  ANTHROPIC_API_KEY
- * Optional:  ANTHROPIC_MODEL     (default: claude-sonnet-4-20250514)
+ * Optional:  ANTHROPIC_MODEL     (default: claude-sonnet-4-6)
  *            COPILOT_MAX_TOKENS  (default: 1000)
  */
 
@@ -25,7 +25,7 @@
 const logger = require('../../logger');
 
 const API_URL    = 'https://api.anthropic.com/v1/messages';
-const MODEL      = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514';
+const MODEL      = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
 const MAX_TOKENS = parseInt(process.env.COPILOT_MAX_TOKENS || '1000', 10);
 
 function validate() {
@@ -61,4 +61,19 @@ async function complete(systemPrompt, messages) {
   return data.content.filter(b => b.type === 'text').map(b => b.text).join('');
 }
 
-module.exports = { complete, name: 'anthropic', model: MODEL };
+async function listModels() {
+  validate();
+  const response = await fetch('https://api.anthropic.com/v1/models', {
+    headers: {
+      'x-api-key':         process.env.ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`Anthropic /v1/models returned ${response.status}`);
+  }
+  const data = await response.json();
+  return (data.data || []).map(m => m.id);
+}
+
+module.exports = { complete, listModels, name: 'anthropic', model: MODEL };
