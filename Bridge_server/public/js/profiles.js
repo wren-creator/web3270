@@ -179,7 +179,7 @@ function openSession(profile) {
   };
   ws.onmessage = event => { let msg; try { msg = JSON.parse(event.data); } catch { return; } handleBridgeMsg(sid, msg); };
   ws.onerror   = () => { setConnStatus(name, 'error'); showBridgeError('Could not connect to bridge at ' + BRIDGE_URL + '.\n\nMake sure Docker Desktop is running:\n  docker compose ps\n  docker compose logs tn3270-bridge'); };
-  ws.onclose   = () => { if (sessions.has(sid)) { setConnStatus(name, 'disconnected'); updateSessionDot(sid, 'disconnected'); } };
+  ws.onclose   = () => { if (sessions.has(sid)) { setConnStatus(name, 'disconnected'); updateSessionDot(sid, 'disconnected'); if (sid === activeSession) _showDisconnectScreen(name); else if (splitMode && sid === splitSid) _showDisconnectScreen(name, document.getElementById('terminal-split')); } };
   const tabEl = addSessionTab(name, profile.type || 'TSO', sid);
   sessions.set(sid, { ws, profile, tabEl, name });
   // In split mode the second session goes to the right pane; don't steal focus
@@ -207,6 +207,8 @@ function handleBridgeMsg(sid, msg) {
         setConnStatus(session.name, 'disconnected'); updateSessionDot(sid, 'disconnected');
         const luE = document.getElementById('oiaLu'); const modelE = document.getElementById('oiaModel');
         if (luE) luE.textContent = '-'; if (modelE) modelE.textContent = '-';
+        if (sid === activeSession) _showDisconnectScreen(session.name);
+        else if (splitMode && sid === splitSid) _showDisconnectScreen(session.name, document.getElementById('terminal-split'));
       } else if (msg.state === 'connecting') { setConnStatus(session.name, 'connecting'); }
       break;
     case 'screen':

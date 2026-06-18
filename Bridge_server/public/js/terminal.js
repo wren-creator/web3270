@@ -649,6 +649,18 @@ function cycleSession(direction) {
 }
 function switchTab(el) { document.querySelectorAll('.session-tab').forEach(t => t.classList.remove('active')); el.classList.add('active'); }
 
+function _showDisconnectScreen(sessionName, termEl) {
+  const term = termEl || document.getElementById('terminal');
+  term.innerHTML = '';
+  const msg = document.createElement('div');
+  msg.style.cssText = 'padding:32px 24px;color:var(--text-muted);font-family:"IBM Plex Mono",monospace;font-size:12px;line-height:2;user-select:none;';
+  msg.innerHTML = `<div style="color:var(--t-red);font-size:13px;margin-bottom:12px;">SESSION ENDED</div>` +
+    `<div>${esc(sessionName)} disconnected by host.</div>` +
+    `<div style="margin-top:12px;color:var(--text-muted)">Use <span style="color:var(--t-green)">Session → Reconnect</span> or open a new session to continue.</div>`;
+  term.appendChild(msg);
+  liveScreen = null;
+}
+
 // ── Split-screen ──────────────────────────────────────────────────
 function toggleSplitMode() {
   splitMode = !splitMode;
