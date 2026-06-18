@@ -101,7 +101,10 @@ document.addEventListener('keydown', e => {
   if (e.ctrlKey && e.key === ',') { e.preventDefault(); cycleSession(-1); return; }
   const tag = document.activeElement?.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-  const aid = AID_MAP[e.key];
+  // Shift+F1–F12 → PF13–PF24
+  let mappedKey = e.key;
+  if (e.shiftKey && /^F([1-9]|1[0-2])$/.test(e.key)) mappedKey = 'F' + (parseInt(e.key.slice(1)) + 12);
+  const aid = AID_MAP[mappedKey];
   if (aid) {
     // F11/F12 — cycle command history instead of sending to host
     const session = sessions.get(activeSession);
