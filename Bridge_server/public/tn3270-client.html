@@ -182,10 +182,11 @@
         <span class="stb-icon">▶</span> REPLAY <span class="stb-label">Viewer</span>
       </a>
       <div class="sec-toolbar-sep"></div>
-      <button class="sec-tool-btn" onclick="toggleAnomalyLog()" title="Session anomaly log">
+      <button id="anomBtn" class="sec-tool-btn" onclick="toggleAnomalyEnabled()" title="Toggle anomaly tracking on/off">
         <span class="stb-icon">⚠</span> ANOM <span class="stb-label">Anomalies</span>
         <span id="anomalyBadge" style="display:none;background:rgba(255,80,80,0.85);color:#fff;border-radius:8px;font-size:9px;padding:0 4px;margin-left:3px;min-width:14px;text-align:center;"></span>
       </button>
+      <button id="anomViewBtn" class="sec-tool-btn" onclick="toggleAnomalyLog()" title="View anomaly log" style="display:none;font-size:9px;padding:2px 5px;">▾</button>
       <button class="sec-tool-btn" onclick="clearAnomalyLog()" title="Clear anomaly log" style="font-size:9px;padding:2px 5px;">✕</button>
     </div>
     <!-- Anomaly flash bar — shows latest anomalies inline, auto-fades -->
@@ -316,12 +317,13 @@
         <div class="setting-group">
           <div style="display:flex;align-items:center;gap:6px">
             <div class="setting-label" style="flex:1;margin:0">Model <span id="aiModelLoading-anthropic" style="color:var(--accent-amber);display:none;font-size:9px">&#x27F3; loading&hellip;</span></div>
-            <button class="btn-icon" title="Refresh model list" onclick="aiLoadModels('anthropic')">&#x27F3;</button>
+            <button class="btn-icon" title="Refresh model list" onclick="aiRefreshModels('anthropic')">&#x27F3;</button>
           </div>
           <select id="aiModel-anthropic" onchange="aiCfgSave()" style="width:100%;margin-top:4px">
-            <option value="claude-sonnet-4-20250514">claude-sonnet-4 (recommended)</option>
-            <option value="claude-opus-4-20250514">claude-opus-4 (most capable)</option>
-            <option value="claude-haiku-4-5-20251001">claude-haiku-4-5 (fastest)</option>
+            <option value="claude-sonnet-4-6">claude-sonnet-4-6 (recommended)</option>
+            <option value="claude-opus-4-8">claude-opus-4-8 (most capable)</option>
+            <option value="claude-fable-5">claude-fable-5 (frontier)</option>
+            <option value="claude-haiku-4-5">claude-haiku-4-5 (fastest)</option>
           </select>
         </div>
       </div>
@@ -400,8 +402,11 @@
           <div style="font-size:10px;color:var(--text-muted);margin-top:4px">&#128274; PAT with models:read scope.</div>
         </div>
         <div class="setting-group">
-          <div class="setting-label">Model</div>
-          <select id="aiModel-github" onchange="aiCfgSave()" style="width:100%">
+          <div class="setting-label" style="display:flex;justify-content:space-between;align-items:center">
+            Model
+            <button class="btn-icon" title="Refresh model list" onclick="aiRefreshModels('github')">&#x27F3;</button>
+          </div>
+          <select id="aiModel-github" onchange="aiCfgSave()" style="width:100%;margin-top:4px">
             <option value="claude-opus-4-5">claude-opus-4-5 (recommended)</option>
             <option value="claude-sonnet-4-5">claude-sonnet-4-5</option>
             <option value="gpt-4o">gpt-4o</option>

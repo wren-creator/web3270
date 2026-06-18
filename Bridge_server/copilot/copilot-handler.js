@@ -232,11 +232,7 @@ function restoreCredentials(saved) {
 
 /** Static model lists — returned when the API can't be reached or has no listModels */
 const STATIC_MODELS = {
-  anthropic: [
-    'claude-sonnet-4-20250514',
-    'claude-opus-4-20250514',
-    'claude-haiku-4-5-20251001',
-  ],
+  anthropic: ['claude-fable-5', 'claude-opus-4-8', 'claude-sonnet-4-6', 'claude-haiku-4-5'],
   openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo'],
   gemini: ['gemini-1.5-pro', 'gemini-1.5-flash-latest', 'gemini-2.0-flash'],
   github: ['claude-opus-4-5', 'claude-sonnet-4-5', 'gpt-4o', 'gpt-4o-mini'],
