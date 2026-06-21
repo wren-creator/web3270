@@ -627,7 +627,7 @@ wss.on('connection', (ws, req) => {
               })),
             });
           } else {
-            session.sendAid(msg.aid, session.getModifiedFields());
+            session.sendAid(msg.aid, (Array.isArray(msg.fields) && msg.fields.length) ? msg.fields : session.getModifiedFields());
             logTraffic({
               ts: new Date().toISOString(),
               wsId,
