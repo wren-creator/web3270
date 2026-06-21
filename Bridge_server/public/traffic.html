@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>WebTerm/3270 — Session Viewer</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  background: #030508;
+  color: #8aaccc;
+  font-family: 'IBM Plex Mono', 'Courier New', monospace;
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ── Toolbar ──────────────────────────────────────────────────────── */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  background: #05090f;
+  border-bottom: 1px solid #0d1a2a;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.toolbar-title {
+  font-size: 10px;
+  font-weight: 600;
+  color: #2a4a6a;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.sep { width: 1px; height: 16px; background: #0d1f2d; flex-shrink: 0; }
+.spacer { flex: 1; min-width: 8px; }
+.count { font-size: 9px; color: #3a5a7a; white-space: nowrap; }
+
+.btn {
+  background: none;
+  border: 1px solid #1a2f44;
+  border-radius: 3px;
+  color: #6a8aaa;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.btn:hover { border-color: #4af; color: #acd; }
+.btn.active { border-color: #fa0; color: #fa0; background: rgba(255,170,0,0.06); }
+.btn.primary { border-color: #1a5a3a; color: #3a9a6a; }
+.btn.primary:hover { border-color: #3aaa6a; color: #6add99; }
+.btn.window-ctrl { border-color: #111d2a; font-size: 12px; padding: 1px 7px; }
+.btn.window-ctrl:hover { border-color: #3a6a9a; color: #9acdff; }
+
+.search-input {
+  background: #05090f;
+  border: 1px solid #1a2f44;
+  border-radius: 3px;
+  color: #8aaccc;
+  font-family: inherit;
+  font-size: 10px;
+  padding: 2px 7px;
+  width: 140px;
+  outline: none;
+}
+.search-input:focus { border-color: #4af; }
+.search-input::placeholder { color: #2a4a6a; }
+
+/* ── Table ────────────────────────────────────────────────────────── */
+.table-wrap {
+  flex: 1;
+  overflow-y: scroll;
+}
+.table-wrap::-webkit-scrollbar { width: 5px; }
+.table-wrap::-webkit-scrollbar-thumb { background: #1a3050; border-radius: 3px; }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+thead th {
+  position: sticky;
+  top: 0;
+  background: #04070c;
+  border-bottom: 1px solid #0d1a2a;
+  padding: 4px 8px;
+  text-align: left;
+  font-size: 9px;
+  font-weight: 600;
+  color: #2a4a6a;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  z-index: 1;
+}
+tbody tr { border-bottom: 1px solid #07090e; cursor: default; }
+tbody tr:hover { background: rgba(255,255,255,0.025); }
+tbody tr.hidden { display: none; }
+td { padding: 3px 8px; vertical-align: top; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Column widths */
+.col-ts    { width: 96px; }
+.col-sess  { width: 52px; }
+.col-dir   { width: 100px; }
+.col-aid   { width: 68px; }
+.col-text  { width: auto; }
+
+.ts   { color: #2a4060; }
+.sess { color: #3a5a7a; }
+
+/* Direction badges */
+.dir-out { color: #c8922a; }
+.dir-in  { color: #3a8a6a; }
+
+.aid-val { color: #9a6acc; font-weight: 600; }
+
+.screen-text {
+  color: #5a7a9a;
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* Expanded row */
+tbody tr.expanded td.col-text { white-space: pre-wrap; word-break: break-all; }
+tbody tr.expanded { background: rgba(255,255,255,0.03); }
+
+.empty-msg {
+  padding: 40px;
+  text-align: center;
+  color: #2a4a6a;
+  font-size: 11px;
+}
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <span class="toolbar-title">⇄ Session Viewer</span>
+  <div class="sep"></div>
+
+  <!-- Direction filter -->
+  <button class="btn active" id="btnAll"  onclick="setFilter('all')">ALL</button>
+  <button class="btn" id="btnOut" onclick="setFilter('out')"
+          title="Show only client→host events (AID keys you sent)">→ OUT</button>
+  <button class="btn" id="btnIn"  onclick="setFilter('in')"
+          title="Show only host→client events (screens received)">← IN</button>
+  <div class="sep"></div>
+
+  <!-- Session filter -->
+  <select id="sessFilter" class="search-input" style="width:90px" onchange="reapply()"
+          title="Filter by session ID (wsId)">
+    <option value="">All sessions</option>
+  </select>
+
+  <!-- Text search -->
+  <input class="search-input" id="searchInput" placeholder="search…"
+         oninput="reapply()" title="Filter by AID key or screen text">
+
+  <div class="spacer"></div>
+  <span class="count" id="countEl">0 entries</span>
+  <div class="sep"></div>
+
+  <button class="btn" onclick="loadData()" title="Refresh from server">↺ Refresh</button>
+  <button class="btn primary" onclick="downloadCsv()" title="Download traffic log as CSV">↓ CSV</button>
+  <button class="btn" onclick="clearLog()" title="Clear traffic log on the server">✕ Clear</button>
+  <div class="sep"></div>
+  <button class="btn window-ctrl" id="btnFs" onclick="toggleFullscreen()">⊡</button>
+  <button class="btn window-ctrl" id="btnMin" onclick="toggleMinimize()">—</button>
+</div>
+
+<div class="table-wrap" id="tableWrap">
+  <table>
+    <thead>
+      <tr>
+        <th class="col-ts">Time</th>
+        <th class="col-sess">Session</th>
+        <th class="col-dir">Direction</th>
+        <th class="col-aid">AID Key</th>
+        <th class="col-text">Screen Text (click row to expand)</th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+  <div class="empty-msg" id="emptyMsg">No traffic captured yet. Connect to an LPAR and press a key.</div>
+</div>
+
+<script>
+let allEntries  = [];
+let dirFilter   = 'all';
+let minimized   = false;
+
+const tbody     = document.getElementById('tbody');
+const countEl   = document.getElementById('countEl');
+const emptyMsg  = document.getElementById('emptyMsg');
+const sessEl    = document.getElementById('sessFilter');
+const searchEl  = document.getElementById('searchInput');
+
+// ── Helpers ───────────────────────────────────────────────────────
+
+function escHtml(s) {
+  return String(s || '').replace(/[&<>"']/g,
+    c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function shortTs(ts) {
+  // e.g. "2026-06-20T14:32:11.234Z" → "14:32:11.234"
+  return ts ? ts.slice(11, 23) : '';
+}
+
+// ── Load / render ─────────────────────────────────────────────────
+
+async function loadData() {
+  try {
+    const res = await fetch('/api/traffic');
+    allEntries = await res.json();
+    updateSessFilter();
+    reapply();
+  } catch (e) {
+    console.error('Failed to load traffic log', e);
+  }
+}
+
+function updateSessFilter() {
+  const ids = [...new Set(allEntries.map(e => String(e.wsId)))].sort();
+  const cur  = sessEl.value;
+  sessEl.innerHTML = '<option value="">All sessions</option>';
+  for (const id of ids) {
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = `Session ${id}`;
+    if (id === cur) opt.selected = true;
+    sessEl.appendChild(opt);
+  }
+}
+
+function setFilter(f) {
+  dirFilter = f;
+  ['all','out','in'].forEach(k => {
+    document.getElementById('btn' + k.charAt(0).toUpperCase() + k.slice(1))
+      ?.classList.toggle('active', k === f);
+  });
+  reapply();
+}
+
+function reapply() {
+  const sessVal   = sessEl.value;
+  const search    = searchEl.value.toLowerCase().trim();
+  let visible = 0;
+
+  tbody.innerHTML = '';
+
+  for (const e of allEntries) {
+    const isOut = e.direction === 'client→host';
+    if (dirFilter === 'out' && !isOut) continue;
+    if (dirFilter === 'in'  &&  isOut) continue;
+    if (sessVal && String(e.wsId) !== sessVal) continue;
+    if (search && !e.aid?.toLowerCase().includes(search) && !e.screenText?.toLowerCase().includes(search)) continue;
+
+    const tr = document.createElement('tr');
+    const dirHtml = isOut
+      ? `<span class="dir-out" title="client → host (you sent this AID key)">→ client→host</span>`
+      : `<span class="dir-in"  title="host → client (screen update received)">← host→client</span>`;
+    const aidHtml = e.aid
+      ? `<span class="aid-val">${escHtml(e.aid)}</span>`
+      : `<span style="color:#2a4a6a">—</span>`;
+
+    tr.innerHTML =
+      `<td class="col-ts ts">${escHtml(shortTs(e.ts))}</td>` +
+      `<td class="col-sess sess">${escHtml(String(e.wsId))}</td>` +
+      `<td class="col-dir">${dirHtml}</td>` +
+      `<td class="col-aid">${aidHtml}</td>` +
+      `<td class="col-text"><span class="screen-text">${escHtml(e.screenText || '')}</span></td>`;
+
+    tr.title = 'Click to expand screen text';
+    tr.addEventListener('click', () => tr.classList.toggle('expanded'));
+    tbody.appendChild(tr);
+    visible++;
+  }
+
+  const total = allEntries.length;
+  countEl.textContent = visible === total
+    ? `${total} entr${total === 1 ? 'y' : 'ies'}`
+    : `${visible} of ${total}`;
+  emptyMsg.style.display = tbody.children.length === 0 ? 'block' : 'none';
+}
+
+// ── Actions ───────────────────────────────────────────────────────
+
+function downloadCsv() {
+  const a = document.createElement('a');
+  a.href = '/api/traffic/csv';
+  a.download = 'traffic-log.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+async function clearLog() {
+  if (!confirm('Clear the traffic log on the server?')) return;
+  await fetch('/api/traffic/csv', { method: 'DELETE' });
+  allEntries = [];
+  reapply();
+}
+
+// ── Window controls ───────────────────────────────────────────────
+
+function toggleFullscreen() {
+  const btn = document.getElementById('btnFs');
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch(() => {});
+  } else {
+    document.exitFullscreen();
+  }
+}
+document.addEventListener('fullscreenchange', () => {
+  document.getElementById('btnFs').textContent = document.fullscreenElement ? '⊠' : '⊡';
+});
+
+function toggleMinimize() {
+  minimized = !minimized;
+  document.getElementById('tableWrap').style.display = minimized ? 'none' : '';
+  document.getElementById('btnMin').textContent = minimized ? '□' : '—';
+  try {
+    if (minimized) { window._ph = window.outerHeight; window.resizeTo(window.outerWidth, 46); }
+    else           { window.resizeTo(window.outerWidth, window._ph || 520); }
+  } catch {}
+}
+
+// ── Init ──────────────────────────────────────────────────────────
+loadData();
+</script>
+</body>
+</html>

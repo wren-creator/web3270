@@ -393,6 +393,24 @@ class Tn3270Session extends EventEmitter {
     this.cursorAddr = Math.min(row * this.cols + col, this.rows * this.cols - 1);
   }
 
+  // ── Security: live FA byte mutation ───────────────────────────────
+  // Directly overwrites the FA byte at buffer address `addr` and pushes
+  // a fresh screen event. The host is NOT notified — the mutation is
+  // local to this bridge session and persists until the host redraws
+  // that FA cell with a Write command.
+  patchFieldAttr(addr, newFa) {
+    if (addr < 0 || addr >= this.buffer.length) return;
+    const cell = this.buffer[addr];
+    if (!cell || cell.fa === undefined) {
+      logger.warn(`[ws:${this.wsId}] sec.patchFa: addr ${addr} is not an FA cell — ignored`);
+      return;
+    }
+    const oldFa = cell.fa;
+    cell.fa = newFa & 0xFF;
+    logger.info(`[ws:${this.wsId}] sec.patchFa: addr=${addr} 0x${oldFa.toString(16).toUpperCase().padStart(2,'0')} → 0x${cell.fa.toString(16).toUpperCase().padStart(2,'0')}`);
+    this._emitScreen();
+  }
+
   // ── Incoming data handling ─────────────────────────────────────
 
   _onData(chunk) {

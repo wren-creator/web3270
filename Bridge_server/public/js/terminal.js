@@ -108,6 +108,34 @@ function toggleSecBar() {
   }
 }
 
+// ── Security toolbar helpers ──────────────────────────────────────
+let _keyFeedbackTimer = null;
+
+function secInjectKey() {
+  const sel      = document.getElementById('keyInjectSelect');
+  const feedback = document.getElementById('keyInjectFeedback');
+  if (!sel) return;
+
+  const key     = sel.value;
+  const session = sessions.get(activeSession);
+  if (!session || session.ws.readyState !== WebSocket.OPEN) {
+    if (feedback) { feedback.style.color = '#aa4040'; feedback.textContent = 'not connected'; feedback.style.opacity = '1'; }
+    clearTimeout(_keyFeedbackTimer);
+    _keyFeedbackTimer = setTimeout(() => { if (feedback) feedback.style.opacity = '0'; }, 2000);
+    return;
+  }
+
+  sendKey(key);
+
+  if (feedback) {
+    feedback.style.color   = '#3a9a6a';
+    feedback.textContent   = `✓ injected ${key}`;
+    feedback.style.opacity = '1';
+    clearTimeout(_keyFeedbackTimer);
+    _keyFeedbackTimer = setTimeout(() => { feedback.style.opacity = '0'; }, 1500);
+  }
+}
+
 // ── Attribute Byte Inspector toggle ───────────────────────────────
 let inspectorActive = false;
 function toggleInspector() {
@@ -137,7 +165,18 @@ function _decodeFa(fa) {
 // Click any cell to inspect the FA byte governing that field.
 // Dismissed by clicking outside the panel or pressing Escape.
 
-let _inspectorEl = null;
+let _inspectorEl      = null;
+let _inspectorFaAddr  = null;  // buffer address of the currently-inspected FA cell
+let _inspectorCurFa   = null;  // raw FA byte value at open time
+
+// Send a FA mutation to the bridge and dismiss the inspector.
+// The screen event from _emitScreen() will repaint with the new byte.
+function _patchFa(newFa) {
+  const session = sessions.get(activeSession);
+  if (!session || session.ws.readyState !== WebSocket.OPEN) return;
+  session.ws.send(JSON.stringify({ type: 'sec.patchFa', addr: _inspectorFaAddr, fa: newFa }));
+  _dismissInspector();
+}
 
 function _initInspectorListener() {
   const term = document.getElementById('terminal');
@@ -181,6 +220,9 @@ function _showInspector(x, y, ri, ci, fa, faAddr, cell, isFaCell) {
   _dismissInspector();
   if (fa === null) return;
 
+  _inspectorFaAddr = faAddr;
+  _inspectorCurFa  = fa;
+
   const d      = _decodeFa(fa);
   const faHex  = '0x' + fa.toString(16).toUpperCase().padStart(2, '0');
   const faBin  = fa.toString(2).padStart(8, '0');
@@ -220,6 +262,23 @@ function _showInspector(x, y, ri, ci, fa, faAddr, cell, isFaCell) {
       ${d.intens === 2 ? '<span class="abi-tag-intens">INTENSIFIED</span>' : ''}
       ${d.mdt         ? '<span class="abi-tag-mdt">MDT SET</span>' : ''}
       <span class="abi-len">content: ${contentLen} chars</span>
+    </div>
+    <div class="abi-mutations">
+      <span class="abi-mut-label" title="Mutations write directly to the bridge session buffer. The host is not notified — changes persist until the host redraws this field.">MUTATE FA →</span>
+      <button class="abi-mut-btn abi-mut-prot" title="${d.prot ? 'Remove PROTECTED bit (0x20) — field becomes writable' : 'Set PROTECTED bit (0x20) — field becomes read-only'}"
+              onclick="_patchFa(${fa ^ 0x20})">${d.prot ? '🔓 UNPROTECT' : '🔒 PROTECT'}</button>
+      <button class="abi-mut-btn" title="${d.numeric ? 'Clear NUMERIC bit (0x10) — allow any character' : 'Set NUMERIC bit (0x10) — restrict to digits'}"
+              onclick="_patchFa(${fa ^ 0x10})">${d.numeric ? 'ALPHA' : 'NUMERIC'}</button>
+      ${d.intens === 3
+        ? `<button class="abi-mut-btn abi-mut-reveal" title="Clear nondisplay bits (0x0C) → normal display — reveals password fields on screen"
+                   onclick="_patchFa(${fa & ~0x0C})">👁 REVEAL</button>`
+        : `<button class="abi-mut-btn" title="Set nondisplay bits (0x0C) — hides field content"
+                   onclick="_patchFa(${(fa & ~0x0C) | 0x0C})">HIDE</button>`}
+      ${d.mdt
+        ? `<button class="abi-mut-btn" title="Clear MDT bit (0x01) — field will not transmit on next AID key"
+                   onclick="_patchFa(${fa & ~0x01})">CLR MDT</button>`
+        : `<button class="abi-mut-btn" title="Set MDT bit (0x01) — force field to transmit on next AID key even if unmodified"
+                   onclick="_patchFa(${fa | 0x01})">SET MDT</button>`}
     </div>`;
 
   // Position near click, keep on screen
