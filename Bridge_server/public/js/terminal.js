@@ -100,6 +100,64 @@ const HIGHLIGHT_CLASS = {
   0xF8: 'hl-intens',
 };
 
+// ── Screen Fingerprinting ─────────────────────────────────────────
+// Identifies the active mainframe application from screen content and
+// updates the APP field in the OIA bar on every screen render.
+
+const _FP_RULES = [
+  { name: 'ISPF',   color: '#5a9acc', patterns: [/OPTION\s*===>/i, /ISREDIT/i, /ISPF\s+(PRIMARY|OPTION)/i, /PDF\s+MENU/i] },
+  { name: 'SDSF',   color: '#8acc5a', patterns: [/SDSF\s+(OUTPUT|STATUS|LOG|DA|H |JES)/i, /FILTER\s+OWNER/i] },
+  { name: 'CICS',   color: '#cc8a5a', patterns: [/CICS\s+/i, /DFHCS/i, /CESF\s+LOGOFF/i, /TRANSACTION\s+/i] },
+  { name: 'IMS',    color: '#aa7acc', patterns: [/IMS\/VS/i, /MFS\s+/i, /LTERM\s+/i, /\bIMS\b.*\bREADY\b/i] },
+  { name: 'RACF',   color: '#cc5a5a', patterns: [/RACF\s+/i, /ICH\d{5}I/i, /NEW\s+PASSWORD/i, /REVOKED/i] },
+  { name: 'TSO',    color: '#5acc8a', patterns: [/READY\s*$|^\s*READY\s/m, /TSO\/E\s+/i, /LOGON\s+IN\s+PROGRESS/i] },
+  { name: 'z/VM',   color: '#ccaa5a', patterns: [/z\/VM\s+/i, /\bCMS\b/i, /CP\s+QUERY/i, /RECONNECT/i] },
+  { name: 'LOGON',  color: '#cc6a6a', patterns: [/ENTER\s+USERID/i, /ENTER\s+PASSWORD/i, /IBM\s+z\/OS/i] },
+];
+
+function _fingerprintScreen(screenData) {
+  const el = document.getElementById('oiaApp');
+  if (!el) return;
+  const text = (screenData.rows || []).map(row =>
+    (Array.isArray(row) ? row : []).map(c => (c.char && c.char !== '\x00' ? c.char : ' ')).join('')
+  ).join('\n');
+  for (const rule of _FP_RULES) {
+    if (rule.patterns.some(p => p.test(text))) {
+      el.textContent  = rule.name;
+      el.style.color  = rule.color;
+      return;
+    }
+  }
+  el.textContent = '—';
+  el.style.color = '';
+}
+
+// ── Session Broadcast ─────────────────────────────────────────────
+// When active, sendKey() sends to ALL open sessions, not just the active one.
+
+let _broadcastActive = false;
+
+function toggleBroadcast() {
+  _broadcastActive = !_broadcastActive;
+  const btn = document.getElementById('broadcastBtn');
+  if (btn) btn.classList.toggle('sec-panel-btn-active', _broadcastActive);
+}
+
+// ── Color Reveal ──────────────────────────────────────────────────
+// Strips all extended color classes from the rendered screen, forcing
+// everything to the default terminal color. Exposes text hidden via
+// same-color-as-background tricks (e.g. white text on white background).
+
+let _colorRevealActive = false;
+
+function toggleColorReveal() {
+  _colorRevealActive = !_colorRevealActive;
+  document.body.classList.toggle('color-reveal', _colorRevealActive);
+  const btn = document.getElementById('colorRevealBtn');
+  if (btn) btn.classList.toggle('sec-panel-btn-active', _colorRevealActive);
+  if (liveScreen) renderLiveScreen(liveScreen);
+}
+
 // ── Field Map Overlay ─────────────────────────────────────────────
 // When enabled, every field attribute byte cell is highlighted and
 // annotated with its decoded flags (protected, intensity, MDT).
@@ -745,6 +803,7 @@ function renderLiveScreen(screenData, termEl) {
     _initInspectorListener();
     _showAnomalies(screenData.anomalies || []);
     _checkWatch(screenData);
+    _fingerprintScreen(screenData);
     requestAnimationFrame(() => { measureCellWidth(); fitScreen(); });
   }
 }
@@ -811,7 +870,13 @@ function sendKey(aid, fields = []) {
       }
     }
   }
-  session.ws.send(JSON.stringify({ type: 'key', aid, fields }));
+  if (_broadcastActive) {
+    sessions.forEach(s => {
+      if (s.ws.readyState === WebSocket.OPEN) s.ws.send(JSON.stringify({ type: 'key', aid, fields }));
+    });
+  } else {
+    session.ws.send(JSON.stringify({ type: 'key', aid, fields }));
+  }
 }
 
 function renderCmdHistory() {

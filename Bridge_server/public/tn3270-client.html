@@ -173,6 +173,7 @@
       <div class="oia-field"><span class="oia-label">MODEL</span><span class="oia-val" id="oiaModel">—</span></div>
       <div class="oia-field"><span class="oia-label">ROW</span><span class="oia-val" id="oiaRow">00</span></div>
       <div class="oia-field"><span class="oia-label">COL</span><span class="oia-val" id="oiaCol">00</span></div>
+      <div class="oia-field"><span class="oia-label">APP</span><span class="oia-val" id="oiaApp">—</span></div>
       <div class="oia-spacer"></div>
       <div class="oia-field"><button id="secBtn" onclick="openSecurityPanel()" title="Security Tools" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:11px;padding:1px 6px;cursor:pointer;">🔒</button></div>
       <div class="oia-field"><button id="demoBtn" onclick="toggleDemoMode()" title="Demo Mode — masks host IP/LU in OIA bar" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:1px 6px;cursor:pointer;letter-spacing:0.05em">DEMO</button></div>
@@ -482,6 +483,12 @@
               <span class="sec-panel-btn-sub">Click any field to decode its FA byte</span>
             </button>
           </div>
+          <div class="sec-row">
+            <button id="colorRevealBtn" class="sec-panel-btn" onclick="toggleColorReveal()">
+              <span class="sec-panel-btn-label">🎨 Color Reveal</span>
+              <span class="sec-panel-btn-sub">Force all text to visible color — exposes color-on-color hidden content</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -609,6 +616,12 @@
               <span id="keyInjectFeedback" style="font-size:9px;color:#3a9a6a;transition:opacity 0.4s;opacity:0"></span>
             </div>
             <div class="sec-panel-hint">Sends the selected AID key directly to the host. Does not type text — use the terminal for that.</div>
+          </div>
+          <div class="sec-row" style="margin-top:4px">
+            <button id="broadcastBtn" class="sec-panel-btn" onclick="toggleBroadcast()">
+              <span class="sec-panel-btn-label">📡 Session Broadcast</span>
+              <span class="sec-panel-btn-sub">Send every keystroke to all open sessions simultaneously</span>
+            </button>
           </div>
         </div>
       </div>
