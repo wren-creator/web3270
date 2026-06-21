@@ -336,17 +336,35 @@ function mitmHandleState(msg) {
   _mitmActive = msg.active;
   const btn = document.getElementById('mitmBtn');
   if (btn) btn.classList.toggle('sec-tool-btn-active', _mitmActive);
-  if (!_mitmActive) { _mitmHolding = false; _hideMitmPanel(); }
+  if (!_mitmActive) { _mitmHolding = false; _hideMitmPanel(); _hideReplayBadge(); }
 }
 
 function mitmHandleHeld(msg) {
   _mitmHolding = true;
+  _hideReplayBadge();
   _showMitmPanel(msg);
 }
 
-function mitmHandleReleased()  { _mitmHolding = false; _hideMitmPanel(); }
-function mitmHandleDropped()   { _mitmHolding = false; _hideMitmPanel(); }
-function mitmHandleReplayed()  { /* host sends a screen update — nothing to do */ }
+function mitmHandleReleased(msg) { _mitmHolding = false; _hideMitmPanel(); _showReplayBadge(msg); }
+function mitmHandleDropped()     { _mitmHolding = false; _hideMitmPanel(); _hideReplayBadge(); }
+function mitmHandleReplayed()    { /* host sends a screen update — nothing to do */ }
+
+function _showReplayBadge(msg) {
+  _hideReplayBadge();
+  const aid = (msg && msg.aid) || '?';
+  const el  = document.createElement('div');
+  el.id = 'mitmReplayBadge';
+  el.className = 'mitm-replay-badge';
+  el.innerHTML = `<span class="mitm-replay-label">last: <strong>${esc(aid)}</strong></span>` +
+    `<button class="mitm-btn mitm-btn-replay" onclick="_mitmReplay()">↺ REPLAY</button>` +
+    `<button class="mitm-replay-dismiss" onclick="_hideReplayBadge()" title="Dismiss">✕</button>`;
+  document.body.appendChild(el);
+}
+
+function _hideReplayBadge() {
+  const el = document.getElementById('mitmReplayBadge');
+  if (el) el.remove();
+}
 
 function _showMitmPanel(msg) {
   _hideMitmPanel();

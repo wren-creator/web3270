@@ -677,3 +677,35 @@ body.field-map-overlay .oia-bar::before {
 .mitm-btn-drop:hover    { background: rgba(170,64,64,0.12); color: #cc6060; }
 .mitm-btn-replay  { border-color: #5a7aaa; color: #5a7aaa; }
 .mitm-btn-replay:hover  { background: rgba(90,122,170,0.12); color: #80aacc; }
+
+/* ── MITM Replay Badge (persists after release) ───────────────────── */
+.mitm-replay-badge {
+  position: fixed;
+  bottom: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #0e0e1c;
+  border: 1px solid #2a3a50;
+  border-radius: 4px;
+  padding: 6px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: #666;
+  z-index: 9998;
+}
+.mitm-replay-label { color: #555; }
+.mitm-replay-label strong { color: #8aaacc; }
+.mitm-replay-badge .mitm-btn-replay { flex: 0 0 auto; padding: 4px 10px; font-size: 11px; }
+.mitm-replay-dismiss {
+  background: none;
+  border: none;
+  color: #444;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0 2px;
+  line-height: 1;
+}
+.mitm-replay-dismiss:hover { color: #888; }
