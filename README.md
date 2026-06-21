@@ -29,10 +29,13 @@ server.js  (HTTP + WebSocket on the same port)
 ### Security Tools (🔒 toolbar)
 
 - **Field Map Overlay (FMO)** — visualises every field attribute byte on screen with hover tooltips showing decoded FA flags (protected, intensity, MDT, numeric)
-- **Attribute Byte Inspector (ABI)** — click any cell to get a full bit-level breakdown of the FA byte governing that field
+- **Attribute Byte Inspector (ABI)** — click any cell for a full bit-level breakdown of the FA byte governing that field; includes live **FA Mutation** controls to toggle PROTECTED/UNPROTECTED, NUMERIC/ALPHA, REVEAL/HIDE nondisplay fields, and SET/CLEAR MDT — writes directly to the bridge session buffer so changes survive the next screen interaction
+- **FUNC KEY Inject** — send any 3270 AID key from the toolbar dropdown (PF1–PF24, PA1–PA3, CLEAR, ENTER, SYSREQ); shows `✓ injected PF13` confirmation flash; essential for reaching PF13–24 unreachable on standard keyboards
+- **Session Viewer** — floating popup table of every AID key sent and screen received during the session; direction/session filter, click-to-expand full screen text, CSV export
+- **Proxy Viewer** — live SSE stream of the bridge log; level filter (INFO/WARN/ERROR/DEBUG), HEX toggle, TAIL button with auto-scroll that pauses on scroll-up and resumes at bottom, CSV export
 - **Traffic Recorder** — records the live datastream to a timestamped `.rec.json` file for offline analysis
 - **Replay Viewer** — plays back recorded sessions frame by frame at `/replay`
-- **Anomaly Detector** — flags suspicious screen patterns (RACF lockouts, unexpected field changes, WCC anomalies); on/off toggle (off by default to save toolbar space), ephemeral flash bar, scrollable session log, one-click clear
+- **Anomaly Detector** — flags suspicious screen patterns (RACF lockouts, unexpected field changes, WCC anomalies); on/off toggle, ephemeral flash bar, scrollable session log, one-click clear
 - **Security Macros** — pre-built macro store for common security workflows (RACF auth probing, LISTAPF, TSO READY checks)
 - **RACF wordlist** — default credential list for lab/test environments
 - All tools live behind the 🔒 button in the OIA bar — hidden by default, collapsible

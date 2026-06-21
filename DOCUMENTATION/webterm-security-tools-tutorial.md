@@ -1,5 +1,5 @@
 # WebTerm/3270 — Security Tools Tutorial
-## FMO · ABI · Traffic Recorder · Replay Viewer · Anomaly Annotations · Security Macros · Mock LPAR
+## FMO · ABI · FA Mutation · FUNC KEY Inject · Session Viewer · Proxy Viewer · Traffic Recorder · Replay Viewer · Anomaly Annotations · Security Macros · Mock LPAR
 
 **Prerequisites:** WebTerm/3270 running at `http://localhost:8081`
 
@@ -75,6 +75,143 @@ The inspector works on any cell, not just FA cells. Clicking a regular data cell
 **FA byte encoding exercises** — give students a hex value and ask them to predict the field behavior before clicking to verify. `0xE0` = protected, intensified. `0x40` = unprotected, normal. `0x4C` = unprotected, numeric, MDT set.
 
 **MDT forensics** — with ABI active, click fields after typing into them. The MDT bit flips from 0 to 1, showing students exactly which fields will be transmitted on the next AID key.
+
+---
+
+## Part 2B — FA Mutation (via ABI)
+
+The ABI inspector includes a live **MUTATE FA →** row at the bottom of every popup. These buttons write directly to the bridge session buffer — the change is real and persists until the host redraws that field with a Write command.
+
+> **Important:** The host is never notified of a mutation. Mutations survive the next AID key press (the host sees the mutated field data) but are overwritten the next time the host sends a Write command that covers that FA cell.
+
+### Mutation controls
+
+| Button | FA bit | Effect |
+|---|---|---|
+| **UNPROTECT / PROTECT** | bit 5 `0x20` | Toggle field between read-only and writable |
+| **ALPHA / NUMERIC** | bit 4 `0x10` | Toggle numeric-only restriction |
+| **👁 REVEAL** | bits 3-2 `0x0C` | Clear nondisplay → normal; makes password fields visible on screen |
+| **HIDE** | bits 3-2 `0x0C` | Set nondisplay; hides a field from screen rendering |
+| **SET MDT / CLR MDT** | bit 0 `0x01` | Force or suppress field transmission on the next AID key |
+
+### How to use it
+
+1. Open the Security Toolbar (`🔒`) and activate **`ABI`**
+2. Click any field on screen — the inspector popup appears
+3. The amber **MUTATE FA →** row shows context-relevant buttons:
+   - On a protected label field: `UNPROTECT` appears — click to make it writable
+   - On a nondisplay password field: `👁 REVEAL` appears — click to see the field content
+   - On any field: `SET MDT` or `CLR MDT` to control whether it transmits
+4. The button fires immediately, the inspector closes, and the screen repaints with the new FA byte
+
+### Teaching use cases
+
+**Unprotecting a label to type in it** — most 3270 screens have protected title and label fields. UNPROTECT one, click into it, and type. This demonstrates that field protection is a host-set attribute in the FA byte, not a client-side restriction — any 3270 client that writes directly to the buffer can bypass it.
+
+**Revealing hidden fields** — click a nondisplay password field and press **👁 REVEAL**. The field content appears on screen. This demonstrates how a MITM proxy sitting between the browser and host can observe or reveal credentials — the encryption is between the terminal and the bridge, not between the bridge and the screen buffer.
+
+**Forcing field transmission with SET MDT** — type nothing in a field and click **SET MDT**. Press ENTER. The empty field transmits. This shows students that the host can't distinguish a "user typed here" MDT from a programmatically set one — the MDT bit has no authentication.
+
+**Suppressing field transmission with CLR MDT** — clear MDT on a field you've already typed into. Press ENTER. The field does not transmit. Demonstrates selective omission of fields in an AID response.
+
+---
+
+## Part 2C — FUNC KEY Inject
+
+The **FUNC KEY** dropdown and **INJECT** button let you fire any 3270 AID key directly to the host from the security toolbar — no need to press a physical key.
+
+### Why this matters
+
+A standard PC keyboard only has F1–F12. A real IBM 3270 terminal has PF1–PF24 plus PA1–PA3, CLEAR, and SYSREQ — 30 AID keys total. PF13–PF24 (Shift+F1–F12) are mapped in WebTerm but many lab keyboards don't register them. This control also lets you fire AID keys programmatically without interacting with the terminal at all, which is the basis of automated 3270 scripting.
+
+### How to use it
+
+1. Open the Security Toolbar (`🔒`)
+2. Use the **FUNC KEY** dropdown to select the key:
+   - **ENTER / CLEAR / SYSREQ** — transmit AID keys
+   - **PA1 (Attn/Break) / PA2 / PA3** — interrupt host without sending field data
+   - **PF1–PF12** — same as pressing F1–F12
+   - **PF13–PF24** — Shift+F1–F12 (not reachable on all keyboards)
+3. Click **▶ INJECT** — a green `✓ injected PF13` confirmation flashes briefly
+4. If not connected: a red `not connected` message appears instead
+
+> **Note:** INJECT does not type text at the cursor. For text input, click the terminal and type normally. INJECT sends only the AID byte + current cursor position + any fields already modified by typing.
+
+### Teaching use cases
+
+**PA1 as an interrupt** — fire PA1 against a hung TSO session. Unlike CLEAR, PA1 sends the interrupt signal without transmitting field data, demonstrating the distinction between the three PA key types.
+
+**SYSREQ demonstration** — SYSREQ (System Request) breaks the session to a secondary LU or interrupts the primary application. Many students have never seen this key; firing it from the dropdown shows the host response clearly.
+
+**PF13–PF24 in lab environments** — some ISPF functions (e.g., PF15 for RFIND in split screen) require PF13+. The inject control gives every student access to the full key range regardless of keyboard mapping.
+
+---
+
+## Part 2D — Session Viewer
+
+The **Session Viewer** shows a live-queryable table of every AID key sent to the host and every screen received from the host during the current bridge session.
+
+> Session Viewer captures **protocol events** (what was sent and received). For the raw bridge log, use the Proxy Viewer.
+
+### How to open it
+
+Click **⇄ SESSION Viewer** in the Security Toolbar. A popup opens bottom-right (900×480) showing a table:
+
+| Column | Content |
+|---|---|
+| Time | HH:MM:SS.mmm timestamp |
+| Session | WebSocket session ID |
+| Direction | → client→host (amber) or ← host→client (green) |
+| AID Key | Key sent (purple, e.g. `ENTER`, `PF3`) |
+| Screen Text | First ~300 chars of non-blank rows; click to expand |
+
+### Controls
+
+- **ALL / → OUT / ← IN** — filter by direction
+- **Session dropdown** — filter to a single session when multiple tabs are open
+- **Search box** — filter by AID key name or screen text content
+- **↺ Refresh** — re-fetches from the server (ring buffer holds last 1000 entries)
+- **↓ CSV** — downloads the filtered log as a CSV file
+- **✕ Clear** — clears the server-side ring buffer (with confirmation)
+- **Click any row** — expands full screen text for that event
+
+### Teaching use cases
+
+**AID key sequencing** — students can see the exact order of keys sent and screens returned, making the request/response nature of 3270 visible. Every ENTER is a discrete transaction, not a streaming connection.
+
+**Credential capture demonstration** — a login sequence shows the ENTER key event followed by a screen update. The session viewer makes clear that credentials exist in the AID transmission path between the terminal and the host.
+
+**Multi-session comparison** — with two sessions open (split-screen mode), the session filter shows each independently. Students can compare how two different userids navigate the same screen sequence.
+
+---
+
+## Part 2E — Proxy Viewer
+
+The **Proxy Viewer** streams the bridge's internal log in real time — every connection event, TN3270 negotiation step, screen parse, and error — as it happens.
+
+> Proxy Viewer shows **bridge/proxy internals**. For the 3270 protocol traffic (keys and screens), use the Session Viewer.
+
+### How to open it
+
+Click **≡ PROXY Viewer** in the Security Toolbar. A popup opens bottom-right (760×400) and immediately begins streaming live log entries over SSE (Server-Sent Events). It replays the last 2000 log entries on open, then tails live.
+
+### Controls
+
+- **ALL / INFO / WARN / ERROR / DEBUG** — level filter (amber = active)
+- **HEX** — show/hide hex dump lines (very noisy; useful when `TN3270_HEXDUMP=1` is set)
+- **Search** — real-time text filter with yellow highlights on matches
+- **▼ TAIL** — auto-scrolls to newest entries (amber = tailing); pauses automatically when you scroll up, resumes when you reach the bottom
+- **↓ CSV** — downloads the bridge log buffer as CSV
+- **✕** — clears the display (does not affect the server buffer)
+- **⊡ / —** — fullscreen and minimize window controls
+
+### Teaching use cases
+
+**TN3270E negotiation walkthrough** — connect to an LPAR while watching the Proxy Viewer. Students see the Telnet DO/WILL exchange, the TN3270E sub-negotiation, LU binding, and QueryReply in real time — the same sequence visible in Wireshark, but annotated in human-readable form.
+
+**Error diagnosis** — if a connection fails, the Proxy Viewer shows the exact error (TLS handshake failure, refused connection, EBCDIC decode error) with full context — far faster than digging through `docker compose logs`.
+
+**Protocol noise vs. protocol signal** — toggle HEX on with `TN3270_HEXDUMP=1` set. Students see the volume of raw bytes underneath every screen update. Filtering to WARN/ERROR shows only anomalous events. This demonstrates the signal-to-noise problem in protocol analysis.
 
 ---
 
