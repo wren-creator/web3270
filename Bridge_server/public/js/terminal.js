@@ -110,22 +110,20 @@ let fieldMapOverlay = false;
 function toggleFieldMap() {
   fieldMapOverlay = !fieldMapOverlay;
   const btn = document.getElementById('fmoBtn');
-  if (btn) btn.classList.toggle('sec-tool-btn-active', fieldMapOverlay);
+  if (btn) btn.classList.toggle('sec-panel-btn-active', fieldMapOverlay);
   document.body.classList.toggle('field-map-overlay', fieldMapOverlay);
   if (liveScreen) renderLiveScreen(liveScreen);
 }
 
 // ── Security Toolbar ──────────────────────────────────────────────
-let _secBarOpen = false;
-function toggleSecBar() {
-  _secBarOpen = !_secBarOpen;
-  const bar = document.getElementById('secToolbar');
+function openSecurityPanel() {
+  const panel = document.getElementById('rightPanel');
+  if (panel) panel.classList.remove('hidden');
+  const tab = document.getElementById('secPanelTab');
+  if (tab) switchPanelTab(tab, 'Security');
   const btn = document.getElementById('secBtn');
-  if (bar) bar.classList.toggle('sec-toolbar-open', _secBarOpen);
-  if (btn) {
-    btn.style.color       = _secBarOpen ? 'var(--accent-amber)' : 'var(--text-muted)';
-    btn.style.borderColor = _secBarOpen ? 'var(--accent-amber)' : '#333';
-  }
+  if (btn) { btn.style.color = 'var(--accent-amber)'; btn.style.borderColor = 'var(--accent-amber)'; }
+  setTimeout(fitScreen, 210);
 }
 
 // ── Security toolbar helpers ──────────────────────────────────────
@@ -161,7 +159,7 @@ let inspectorActive = false;
 function toggleInspector() {
   inspectorActive = !inspectorActive;
   const btn = document.getElementById('abiBtn');
-  if (btn) btn.classList.toggle('sec-tool-btn-active', inspectorActive);
+  if (btn) btn.classList.toggle('sec-panel-btn-active', inspectorActive);
   if (!inspectorActive) _dismissInspector();
 }
 
@@ -335,13 +333,14 @@ function toggleMitm() {
 function mitmHandleState(msg) {
   _mitmActive = msg.active;
   const btn = document.getElementById('mitmBtn');
-  if (btn) btn.classList.toggle('sec-tool-btn-active', _mitmActive);
+  if (btn) btn.classList.toggle('sec-panel-btn-active', _mitmActive);
   if (!_mitmActive) { _mitmHolding = false; _hideMitmPanel(); _hideReplayBadge(); }
 }
 
 function mitmHandleHeld(msg) {
   _mitmHolding = true;
   _hideReplayBadge();
+  _harvestCapture(msg);
   _showMitmPanel(msg);
 }
 
@@ -445,7 +444,7 @@ function toggleAnomalyEnabled() {
   _anomalyEnabled = !_anomalyEnabled;
   const btn     = document.getElementById('anomBtn');
   const viewBtn = document.getElementById('anomViewBtn');
-  if (btn)     btn.classList.toggle('sec-tool-btn-active', _anomalyEnabled);
+  if (btn)     btn.classList.toggle('sec-panel-btn-active', _anomalyEnabled);
   if (viewBtn) viewBtn.style.display = _anomalyEnabled ? '' : 'none';
   if (!_anomalyEnabled) {
     const bar   = document.getElementById('anomalyBar');
@@ -530,6 +529,145 @@ function clearAnomalyLog() {
   if (bar) bar.innerHTML = '';
 }
 
+// ── Screen Export ─────────────────────────────────────────────────
+// Dumps the current screen as plain text — copy to clipboard + download.
+
+function exportScreen() {
+  if (!liveScreen) return;
+  const text = screenToText(liveScreen);
+  navigator.clipboard.writeText(text).catch(() => {});
+  const ts   = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  saveAs(new Blob([text], { type: 'text/plain' }), `screen-${ts}.txt`);
+}
+
+// ── Credential Harvest Log ────────────────────────────────────────
+// Auto-logs every nondisplay field value captured during a MITM hold.
+// Called from mitmHandleHeld — nondisplay fields are already in msg.fields.
+
+let _harvestLog = [];
+
+function _harvestCapture(msg) {
+  const ndFields = (msg.fields || []).filter(f => f.nondisplay && f.data && f.data.trim());
+  if (!ndFields.length) return;
+  const ts = new Date().toISOString();
+  ndFields.forEach(f => {
+    _harvestLog.push({ ts, aid: msg.aid, addr: f.addr, row: f.row, col: f.col, value: f.data });
+  });
+  _updateHarvestBadge();
+}
+
+function _updateHarvestBadge() {
+  const btn = document.getElementById('harvestBtn');
+  if (btn) btn.classList.toggle('sec-panel-btn-active', _harvestLog.length > 0);
+}
+
+function openHarvestLog() {
+  const existing = document.getElementById('harvestPanel');
+  if (existing) { existing.remove(); return; }
+
+  const el = document.createElement('div');
+  el.id = 'harvestPanel';
+  el.className = 'harvest-panel';
+
+  const rows = _harvestLog.length
+    ? _harvestLog.slice().reverse().map(e => {
+        const t = new Date(e.ts).toLocaleTimeString();
+        const pos = `R${String((e.row||0)+1).padStart(2,'0')} C${String((e.col||0)+1).padStart(2,'0')}`;
+        return `<tr><td>${t}</td><td>${esc(e.aid)}</td><td>${pos}</td><td class="harvest-value">${esc(e.value)}</td></tr>`;
+      }).join('')
+    : '<tr><td colspan="4" class="harvest-empty">No credentials captured yet. Enable MITM and log in.</td></tr>';
+
+  el.innerHTML = `
+    <div class="harvest-header">
+      <span class="harvest-title">🔐 CREDENTIAL HARVEST LOG</span>
+      <span class="harvest-count">${_harvestLog.length} capture${_harvestLog.length !== 1 ? 's' : ''}</span>
+      <button class="harvest-action-btn" onclick="_harvestExport()">⬇ CSV</button>
+      <button class="harvest-action-btn" onclick="_harvestClear()">✕ CLEAR</button>
+      <button class="harvest-action-btn" onclick="document.getElementById('harvestPanel').remove()">✕</button>
+    </div>
+    <div class="harvest-body">
+      <table class="harvest-table">
+        <thead><tr><th>TIME</th><th>AID</th><th>POSITION</th><th>VALUE</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+  document.body.appendChild(el);
+}
+
+function _harvestExport() {
+  if (!_harvestLog.length) return;
+  const header = 'timestamp,aid,addr,row,col,value\n';
+  const csv    = _harvestLog.map(e =>
+    `${e.ts},${e.aid},${e.addr},${(e.row||0)+1},${(e.col||0)+1},"${e.value.replace(/"/g,'""')}"`
+  ).join('\n');
+  saveAs(new Blob([header + csv], { type: 'text/csv' }),
+         `harvest-${new Date().toISOString().slice(0,19).replace(/[:.]/g,'-')}.csv`);
+}
+
+function _harvestClear() {
+  _harvestLog = [];
+  _updateHarvestBadge();
+  const panel = document.getElementById('harvestPanel');
+  if (panel) panel.remove();
+}
+
+// ── Screen Watch / Alert ──────────────────────────────────────────
+// Checks every incoming screen for a user-defined string.
+// Flashes an alert bar and plays a soft beep on match.
+
+let _watchActive  = false;
+let _watchString  = '';
+let _watchLastHit = '';   // deduplicate consecutive same-screen matches
+
+function toggleWatch() {
+  _watchActive = !_watchActive;
+  const btn = document.getElementById('watchBtn');
+  if (btn) btn.classList.toggle('sec-panel-btn-active', _watchActive);
+  const row = document.getElementById('watchInputRow');
+  if (row) row.style.display = _watchActive ? 'block' : 'none';
+  if (_watchActive) { const inp = document.getElementById('watchInput'); if (inp) inp.focus(); }
+  if (!_watchActive) _hideWatchAlert();
+}
+
+function _checkWatch(screenData) {
+  if (!_watchActive || !_watchString.trim()) return;
+  const text = (screenData.rows || []).map(row =>
+    (Array.isArray(row) ? row : []).map(c => (c.char && c.char !== '\x00' ? c.char : ' ')).join('')
+  ).join('\n');
+  const needle = _watchString.trim().toUpperCase();
+  const haystack = text.toUpperCase();
+  if (!haystack.includes(needle)) return;
+  if (text === _watchLastHit) return;
+  _watchLastHit = text;
+  _showWatchAlert(needle);
+}
+
+function _showWatchAlert(needle) {
+  let el = document.getElementById('watchAlert');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'watchAlert';
+    el.className = 'watch-alert';
+    el.innerHTML = `<span class="watch-alert-icon">🔔</span>
+      <span class="watch-alert-msg"></span>
+      <button class="watch-alert-dismiss" onclick="_hideWatchAlert()">✕</button>`;
+    document.body.appendChild(el);
+  }
+  el.querySelector('.watch-alert-msg').textContent = `MATCH: "${needle}" detected on screen`;
+  el.classList.add('watch-alert-visible');
+  try { const ctx = new AudioContext(); const o = ctx.createOscillator(); const g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination); o.frequency.value = 880; g.gain.setValueAtTime(0.15, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25); o.start(); o.stop(ctx.currentTime + 0.25); } catch {}
+  clearTimeout(el._autoHide);
+  el._autoHide = setTimeout(_hideWatchAlert, 8000);
+}
+
+function _hideWatchAlert() {
+  const el = document.getElementById('watchAlert');
+  if (el) { el.classList.remove('watch-alert-visible'); }
+  _watchLastHit = '';
+}
+
 // termEl is optional — omit to render to the primary #terminal.
 // Passing the split terminal element renders there without touching OIA or fit.
 function renderLiveScreen(screenData, termEl) {
@@ -606,6 +744,7 @@ function renderLiveScreen(screenData, termEl) {
     document.getElementById('oiaCol').textContent = String(cCol + 1).padStart(2, '0');
     _initInspectorListener();
     _showAnomalies(screenData.anomalies || []);
+    _checkWatch(screenData);
     requestAnimationFrame(() => { measureCellWidth(); fitScreen(); });
   }
 }
