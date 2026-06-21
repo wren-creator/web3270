@@ -33,6 +33,7 @@ server.js  (HTTP + WebSocket on the same port)
 - **FUNC KEY Inject** — send any 3270 AID key from the toolbar dropdown (PF1–PF24, PA1–PA3, CLEAR, ENTER, SYSREQ); shows `✓ injected PF13` confirmation flash; essential for reaching PF13–24 unreachable on standard keyboards
 - **Session Viewer** — floating popup table of every AID key sent and screen received during the session; direction/session filter, click-to-expand full screen text, CSV export
 - **Proxy Viewer** — live SSE stream of the bridge log; level filter (INFO/WARN/ERROR/DEBUG), HEX toggle, TAIL button with auto-scroll that pauses on scroll-up and resumes at bottom, CSV export
+- **Extended Color Rendering (SFE/SA)** — full ORDER_SFE and ORDER_SA parsing; renders 3270 extended color (`0xF1`–`0xF7`) and highlight (blink, reverse video, underscore, intensify) attributes exactly as real mainframe applications send them; mock LPAR sends realistic IBM color schemes on every screen
 - **Traffic Recorder** — records the live datastream to a timestamped `.rec.json` file for offline analysis
 - **Replay Viewer** — plays back recorded sessions frame by frame at `/replay`
 - **Anomaly Detector** — flags suspicious screen patterns (RACF lockouts, unexpected field changes, WCC anomalies); on/off toggle, ephemeral flash bar, scrollable session log, one-click clear

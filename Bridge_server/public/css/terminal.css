@@ -192,6 +192,22 @@ body.no-highlights .field-dim          { color:var(--t-green); font-weight:norma
 .cursor-cell        { animation:blink 1s step-start infinite; }
 @keyframes blink { 0%,100%{background:var(--t-cursor);color:#000} 50%{background:transparent;color:var(--t-green)} }
 
+/* ── 3270 Extended Colors (SA/SFE type 0x42) ─────────────────────── */
+.c-blue   { color: var(--t-blue)       !important; }
+.c-red    { color: var(--t-red)        !important; }
+.c-pink   { color: #ff88cc             !important; }
+.c-green  { color: var(--t-green)      !important; }
+.c-turq   { color: var(--t-turquoise)  !important; }
+.c-yellow { color: var(--t-yellow)     !important; }
+.c-white  { color: var(--t-white)      !important; }
+
+/* ── 3270 Extended Highlights (SA/SFE type 0x41) ─────────────────── */
+.hl-blink   { animation: t3270-blink 1s step-end infinite; }
+@keyframes t3270-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+.hl-reverse { background: var(--t-green); color: var(--t-bg) !important; }
+.hl-under   { text-decoration: underline; }
+.hl-intens  { color: var(--t-white) !important; filter: brightness(1.4); }
+
 /* ── OIA BAR ───────────────────────────────────────────────────── */
 .oia-bar { background:#060c14;border-top:1px solid #0d1f14;padding:3px 12px;display:flex;align-items:center;gap:20px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#3a7050;flex-shrink:0; }
 .oia-field { display:flex;align-items:center;gap:6px; }

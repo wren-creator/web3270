@@ -740,6 +740,10 @@ class Tn3270Session extends EventEmitter {
 
     let addr = 0;
     let i = 1;
+    // SA (Set Attribute) state — applies to characters until the next SA resets it.
+    // Resets on every SF/SFE since a new field boundary implicitly ends character-level attrs.
+    let saColor     = 0x00;
+    let saHighlight = 0x00;
 
     while (i < data.length) {
       const b = data[i];
@@ -748,7 +752,8 @@ class Tn3270Session extends EventEmitter {
         // Start Field — next byte is field attribute
         i++;
         const fa = data[i];
-        this.buffer[addr] = { char: 0x00, fa, modified: false };
+        this.buffer[addr] = { char: 0x00, fa, modified: false, color: 0x00, highlight: 0x00 };
+        saColor = 0x00; saHighlight = 0x00;  // SA resets at field boundary
         addr = (addr + 1) % (this.rows * this.cols);
         i++;
 
@@ -797,28 +802,37 @@ class Tn3270Session extends EventEmitter {
         i += 2;
 
       } else if (b === ORDER_SFE) {
-        // Start Field Extended — like SF, but with attribute pairs.
+        // Start Field Extended — like SF but with attribute pairs.
         // Format: 0x29 <pairCount> <type> <value> <type> <value> ...
-        // The pair with type=0xC0 carries the basic field attribute (FA byte
-        // equivalent to what SF would set). At minimum we MUST create a field
-        // at this address and advance addr by one cell — otherwise every
-        // subsequent character lands one cell early per SFE encountered,
-        // which produces the "starts in the middle of the screen" symptom.
+        //   type 0xC0 = basic field attribute (FA byte)
+        //   type 0x41 = highlight (0xF1=blink, 0xF2=reverse, 0xF4=underscore, 0xF8=intensify)
+        //   type 0x42 = color (0xF1=blue, 0xF2=red, 0xF3=pink, 0xF4=green, 0xF5=turq, 0xF6=yellow, 0xF7=white)
         i++;
         const pairCount = data[i]; i++;
-        let baseFa = 0x60; // default: protected, normal intensity
+        let baseFa    = 0x60; // default: protected, normal intensity
+        let sfeColor  = 0x00;
+        let sfeHighlight = 0x00;
         for (let p = 0; p < pairCount; p++) {
           const type  = data[i];
           const value = data[i + 1];
-          if (type === 0xC0) baseFa = value; // basic field attribute
+          if      (type === 0xC0) baseFa       = value;
+          else if (type === 0x42) sfeColor     = value;
+          else if (type === 0x41) sfeHighlight = value;
           i += 2;
         }
-        this.buffer[addr] = { char: 0x00, fa: baseFa, modified: false };
+        this.buffer[addr] = { char: 0x00, fa: baseFa, color: sfeColor, highlight: sfeHighlight, modified: false };
+        saColor = 0x00; saHighlight = 0x00;  // SA resets at field boundary
         addr = (addr + 1) % (this.rows * this.cols);
 
       } else if (b === ORDER_SA) {
-        // Set Attribute — applies a single attribute to subsequent characters.
+        // Set Attribute — applies a single extended attribute to subsequent characters.
         // Format: 0x28 <type> <value>  (NO count byte, NO addr advance)
+        //   type 0x42 = color, type 0x41 = highlight, type 0x00 = reset all
+        const type  = data[i + 1];
+        const value = data[i + 2];
+        if      (type === 0x42) saColor     = value;
+        else if (type === 0x41) saHighlight = value;
+        else if (type === 0x00) { saColor = 0x00; saHighlight = 0x00; }
         i += 3;
 
       } else if (b === ORDER_MF) {
@@ -838,9 +852,11 @@ class Tn3270Session extends EventEmitter {
         addr = (addr + 1) % (this.rows * this.cols);
 
       } else {
-        // Regular character — store in buffer
+        // Regular character — store in buffer; stamp any active SA color/highlight
         this.buffer[addr] = this.buffer[addr] || {};
         this.buffer[addr].char = b;
+        if (saColor)     this.buffer[addr].color     = saColor;
+        if (saHighlight) this.buffer[addr].highlight = saHighlight;
         addr = (addr + 1) % (this.rows * this.cols);
         i++;
       }
@@ -1152,9 +1168,11 @@ class Tn3270Session extends EventEmitter {
         const cell = this.buffer[addr] || { char: 0x00, fa: undefined, modified: false };
         cells.push({
           char: cell.char ? Ebcdic.toAscii(Buffer.from([cell.char]), this.codepage) : ' ',
-          fa:   cell.fa,
-          modified: cell.modified,
+          fa:        cell.fa,
+          modified:  cell.modified,
           nondisplay: ndMap[addr],
+          color:     cell.color     || 0x00,
+          highlight: cell.highlight || 0x00,
         });
       }
       rows.push(cells);
@@ -1535,7 +1553,7 @@ function decode3270Address(b1, b2, cols) {
   return ((b1 & 0x3F) << 6) | (b2 & 0x3F);
 }
 function newBuffer(rows, cols) {
-  return Array.from({ length: rows * cols }, () => ({ char: 0x00, fa: undefined, modified: false }));
+  return Array.from({ length: rows * cols }, () => ({ char: 0x00, fa: undefined, modified: false, color: 0x00, highlight: 0x00 }));
 }
 
 function modelDimensions(model) {
