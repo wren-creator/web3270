@@ -316,6 +316,105 @@ function _dismissInspector() {
   if (_inspectorEl) { _inspectorEl.remove(); _inspectorEl = null; }
 }
 
+// ── MITM Intercept ────────────────────────────────────────────────
+// When active, every outbound AID record is held by the bridge and a
+// sec.mitm.held message is pushed back. The panel lets the instructor
+// inspect and optionally edit field values before releasing or dropping.
+
+let _mitmActive       = false;
+let _mitmHolding      = false;   // true while a record is held; blocks sendKey
+let _mitmPanel        = null;
+let _mitmPanelFields  = [];      // fields from the held record (for release)
+
+function toggleMitm() {
+  const session = sessions.get(activeSession);
+  if (!session || session.ws.readyState !== WebSocket.OPEN) return;
+  session.ws.send(JSON.stringify({ type: 'sec.mitm.toggle' }));
+}
+
+function mitmHandleState(msg) {
+  _mitmActive = msg.active;
+  const btn = document.getElementById('mitmBtn');
+  if (btn) btn.classList.toggle('sec-tool-btn-active', _mitmActive);
+  if (!_mitmActive) { _mitmHolding = false; _hideMitmPanel(); }
+}
+
+function mitmHandleHeld(msg) {
+  _mitmHolding = true;
+  _showMitmPanel(msg);
+}
+
+function mitmHandleReleased()  { _mitmHolding = false; _hideMitmPanel(); }
+function mitmHandleDropped()   { _mitmHolding = false; _hideMitmPanel(); }
+function mitmHandleReplayed()  { /* host sends a screen update — nothing to do */ }
+
+function _showMitmPanel(msg) {
+  _hideMitmPanel();
+  const AID_COLOR = { ENTER:'#3a9a6a', CLEAR:'#aa6640', PA1:'#6680aa', PA2:'#6680aa', PA3:'#6680aa' };
+  const aidColor  = AID_COLOR[msg.aid] || '#c8a840';
+  const curRow    = String(msg.cursorRow + 1).padStart(2, '0');
+  const curCol    = String(msg.cursorCol + 1).padStart(2, '0');
+
+  _mitmPanelFields = msg.fields || [];
+
+  const fieldsHtml = _mitmPanelFields.length
+    ? _mitmPanelFields.map((f, i) => {
+        const rLabel = `R${String(f.row + 1).padStart(2,'0')} C${String(f.col + 1).padStart(2,'0')}`;
+        const ndTag  = f.nondisplay ? ' <span class="mitm-nd-tag">🔐 NONDISPLAY — value visible to MITM proxy</span>' : '';
+        return `<div class="mitm-field">
+          <div class="mitm-field-label">addr ${f.addr} · ${rLabel}${ndTag}</div>
+          <input class="mitm-field-input" id="mitmField${i}" type="text"
+            value="${esc(f.data)}" spellcheck="false" autocomplete="off" />
+        </div>`;
+      }).join('')
+    : '<div class="mitm-no-fields">No modified fields — AID byte only</div>';
+
+  const el = document.createElement('div');
+  el.id = 'mitmPanel';
+  el.className = 'mitm-panel';
+  el.innerHTML = `
+    <div class="mitm-header">
+      <span class="mitm-title">⚡ INTERCEPTED</span>
+      <span class="mitm-aid" style="color:${aidColor}">${esc(msg.aid)}</span>
+      <span class="mitm-cursor">cursor R${curRow} C${curCol}</span>
+    </div>
+    <div class="mitm-fields">${fieldsHtml}</div>
+    <div class="mitm-actions">
+      <button class="mitm-btn mitm-btn-release" onclick="_mitmRelease()">▶ RELEASE</button>
+      <button class="mitm-btn mitm-btn-drop"    onclick="_mitmDrop()">⊠ DROP</button>
+      <button class="mitm-btn mitm-btn-replay"  onclick="_mitmReplay()" title="Re-send last released record">↺ REPLAY</button>
+    </div>`;
+  document.body.appendChild(el);
+  _mitmPanel = el;
+}
+
+function _hideMitmPanel() {
+  if (_mitmPanel) { _mitmPanel.remove(); _mitmPanel = null; }
+  _mitmPanelFields = [];
+}
+
+function _mitmRelease() {
+  const session = sessions.get(activeSession);
+  if (!session || session.ws.readyState !== WebSocket.OPEN) return;
+  const editedFields = _mitmPanelFields.map((f, i) => {
+    const input = document.getElementById(`mitmField${i}`);
+    return { addr: f.addr, data: input ? input.value : f.data, nondisplay: f.nondisplay };
+  });
+  session.ws.send(JSON.stringify({ type: 'sec.mitm.release', fields: editedFields }));
+}
+
+function _mitmDrop() {
+  const session = sessions.get(activeSession);
+  if (!session || session.ws.readyState !== WebSocket.OPEN) return;
+  session.ws.send(JSON.stringify({ type: 'sec.mitm.drop' }));
+}
+
+function _mitmReplay() {
+  const session = sessions.get(activeSession);
+  if (!session || session.ws.readyState !== WebSocket.OPEN) return;
+  session.ws.send(JSON.stringify({ type: 'sec.mitm.replay' }));
+}
+
 // ── Session Anomaly Annotations ───────────────────────────────────
 // Anomalies arrive with each screen event from session.js.
 // Tracking is OFF by default to preserve toolbar real estate.
@@ -531,6 +630,7 @@ function termClick(e) {
 }
 
 function sendKey(aid, fields = []) {
+  if (_mitmHolding) return;  // keyboard locked while a MITM record is held
   const session = sessions.get(activeSession);
   if (!session || session.ws.readyState !== WebSocket.OPEN) return;
   // Capture command on Enter — use the cursor row, collect only unprotected
