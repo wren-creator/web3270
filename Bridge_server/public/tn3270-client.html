@@ -165,89 +165,8 @@
         <div class="t3270-screen" id="terminal-split" onclick="splitTermClick(event)"></div>
       </div>
     </div>
-    <!-- Security Tools Toolbar (collapsed by default) -->
-    <div class="sec-toolbar" id="secToolbar">
-      <span class="sec-toolbar-label">🔒 SECURITY TOOLS</span>
-      <div class="sec-toolbar-sep"></div>
-      <button id="fmoBtn" class="sec-tool-btn" onclick="toggleFieldMap()" title="Field Map Overlay — highlight field attribute bytes and field types">
-        <span class="stb-icon">▸</span> FMO <span class="stb-label">Field Map</span>
-      </button>
-      <button id="abiBtn" class="sec-tool-btn" onclick="toggleInspector()" title="Attribute Byte Inspector — click any field to inspect its FA byte">
-        <span class="stb-icon">⬡</span> ABI <span class="stb-label">Field Inspector</span>
-      </button>
-      <button id="recBtn" class="sec-tool-btn" onclick="toggleRecording()" title="Traffic Recorder — record session datastream to .rec.json">
-        <span class="stb-icon">●</span> REC <span class="stb-label">Recorder</span>
-      </button>
-      <a class="sec-tool-btn" href="/replay" target="_blank" title="Open session replay viewer">
-        <span class="stb-icon">▶</span> REPLAY <span class="stb-label">Viewer</span>
-      </a>
-      <div class="sec-toolbar-sep"></div>
-      <button id="anomBtn" class="sec-tool-btn" onclick="toggleAnomalyEnabled()" title="Toggle anomaly tracking on/off">
-        <span class="stb-icon">⚠</span> ANOM <span class="stb-label">Anomalies</span>
-        <span id="anomalyBadge" style="display:none;background:rgba(255,80,80,0.85);color:#fff;border-radius:8px;font-size:9px;padding:0 4px;margin-left:3px;min-width:14px;text-align:center;"></span>
-      </button>
-      <button id="anomViewBtn" class="sec-tool-btn" onclick="toggleAnomalyLog()" title="View anomaly log" style="display:none;font-size:9px;padding:2px 5px;">▾</button>
-      <button class="sec-tool-btn" onclick="clearAnomalyLog()" title="Clear anomaly log" style="font-size:9px;padding:2px 5px;">✕</button>
-      <div class="sec-toolbar-sep"></div>
-      <!-- Send Function Key -->
-      <span style="font-size:9px;color:#2a4a6a;letter-spacing:0.08em;white-space:nowrap"
-            title="Send any 3270 function key directly to the host — same as pressing it on a physical 3270 keyboard.&#10;&#10;This does NOT type text. For text, just click the terminal and type normally.&#10;Use this to fire PF13–PF24 (Shift+F keys your keyboard can't reach), PA keys, CLEAR, or SYSREQ.">FUNC KEY:</span>
-      <select id="keyInjectSelect" class="sec-inject-select"
-              title="Choose which 3270 function key to send to the host, then click SEND KEY.&#10;&#10;PF1–PF12  — program function keys (same as F1–F12 on your keyboard)&#10;PF13–PF24 — Shift+F1–F12 on a real 3270; not reachable from a PC keyboard&#10;PA1       — Program Attention / Attn/Break (interrupts host, no field data sent)&#10;PA2/PA3   — rarely mapped, useful for probing host behavior&#10;CLEAR     — clears the screen and sends a reset to the host&#10;SYSREQ    — System Request; breaks to secondary LU or interrupts hung session">
-        <optgroup label="── Transmit ──">
-          <option value="ENTER">ENTER</option>
-          <option value="CLEAR">CLEAR</option>
-          <option value="SYSREQ">SYSREQ</option>
-        </optgroup>
-        <optgroup label="── PA keys (no field data) ──">
-          <option value="PA1">PA1  (Attn / Break)</option>
-          <option value="PA2">PA2</option>
-          <option value="PA3">PA3</option>
-        </optgroup>
-        <optgroup label="── PF 1–12 (F1–F12) ──">
-          <option value="PF1">PF1</option><option value="PF2">PF2</option>
-          <option value="PF3">PF3</option><option value="PF4">PF4</option>
-          <option value="PF5">PF5</option><option value="PF6">PF6</option>
-          <option value="PF7">PF7</option><option value="PF8">PF8</option>
-          <option value="PF9">PF9</option><option value="PF10">PF10</option>
-          <option value="PF11">PF11</option><option value="PF12">PF12</option>
-        </optgroup>
-        <optgroup label="── PF 13–24 (Shift+F1–F12) ──">
-          <option value="PF13">PF13</option><option value="PF14">PF14</option>
-          <option value="PF15">PF15</option><option value="PF16">PF16</option>
-          <option value="PF17">PF17</option><option value="PF18">PF18</option>
-          <option value="PF19">PF19</option><option value="PF20">PF20</option>
-          <option value="PF21">PF21</option><option value="PF22">PF22</option>
-          <option value="PF23">PF23</option><option value="PF24">PF24</option>
-        </optgroup>
-      </select>
-      <button class="sec-tool-btn" onclick="secInjectKey()"
-              title="INJECT — fires the selected function key to the host.&#10;&#10;Does NOT type text. Sends: the AID byte + current cursor position + any fields you have already modified by typing in the terminal.&#10;&#10;Equivalent to pressing that key on a physical IBM 3270 terminal.">
-        <span class="stb-icon">▶</span> INJECT
-      </button>
-      <span id="keyInjectFeedback" style="font-size:9px;color:#3a9a6a;min-width:48px;transition:opacity 0.4s;opacity:0"></span>
-      <div class="sec-toolbar-sep"></div>
-      <!-- Session traffic viewer -->
-      <button class="sec-tool-btn" onclick="openTrafficViewer()"
-              title="Session Viewer — AID keys sent and screens received, with CSV export">
-        <span class="stb-icon">⇄</span> SESSION <span class="stb-label">Viewer</span>
-      </button>
-      <div class="sec-toolbar-sep"></div>
-      <!-- Proxy log viewer -->
-      <button class="sec-tool-btn" onclick="openLogsViewer()" title="Proxy Viewer — live bridge/proxy log stream">
-        <span class="stb-icon">≡</span> PROXY <span class="stb-label">Viewer</span>
-      </button>
-      <div class="sec-toolbar-sep"></div>
-      <!-- MITM Intercept -->
-      <button id="mitmBtn" class="sec-tool-btn" onclick="toggleMitm()"
-              title="MITM Intercept — hold, inspect, edit and release/drop outbound AID records before they reach the host">
-        <span class="stb-icon">⚡</span> MITM
-      </button>
-    </div>
     <!-- Anomaly flash bar — shows latest anomalies inline, auto-fades -->
     <div id="anomalyBar" class="anomaly-bar"></div>
-    <!-- Anomaly log panel — expands on ANOM click -->
-    <div id="anomalyLogPanel" class="anomaly-log-panel"></div>
     <div class="oia-bar">
       <div class="oia-field"><span class="oia-label">SYS</span><span class="oia-val" id="oiaSys">—</span></div>
       <div class="oia-field"><span class="oia-label">LU</span><span class="oia-val" id="oiaLu">—</span></div>
@@ -255,7 +174,7 @@
       <div class="oia-field"><span class="oia-label">ROW</span><span class="oia-val" id="oiaRow">00</span></div>
       <div class="oia-field"><span class="oia-label">COL</span><span class="oia-val" id="oiaCol">00</span></div>
       <div class="oia-spacer"></div>
-      <div class="oia-field"><button id="secBtn" onclick="toggleSecBar()" title="Security Tools" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:11px;padding:1px 6px;cursor:pointer;">🔒</button></div>
+      <div class="oia-field"><button id="secBtn" onclick="openSecurityPanel()" title="Security Tools" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:11px;padding:1px 6px;cursor:pointer;">🔒</button></div>
       <div class="oia-field"><button id="demoBtn" onclick="toggleDemoMode()" title="Demo Mode — masks host IP/LU in OIA bar" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:1px 6px;cursor:pointer;letter-spacing:0.05em">DEMO</button></div>
       <div class="oia-field"><span class="oia-val blue" id="oiaMode">NOT CONNECTED</span></div>
       <div class="oia-field"><span class="oia-val" id="oiaTls">3270</span></div>
@@ -279,13 +198,14 @@
   <!-- RIGHT PANEL -->
   <div class="right-panel" id="rightPanel">
 
-    <!-- 5 tabs: Settings · Keys · Transfer · AI Config · AI Assist -->
+    <!-- 6 tabs: Settings · Keys · Transfer · AI Config · AI Assist · Security -->
     <div class="panel-tabs">
       <div class="panel-tab active"           onclick="switchPanelTab(this,'Settings')">Settings</div>
       <div class="panel-tab"                  onclick="switchPanelTab(this,'Keys')">Keys</div>
       <div class="panel-tab"                  onclick="switchPanelTab(this,'Xfer')">Transfer</div>
       <div class="panel-tab aiconfig-tab"     onclick="switchPanelTab(this,'AIConfig')">⚙ AI</div>
       <div class="panel-tab copilot-tab"      onclick="switchPanelTab(this,'Copilot')">⬡ Assist</div>
+      <div class="panel-tab sec-panel-tab" id="secPanelTab" onclick="switchPanelTab(this,'Security')">🔒 Sec</div>
     </div>
 
     <!-- Settings -->
@@ -542,6 +462,158 @@
         </div>
       </div>
     </div>
+
+    <!-- Security Panel -->
+    <div class="panel-content" id="panelSecurity" style="display:none;padding:0;overflow-y:auto;">
+
+      <!-- FIELD section -->
+      <div class="sec-section">
+        <div class="sec-section-hdr">FIELD ANALYSIS</div>
+        <div class="sec-section-body">
+          <div class="sec-row">
+            <button id="fmoBtn" class="sec-panel-btn" onclick="toggleFieldMap()">
+              <span class="sec-panel-btn-label">▸ Field Map Overlay</span>
+              <span class="sec-panel-btn-sub">Highlight FA bytes and field types</span>
+            </button>
+          </div>
+          <div class="sec-row">
+            <button id="abiBtn" class="sec-panel-btn" onclick="toggleInspector()">
+              <span class="sec-panel-btn-label">⬡ Attribute Byte Inspector</span>
+              <span class="sec-panel-btn-sub">Click any field to decode its FA byte</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- TRAFFIC section -->
+      <div class="sec-section">
+        <div class="sec-section-hdr">TRAFFIC</div>
+        <div class="sec-section-body">
+          <div class="sec-row">
+            <button id="recBtn" class="sec-panel-btn" onclick="toggleRecording()">
+              <span class="sec-panel-btn-label">● Traffic Recorder</span>
+              <span class="sec-panel-btn-sub">Record session datastream to .rec.json</span>
+            </button>
+          </div>
+          <div class="sec-row">
+            <a class="sec-panel-btn" href="/replay" target="_blank">
+              <span class="sec-panel-btn-label">▶ Replay Viewer</span>
+              <span class="sec-panel-btn-sub">Play back recorded sessions frame by frame</span>
+            </a>
+          </div>
+          <div class="sec-row">
+            <button class="sec-panel-btn" onclick="openTrafficViewer()">
+              <span class="sec-panel-btn-label">⇄ Session Viewer</span>
+              <span class="sec-panel-btn-sub">AID keys sent and screens received, CSV export</span>
+            </button>
+          </div>
+          <div class="sec-row">
+            <button class="sec-panel-btn" onclick="openLogsViewer()">
+              <span class="sec-panel-btn-label">≡ Proxy Viewer</span>
+              <span class="sec-panel-btn-sub">Live bridge log stream with level filter</span>
+            </button>
+          </div>
+          <div class="sec-row">
+            <button class="sec-panel-btn" onclick="exportScreen()">
+              <span class="sec-panel-btn-label">📋 Export Screen</span>
+              <span class="sec-panel-btn-sub">Copy current screen to clipboard + download .txt</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- INTERCEPT section -->
+      <div class="sec-section">
+        <div class="sec-section-hdr">INTERCEPT</div>
+        <div class="sec-section-body">
+          <div class="sec-row">
+            <button id="mitmBtn" class="sec-panel-btn" onclick="toggleMitm()">
+              <span class="sec-panel-btn-label">⚡ MITM Intercept</span>
+              <span class="sec-panel-btn-sub">Hold, edit, release or drop outbound AID records</span>
+            </button>
+          </div>
+          <div class="sec-row">
+            <button id="harvestBtn" class="sec-panel-btn" onclick="openHarvestLog()">
+              <span class="sec-panel-btn-label">🔐 Credential Harvest Log</span>
+              <span class="sec-panel-btn-sub">Nondisplay fields captured during MITM intercepts</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- MONITOR section -->
+      <div class="sec-section">
+        <div class="sec-section-hdr">MONITOR</div>
+        <div class="sec-section-body">
+          <div class="sec-row sec-row-inline">
+            <button id="anomBtn" class="sec-panel-btn sec-panel-btn-inline" onclick="toggleAnomalyEnabled()">
+              <span class="sec-panel-btn-label">⚠ Anomaly Tracking
+                <span id="anomalyBadge" style="display:none;background:rgba(255,80,80,0.85);color:#fff;border-radius:8px;font-size:9px;padding:0 4px;margin-left:4px;min-width:14px;text-align:center;"></span>
+              </span>
+              <span class="sec-panel-btn-sub">Flag suspicious screen patterns</span>
+            </button>
+            <button id="anomViewBtn" class="sec-panel-icon-btn" onclick="toggleAnomalyLog()" title="View anomaly log" style="display:none">▾</button>
+            <button class="sec-panel-icon-btn" onclick="clearAnomalyLog()" title="Clear anomaly log">✕</button>
+          </div>
+          <!-- Anomaly log panel — expands inline -->
+          <div id="anomalyLogPanel" class="anomaly-log-panel sec-anomaly-log"></div>
+          <div class="sec-row sec-row-watch">
+            <button id="watchBtn" class="sec-panel-btn sec-panel-btn-inline" onclick="toggleWatch()">
+              <span class="sec-panel-btn-label">🔔 Screen Watch</span>
+              <span class="sec-panel-btn-sub">Alert when a string appears on screen</span>
+            </button>
+          </div>
+          <div class="sec-row" id="watchInputRow" style="display:none;padding:0 0 4px 0">
+            <input id="watchInput" class="sec-watch-input" type="text" placeholder="watch string…"
+                   oninput="_watchString=this.value; _watchLastHit='';"
+                   onkeydown="if(event.key==='Escape')toggleWatch();" />
+          </div>
+        </div>
+      </div>
+
+      <!-- INJECT section -->
+      <div class="sec-section">
+        <div class="sec-section-hdr">INJECT</div>
+        <div class="sec-section-body">
+          <div class="sec-row">
+            <div class="sec-inject-row">
+              <select id="keyInjectSelect" class="sec-inject-select" title="Choose a 3270 function key to inject">
+                <optgroup label="── Transmit ──">
+                  <option value="ENTER">ENTER</option>
+                  <option value="CLEAR">CLEAR</option>
+                  <option value="SYSREQ">SYSREQ</option>
+                </optgroup>
+                <optgroup label="── PA keys (no field data) ──">
+                  <option value="PA1">PA1  (Attn / Break)</option>
+                  <option value="PA2">PA2</option>
+                  <option value="PA3">PA3</option>
+                </optgroup>
+                <optgroup label="── PF 1–12 (F1–F12) ──">
+                  <option value="PF1">PF1</option><option value="PF2">PF2</option>
+                  <option value="PF3">PF3</option><option value="PF4">PF4</option>
+                  <option value="PF5">PF5</option><option value="PF6">PF6</option>
+                  <option value="PF7">PF7</option><option value="PF8">PF8</option>
+                  <option value="PF9">PF9</option><option value="PF10">PF10</option>
+                  <option value="PF11">PF11</option><option value="PF12">PF12</option>
+                </optgroup>
+                <optgroup label="── PF 13–24 (Shift+F1–F12) ──">
+                  <option value="PF13">PF13</option><option value="PF14">PF14</option>
+                  <option value="PF15">PF15</option><option value="PF16">PF16</option>
+                  <option value="PF17">PF17</option><option value="PF18">PF18</option>
+                  <option value="PF19">PF19</option><option value="PF20">PF20</option>
+                  <option value="PF21">PF21</option><option value="PF22">PF22</option>
+                  <option value="PF23">PF23</option><option value="PF24">PF24</option>
+                </optgroup>
+              </select>
+              <button class="sec-inject-btn" onclick="secInjectKey()">▶ INJECT</button>
+              <span id="keyInjectFeedback" style="font-size:9px;color:#3a9a6a;transition:opacity 0.4s;opacity:0"></span>
+            </div>
+            <div class="sec-panel-hint">Sends the selected AID key directly to the host. Does not type text — use the terminal for that.</div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- end panelSecurity -->
 
   </div><!-- end right-panel -->
 </div><!-- end main-layout -->

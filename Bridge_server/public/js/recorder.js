@@ -64,14 +64,7 @@ async function toggleRecording() {
       const cd       = r.headers.get('Content-Disposition') || '';
       const fnMatch  = cd.match(/filename="([^"]+)"/);
       const filename = fnMatch ? fnMatch[1] : 'webterm-recording.rec.json';
-      const url      = URL.createObjectURL(blob);
-      const a        = document.createElement('a');
-      a.href         = url;
-      a.download     = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      await saveAs(blob, filename);
       _showRecStatus(`Saved: ${filename}`);
     } catch (err) {
       _showRecStatus('Server error: ' + err.message, true);
