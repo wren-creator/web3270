@@ -143,6 +143,16 @@ tbody tr.expanded { background: rgba(255,255,255,0.03); }
   color: #2a4a6a;
   font-size: 11px;
 }
+
+.resize-handle {
+  height: 5px;
+  background: #080e18;
+  border-top: 1px solid #0d1a2a;
+  cursor: ns-resize;
+  flex-shrink: 0;
+  user-select: none;
+}
+.resize-handle:hover { background: #0d1a2a; }
 </style>
 </head>
 <body>
@@ -196,6 +206,7 @@ tbody tr.expanded { background: rgba(255,255,255,0.03); }
   </table>
   <div class="empty-msg" id="emptyMsg">No traffic captured yet. Connect to an LPAR and press a key.</div>
 </div>
+<div class="resize-handle" id="resizeHandle"></div>
 
 <script>
 let allEntries  = [];
@@ -300,12 +311,47 @@ function reapply() {
 // ── Actions ───────────────────────────────────────────────────────
 
 function downloadCsv() {
-  const a = document.createElement('a');
-  a.href = '/api/traffic/csv';
-  a.download = 'traffic-log.csv';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
+  const ts   = new Date().toISOString().slice(0,19).replace(/[:.]/g,'-');
+  const name = `traffic-log-${ts}.csv`;
+  promptSaveAs(name, async finalName => {
+    if (window.showSaveFilePicker) {
+      try {
+        const handle   = await showSaveFilePicker({ suggestedName: finalName, types: [{ description: 'CSV', accept: { 'text/csv': ['.csv'] } }] });
+        const r        = await fetch('/api/traffic/csv');
+        const writable = await handle.createWritable();
+        await writable.write(await r.blob());
+        await writable.close();
+        return;
+      } catch (e) { if (e.name === 'AbortError') return; }
+    }
+    const a = document.createElement('a');
+    a.href = '/api/traffic/csv'; a.download = finalName;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  });
+}
+
+function promptSaveAs(suggestedName, onSave) {
+  const old = document.getElementById('saveAsDialog');
+  if (old) old.remove();
+  const el = document.createElement('div');
+  el.id = 'saveAsDialog';
+  el.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#0e0e1c;border:2px solid #2a4a6a;border-radius:6px;padding:20px 22px;z-index:99999;min-width:340px;font-family:IBM Plex Mono,monospace;box-shadow:0 8px 32px rgba(0,0,0,0.9)';
+  el.innerHTML = `<div style="font-size:10px;font-weight:700;letter-spacing:0.1em;color:#2a6a8a;margin-bottom:12px;text-transform:uppercase">Save File</div>
+    <input id="saveAsName" type="text" value="${suggestedName.replace(/"/g,'')}"
+      style="width:100%;box-sizing:border-box;background:#08081a;border:1px solid #2a5a7a;border-radius:3px;color:#8acce8;font-family:inherit;font-size:12px;padding:7px 10px;outline:none;margin-bottom:14px;" spellcheck="false" />
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button id="saveAsCancel" style="background:#12121f;border:1px solid #333;border-radius:3px;color:#666;font-family:inherit;font-size:11px;padding:5px 14px;cursor:pointer;">Cancel</button>
+      <button id="saveAsOk" style="background:#0a2040;border:1px solid #2a5a8a;border-radius:3px;color:#5a9acc;font-family:inherit;font-size:11px;font-weight:700;padding:5px 14px;cursor:pointer;">Save</button>
+    </div>`;
+  document.body.appendChild(el);
+  const input = el.querySelector('#saveAsName');
+  input.focus();
+  const dotIdx = suggestedName.lastIndexOf('.');
+  input.setSelectionRange(0, dotIdx > 0 ? dotIdx : suggestedName.length);
+  function confirm() { const n = input.value.trim() || suggestedName; el.remove(); onSave(n); }
+  el.querySelector('#saveAsOk').addEventListener('click', confirm);
+  el.querySelector('#saveAsCancel').addEventListener('click', () => el.remove());
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') confirm(); if (e.key === 'Escape') el.remove(); });
 }
 
 async function clearLog() {
@@ -341,6 +387,27 @@ function toggleMinimize() {
 
 // ── Init ──────────────────────────────────────────────────────────
 loadData();
+
+// ── Resize handle ─────────────────────────────────────────────────
+(function() {
+  const handle = document.getElementById('resizeHandle');
+  let startY, startH;
+  handle.addEventListener('mousedown', e => {
+    startY = e.screenY;
+    startH = window.outerHeight;
+    const onMove = ev => {
+      const delta = ev.screenY - startY;
+      try { window.resizeTo(window.outerWidth, Math.max(120, startH + delta)); } catch {}
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    e.preventDefault();
+  });
+})();
 </script>
 </body>
 </html>
