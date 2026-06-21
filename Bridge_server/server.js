@@ -24,6 +24,16 @@ const Ebcdic         = require('./tn3270/ebcdic');
 
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
+// ── Passive traffic log ────────────────────────────────────────────
+// Captures AID key events (client→host) and screen events (host→client)
+// across all sessions. Ring buffer; no SQLite dependency needed.
+const TRAFFIC_LOG_MAX = 1000;
+const trafficLog = [];
+function logTraffic(entry) {
+  trafficLog.push(entry);
+  if (trafficLog.length > TRAFFIC_LOG_MAX) trafficLog.shift();
+}
+
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.css':  'text/css',
@@ -36,6 +46,76 @@ const MIME = {
 
 // ── HTTP server ────────────────────────────────────────────────────
 const httpServer = http.createServer((req, res) => {
+
+  // GET /api/traffic — return traffic log as JSON for the session log viewer
+  if (req.url === '/api/traffic' && req.method === 'GET') {
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-cache',
+      'Access-Control-Allow-Origin': '*',
+    });
+    res.end(JSON.stringify(trafficLog));
+    return;
+  }
+
+  // GET /api/traffic/csv — download passive traffic log as CSV
+  if (req.url === '/api/traffic/csv' && req.method === 'GET') {
+    const rows = [['timestamp','wsId','direction','aid','screenText']];
+    for (const e of trafficLog) {
+      rows.push([e.ts, String(e.wsId), e.direction, e.aid || '', (e.screenText || '').replace(/"/g, '""')]);
+    }
+    const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\r\n');
+    res.writeHead(200, {
+      'Content-Type': 'text/csv',
+      'Content-Disposition': 'attachment; filename="traffic-log.csv"',
+      'Access-Control-Allow-Origin': '*',
+    });
+    res.end(csv);
+    return;
+  }
+
+  // DELETE /api/traffic/csv — clear traffic log
+  if (req.url === '/api/traffic/csv' && req.method === 'DELETE') {
+    trafficLog.length = 0;
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify({ ok: true }));
+    return;
+  }
+
+  // GET /api/logs/stream — SSE stream of bridge log entries
+  if (req.url === '/api/logs/stream' && req.method === 'GET') {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+    });
+    for (const entry of logger.getBuffer()) {
+      res.write(`data: ${JSON.stringify(entry)}\n\n`);
+    }
+    const onLog = entry => {
+      if (!res.writableEnded) res.write(`data: ${JSON.stringify(entry)}\n\n`);
+    };
+    logger.emitter.on('log', onLog);
+    req.on('close', () => logger.emitter.removeListener('log', onLog));
+    return;
+  }
+
+  // GET /api/logs/csv — download bridge logs as CSV
+  if (req.url === '/api/logs/csv' && req.method === 'GET') {
+    const rows = [['timestamp','level','message']];
+    for (const e of logger.getBuffer()) {
+      rows.push([e.ts, e.level, e.msg.replace(/"/g, '""')]);
+    }
+    const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\r\n');
+    res.writeHead(200, {
+      'Content-Type': 'text/csv',
+      'Content-Disposition': 'attachment; filename="bridge-logs.csv"',
+      'Access-Control-Allow-Origin': '*',
+    });
+    res.end(csv);
+    return;
+  }
 
   // GET /api/profiles — returns LPAR list from config / .env
   if (req.url === '/api/profiles' && req.method === 'GET') {
@@ -295,6 +375,10 @@ const httpServer = http.createServer((req, res) => {
     filePath = path.join(PUBLIC_DIR, 'tn3270-client-demo.html');
   } else if (urlPath === '/replay' || urlPath === '/replay.html') {
     filePath = path.join(PUBLIC_DIR, 'replay.html');
+  } else if (urlPath === '/logs' || urlPath === '/logs.html') {
+    filePath = path.join(PUBLIC_DIR, 'logs.html');
+  } else if (urlPath === '/traffic' || urlPath === '/traffic.html') {
+    filePath = path.join(PUBLIC_DIR, 'traffic.html');
   } else if (urlPath === '/copilot' || urlPath === '/copilot.html') {
     filePath = path.join(PUBLIC_DIR, 'copilot-panel-standalone.html');
   } else {
@@ -398,6 +482,14 @@ wss.on('connection', (ws, req) => {
       session.lastScreen = screenData;  // cache for dataset listing
       session.lastScreen.fields = screenData.fields || [];
       send(ws, { type: 'screen', ...screenData });
+      // Passive traffic log — mask nondisplay (password) cells
+      logTraffic({
+        ts: new Date().toISOString(),
+        wsId,
+        direction: 'host→client',
+        aid: '',
+        screenText: screenToLinesMasked(screenData).filter(l => l.trim()).join(' | ').substring(0, 300),
+      });
       // Record inbound screen if recording is active
       if (recordings.has(wsId)) {
         const rec = recordings.get(wsId);
@@ -507,6 +599,13 @@ wss.on('connection', (ws, req) => {
         case 'key':
           // { type:'key', aid:'ENTER'|'PF1'…'PF24'|'PA1'|'PA2'|'CLEAR', fields:[{addr,data}] }
           session.sendAid(msg.aid, session.getModifiedFields());
+          logTraffic({
+            ts: new Date().toISOString(),
+            wsId,
+            direction: 'client→host',
+            aid: msg.aid,
+            screenText: session.lastScreen ? screenToLinesMasked(session.lastScreen).filter(l => l.trim()).join(' | ').substring(0, 300) : '',
+          });
           break;
 
         case 'type':
@@ -1012,6 +1111,14 @@ function screenToLines(screenData) {
   return (screenData.rows || []).map(row =>
     (Array.isArray(row) ? row : [])
       .map(c => c.char && c.char !== '\x00' ? c.char : ' ')
+      .join('')
+  );
+}
+
+function screenToLinesMasked(screenData) {
+  return (screenData.rows || []).map(row =>
+    (Array.isArray(row) ? row : [])
+      .map(c => (c.nondisplay && c.char && c.char !== ' ') ? '#' : (c.char && c.char !== '\x00' ? c.char : ' '))
       .join('')
   );
 }

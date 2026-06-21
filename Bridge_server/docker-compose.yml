@@ -42,7 +42,6 @@ services:
 
     networks:
       - tn3270-net
-      - gibson-net
 
     deploy:
       resources:
@@ -100,5 +99,3 @@ services:
 networks:
   tn3270-net:
     driver: bridge
-  gibson-net:
-    external: true

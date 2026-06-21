@@ -474,6 +474,24 @@ body.field-map-overlay .oia-bar::before {
 .stb-icon { font-size: 9px; opacity: 0.7; }
 .stb-label { font-size: 9px; font-weight: 400; color: var(--text-muted); letter-spacing: 0.04em; }
 .sec-tool-btn-active .stb-label { color: var(--accent-amber); opacity: 0.7; }
+.sec-inject-select {
+  background: #0a1020;
+  border: 1px solid #2a4a6a;
+  border-radius: 3px;
+  color: #8aaccc;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  padding: 2px 20px 2px 6px;
+  cursor: pointer;
+  /* visible dropdown arrow */
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%234a7aaa'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 5px center;
+}
+.sec-inject-select:hover { border-color: #4a8fcc; }
+.sec-inject-select:focus { outline: none; border-color: var(--accent-cyan); }
 
 /* ── Session Anomaly Annotations ─────────────────────────────────── */
 .anomaly-bar {
