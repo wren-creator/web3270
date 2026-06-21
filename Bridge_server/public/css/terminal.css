@@ -208,6 +208,20 @@ body.no-highlights .field-dim          { color:var(--t-green); font-weight:norma
 .hl-under   { text-decoration: underline; }
 .hl-intens  { color: var(--t-white) !important; filter: brightness(1.4); }
 
+/* ── Color Reveal mode — strips all extended color/highlight ─────── */
+body.color-reveal .c-blue,
+body.color-reveal .c-red,
+body.color-reveal .c-pink,
+body.color-reveal .c-green,
+body.color-reveal .c-turq,
+body.color-reveal .c-yellow,
+body.color-reveal .c-white  { color: var(--t-green) !important; }
+body.color-reveal .hl-blink { animation: none !important; opacity: 1 !important; }
+body.color-reveal .hl-reverse { background: none !important; color: var(--t-green) !important; }
+body.color-reveal .hl-under { text-decoration: none !important; }
+body.color-reveal .hl-intens { filter: none !important; color: var(--t-green) !important; }
+body.color-reveal .field-nondisplay { color: var(--t-green) !important; opacity: 1 !important; }
+
 /* ── OIA BAR ───────────────────────────────────────────────────── */
 .oia-bar { background:#060c14;border-top:1px solid #0d1f14;padding:3px 12px;display:flex;align-items:center;gap:20px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#3a7050;flex-shrink:0; }
 .oia-field { display:flex;align-items:center;gap:6px; }
