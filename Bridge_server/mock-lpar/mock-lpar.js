@@ -31,6 +31,8 @@ const TN3E_SEND        = 0x08;
 const CMD_ERASE_WRITE = 0xF5;
 const CMD_WRITE       = 0xF1;
 const ORDER_SF  = 0x1D;
+const ORDER_SFE = 0x29;  // Start Field Extended (with color/highlight pairs)
+const ORDER_SA  = 0x28;  // Set Attribute (character-level color/highlight)
 const ORDER_SBA = 0x11;
 const ORDER_IC  = 0x13;
 
@@ -38,6 +40,21 @@ const FA_PROTECTED       = 0x60;
 const FA_PROTECTED_HIGH  = 0xE0;
 const FA_UNPROTECTED     = 0x40;
 const FA_UNPROTECTED_NUM = 0x50;
+
+// 3270 extended color codes (SFE/SA type 0x42)
+const COL_BLUE   = 0xF1;
+const COL_RED    = 0xF2;
+const COL_PINK   = 0xF3;
+const COL_GREEN  = 0xF4;
+const COL_TURQ   = 0xF5;
+const COL_YELLOW = 0xF6;
+const COL_WHITE  = 0xF7;
+
+// 3270 highlight codes (SFE/SA type 0x41)
+const HL_BLINK   = 0xF1;
+const HL_REVERSE = 0xF2;
+const HL_UNDER   = 0xF4;
+const HL_INTENS  = 0xF8;
 
 const AID_ENTER = 0x7D;
 const AID_CLEAR = 0x6D;
@@ -91,9 +108,24 @@ function buildScreen(eraseFirst, fields) {
   const parts = [eraseFirst ? CMD_ERASE_WRITE : CMD_WRITE, 0xC3];
   for (const f of fields) {
     parts.push(...sba(f.row, f.col));
-    if (f.fa !== undefined) parts.push(ORDER_SF, f.fa);
-    if (f.ic) parts.push(0x13); // IC — Insert Cursor here
+    if (f.fa !== undefined) {
+      if (f.color !== undefined || f.highlight !== undefined) {
+        // SFE: pair count, then [type, value] pairs
+        const pairs = [[0xC0, f.fa]];                          // basic FA pair
+        if (f.color     !== undefined) pairs.push([0x42, f.color]);
+        if (f.highlight !== undefined) pairs.push([0x41, f.highlight]);
+        parts.push(ORDER_SFE, pairs.length);
+        for (const [t, v] of pairs) parts.push(t, v);
+      } else {
+        parts.push(ORDER_SF, f.fa);
+      }
+    }
+    if (f.ic) parts.push(ORDER_IC);
+    // Inline SA — character-level color/highlight before text, reset after
+    if (f.saColor     !== undefined) parts.push(ORDER_SA, 0x42, f.saColor);
+    if (f.saHighlight !== undefined) parts.push(ORDER_SA, 0x41, f.saHighlight);
     if (f.text) for (const b of toEbcdic(f.text)) parts.push(b);
+    if (f.saColor !== undefined || f.saHighlight !== undefined) parts.push(ORDER_SA, 0x00, 0x00);
   }
   return Buffer.from(parts);
 }
@@ -103,29 +135,29 @@ function screenLogon() {
   const timeStr = now.toLocaleTimeString('en-US', { hour12: false });
   const dateStr = now.toLocaleDateString('en-GB');
   return buildScreen(true, [
-    { row:1,  col:20, fa: FA_PROTECTED_HIGH },
+    { row:1,  col:20, fa: FA_PROTECTED_HIGH, color: COL_WHITE, highlight: HL_INTENS },
     { row:1,  col:21, text: `IBM z/OS  -  ${SYSNAME}  -  TSO/E LOGON` },
-    { row:3,  col:2,  fa: FA_PROTECTED },
+    { row:3,  col:2,  fa: FA_PROTECTED, color: COL_TURQ },
     { row:3,  col:2,  text: 'Enter LOGON parameters below:' },
     { row:3,  col:40, text: 'RACF LOGON parameters:' },
-    { row:5,  col:2,  fa: FA_PROTECTED },
+    { row:5,  col:2,  fa: FA_PROTECTED, color: COL_BLUE },
     { row:5,  col:2,  text: 'Userid  ===>' },
-    { row:5,  col:14, fa: FA_UNPROTECTED, ic: true },
+    { row:5,  col:14, fa: FA_UNPROTECTED, color: COL_GREEN, ic: true },
     { row:5,  col:14, text: '        ' },
-    { row:6,  col:2,  fa: FA_PROTECTED },
+    { row:6,  col:2,  fa: FA_PROTECTED, color: COL_BLUE },
     { row:6,  col:2,  text: 'Password===>' },
-    { row:6,  col:14, fa: FA_UNPROTECTED_NUM },
+    { row:6,  col:14, fa: FA_UNPROTECTED_NUM, color: COL_GREEN },
     { row:6,  col:14, text: '        ' },
-    { row:7,  col:2,  fa: FA_PROTECTED },
+    { row:7,  col:2,  fa: FA_PROTECTED, color: COL_BLUE },
     { row:7,  col:2,  text: 'Procedure==> TSOPROC' },
-    { row:7,  col:40, fa: FA_PROTECTED },
+    { row:7,  col:40, fa: FA_PROTECTED, color: COL_BLUE },
     { row:7,  col:40, text: 'Acct Nmbr===> DEMO01' },
-    { row:10, col:2,  fa: FA_PROTECTED },
+    { row:10, col:2,  fa: FA_PROTECTED, color: COL_TURQ },
     { row:10, col:2,  text: "Enter an 'S' before each option desired below:" },
     { row:11, col:18, text: '-Nomail         -Nonotice       -Reconnect' },
-    { row:13, col:2,  fa: FA_PROTECTED },
+    { row:13, col:2,  fa: FA_PROTECTED, color: COL_BLUE },
     { row:13, col:2,  text: 'PF1/PF13 ==> Help   PF3/PF15 ==> Logoff   PA1 ==> Attention' },
-    { row:15, col:2,  fa: FA_PROTECTED },
+    { row:15, col:2,  fa: FA_PROTECTED, color: COL_GREEN },
     { row:15, col:2,  text: `${SYSNAME} - Mock LPAR Daemon v1.0  ${dateStr}  ${timeStr}` },
   ]);
 }
@@ -133,36 +165,37 @@ function screenLogon() {
 function screenISPF(userid = 'DEMO') {
   const timeStr = new Date().toLocaleTimeString('en-US', { hour12: false });
   return buildScreen(true, [
-    { row:0,  col:24, fa: FA_PROTECTED_HIGH },
+    { row:0,  col:24, fa: FA_PROTECTED_HIGH, color: COL_WHITE, highlight: HL_UNDER },
     { row:0,  col:25, text: 'ISPF Primary Option Menu' },
-    { row:2,  col:2,  fa: FA_PROTECTED_HIGH },
+    { row:2,  col:2,  fa: FA_PROTECTED_HIGH, color: COL_WHITE },
     { row:2,  col:2,  text: 'Option ===>' },
-    { row:2,  col:13, fa: FA_UNPROTECTED, ic: true },
+    { row:2,  col:13, fa: FA_UNPROTECTED, color: COL_GREEN, ic: true },
     { row:2,  col:13, text: '    ' },
-    { row:4,  col:2,  fa: FA_PROTECTED },
-    { row:4,  col:5,  text: '0' },
+    // Each option: yellow number, turquoise description — two SFE fields per row
+    { row:4,  col:2,  fa: FA_PROTECTED, color: COL_TURQ },
+    { row:4,  col:5,  saColor: COL_YELLOW, text: '0' },
     { row:4,  col:8,  text: 'Settings       Terminal and user parameters' },
-    { row:5,  col:5,  text: '1' },
+    { row:5,  col:5,  saColor: COL_YELLOW, text: '1' },
     { row:5,  col:8,  text: 'View           Display source data or listings' },
-    { row:6,  col:5,  text: '2' },
+    { row:6,  col:5,  saColor: COL_YELLOW, text: '2' },
     { row:6,  col:8,  text: 'Edit           Create or change source data' },
-    { row:7,  col:5,  text: '3' },
+    { row:7,  col:5,  saColor: COL_YELLOW, text: '3' },
     { row:7,  col:8,  text: 'Utilities      Perform utility functions' },
-    { row:7,  col:40, text: '3.4 Dataset List' },
-    { row:8,  col:5,  text: '4' },
+    { row:7,  col:40, saColor: COL_PINK, text: '3.4 Dataset List' },
+    { row:8,  col:5,  saColor: COL_YELLOW, text: '4' },
     { row:8,  col:8,  text: 'Foreground     Interactive language processing' },
-    { row:9,  col:5,  text: '5' },
+    { row:9,  col:5,  saColor: COL_YELLOW, text: '5' },
     { row:9,  col:8,  text: 'Batch          Submit job for language processing' },
-    { row:10, col:5,  text: '6' },
+    { row:10, col:5,  saColor: COL_YELLOW, text: '6' },
     { row:10, col:8,  text: 'Command        Enter TSO or Workstation commands' },
-    { row:11, col:5,  text: 'M' },
+    { row:11, col:5,  saColor: COL_YELLOW, text: 'M' },
     { row:11, col:8,  text: 'SDSF           System Display and Search Facility' },
-    { row:13, col:5,  text: 'X' },
+    { row:13, col:5,  saColor: COL_YELLOW, text: 'X' },
     { row:13, col:8,  text: 'Exit           Terminate ISPF using log/list defaults' },
-    { row:20, col:1,  fa: FA_PROTECTED },
+    { row:20, col:1,  fa: FA_PROTECTED, color: COL_BLUE },
     { row:20, col:1,  text: ` User ID . : ${userid.padEnd(8)}    Time. . .: ${timeStr}` },
     { row:21, col:1,  text: ` System ID : ${SYSNAME.padEnd(8)}    Terminal .: 3278` },
-    { row:23, col:0,  fa: FA_PROTECTED },
+    { row:23, col:0,  fa: FA_PROTECTED, color: COL_BLUE },
     { row:23, col:0,  text: 'F1=Help   F2=Split  F3=Exit   F7=Backward  F8=Forward  F12=Cancel' },
   ]);
 }
@@ -170,23 +203,23 @@ function screenISPF(userid = 'DEMO') {
 function screenISPF34(userid = 'DEMO', dsLevel = '') {
   const level = dsLevel || userid.toUpperCase();
   return buildScreen(true, [
-    { row:0,  col:0,  fa: FA_PROTECTED_HIGH },
+    { row:0,  col:0,  fa: FA_PROTECTED_HIGH, color: COL_WHITE, highlight: HL_INTENS },
     { row:0,  col:1,  text: 'ISPF  Data Set List Utility' },
-    { row:0,  col:55, fa: FA_PROTECTED },
+    { row:0,  col:55, fa: FA_PROTECTED, color: COL_BLUE },
     { row:0,  col:55, text: 'Row 1 of 10' },
-    { row:1,  col:0,  fa: FA_PROTECTED },
+    { row:1,  col:0,  fa: FA_PROTECTED, color: COL_WHITE },
     { row:1,  col:1,  text: 'Command ==>' },
-    { row:1,  col:12, fa: FA_UNPROTECTED },
+    { row:1,  col:12, fa: FA_UNPROTECTED, color: COL_GREEN },
     { row:1,  col:12, text: '                                    ' },
-    { row:1,  col:49, fa: FA_PROTECTED },
+    { row:1,  col:49, fa: FA_PROTECTED, color: COL_WHITE },
     { row:1,  col:49, text: 'Scroll ===> CSR' },
-    { row:2,  col:1,  fa: FA_PROTECTED },
+    { row:2,  col:1,  fa: FA_PROTECTED, color: COL_TURQ },
     { row:2,  col:1,  text: 'Dsname Level. . ' + level.padEnd(8) },
-    { row:3,  col:0,  fa: FA_PROTECTED },
+    { row:3,  col:0,  fa: FA_PROTECTED, color: COL_TURQ },
     { row:3,  col:1,  text: 'Volume serial .        Optionally enter a volume serial' },
-    { row:4,  col:0,  fa: FA_PROTECTED_HIGH },
+    { row:4,  col:0,  fa: FA_PROTECTED_HIGH, color: COL_YELLOW },
     { row:4,  col:1,  text: 'Name                             Tracks  XT Used  XT Dsorg Recfm Lrecl BlkSz' },
-    { row:5,  col:0,  fa: FA_PROTECTED },
+    { row:5,  col:0,  fa: FA_PROTECTED, color: COL_TURQ },
     { row:5,  col:1,  text: ' ' + level + '.JCL.CNTL                       15   1   15   1 PO    FB       80 27920' },
     { row:6,  col:1,  text: ' ' + level + '.REXX.EXEC                        5   1    5   1 PO    VB       80  6160' },
     { row:7,  col:1,  text: ' ' + level + '.DATA.INPUT                      20   1   18   1 PS    FB       80 27920' },
@@ -197,101 +230,115 @@ function screenISPF34(userid = 'DEMO', dsLevel = '') {
     { row:12, col:1,  text: ' ' + level + '.PANELS                           5   1    5   1 PO    FB       80  6160' },
     { row:13, col:1,  text: ' ' + level + '.MSGS                             5   1    5   1 PO    FB       80  6160' },
     { row:14, col:1,  text: ' ' + level + '.WORK.DATA                       10   1    3   1 PS    FB       80 27920' },
-    { row:15, col:0,  fa: FA_PROTECTED_HIGH },
+    { row:15, col:0,  fa: FA_PROTECTED_HIGH, color: COL_WHITE },
     { row:15, col:1,  text: '**END**' },
-    { row:23, col:0,  fa: FA_PROTECTED },
+    { row:23, col:0,  fa: FA_PROTECTED, color: COL_BLUE },
     { row:23, col:0,  text: 'F1=Help  F2=Split  F3=Exit  F5=Reset  F7=Up  F8=Down  F10=Left  F11=Right' },
   ]);
 }
 
 function screenEdit() {
   return buildScreen(true, [
-    { row:0,  col:0,  fa: FA_PROTECTED_HIGH },
+    { row:0,  col:0,  fa: FA_PROTECTED_HIGH, color: COL_WHITE, highlight: HL_INTENS },
     { row:0,  col:1,  text: 'Edit - DEMO.JCL.CNTL(MYJOB) - 01.00          Columns 00001 00072' },
-    { row:1,  col:1,  fa: FA_PROTECTED },
+    { row:1,  col:1,  fa: FA_PROTECTED, color: COL_WHITE },
     { row:1,  col:1,  text: 'Command ===>' },
-    { row:1,  col:13, fa: FA_UNPROTECTED },
+    { row:1,  col:13, fa: FA_UNPROTECTED, color: COL_GREEN },
     { row:1,  col:13, text: '                                    ' },
-    { row:1,  col:50, fa: FA_PROTECTED },
+    { row:1,  col:50, fa: FA_PROTECTED, color: COL_WHITE },
     { row:1,  col:50, text: 'Scroll ===> CSR' },
-    { row:2,  col:0,  fa: FA_PROTECTED },
-    { row:2,  col:0,  text: '000001 //MYJOB    JOB (DEMO),' },
-    { row:3,  col:0,  text: "000002 //             'DEMO BATCH JOB'," },
-    { row:4,  col:0,  text: '000003 //             CLASS=A,MSGCLASS=X,' },
-    { row:5,  col:0,  text: '000004 //             NOTIFY=&SYSUID' },
-    { row:6,  col:0,  text: '000005 //*' },
-    { row:7,  col:0,  text: '000006 //COPY     EXEC PGM=IEBGENER' },
-    { row:8,  col:0,  text: '000007 //SYSPRINT DD SYSOUT=*' },
-    { row:9,  col:0,  text: '000008 //SYSUT1   DD DSN=PROD.INPUT.DATA,DISP=SHR' },
-    { row:10, col:0,  text: '000009 //SYSUT2   DD DSN=WORK.OUTPUT.DATA,' },
-    { row:11, col:0,  text: '000010 //             DISP=(NEW,CATLG,DELETE),' },
-    { row:12, col:0,  text: '000011 //             SPACE=(CYL,(5,2),RLSE),' },
-    { row:13, col:0,  text: '000012 //             DCB=(RECFM=FB,LRECL=80,BLKSIZE=27920)' },
-    { row:14, col:0,  text: '000013 //SYSIN    DD DUMMY' },
-    { row:23, col:0,  fa: FA_PROTECTED },
+    // Line numbers in green, JCL text in turquoise via SA
+    { row:2,  col:0,  fa: FA_PROTECTED, color: COL_GREEN },
+    { row:2,  col:0,  saColor: COL_GREEN,  text: '000001' },
+    { row:2,  col:7,  saColor: COL_TURQ,   text: '//MYJOB    JOB (DEMO),' },
+    { row:3,  col:0,  saColor: COL_GREEN,  text: '000002' },
+    { row:3,  col:7,  saColor: COL_TURQ,   text: "//             'DEMO BATCH JOB'," },
+    { row:4,  col:0,  saColor: COL_GREEN,  text: '000003' },
+    { row:4,  col:7,  saColor: COL_TURQ,   text: '//             CLASS=A,MSGCLASS=X,' },
+    { row:5,  col:0,  saColor: COL_GREEN,  text: '000004' },
+    { row:5,  col:7,  saColor: COL_TURQ,   text: '//             NOTIFY=&SYSUID' },
+    { row:6,  col:0,  saColor: COL_GREEN,  text: '000005' },
+    { row:6,  col:7,  saColor: COL_YELLOW, text: '//*' },
+    { row:7,  col:0,  saColor: COL_GREEN,  text: '000006' },
+    { row:7,  col:7,  saColor: COL_TURQ,   text: '//COPY     EXEC PGM=IEBGENER' },
+    { row:8,  col:0,  saColor: COL_GREEN,  text: '000007' },
+    { row:8,  col:7,  saColor: COL_TURQ,   text: '//SYSPRINT DD SYSOUT=*' },
+    { row:9,  col:0,  saColor: COL_GREEN,  text: '000008' },
+    { row:9,  col:7,  saColor: COL_TURQ,   text: '//SYSUT1   DD DSN=PROD.INPUT.DATA,DISP=SHR' },
+    { row:10, col:0,  saColor: COL_GREEN,  text: '000009' },
+    { row:10, col:7,  saColor: COL_TURQ,   text: '//SYSUT2   DD DSN=WORK.OUTPUT.DATA,' },
+    { row:11, col:0,  saColor: COL_GREEN,  text: '000010' },
+    { row:11, col:7,  saColor: COL_TURQ,   text: '//             DISP=(NEW,CATLG,DELETE),' },
+    { row:12, col:0,  saColor: COL_GREEN,  text: '000011' },
+    { row:12, col:7,  saColor: COL_TURQ,   text: '//             SPACE=(CYL,(5,2),RLSE),' },
+    { row:13, col:0,  saColor: COL_GREEN,  text: '000012' },
+    { row:13, col:7,  saColor: COL_TURQ,   text: '//             DCB=(RECFM=FB,LRECL=80,BLKSIZE=27920)' },
+    { row:14, col:0,  saColor: COL_GREEN,  text: '000013' },
+    { row:14, col:7,  saColor: COL_TURQ,   text: '//SYSIN    DD DUMMY' },
+    { row:23, col:0,  fa: FA_PROTECTED, color: COL_BLUE },
     { row:23, col:0,  text: 'F2=Split  F3=Exit  F5=Rfind  F6=Rchange  F7=Up  F8=Down  F14=Save' },
   ]);
 }
 
 function screenSDSF() {
   return buildScreen(true, [
-    { row:0,  col:0,  fa: FA_PROTECTED_HIGH },
+    { row:0,  col:0,  fa: FA_PROTECTED_HIGH, color: COL_WHITE, highlight: HL_INTENS },
     { row:0,  col:1,  text: 'SDSF OUTPUT DISPLAY MYJOB   JOB07432  DSID   2 LINE 0    COLUMNS 02-81' },
-    { row:1,  col:1,  fa: FA_PROTECTED },
+    { row:1,  col:1,  fa: FA_PROTECTED, color: COL_WHITE },
     { row:1,  col:1,  text: 'COMMAND INPUT ===>' },
-    { row:1,  col:18, fa: FA_UNPROTECTED },
+    { row:1,  col:18, fa: FA_UNPROTECTED, color: COL_GREEN },
     { row:1,  col:18, text: '                              ' },
-    { row:1,  col:49, fa: FA_PROTECTED },
+    { row:1,  col:49, fa: FA_PROTECTED, color: COL_WHITE },
     { row:1,  col:49, text: 'SCROLL ===> PAGE' },
-    { row:3,  col:0,  fa: FA_PROTECTED },
+    { row:3,  col:0,  fa: FA_PROTECTED, color: COL_TURQ },
     { row:3,  col:9,  text: '1 //MYJOB    JOB (DEMO),CLASS=A,MSGCLASS=X' },
     { row:4,  col:9,  text: '2 //*' },
     { row:5,  col:9,  text: '3 //STEP1    EXEC PGM=IEFBR14' },
-    { row:8,  col:1,  text: 'IEF142I MYJOB STEP1 - STEP WAS EXECUTED - COND CODE 0000' },
-    { row:9,  col:1,  text: 'IEF285I   PROD.DATA.FILE                             KEPT' },
-    { row:18, col:1,  fa: FA_PROTECTED_HIGH },
+    { row:8,  col:1,  saColor: COL_GREEN, text: 'IEF142I MYJOB STEP1 - STEP WAS EXECUTED - COND CODE 0000' },
+    { row:9,  col:1,  saColor: COL_GREEN, text: 'IEF285I   PROD.DATA.FILE                             KEPT' },
+    { row:18, col:1,  fa: FA_PROTECTED_HIGH, color: COL_YELLOW },
     { row:18, col:1,  text: '*** END OF DATA ***' },
-    { row:23, col:0,  fa: FA_PROTECTED },
+    { row:23, col:0,  fa: FA_PROTECTED, color: COL_BLUE },
     { row:23, col:0,  text: 'F1=Help  F3=End  F5=RFind  F7=Up  F8=Down  F10=Left  F11=Right' },
   ]);
 }
 
 function screenError(cmd) {
   return buildScreen(true, [
-    { row:0,  col:0,  fa: FA_PROTECTED_HIGH },
+    { row:0,  col:0,  fa: FA_PROTECTED_HIGH, color: COL_RED, highlight: HL_REVERSE },
     { row:0,  col:1,  text: 'ISPF  ***  ERROR  ***' },
-    { row:2,  col:2,  fa: FA_PROTECTED },
+    { row:2,  col:2,  fa: FA_PROTECTED, color: COL_RED },
     { row:2,  col:2,  text: `Unknown option: '${(cmd || '').trim()}'` },
-    { row:4,  col:2,  text: 'Valid primary options: 0 1 2 3 4 5 6 M X' },
-    { row:5,  col:2,  text: 'Press PF3 to return to the Primary Option Menu.' },
-    { row:7,  col:2,  fa: FA_PROTECTED_HIGH },
+    { row:4,  col:2,  saColor: COL_TURQ, text: 'Valid primary options: 0 1 2 3 4 5 6 M X' },
+    { row:5,  col:2,  saColor: COL_TURQ, text: 'Press PF3 to return to the Primary Option Menu.' },
+    { row:7,  col:2,  fa: FA_PROTECTED_HIGH, color: COL_RED, highlight: HL_INTENS },
     { row:7,  col:2,  text: 'IKJ56500I COMMAND NOT FOUND' },
-    { row:23, col:0,  fa: FA_PROTECTED },
+    { row:23, col:0,  fa: FA_PROTECTED, color: COL_BLUE },
     { row:23, col:0,  text: 'F3=Return  F12=Cancel' },
   ]);
 }
 
 function screenReady(userid = 'DEMO', lastMsg = '') {
   const fields = [
-    { row:0,  col:0,  fa: FA_PROTECTED_HIGH },
+    { row:0,  col:0,  fa: FA_PROTECTED_HIGH, color: COL_WHITE, highlight: HL_INTENS },
     { row:0,  col:1,  text: `${SYSNAME} TSO/E - Ready` },
-    { row:0,  col:40, fa: FA_PROTECTED },
+    { row:0,  col:40, fa: FA_PROTECTED, color: COL_BLUE },
     { row:0,  col:40, text: `User: ${userid.padEnd(8)}` },
   ];
   if (lastMsg) {
-    fields.push({ row:2, col:0, fa: FA_PROTECTED });
+    fields.push({ row:2, col:0, fa: FA_PROTECTED, color: COL_GREEN });
     fields.push({ row:2, col:1, text: lastMsg });
   }
   fields.push(
-    { row:4,  col:0,  fa: FA_PROTECTED },
+    { row:4,  col:0,  fa: FA_PROTECTED, color: COL_TURQ },
     { row:4,  col:1,  text: 'Type a TSO command or ISPF to enter ISPF.' },
-    { row:4,  col:50, fa: FA_PROTECTED },
+    { row:4,  col:50, fa: FA_PROTECTED, color: COL_BLUE },
     { row:4,  col:50, text: 'PF3=Logoff' },
-    { row:6,  col:0,  fa: FA_PROTECTED_HIGH },
+    { row:6,  col:0,  fa: FA_PROTECTED_HIGH, color: COL_GREEN, highlight: HL_INTENS },
     { row:6,  col:1,  text: 'READY' },
-    { row:7,  col:0,  fa: FA_UNPROTECTED, ic: true },
+    { row:7,  col:0,  fa: FA_UNPROTECTED, color: COL_GREEN, ic: true },
     { row:7,  col:1,  text: '                                                ' },
-    { row:23, col:0,  fa: FA_PROTECTED },
+    { row:23, col:0,  fa: FA_PROTECTED, color: COL_BLUE },
     { row:23, col:0,  text: `${SYSNAME}  TSO READY  PF3=Logoff` },
   );
   return buildScreen(true, fields);
@@ -299,12 +346,12 @@ function screenReady(userid = 'DEMO', lastMsg = '') {
 
 function screenListapf() {
   return buildScreen(true, [
-    { row:0,  col:0,  fa: FA_PROTECTED_HIGH },
+    { row:0,  col:0,  fa: FA_PROTECTED_HIGH, color: COL_WHITE, highlight: HL_INTENS },
     { row:0,  col:1,  text: 'LISTAPF Output' },
-    { row:1,  col:0,  fa: FA_PROTECTED },
+    { row:1,  col:0,  fa: FA_PROTECTED, color: COL_TURQ },
     { row:1,  col:1,  text: 'APF-Authorized Libraries:' },
-    { row:3,  col:1,  text: 'Volume  Dataset Name' },
-    { row:4,  col:1,  text: '------  --------------------------------------------------------' },
+    { row:3,  col:1,  saColor: COL_YELLOW, text: 'Volume  Dataset Name' },
+    { row:4,  col:1,  saColor: COL_YELLOW, text: '------  --------------------------------------------------------' },
     { row:5,  col:1,  text: 'SYSRES  SYS1.LINKLIB' },
     { row:6,  col:1,  text: 'SYSRES  SYS1.LPALIB' },
     { row:7,  col:1,  text: 'SYSRES  SYS1.MIGLIB' },
@@ -312,23 +359,25 @@ function screenListapf() {
     { row:9,  col:1,  text: 'PROD01  CEE.SCEERUN' },
     { row:10, col:1,  text: 'PROD01  ISP.SISPLOAD' },
     { row:11, col:1,  text: 'PROD01  SYS1.CSSLIB' },
-    { row:12, col:1,  text: 'WORK01  USER.LOADLIB                    *** WRITABLE ***' },
-    { row:14, col:0,  fa: FA_PROTECTED_HIGH },
+    // Writable APF entry — dataset name normal, warning text blinks red
+    { row:12, col:1,  text: 'WORK01  USER.LOADLIB                    ' },
+    { row:12, col:42, saColor: COL_RED, saHighlight: HL_BLINK, text: '*** WRITABLE ***' },
+    { row:14, col:0,  fa: FA_PROTECTED_HIGH, color: COL_RED, highlight: HL_INTENS },
     { row:14, col:1,  text: 'IKJ56250I 8 entries found. USER.LOADLIB on WORK01 may be writable.' },
-    { row:16, col:0,  fa: FA_PROTECTED },
+    { row:16, col:0,  fa: FA_PROTECTED, color: COL_GREEN, highlight: HL_INTENS },
     { row:16, col:1,  text: 'READY' },
-    { row:23, col:0,  fa: FA_PROTECTED },
+    { row:23, col:0,  fa: FA_PROTECTED, color: COL_BLUE },
     { row:23, col:0,  text: 'Press ENTER or PF3 to return to READY prompt.' },
   ]);
 }
 
 function screenLista(userid = 'DEMO') {
   return buildScreen(true, [
-    { row:0,  col:0,  fa: FA_PROTECTED_HIGH },
+    { row:0,  col:0,  fa: FA_PROTECTED_HIGH, color: COL_WHITE, highlight: HL_INTENS },
     { row:0,  col:1,  text: 'LISTA Output - Allocated Datasets' },
-    { row:2,  col:0,  fa: FA_PROTECTED },
-    { row:2,  col:1,  text: `DDNAME   DSNAME                           DISP` },
-    { row:3,  col:1,  text: '-------- -------------------------------- ----' },
+    { row:2,  col:0,  fa: FA_PROTECTED, color: COL_TURQ },
+    { row:2,  col:1,  saColor: COL_YELLOW, text: `DDNAME   DSNAME                           DISP` },
+    { row:3,  col:1,  saColor: COL_YELLOW, text: '-------- -------------------------------- ----' },
     { row:4,  col:1,  text: `SYSPROC  ${userid.toUpperCase()}.CLIST                    SHR` },
     { row:5,  col:1,  text: `ISPPLIB  ISP.SISPPENU                     SHR` },
     { row:6,  col:1,  text: `ISPSLIB  ISP.SISPSLIB                     SHR` },
@@ -337,11 +386,11 @@ function screenLista(userid = 'DEMO') {
     { row:9,  col:1,  text: `SYSEXEC  ${userid.toUpperCase()}.REXX.EXEC               SHR` },
     { row:10, col:1,  text: `SYSTSIN  NULLFILE                         OLD` },
     { row:11, col:1,  text: `SYSTSPRT SYSOUT=*                         OLD` },
-    { row:13, col:0,  fa: FA_PROTECTED_HIGH },
+    { row:13, col:0,  fa: FA_PROTECTED_HIGH, color: COL_GREEN },
     { row:13, col:1,  text: 'IKJ56250I 8 DD allocations listed.' },
-    { row:15, col:0,  fa: FA_PROTECTED },
+    { row:15, col:0,  fa: FA_PROTECTED, color: COL_GREEN, highlight: HL_INTENS },
     { row:15, col:1,  text: 'READY' },
-    { row:23, col:0,  fa: FA_PROTECTED },
+    { row:23, col:0,  fa: FA_PROTECTED, color: COL_BLUE },
     { row:23, col:0,  text: 'Press ENTER or PF3 to return to READY prompt.' },
   ]);
 }
@@ -349,63 +398,64 @@ function screenLista(userid = 'DEMO') {
 function screenLogonError(userid, attempts, maxAttempts = 3) {
   const remaining = maxAttempts - attempts;
   return buildScreen(true, [
-    { row:0,  col:0,  fa: FA_PROTECTED_HIGH },
+    { row:0,  col:0,  fa: FA_PROTECTED_HIGH, color: COL_WHITE, highlight: HL_INTENS },
     { row:0,  col:1,  text: `IBM z/OS  -  ${SYSNAME}  -  TSO/E LOGON` },
-    { row:2,  col:2,  fa: FA_PROTECTED_HIGH },
+    { row:2,  col:2,  fa: FA_PROTECTED_HIGH, color: COL_RED, highlight: HL_INTENS },
     { row:2,  col:2,  text: 'IKJ56425I PASSWORD NOT CORRECT' },
-    { row:3,  col:2,  fa: FA_PROTECTED },
+    { row:3,  col:2,  fa: FA_PROTECTED, color: COL_RED },
     { row:3,  col:2,  text: `IKJ56477I ${remaining} ATTEMPT${remaining !== 1 ? 'S' : ''} REMAINING BEFORE RACF LOCKOUT` },
-    { row:5,  col:2,  fa: FA_PROTECTED },
+    { row:5,  col:2,  fa: FA_PROTECTED, color: COL_BLUE },
     { row:5,  col:2,  text: 'Userid  ===>' },
-    { row:5,  col:14, fa: FA_UNPROTECTED },
+    { row:5,  col:14, fa: FA_UNPROTECTED, color: COL_GREEN },
     { row:5,  col:15, text: userid.padEnd(8) },
-    { row:6,  col:2,  fa: FA_PROTECTED },
+    { row:6,  col:2,  fa: FA_PROTECTED, color: COL_BLUE },
     { row:6,  col:2,  text: 'Password===>' },
-    { row:6,  col:14, fa: FA_UNPROTECTED_NUM, ic: true },
+    { row:6,  col:14, fa: FA_UNPROTECTED_NUM, color: COL_GREEN, ic: true },
     { row:6,  col:14, text: '        ' },
-    { row:13, col:2,  fa: FA_PROTECTED },
+    { row:13, col:2,  fa: FA_PROTECTED, color: COL_BLUE },
     { row:13, col:2,  text: 'PF1/PF13 ==> Help   PF3/PF15 ==> Logoff   PA1 ==> Attention' },
-    { row:23, col:0,  fa: FA_PROTECTED },
+    { row:23, col:0,  fa: FA_PROTECTED, color: COL_RED },
     { row:23, col:0,  text: 'Re-enter password and press ENTER.' },
   ]);
 }
 
 function screenRacfLockout(userid) {
   return buildScreen(true, [
-    { row:0,  col:0,  fa: FA_PROTECTED_HIGH },
+    { row:0,  col:0,  fa: FA_PROTECTED_HIGH, color: COL_WHITE, highlight: HL_INTENS },
     { row:0,  col:1,  text: `IBM z/OS  -  ${SYSNAME}  -  TSO/E LOGON` },
-    { row:3,  col:2,  fa: FA_PROTECTED_HIGH },
+    { row:3,  col:2,  fa: FA_PROTECTED_HIGH, color: COL_RED, highlight: HL_REVERSE },
     { row:3,  col:2,  text: 'IKJ56421I RACF AUTHORIZATION FAILURE' },
-    { row:4,  col:2,  fa: FA_PROTECTED },
+    { row:4,  col:2,  fa: FA_PROTECTED, color: COL_RED },
     { row:4,  col:2,  text: `IKJ56422I USERID ${userid.toUpperCase().padEnd(8)} HAS BEEN REVOKED` },
-    { row:5,  col:2,  text: 'IKJ56423I CONTACT YOUR SECURITY ADMINISTRATOR TO RESET' },
-    { row:8,  col:2,  fa: FA_PROTECTED_HIGH },
+    { row:5,  col:2,  saColor: COL_RED, text: 'IKJ56423I CONTACT YOUR SECURITY ADMINISTRATOR TO RESET' },
+    { row:8,  col:2,  fa: FA_PROTECTED_HIGH, color: COL_RED, highlight: HL_BLINK },
     { row:8,  col:2,  text: '*** LOGON REJECTED - ACCOUNT LOCKED ***' },
-    { row:23, col:0,  fa: FA_PROTECTED },
+    { row:23, col:0,  fa: FA_PROTECTED, color: COL_BLUE },
     { row:23, col:0,  text: 'PF3=Exit' },
   ]);
 }
 
 function screenTsoCommand(userid = 'DEMO', lastOutput = '') {
   const fields = [
-    { row:0,  col:0,  fa: FA_PROTECTED_HIGH },
+    { row:0,  col:0,  fa: FA_PROTECTED_HIGH, color: COL_WHITE, highlight: HL_INTENS },
     { row:0,  col:1,  text: 'ISPF Command Shell' },
-    { row:1,  col:0,  fa: FA_PROTECTED },
+    { row:1,  col:0,  fa: FA_PROTECTED, color: COL_BLUE },
     { row:1,  col:1,  text: `Userid: ${userid.padEnd(8)}   System: ${SYSNAME}` },
-    { row:3,  col:0,  fa: FA_PROTECTED },
+    { row:3,  col:0,  fa: FA_PROTECTED, color: COL_WHITE },
     { row:3,  col:1,  text: 'TSO Command ===>' },
-    { row:3,  col:17, fa: FA_UNPROTECTED, ic: true },
+    { row:3,  col:17, fa: FA_UNPROTECTED, color: COL_GREEN, ic: true },
     { row:3,  col:17, text: '                                        ' },
   ];
   if (lastOutput) {
     const lines = lastOutput.split('\n').slice(0, 14);
     lines.forEach((line, i) => {
-      fields.push({ row: 5 + i, col: 0, fa: FA_PROTECTED });
+      const isErr = line.startsWith('IKJ') && line.includes('NOT FOUND');
+      fields.push({ row: 5 + i, col: 0, fa: FA_PROTECTED, color: isErr ? COL_RED : COL_TURQ });
       fields.push({ row: 5 + i, col: 1, text: line.slice(0, 78) });
     });
   }
   fields.push(
-    { row:23, col:0, fa: FA_PROTECTED },
+    { row:23, col:0, fa: FA_PROTECTED, color: COL_BLUE },
     { row:23, col:0, text: 'ENTER=Execute  PF3=Exit to ISPF  PF12=Cancel' },
   );
   return buildScreen(true, fields);
