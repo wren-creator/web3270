@@ -631,6 +631,14 @@ wss.on('connection', (ws, req) => {
           }
           break;
 
+        case 'sec.patchFa':
+          // { type:'sec.patchFa', addr:number, fa:number }
+          // Security education: mutate a live FA byte in the session buffer.
+          if (typeof msg.addr === 'number' && typeof msg.fa === 'number') {
+            session.patchFieldAttr(msg.addr, msg.fa);
+          }
+          break;
+
         case 'disconnect':
           session.disconnect('client request');
           break;
