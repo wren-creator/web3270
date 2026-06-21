@@ -205,8 +205,8 @@ function handleBridgeMsg(sid, msg) {
         if (msg.wsId !== undefined && typeof recorderSetSession === 'function') recorderSetSession(msg.wsId);
       } else if (msg.state === 'disconnected') {
         setConnStatus(session.name, 'disconnected'); updateSessionDot(sid, 'disconnected');
-        const luE = document.getElementById('oiaLu'); const modelE = document.getElementById('oiaModel');
-        if (luE) luE.textContent = '-'; if (modelE) modelE.textContent = '-';
+        const luE = document.getElementById('oiaLu'); const modelE = document.getElementById('oiaModel'); const appE = document.getElementById('oiaApp');
+        if (luE) luE.textContent = '-'; if (modelE) modelE.textContent = '-'; if (appE) { appE.textContent = '—'; appE.style.color = ''; }
         if (sid === activeSession) _showDisconnectScreen(session.name);
         else if (splitMode && sid === splitSid) _showDisconnectScreen(session.name, document.getElementById('terminal-split'));
       } else if (msg.state === 'connecting') { setConnStatus(session.name, 'connecting'); }

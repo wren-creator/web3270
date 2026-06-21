@@ -348,6 +348,67 @@ Browser ──key──► server.js ──(MITM active)──► HOLD ──►
 
 ---
 
+## Part 2H — Screen Fingerprinting, Session Broadcast & Color Reveal
+
+Wave 6 adds three tools to the Security panel (🔒 Sec tab → right panel).
+
+---
+
+### Screen Fingerprinting
+
+The **APP** field in the OIA bar (bottom status bar) automatically identifies the subsystem currently displayed. Detection runs on every screen update — no manual action required.
+
+| Label | Detected when screen shows |
+|---|---|
+| `ISPF` | `OPTION ===>`, `ISREDIT`, `ISPF PRIMARY`, `PDF` menu |
+| `SDSF` | `SDSF OUTPUT/STATUS/LOG/DA/H/JES` header |
+| `CICS` | `DFHCE3501`, `CESN`, `CICS TRANSACTION SERVER` header |
+| `IMS` | `IMS MASTER`, `DFS` messages |
+| `RACF` | `IRROCP`, `RACF PANEL`, `ICH` prefix messages |
+| `TSO` | `READY` prompt |
+| `z/VM` | `VM READ`, `CP READ`, `z/VM CP` header |
+| `LOGON` | `ENTER USERID`, `TSO LOGON`, `VM LOGON` screen |
+| `—` | No match / disconnected |
+
+**Teaching use case:** Students can see at a glance which subsystem they are interacting with, and instructors can verify students have navigated to the correct screen before demonstrating an attack.
+
+---
+
+### Session Broadcast
+
+**Session Broadcast** (INJECT section → `📡 Session Broadcast`) sends every keystroke and AID record to **all open sessions simultaneously** — not just the active one.
+
+When active, the button turns amber. Type a command and press ENTER — the same command (with the same field data) is transmitted to every connected session.
+
+```
+Active session types: "LISTAPF"
+Broadcast ON → ENTER sent to ws:1, ws:2, ws:3 … all with "LISTAPF" in the input field
+```
+
+**How it works:** The client sends the active session's field data to every session WebSocket. The bridge uses the provided fields directly (`msg.fields`) rather than each session's own buffer — so the typed text reaches the host on all sessions even though the user only typed it once.
+
+**Teaching use cases:**
+- Run the same enumeration command across multiple LPARs at once
+- Demonstrate that a single compromised proxy can fan out commands to every connected user
+- Verify identical screen layouts across cloned sessions
+
+> **Note:** Broadcast works best when all sessions are on the same host or hosts with identical screen layouts (same field addresses). Sessions on different screens may receive fields at mismatched addresses.
+
+---
+
+### Color Reveal
+
+**Color Reveal** (FIELD ANALYSIS section → `🎨 Color Reveal`) strips all 3270 color attributes and renders every character in the terminal's default foreground color.
+
+This makes the raw character data visible independent of the host's color scheme — useful when:
+- A host uses unusual or hard-to-read color assignments
+- You want to see nondisplay fields (passwords) that have been unhidden via FA mutation without the color distracting from the content
+- You are capturing a screen export and want a clean monochrome output
+
+Toggle on/off with the button — screen re-renders immediately. The setting persists until toggled off or the page reloads.
+
+---
+
 ## Part 3 — Traffic Recorder
 
 The Traffic Recorder captures every screen update from the host and every keypress from the user into a `.rec.json` file you can replay later — frame by frame.
