@@ -292,6 +292,62 @@ Use the **ABI** to confirm extended attributes are being parsed:
 
 ---
 
+## Part 2G — MITM Live Traffic Modification
+
+Wave 4 adds the most powerful tool in the security toolbar: a live **man-in-the-middle intercept** that sits between the browser and the mainframe host. When active, every outbound AID record (keypress + field data) is held by the bridge before it reaches the host. The instructor can inspect it, edit any field value, then release (original or modified), drop it entirely, or replay a previous record.
+
+### How it works
+
+The intercept point is in `server.js` at the `case 'key':` WebSocket handler — the exact moment the browser hands a keystroke to the bridge. When MITM is active, instead of forwarding the record to `session.sendAid()`, the bridge parks it in memory and pushes a `sec.mitm.held` event back to the browser. The terminal keyboard locks (no new keys accepted) until the instructor acts.
+
+```
+Browser ──key──► server.js ──(MITM active)──► HOLD ──► instructor panel
+                                                             │
+                                              edit fields    │
+                                                             ▼
+                           session.sendAid() ◄─── RELEASE / DROP / REPLAY
+                                 │
+                                 ▼
+                            mainframe host
+```
+
+### How to use it
+
+1. Open the Security Toolbar (`🔒`) and click **`⚡ MITM`** — button turns amber
+2. Navigate the mainframe normally. The next time you press a key (ENTER, PF key, etc.), instead of the keystroke reaching the host, a panel appears:
+   ```
+   ⚡ INTERCEPTED   ENTER   cursor R05 C14
+   ─────────────────────────────────────────
+   addr 322 · R05 C03
+   [ DEMO                                  ]  ← editable
+   addr 402 · R06 C14  🔐 NONDISPLAY — value visible to MITM proxy
+   [ DEMO                                  ]  ← password, shown in plain text
+   ─────────────────────────────────────────
+   [ ▶ RELEASE ]  [ ⊠ DROP ]  [ ↺ REPLAY ]
+   ```
+3. Choose an action:
+   - **▶ RELEASE** — sends the record to the host with any edits applied
+   - **⊠ DROP** — discards the record; host receives nothing, keyboard unlocks
+   - **↺ REPLAY** — re-sends the last released record without a new keypress
+
+### Teaching use cases
+
+**Live credential interception** — activate MITM and have a student log in. The panel shows userid and password in plain text before they reach RACF. Students see that a proxy has full credential visibility regardless of TLS — the data is plaintext at the bridge layer.
+
+**Credential substitution** — intercept a logon ENTER, change the userid from `DEMO` to `IBMUSER`, release. The host receives a different userid than the student typed. Demonstrates silent traffic modification with no indication to the user.
+
+**TSO command injection** — intercept an ENTER from the TSO READY prompt, replace the command field (e.g., change `WHOAMI` to `LISTAPF`), release. The host executes a different command. Core demonstration of 3270 MITM command injection.
+
+**Replay attack** — log in successfully, release. At the next screen click `↺ REPLAY`. The bridge re-sends the same credentials. 3270 AID records have no nonce or timestamp — they are trivially replayable.
+
+**Drop as denial of service** — drop every ENTER the student sends. The host sees nothing; screens never update. Demonstrates that a malicious proxy can silently block interactions.
+
+**NONDISPLAY field revelation** — password fields display plain text in the panel, labeled `🔐 NONDISPLAY — value visible to MITM proxy`. Connects Wave 3 (nondisplay FA rendering) with Wave 4 — the nondisplay flag is a display hint only, not encryption.
+
+> **Note:** Session Viewer records MITM-released traffic tagged `[MITM]` and replays tagged `[MITM-replay]` for post-exercise review.
+
+---
+
 ## Part 3 — Traffic Recorder
 
 The Traffic Recorder captures every screen update from the host and every keypress from the user into a `.rec.json` file you can replay later — frame by frame.
