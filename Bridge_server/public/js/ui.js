@@ -222,12 +222,7 @@ function menuReconnect()  { closeAllMenus(); const s = sessions.get(activeSessio
 function menuCloseActiveSession() { closeAllMenus(); const tab = document.querySelector('.session-tab.active'); if (tab) { const close = tab.querySelector('.tab-close'); if (close) closeSessionTab({ stopPropagation: () => {} }, close); } }
 function menuCaptureScreen() {
   closeAllMenus();
-  const term  = document.getElementById('terminal');
-  const lines = [...term.querySelectorAll('.screen-row')].map(r => [...r.querySelectorAll('.screen-cell')].map(c => c.textContent).join('')).join('\n');
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([lines], { type: 'text/plain' }));
-  a.download = 'screen-capture-' + new Date().toISOString().slice(0,19).replace(/:/g,'-') + '.txt';
-  a.click();
+  exportScreen();
 }
 
 function menuOpenPanel(name) {
