@@ -233,6 +233,11 @@ function handleBridgeMsg(sid, msg) {
     case 'xfer.data': case 'xfer.ok': case 'xfer.error': case 'xfer.datasets':
       if (sid === activeSession) handleXferMsg(msg); break;
     case 'error': showBridgeError('Bridge error: ' + msg.message); break;
+    case 'sec.mitm.state':    if (sid === activeSession) mitmHandleState(msg);    break;
+    case 'sec.mitm.held':     if (sid === activeSession) mitmHandleHeld(msg);     break;
+    case 'sec.mitm.released': if (sid === activeSession) mitmHandleReleased(msg); break;
+    case 'sec.mitm.dropped':  if (sid === activeSession) mitmHandleDropped(msg);  break;
+    case 'sec.mitm.replayed': if (sid === activeSession) mitmHandleReplayed(msg); break;
   }
 }
 
