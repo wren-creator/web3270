@@ -80,6 +80,26 @@ document.fonts.ready.then(() => { measureCellWidth(); fitScreen(); });
 // and rendering reveals the real character.
 const NONDISPLAY_MASK = '#';
 
+// 3270 extended color codes (SA/SFE type 0x42) → CSS class.
+// Codes are the values advertised in the QueryReply color table.
+const COLOR_CLASS = {
+  0xF1: 'c-blue',
+  0xF2: 'c-red',
+  0xF3: 'c-pink',
+  0xF4: 'c-green',
+  0xF5: 'c-turq',
+  0xF6: 'c-yellow',
+  0xF7: 'c-white',
+};
+
+// 3270 highlight codes (SA/SFE type 0x41) → CSS class.
+const HIGHLIGHT_CLASS = {
+  0xF1: 'hl-blink',
+  0xF2: 'hl-reverse',
+  0xF4: 'hl-under',
+  0xF8: 'hl-intens',
+};
+
 // ── Field Map Overlay ─────────────────────────────────────────────
 // When enabled, every field attribute byte cell is highlighted and
 // annotated with its decoded flags (protected, intensity, MDT).
@@ -428,6 +448,10 @@ function renderLiveScreen(screenData, termEl) {
         else                           cellEl.className = 'screen-cell field-label';
       }
       if (cell.nondisplay) cellEl.classList.add('field-nondisplay');
+
+      // ── Extended color / highlight (SA / SFE type 0x41 / 0x42) ─
+      if (cell.color     && COLOR_CLASS[cell.color])         cellEl.classList.add(COLOR_CLASS[cell.color]);
+      if (cell.highlight && HIGHLIGHT_CLASS[cell.highlight]) cellEl.classList.add(HIGHLIGHT_CLASS[cell.highlight]);
 
       // ── Field Map Overlay ───────────────────────────────────────
       if (fieldMapOverlay) {

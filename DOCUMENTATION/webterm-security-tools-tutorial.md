@@ -215,6 +215,83 @@ Click **≡ PROXY Viewer** in the Security Toolbar. A popup opens bottom-right (
 
 ---
 
+## Part 2F — Extended Field Attribute Rendering (SFE / SA Colors)
+
+Wave 3 adds full rendering support for **ORDER_SFE** (Start Field Extended) and **ORDER_SA** (Set Attribute) — the 3270 orders that carry color and highlight metadata alongside field definitions. Real mainframe applications (ISPF, SDSF, TSO, vendor panels) use these orders extensively. Before Wave 3, WebTerm rendered all fields in the default terminal green regardless of what the host sent.
+
+### What changed in the protocol engine
+
+The `session.js` buffer now tracks two additional properties on every cell:
+- `color` — the 3270 extended color code (type `0x42` in SFE/SA pairs)
+- `highlight` — the highlight attribute (type `0x41` in SFE/SA pairs)
+
+These are populated from two 3270 orders:
+
+| Order | Byte | How it works |
+|---|---|---|
+| `ORDER_SFE` (`0x29`) | Start Field Extended | Like `ORDER_SF` but carries extra type/value attribute pairs. Type `0xC0` = basic FA; type `0x42` = color; type `0x41` = highlight. Covers the entire following field. |
+| `ORDER_SA` (`0x28`) | Set Attribute | Applies a single attribute to subsequent characters until the next SA reset or field boundary. Used for character-level coloring within a field. |
+
+### Color codes (type 0x42)
+
+| Code | Color | CSS class |
+|---|---|---|
+| `0xF1` | Blue | `.c-blue` |
+| `0xF2` | Red | `.c-red` |
+| `0xF3` | Pink | `.c-pink` |
+| `0xF4` | Green | `.c-green` |
+| `0xF5` | Turquoise | `.c-turq` |
+| `0xF6` | Yellow | `.c-yellow` |
+| `0xF7` | White | `.c-white` |
+
+### Highlight codes (type 0x41)
+
+| Code | Effect | CSS class |
+|---|---|---|
+| `0xF1` | Blink | `.hl-blink` |
+| `0xF2` | Reverse video | `.hl-reverse` |
+| `0xF4` | Underscore | `.hl-under` |
+| `0xF8` | Intensify (bright) | `.hl-intens` |
+
+### What to expect from the mock LPAR
+
+The mock z/OS LPAR (port 3270) now sends SFE and SA orders on every screen. Connect and you'll see a realistic color scheme matching real IBM equipment:
+
+| Screen element | Color | Notes |
+|---|---|---|
+| Screen title bars | White + intensified | SFE with `0xC0` FA + `0x42 0xF7` + `0x41 0xF8` |
+| Label fields ("Userid ===>") | Blue | SFE with `0x42 0xF1` |
+| Input fields | Green | SFE with `0x42 0xF4` |
+| Info text / descriptions | Turquoise | SFE with `0x42 0xF5` |
+| ISPF option numbers (0–6, M, X) | Yellow | SA with `0x42 0xF6` inside a turquoise field |
+| Function key bar | Blue | SFE with `0x42 0xF1` |
+| Error messages | Red + intensified | SFE with `0x42 0xF2` + `0x41 0xF8` |
+| RACF lockout message | Red + blinking | SFE with `0x42 0xF2` + `0x41 0xF1` |
+| LISTAPF `*** WRITABLE ***` | Red + blinking | SA orders within field: `0x42 0xF2` + `0x41 0xF1` |
+
+### Verifying SFE/SA rendering
+
+Use the **ABI** to confirm extended attributes are being parsed:
+
+1. Connect to the mock z/OS LPAR and log in
+2. Open the Security Toolbar and click **`ABI`**
+3. Click the title bar at row 0 — the inspector shows the FA byte plus the color/highlight attribute pair in the raw SFE data
+4. Click `LISTAPF` from the READY prompt and observe the `*** WRITABLE ***` text in blinking red — SA orders in action
+
+> **Note:** The **FMO** still marks fields by their FA byte attributes (protected, unprotected, nondisplay). Color rendering is additive — the ABI FA mutation controls still work on SFE fields. Changing protect/unprotect on a colored field retains the color.
+
+### Teaching use cases
+
+**Real mainframe fidelity** — the color scheme is a close approximation of what real ISPF, SDSF, and TSO screens look like. Students can build accurate mental models before touching a real system.
+
+**SFE vs. SA distinction** — field-level color (SFE) applies to the entire field; character-level color (SA) can change mid-field. The LISTAPF screen demonstrates both: the field body is turquoise (SFE), and the warning text is overridden to red+blink by inline SA orders.
+
+**Protocol dissection** — in the Proxy Viewer with `TN3270_HEXDUMP=1` set, students can identify the `0x29` (SFE) and `0x28` (SA) order bytes in the raw TN3270 datastream and decode their attribute pairs manually. This exercise connects the visible color change to the byte-level protocol event that caused it.
+
+**Security implication** — a host can use `HL_BLINK` + red to draw attention to security-relevant information (writable APF libraries, RACF lockout messages). Understanding how these are encoded means understanding how to suppress or spoof them at the proxy layer.
+
+---
+
 ## Part 3 — Traffic Recorder
 
 The Traffic Recorder captures every screen update from the host and every keypress from the user into a `.rec.json` file you can replay later — frame by frame.
@@ -362,9 +439,13 @@ TSO/E LOGON → TSO READY prompt → ISPF (type ISPF) or TSO commands directly
 
 **From ISPF option 6 (TSO Command Shell):** same commands as the READY prompt. PF3 returns to ISPF.
 
+### Color scheme
+
+The mock LPAR sends full SFE/SA color attributes on every screen (Wave 3). Screen titles render in bright white, labels in blue, input fields in green, info text in turquoise, and function key bars in blue — matching real IBM equipment. Error conditions use red with intensify or blink highlights. See **Part 2F** for a full breakdown.
+
 ### Notable APF output
 
-`LISTAPF` returns a realistic APF list including `USER.LOADLIB` on volume `WORK01` flagged as potentially writable — the intended target for privilege escalation exercises.
+`LISTAPF` returns a realistic APF list including `USER.LOADLIB` on volume `WORK01` flagged as potentially writable — the intended target for privilege escalation exercises. The `*** WRITABLE ***` warning is rendered in **blinking red** via SA orders, making it immediately visible as a high-severity finding.
 
 ---
 
