@@ -108,6 +108,34 @@ function toggleSecBar() {
   }
 }
 
+// ── Security toolbar helpers ──────────────────────────────────────
+let _keyFeedbackTimer = null;
+
+function secInjectKey() {
+  const sel      = document.getElementById('keyInjectSelect');
+  const feedback = document.getElementById('keyInjectFeedback');
+  if (!sel) return;
+
+  const key     = sel.value;
+  const session = sessions.get(activeSession);
+  if (!session || session.ws.readyState !== WebSocket.OPEN) {
+    if (feedback) { feedback.style.color = '#aa4040'; feedback.textContent = 'not connected'; feedback.style.opacity = '1'; }
+    clearTimeout(_keyFeedbackTimer);
+    _keyFeedbackTimer = setTimeout(() => { if (feedback) feedback.style.opacity = '0'; }, 2000);
+    return;
+  }
+
+  sendKey(key);
+
+  if (feedback) {
+    feedback.style.color   = '#3a9a6a';
+    feedback.textContent   = `✓ injected ${key}`;
+    feedback.style.opacity = '1';
+    clearTimeout(_keyFeedbackTimer);
+    _keyFeedbackTimer = setTimeout(() => { feedback.style.opacity = '0'; }, 1500);
+  }
+}
+
 // ── Attribute Byte Inspector toggle ───────────────────────────────
 let inspectorActive = false;
 function toggleInspector() {

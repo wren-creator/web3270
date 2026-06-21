@@ -24,3 +24,19 @@ aiCfgInit();
 
 const defaultPanel = document.getElementById('panelSettings');
 if (defaultPanel) { defaultPanel.style.display = 'block'; defaultPanel.style.flexDirection = ''; defaultPanel.style.padding = '12px'; }
+
+function openTrafficViewer() {
+  const w = 900, h = 480;
+  const left = Math.max(0, screen.width  - w - 20);
+  const top  = Math.max(0, screen.height - h - 80);
+  window.open('/traffic', 'trafficViewer',
+    `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=no`);
+}
+
+function openLogsViewer() {
+  const w = 760, h = 400;
+  const left = Math.max(0, screen.width  - w - 20);
+  const top  = Math.max(0, screen.height - h - 80);
+  window.open('/logs', 'logsViewer',
+    `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=no`);
+}

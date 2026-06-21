@@ -188,6 +188,55 @@
       </button>
       <button id="anomViewBtn" class="sec-tool-btn" onclick="toggleAnomalyLog()" title="View anomaly log" style="display:none;font-size:9px;padding:2px 5px;">▾</button>
       <button class="sec-tool-btn" onclick="clearAnomalyLog()" title="Clear anomaly log" style="font-size:9px;padding:2px 5px;">✕</button>
+      <div class="sec-toolbar-sep"></div>
+      <!-- Send Function Key -->
+      <span style="font-size:9px;color:#2a4a6a;letter-spacing:0.08em;white-space:nowrap"
+            title="Send any 3270 function key directly to the host — same as pressing it on a physical 3270 keyboard.&#10;&#10;This does NOT type text. For text, just click the terminal and type normally.&#10;Use this to fire PF13–PF24 (Shift+F keys your keyboard can't reach), PA keys, CLEAR, or SYSREQ.">FUNC KEY:</span>
+      <select id="keyInjectSelect" class="sec-inject-select"
+              title="Choose which 3270 function key to send to the host, then click SEND KEY.&#10;&#10;PF1–PF12  — program function keys (same as F1–F12 on your keyboard)&#10;PF13–PF24 — Shift+F1–F12 on a real 3270; not reachable from a PC keyboard&#10;PA1       — Program Attention / Attn/Break (interrupts host, no field data sent)&#10;PA2/PA3   — rarely mapped, useful for probing host behavior&#10;CLEAR     — clears the screen and sends a reset to the host&#10;SYSREQ    — System Request; breaks to secondary LU or interrupts hung session">
+        <optgroup label="── Transmit ──">
+          <option value="ENTER">ENTER</option>
+          <option value="CLEAR">CLEAR</option>
+          <option value="SYSREQ">SYSREQ</option>
+        </optgroup>
+        <optgroup label="── PA keys (no field data) ──">
+          <option value="PA1">PA1  (Attn / Break)</option>
+          <option value="PA2">PA2</option>
+          <option value="PA3">PA3</option>
+        </optgroup>
+        <optgroup label="── PF 1–12 (F1–F12) ──">
+          <option value="PF1">PF1</option><option value="PF2">PF2</option>
+          <option value="PF3">PF3</option><option value="PF4">PF4</option>
+          <option value="PF5">PF5</option><option value="PF6">PF6</option>
+          <option value="PF7">PF7</option><option value="PF8">PF8</option>
+          <option value="PF9">PF9</option><option value="PF10">PF10</option>
+          <option value="PF11">PF11</option><option value="PF12">PF12</option>
+        </optgroup>
+        <optgroup label="── PF 13–24 (Shift+F1–F12) ──">
+          <option value="PF13">PF13</option><option value="PF14">PF14</option>
+          <option value="PF15">PF15</option><option value="PF16">PF16</option>
+          <option value="PF17">PF17</option><option value="PF18">PF18</option>
+          <option value="PF19">PF19</option><option value="PF20">PF20</option>
+          <option value="PF21">PF21</option><option value="PF22">PF22</option>
+          <option value="PF23">PF23</option><option value="PF24">PF24</option>
+        </optgroup>
+      </select>
+      <button class="sec-tool-btn" onclick="secInjectKey()"
+              title="INJECT — fires the selected function key to the host.&#10;&#10;Does NOT type text. Sends: the AID byte + current cursor position + any fields you have already modified by typing in the terminal.&#10;&#10;Equivalent to pressing that key on a physical IBM 3270 terminal.">
+        <span class="stb-icon">▶</span> INJECT
+      </button>
+      <span id="keyInjectFeedback" style="font-size:9px;color:#3a9a6a;min-width:48px;transition:opacity 0.4s;opacity:0"></span>
+      <div class="sec-toolbar-sep"></div>
+      <!-- Session traffic viewer -->
+      <button class="sec-tool-btn" onclick="openTrafficViewer()"
+              title="Session Viewer — AID keys sent and screens received, with CSV export">
+        <span class="stb-icon">⇄</span> SESSION <span class="stb-label">Viewer</span>
+      </button>
+      <div class="sec-toolbar-sep"></div>
+      <!-- Proxy log viewer -->
+      <button class="sec-tool-btn" onclick="openLogsViewer()" title="Proxy Viewer — live bridge/proxy log stream">
+        <span class="stb-icon">≡</span> PROXY <span class="stb-label">Viewer</span>
+      </button>
     </div>
     <!-- Anomaly flash bar — shows latest anomalies inline, auto-fades -->
     <div id="anomalyBar" class="anomaly-bar"></div>
