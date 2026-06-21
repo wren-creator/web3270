@@ -420,6 +420,13 @@ let nextId = 1;
 // Events held in memory; flushed to .rec.json on stop.
 const recordings = new Map();
 
+// ── MITM Intercept state ───────────────────────────────────────────
+// Per-session. When active, outbound AID records are held until the
+// instructor releases (optionally modified), drops, or replays them.
+const mitmEnabled      = new Set();            // wsId → MITM active
+const mitmHeld         = new Map();            // wsId → { aid, fields, cursorAddr }
+const mitmLastReleased = new Map();            // wsId → { aid, fields, cursorAddr } (for replay)
+
 wss.on('connection', (ws, req) => {
   const wsId   = nextId++;
   const origin = req.socket.remoteAddress;
@@ -596,17 +603,41 @@ wss.on('connection', (ws, req) => {
 
       switch (msg.type) {
 
-        case 'key':
-          // { type:'key', aid:'ENTER'|'PF1'…'PF24'|'PA1'|'PA2'|'CLEAR', fields:[{addr,data}] }
-          session.sendAid(msg.aid, session.getModifiedFields());
-          logTraffic({
-            ts: new Date().toISOString(),
-            wsId,
-            direction: 'client→host',
-            aid: msg.aid,
-            screenText: session.lastScreen ? screenToLinesMasked(session.lastScreen).filter(l => l.trim()).join(' | ').substring(0, 300) : '',
-          });
+        case 'key': {
+          // { type:'key', aid:'ENTER'|'PF1'…'PF24'|'PA1'|'PA2'|'CLEAR' }
+          if (mitmEnabled.has(wsId)) {
+            // MITM active — hold the record, notify browser
+            const fields     = session.getModifiedFields();
+            const cursorAddr = session.cursorAddr;
+            const cols       = session.cols || 80;
+            mitmHeld.set(wsId, { aid: msg.aid, fields, cursorAddr });
+            logger.info(`[ws:${wsId}] MITM: intercepted ${msg.aid} (${fields.length} fields) cursorAddr=${cursorAddr}`);
+            send(ws, {
+              type: 'sec.mitm.held',
+              aid: msg.aid,
+              cursorAddr,
+              cursorRow: Math.floor(cursorAddr / cols),
+              cursorCol:  cursorAddr % cols,
+              fields: fields.map(f => ({
+                addr: f.addr,
+                row:  Math.floor(f.addr / cols),
+                col:  f.addr % cols,
+                data: f.data,
+                nondisplay: f.nondisplay,
+              })),
+            });
+          } else {
+            session.sendAid(msg.aid, session.getModifiedFields());
+            logTraffic({
+              ts: new Date().toISOString(),
+              wsId,
+              direction: 'client→host',
+              aid: msg.aid,
+              screenText: session.lastScreen ? screenToLinesMasked(session.lastScreen).filter(l => l.trim()).join(' | ').substring(0, 300) : '',
+            });
+          }
           break;
+        }
 
         case 'type':
           // { type:'type', row, col, text }
@@ -633,11 +664,59 @@ wss.on('connection', (ws, req) => {
 
         case 'sec.patchFa':
           // { type:'sec.patchFa', addr:number, fa:number }
-          // Security education: mutate a live FA byte in the session buffer.
           if (typeof msg.addr === 'number' && typeof msg.fa === 'number') {
             session.patchFieldAttr(msg.addr, msg.fa);
           }
           break;
+
+        case 'sec.mitm.toggle': {
+          const wasActive = mitmEnabled.has(wsId);
+          if (wasActive) {
+            mitmEnabled.delete(wsId);
+            mitmHeld.delete(wsId);  // drop any held record on toggle-off
+          } else {
+            mitmEnabled.add(wsId);
+          }
+          const active = !wasActive;
+          logger.info(`[ws:${wsId}] MITM intercept ${active ? 'enabled' : 'disabled'}`);
+          send(ws, { type: 'sec.mitm.state', active });
+          break;
+        }
+
+        case 'sec.mitm.release': {
+          // { type:'sec.mitm.release', fields:[{addr, data, nondisplay}] }
+          const held = mitmHeld.get(wsId);
+          if (!held) break;
+          mitmHeld.delete(wsId);
+          const releaseFields = (Array.isArray(msg.fields) && msg.fields.length)
+            ? msg.fields
+            : held.fields;
+          mitmLastReleased.set(wsId, { aid: held.aid, fields: releaseFields, cursorAddr: held.cursorAddr });
+          logger.info(`[ws:${wsId}] MITM: releasing ${held.aid} (${releaseFields.length} fields)`);
+          session.sendAid(held.aid, releaseFields);
+          logTraffic({ ts: new Date().toISOString(), wsId, direction: 'client→host', aid: held.aid + ' [MITM]', screenText: '' });
+          send(ws, { type: 'sec.mitm.released', aid: held.aid });
+          break;
+        }
+
+        case 'sec.mitm.drop': {
+          const held = mitmHeld.get(wsId);
+          if (!held) break;
+          mitmHeld.delete(wsId);
+          logger.info(`[ws:${wsId}] MITM: dropped ${held.aid}`);
+          send(ws, { type: 'sec.mitm.dropped', aid: held.aid });
+          break;
+        }
+
+        case 'sec.mitm.replay': {
+          const last = mitmLastReleased.get(wsId);
+          if (!last) { send(ws, { type: 'sec.mitm.replay-empty' }); break; }
+          logger.info(`[ws:${wsId}] MITM: replaying ${last.aid}`);
+          session.sendAid(last.aid, last.fields);
+          logTraffic({ ts: new Date().toISOString(), wsId, direction: 'client→host', aid: last.aid + ' [MITM-replay]', screenText: '' });
+          send(ws, { type: 'sec.mitm.replayed', aid: last.aid });
+          break;
+        }
 
         case 'disconnect':
           session.disconnect('client request');
@@ -652,6 +731,9 @@ wss.on('connection', (ws, req) => {
       logger.info(`[ws:${wsId}] Browser disconnected`);
       session.disconnect('browser closed');
       sessions.delete(wsId);
+      mitmEnabled.delete(wsId);
+      mitmHeld.delete(wsId);
+      mitmLastReleased.delete(wsId);
     });
 
     ws.on('error', err => {

@@ -34,6 +34,7 @@ server.js  (HTTP + WebSocket on the same port)
 - **Session Viewer** — floating popup table of every AID key sent and screen received during the session; direction/session filter, click-to-expand full screen text, CSV export
 - **Proxy Viewer** — live SSE stream of the bridge log; level filter (INFO/WARN/ERROR/DEBUG), HEX toggle, TAIL button with auto-scroll that pauses on scroll-up and resumes at bottom, CSV export
 - **Extended Color Rendering (SFE/SA)** — full ORDER_SFE and ORDER_SA parsing; renders 3270 extended color (`0xF1`–`0xF7`) and highlight (blink, reverse video, underscore, intensify) attributes exactly as real mainframe applications send them; mock LPAR sends realistic IBM color schemes on every screen
+- **MITM Live Traffic Modification** — intercept outbound AID records before they reach the host; inspect field values (nondisplay/password fields shown in plain text), edit any field, then release (original or modified), drop, or replay; keyboard locks during hold; demonstrates credential interception, substitution, command injection, and replay attacks at the protocol layer
 - **Traffic Recorder** — records the live datastream to a timestamped `.rec.json` file for offline analysis
 - **Replay Viewer** — plays back recorded sessions frame by frame at `/replay`
 - **Anomaly Detector** — flags suspicious screen patterns (RACF lockouts, unexpected field changes, WCC anomalies); on/off toggle, ephemeral flash bar, scrollable session log, one-click clear

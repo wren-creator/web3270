@@ -237,6 +237,12 @@
       <button class="sec-tool-btn" onclick="openLogsViewer()" title="Proxy Viewer — live bridge/proxy log stream">
         <span class="stb-icon">≡</span> PROXY <span class="stb-label">Viewer</span>
       </button>
+      <div class="sec-toolbar-sep"></div>
+      <!-- MITM Intercept -->
+      <button id="mitmBtn" class="sec-tool-btn" onclick="toggleMitm()"
+              title="MITM Intercept — hold, inspect, edit and release/drop outbound AID records before they reach the host">
+        <span class="stb-icon">⚡</span> MITM
+      </button>
     </div>
     <!-- Anomaly flash bar — shows latest anomalies inline, auto-fades -->
     <div id="anomalyBar" class="anomaly-bar"></div>
