@@ -14,7 +14,7 @@ All security tools live in the **🔒 Sec** tab of the right panel — hidden by
 3. On success, the **🔒 Sec** tab appears in the right panel and the panel switches to it automatically
 4. The lock button highlights amber to indicate the panel is active
 
-**To re-lock:** click **`🔒`** again — the tab disappears and the panel returns to Settings.
+**To re-lock:** click **`🔒`** again — the Security tab disappears and focus switches to the Settings tab. The right panel stays open; only the Security tab is hidden.
 
 > Every unlock attempt is logged server-side with the session LU name, client IP address, and UTC timestamp. Failed attempts are logged as warnings. The password is set via the `SECURITY_TOOLS_PASSWORD` environment variable (default: `2970`).
 
