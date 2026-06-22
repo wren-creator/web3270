@@ -243,6 +243,7 @@ function _secReveal() {
   if (tab) switchPanelTab(tab, 'Security');
   const btn = document.getElementById('secBtn');
   if (btn) { btn.style.color = 'var(--accent-amber)'; btn.style.borderColor = 'var(--accent-amber)'; }
+  if (typeof renderWalkthroughList === 'function') renderWalkthroughList();
   setTimeout(fitScreen, 210);
 }
 
