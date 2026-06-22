@@ -573,8 +573,9 @@ Wave 7 adds a UI-driven macro recorder that captures real interactions with the 
 3. Interact with the terminal normally: type into fields, press ENTER, PF keys, or any AID key — every keystroke is captured as a step
 4. The step counter increments in real time as you interact
 5. Click **■ STOP** on the floating indicator — a save dialog appears
-6. Enter a name (required) and optional description, then click **Save Macro**
-7. The macro appears in the sidebar immediately and is ready to run
+6. Enter a name (required) and optional description
+7. **Optional:** check **🔒 Security macro** to save the macro to the security library — it will only be visible while the security panel is unlocked (see below)
+8. Click **Save Macro** — the macro appears in the sidebar immediately and is ready to run
 
 Click **CANCEL** on the indicator at any time to discard the recording without saving.
 
@@ -676,7 +677,16 @@ Sends an ENTER AID with a single field whose SBA (Set Buffer Address) contains a
 
 ## Part 5 — Security Macros
 
-Security macros live in `macros-security.json` — a separate file from the main `macros.json` that exists only in the security branch. They appear in the macro panel tagged and read-only; they cannot be edited or deleted from the UI.
+Security macros live in `macros-security.json` — a separate file from the main `macros.json`. They are **hidden from the macro sidebar and menu unless the security panel is unlocked** — this keeps sensitive attack automation invisible to students browsing the tool.
+
+### Visibility behaviour
+
+| Panel state | Regular macros | Security macros |
+|---|---|---|
+| Locked (default) | Visible | Hidden |
+| Unlocked | Visible | Visible |
+
+Locking the panel immediately removes security macros from the sidebar without a page reload.
 
 ### Available macros
 
@@ -686,12 +696,17 @@ Security macros live in `macros-security.json` — a separate file from the main
 
 ### Running a security macro
 
-1. Connect to the mock z/OS LPAR (port 3270)
-2. The macro panel in the sidebar lists all macros including the two security macros
-3. Click a security macro to run it — it executes against the active session
-4. Use `REC` to record the macro execution for replay and analysis
+1. Unlock the security panel (🔒 button → enter password)
+2. Connect to the mock z/OS LPAR (port 3270)
+3. Security macros now appear in the sidebar alongside regular macros
+4. Click a security macro to run it — it executes against the active session
+5. Lock the panel again to hide security macros from view
 
-### Adding macros to the security library
+### Recording a security macro
+
+In the macro recorder save dialog, check **🔒 Security macro** before saving. The macro is written to `macros-security.json` and will only appear while the panel is unlocked. This lets instructors record new attack workflows during a session without exposing them to students.
+
+### Adding macros to the security library manually
 
 Edit `macros-security.json` directly — it is bind-mounted so changes take effect immediately without a Docker rebuild. Reload the page to pick up new macros. The format is a flat JSON array; each macro follows the same step schema as regular macros with the addition of `"source": "security"`.
 
