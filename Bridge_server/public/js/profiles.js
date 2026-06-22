@@ -215,6 +215,7 @@ function handleBridgeMsg(sid, msg) {
       if (session) session.lastScreen = msg;
       if (sid === activeSession) {
         renderLiveScreen(msg); liveScreenText = screenToText(msg); liveScreen = msg; cursorRow = msg.cursorRow ?? 0; cursorCol = msg.cursorCol ?? 0;
+        probeOnScreen(msg);
       } else if (splitMode && sid === splitSid) {
         const term2 = document.getElementById('terminal-split');
         if (term2) renderLiveScreen(msg, term2);
@@ -238,6 +239,10 @@ function handleBridgeMsg(sid, msg) {
     case 'sec.mitm.released': if (sid === activeSession) mitmHandleReleased(msg); break;
     case 'sec.mitm.dropped':  if (sid === activeSession) mitmHandleDropped(msg);  break;
     case 'sec.mitm.replayed': if (sid === activeSession) mitmHandleReplayed(msg); break;
+    case 'macro.recording.started':   _showMacroRecIndicator(0); break;
+    case 'macro.recording.step':      _updateMacroRecIndicator(msg.stepCount); break;
+    case 'macro.recording.stopped':   _hideMacroRecIndicator(); loadMacros(); break;
+    case 'macro.recording.cancelled': _hideMacroRecIndicator(); break;
   }
 }
 
