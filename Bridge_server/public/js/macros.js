@@ -135,3 +135,60 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('addMacroModal').addEventListener('click', e => { if (e.target === e.currentTarget) hideAddMacroModal(); });
 });
 
+// ── Macro Recorder UI ─────────────────────────────────────────────
+
+function startMacroRecord() {
+  const s = sessions.get(activeSession);
+  if (!s || s.ws.readyState !== WebSocket.OPEN) {
+    showBridgeError('No active session — connect to an LPAR first');
+    return;
+  }
+  s.ws.send(JSON.stringify({ type: 'macro.record.start' }));
+}
+
+function stopMacroRecord() {
+  const modal = document.getElementById('macroRecSaveModal');
+  if (modal) { modal.style.display = 'flex'; }
+  const nameEl = document.getElementById('macroRecName');
+  if (nameEl) { nameEl.value = ''; setTimeout(() => nameEl.focus(), 50); }
+}
+
+function cancelMacroRecord() {
+  const s = sessions.get(activeSession);
+  if (s && s.ws.readyState === WebSocket.OPEN) {
+    s.ws.send(JSON.stringify({ type: 'macro.record.cancel' }));
+  }
+  _hideMacroRecIndicator();
+  const modal = document.getElementById('macroRecSaveModal');
+  if (modal) modal.style.display = 'none';
+}
+
+function saveMacroRecord() {
+  const name = (document.getElementById('macroRecName') || {}).value.trim();
+  if (!name) { document.getElementById('macroRecName').focus(); return; }
+  const desc = (document.getElementById('macroRecDesc') || {}).value.trim();
+  const s = sessions.get(activeSession);
+  if (s && s.ws.readyState === WebSocket.OPEN) {
+    s.ws.send(JSON.stringify({ type: 'macro.record.stop', name, description: desc }));
+  }
+  const modal = document.getElementById('macroRecSaveModal');
+  if (modal) modal.style.display = 'none';
+  _hideMacroRecIndicator();
+}
+
+function _showMacroRecIndicator(steps) {
+  const el = document.getElementById('macroRecIndicator');
+  if (el) el.style.display = 'flex';
+  _updateMacroRecIndicator(steps);
+}
+
+function _updateMacroRecIndicator(steps) {
+  const el = document.getElementById('macroRecStepCount');
+  if (el) el.textContent = steps;
+}
+
+function _hideMacroRecIndicator() {
+  const el = document.getElementById('macroRecIndicator');
+  if (el) el.style.display = 'none';
+}
+

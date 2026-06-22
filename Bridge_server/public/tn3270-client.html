@@ -13,6 +13,7 @@
 .cmd-hist-item { padding: 2px 12px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--t-green, #33ff66); }
 .cmd-hist-item:hover { background: rgba(255,255,255,0.06); }
 .cmd-hist-latest { color: var(--accent-green, #33ff66); font-weight: 500; }
+@keyframes rec-blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
 </style>
 <body>
 
@@ -123,7 +124,7 @@
       <div id="sidebarLparList" style="padding:4px 0 8px;max-height:220px;overflow-y:auto;"></div>
     </div>
     <div class="sidebar-section">
-      <div class="sidebar-header">Macros <span class="sidebar-header-btn" onclick="showAddMacroModal()">＋</span></div>
+      <div class="sidebar-header">Macros <span class="sidebar-header-btn" onclick="startMacroRecord()" title="Record a new macro" style="margin-right:4px;color:#e06060">● REC</span><span class="sidebar-header-btn" onclick="showAddMacroModal()">＋</span></div>
       <div id="sidebarMacroList" style="padding:4px 0 8px;max-height:180px;overflow-y:auto"></div>
     </div>
     <div class="sidebar-section" style="flex:1">
@@ -626,6 +627,34 @@
         </div>
       </div>
 
+      <!-- RACF PROBE section -->
+      <div class="sec-section">
+        <div class="sec-section-hdr">RACF PROBE</div>
+        <div class="sec-section-body">
+          <div class="sec-panel-hint" style="margin-bottom:6px">Auto-probes TSO, z/VM, or CICS logon screens with a credential wordlist. Navigate to a logon screen first. FOR AUTHORIZED USE ONLY.</div>
+          <div class="sec-row" style="justify-content:space-between;align-items:center;margin-bottom:4px">
+            <span style="font-size:10px;color:var(--text-muted)">Wordlist — USERID,PASSWORD per line</span>
+            <button onclick="probeLoadDefaults()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:1px 8px;cursor:pointer">Load defaults</button>
+          </div>
+          <textarea id="probeWordlist" rows="5"
+            placeholder="IBMUSER,SYS1&#10;MAINT,MAINT&#10;# lines starting with # are comments"
+            style="width:100%;box-sizing:border-box;background:#000;border:1px solid #2a2a2a;border-radius:3px;color:#8acce8;font-family:'IBM Plex Mono',monospace;font-size:10px;padding:4px 6px;resize:vertical;outline:none"></textarea>
+          <div class="sec-row" style="gap:8px;align-items:center;margin-top:4px">
+            <span style="font-size:10px;color:var(--text-muted);flex-shrink:0">Delay (ms)</span>
+            <input id="probeDelay" type="number" value="1500" min="500" max="10000" step="100"
+              style="width:68px;background:#000;border:1px solid #333;border-radius:3px;color:#ccc;font-family:inherit;font-size:10px;padding:2px 6px;outline:none">
+            <div style="flex:1"></div>
+            <button id="probeStartBtn" class="sec-inject-btn" onclick="startProbe()" style="background:#1a2a1a">▶ START</button>
+            <button id="probeStopBtn"  class="sec-inject-btn" onclick="stopProbe()"  style="background:#2a1a1a;display:none">■ STOP</button>
+          </div>
+          <div id="probeStatus" style="font-size:10px;color:var(--text-muted);margin-top:4px;min-height:14px"></div>
+          <div id="probeResultsTable"></div>
+          <div style="margin-top:6px">
+            <button onclick="probeExportCsv()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ Export CSV</button>
+          </div>
+        </div>
+      </div>
+
     </div><!-- end panelSecurity -->
 
   </div><!-- end right-panel -->
@@ -721,6 +750,33 @@
   </div>
 </div>
 
+<!-- Macro recording indicator — floats above OIA bar while recording -->
+<div id="macroRecIndicator" style="display:none;position:fixed;bottom:48px;left:50%;transform:translateX(-50%);background:#1a0000;border:1px solid #e06060;border-radius:4px;padding:6px 14px;z-index:8000;align-items:center;gap:10px;font-family:'IBM Plex Mono',monospace;font-size:11px;white-space:nowrap">
+  <span style="color:#e06060;animation:rec-blink 1s step-end infinite">●</span>
+  <span style="color:#ccc">RECORDING</span>
+  <span style="color:var(--text-muted)">— <span id="macroRecStepCount">0</span> steps</span>
+  <button onclick="stopMacroRecord()" style="background:#2a0000;border:1px solid #e06060;border-radius:3px;color:#e06060;font-family:inherit;font-size:10px;padding:2px 8px;cursor:pointer;margin-left:4px">■ STOP</button>
+  <button onclick="cancelMacroRecord()" style="background:none;border:1px solid #444;border-radius:3px;color:#666;font-family:inherit;font-size:10px;padding:2px 8px;cursor:pointer">CANCEL</button>
+</div>
+
+<!-- Macro recording save modal -->
+<div id="macroRecSaveModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9100;align-items:center;justify-content:center;">
+  <div style="background:#0d1a0d;border:1px solid #2a4a2a;border-radius:6px;padding:24px 28px;min-width:290px;font-family:'IBM Plex Mono',monospace;">
+    <div style="color:var(--accent-amber);font-size:13px;margin-bottom:4px;letter-spacing:0.08em">● SAVE MACRO RECORDING</div>
+    <div style="color:var(--text-muted);font-size:11px;margin-bottom:14px">Name this macro to add it to your library</div>
+    <input id="macroRecName" type="text" placeholder="Macro name"
+      style="width:100%;box-sizing:border-box;background:#000;border:1px solid #333;border-radius:3px;color:var(--text-primary);font-family:inherit;font-size:12px;padding:6px 8px;outline:none;margin-bottom:6px"
+      onkeydown="if(event.key==='Enter')saveMacroRecord();if(event.key==='Escape')cancelMacroRecord();" />
+    <input id="macroRecDesc" type="text" placeholder="Description (optional)"
+      style="width:100%;box-sizing:border-box;background:#000;border:1px solid #2a2a2a;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:11px;padding:5px 8px;outline:none;margin-bottom:16px"
+      onkeydown="if(event.key==='Enter')saveMacroRecord();if(event.key==='Escape')cancelMacroRecord();" />
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button onclick="cancelMacroRecord()" style="background:none;border:1px solid #444;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:11px;padding:4px 12px;cursor:pointer">Discard</button>
+      <button onclick="saveMacroRecord()" style="background:#1a3a1a;border:1px solid var(--accent-amber);border-radius:3px;color:var(--accent-amber);font-family:inherit;font-size:11px;padding:4px 12px;cursor:pointer">Save Macro</button>
+    </div>
+  </div>
+</div>
+
 <!-- Security unlock modal -->
 <div id="secUnlockOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9000;align-items:center;justify-content:center;">
   <div style="background:#0d1a0d;border:1px solid #2a4a2a;border-radius:6px;padding:24px 28px;min-width:280px;max-width:340px;font-family:'IBM Plex Mono',monospace;">
@@ -747,5 +803,6 @@
 <script src="js/settings.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/main.js"></script>
+<script src="js/probe.js"></script>
 </body>
 </html>
