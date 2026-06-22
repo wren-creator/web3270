@@ -42,7 +42,7 @@ server.js  (HTTP + WebSocket on the same port)
 - **Macro Recorder** — click ● REC in the sidebar to record real terminal interactions as reusable JSON macros; floating step counter while recording; STOP prompts for name + description and saves to the macro library immediately; recorded steps use the same schema as hand-authored macros
 - **Protocol Fuzzer** — sends mutated 3270 AID records and classifies host responses; four modes: AID Sweep (iterate every AID byte 0x00–0xFF), Field Overflow (oversized field payload), Order Injection (inject 3270 order bytes — SF/SBA/IC/RA/IAC — into field data), SBA Mutation (crafted invalid screen-buffer addresses); configurable timeout + delay; live colour-coded result table; CSV export
 - **Security Macros** — pre-built macro store for common security workflows (RACF auth probing, LISTAPF, TSO READY checks)
-- All tools live behind the 🔒 button in the OIA bar — the Security tab is hidden until a password is entered; clicking 🔒 again re-locks and hides the tab; every access attempt is logged server-side with LU name, IP, and timestamp
+- All tools live behind the 🔒 button in the OIA bar — the Security tab is hidden until a password is entered; clicking 🔒 again re-locks and hides the Security tab (the right panel stays open, switching to Settings); every access attempt is logged server-side with LU name, IP, and timestamp
 
 ---
 
