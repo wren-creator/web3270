@@ -1456,11 +1456,32 @@ function parseFilelistScreen(lines) {
 
 // ── Macro file helpers ─────────────────────────────────────────────
 function loadMacroFile() {
+  // macros.json — manually-added macros
   const macroPath = path.join(__dirname, 'macros.json');
   let macros = [];
   if (fs.existsSync(macroPath)) {
     try { macros = JSON.parse(fs.readFileSync(macroPath, 'utf8')); } catch { macros = []; }
   }
+
+  // macros/library/*.macro.json — recorded macros saved by MacroStore
+  const libDir = path.join(__dirname, 'macros', 'library');
+  if (fs.existsSync(libDir)) {
+    try {
+      const existingNames = new Set(macros.map(m => m.name));
+      for (const file of fs.readdirSync(libDir)) {
+        if (!file.endsWith('.macro.json')) continue;
+        try {
+          const m = JSON.parse(fs.readFileSync(path.join(libDir, file), 'utf8'));
+          if (m.name && !existingNames.has(m.name)) {
+            if (!m.id) m.id = m.name;
+            macros.push(m);
+            existingNames.add(m.name);
+          }
+        } catch { /* skip unreadable file */ }
+      }
+    } catch { /* skip unreadable library dir */ }
+  }
+
   // Merge security macros (read-only, security branch only)
   const secPath = config.macroSecurityFile;
   if (fs.existsSync(secPath)) {
