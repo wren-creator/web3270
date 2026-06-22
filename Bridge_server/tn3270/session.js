@@ -272,6 +272,17 @@ class Tn3270Session extends EventEmitter {
   }
 
   /**
+   * Send a raw byte sequence to the host, bypassing all encoding logic.
+   * Used by the protocol fuzzer — caller is responsible for correctness
+   * (or intentional incorrectness) of the bytes.
+   */
+  sendRawAid(rawBytes) {
+    const buf = Buffer.isBuffer(rawBytes) ? rawBytes : Buffer.from(rawBytes);
+    logger.info(`[ws:${this.wsId}] Fuzz: raw send ${buf.length}b: ${buf.toString('hex')}`);
+    this._sendDataRecord(buf);
+  }
+
+  /**
    * Build a hex representation of the AID outbound buffer with each
    * nondisplay field's EBCDIC data bytes replaced by '..' pairs. Layout
    * is fixed: AID(1) + cursorAddr(2) + repeating[ SBA(3) + data(N) ].
