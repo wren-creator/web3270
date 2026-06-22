@@ -5,9 +5,20 @@
 
 ### Accessing the Security Tools
 
-All security tools live in the **Security Toolbar** — hidden by default to keep the interface clean.
+All security tools live in the **🔒 Sec** tab of the right panel — hidden by default. The tab does not appear until you authenticate.
 
-Click the **`🔒`** button in the bottom OIA bar to expand it. A dark bar appears above the OIA bar with five tools: `FMO`, `ABI`, `REC`, `REPLAY`, and `ANOM`. Click `🔒` again to collapse it. Each tool button highlights amber when active. On smaller screens the toolbar scrolls horizontally.
+**To unlock:**
+
+1. Click the **`🔒`** button in the bottom OIA bar
+2. A password modal appears — enter the access password and press **Unlock** (or Enter)
+3. On success, the **🔒 Sec** tab appears in the right panel and the panel switches to it automatically
+4. The lock button highlights amber to indicate the panel is active
+
+**To re-lock:** click **`🔒`** again — the tab disappears and the panel returns to Settings.
+
+> Every unlock attempt is logged server-side with the session LU name, client IP address, and UTC timestamp. Failed attempts are logged as warnings. The password is set via the `SECURITY_TOOLS_PASSWORD` environment variable (default: `2970`).
+
+Once unlocked, the Security panel is organised into five accordion sections: **FIELD ANALYSIS**, **TRAFFIC**, **INTERCEPT**, **MONITOR**, and **INJECT**. Each tool is described in the parts below.
 
 ---
 
@@ -32,7 +43,7 @@ Data cells are tinted to match their containing field type.
 ### How to use it
 
 1. Open WebTerm/3270 at **http://localhost:8081** and connect to an LPAR
-2. Click **`🔒`** in the OIA bar to open the Security Toolbar
+2. Click **`🔒`** in the OIA bar, enter the password to unlock the Security panel
 3. Click **`FMO`** — the button turns amber and the screen re-renders with field boundaries visible:
    - Every `▸` marker is a field attribute byte at that exact screen position
    - Hover any `▸` to see a tooltip: `FA 0x60 — PROT · NORMAL`
@@ -56,7 +67,7 @@ The ABI lets you click any cell on a live screen and get a full bit-level breakd
 
 ### How to use it
 
-1. Open the Security Toolbar (`🔒`) and click **`ABI`** — the button turns amber
+1. Open the Security panel (🔒 Sec tab) and click **`ABI`** — the button turns amber
 2. Click any cell on the screen — a floating inspector panel appears showing:
    - FA byte in hex and binary (`0x60` · `01100000`)
    - Each bit decoded individually: Protected, Numeric, Intensity (bits 3-2), MDT
@@ -96,7 +107,7 @@ The ABI inspector includes a live **MUTATE FA →** row at the bottom of every p
 
 ### How to use it
 
-1. Open the Security Toolbar (`🔒`) and activate **`ABI`**
+1. Open the Security panel (🔒 Sec tab) and activate **`ABI`**
 2. Click any field on screen — the inspector popup appears
 3. The amber **MUTATE FA →** row shows context-relevant buttons:
    - On a protected label field: `UNPROTECT` appears — click to make it writable
@@ -126,7 +137,7 @@ A standard PC keyboard only has F1–F12. A real IBM 3270 terminal has PF1–PF2
 
 ### How to use it
 
-1. Open the Security Toolbar (`🔒`)
+1. Open the Security panel (🔒 Sec tab)
 2. Use the **FUNC KEY** dropdown to select the key:
    - **ENTER / CLEAR / SYSREQ** — transmit AID keys
    - **PA1 (Attn/Break) / PA2 / PA3** — interrupt host without sending field data
@@ -155,7 +166,7 @@ The **Session Viewer** shows a live-queryable table of every AID key sent to the
 
 ### How to open it
 
-Click **⇄ SESSION Viewer** in the Security Toolbar. A popup opens bottom-right (900×480) showing a table:
+Click **⇄ SESSION Viewer** in the Security panel. A popup opens bottom-right (900×480) showing a table:
 
 | Column | Content |
 |---|---|
@@ -193,7 +204,7 @@ The **Proxy Viewer** streams the bridge's internal log in real time — every co
 
 ### How to open it
 
-Click **≡ PROXY Viewer** in the Security Toolbar. A popup opens bottom-right (760×400) and immediately begins streaming live log entries over SSE (Server-Sent Events). It replays the last 2000 log entries on open, then tails live.
+Click **≡ PROXY Viewer** in the Security panel. A popup opens bottom-right (760×400) and immediately begins streaming live log entries over SSE (Server-Sent Events). It replays the last 2000 log entries on open, then tails live.
 
 ### Controls
 
@@ -274,7 +285,7 @@ The mock z/OS LPAR (port 3270) now sends SFE and SA orders on every screen. Conn
 Use the **ABI** to confirm extended attributes are being parsed:
 
 1. Connect to the mock z/OS LPAR and log in
-2. Open the Security Toolbar and click **`ABI`**
+2. Open the Security panel and click **`ABI`**
 3. Click the title bar at row 0 — the inspector shows the FA byte plus the color/highlight attribute pair in the raw SFE data
 4. Click `LISTAPF` from the READY prompt and observe the `*** WRITABLE ***` text in blinking red — SA orders in action
 
@@ -313,7 +324,7 @@ Browser ──key──► server.js ──(MITM active)──► HOLD ──►
 
 ### How to use it
 
-1. Open the Security Toolbar (`🔒`) and click **`⚡ MITM`** — button turns amber
+1. Open the Security panel (🔒 Sec tab) and click **`⚡ MITM`** — button turns amber
 2. Navigate the mainframe normally. The next time you press a key (ENTER, PF key, etc.), instead of the keystroke reaching the host, a panel appears:
    ```
    ⚡ INTERCEPTED   ENTER   cursor R05 C14
@@ -417,7 +428,7 @@ The Traffic Recorder captures every screen update from the host and every keypre
 
 1. Connect to an LPAR at **http://localhost:8081**
 2. Wait for the session to fully connect (OIA bar shows system status)
-3. Open the Security Toolbar (`🔒`) and click **`REC`** — it turns red and shows `⏹ REC`
+3. Open the Security panel (🔒 Sec tab) and click **`REC`** — it turns red and shows `⏹ REC`
 4. Navigate the mainframe normally — log in, run commands, explore menus
 5. Click **`⏹ REC`** to stop — your browser downloads a file named something like:
    ```
@@ -428,7 +439,7 @@ The recording captures host→client screen events and client→host keypresses 
 
 ### Replaying a recording
 
-1. Click **`REPLAY`** in the Security Toolbar — opens **http://localhost:8081/replay** in a new tab
+1. Click **`REPLAY`** in the Security panel — opens **http://localhost:8081/replay** in a new tab
 2. Drag and drop your `.rec.json` file onto the drop zone, or click **`📂 Open…`**
 3. The first screen loads immediately. The event log on the right shows every event in the session.
 
@@ -472,7 +483,7 @@ The anomaly detector watches the raw 3270 datastream as it arrives and flags unu
 
 ### How to use it
 
-1. Open the Security Toolbar (`🔒`) — anomaly detection runs automatically on every screen event, no activation needed
+1. Open the Security panel (🔒 Sec tab) — anomaly detection runs automatically on every screen event, no activation needed
 2. When anomalies are detected, the `ANOM` button shows a red badge with a count
 3. Click **`ANOM`** to expand the log panel — shows all anomalies for the session with timestamps, codes, and descriptions
 4. Click **`✕`** to clear the log and reset the badge
