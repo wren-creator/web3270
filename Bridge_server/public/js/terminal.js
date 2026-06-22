@@ -250,8 +250,15 @@ function _secReveal() {
 function _secLock() {
   const tab = document.getElementById('secPanelTab');
   if (tab) tab.style.display = 'none';
-  const panel = document.getElementById('rightPanel');
-  if (panel) panel.classList.add('hidden');
+
+  // If Security was the active panel, switch to the first other tab rather
+  // than collapsing the whole right panel — the right panel stays open.
+  const secPanel = document.getElementById('panelSecurity');
+  if (secPanel && secPanel.style.display !== 'none') {
+    const firstTab = document.querySelector('.panel-tab:not(#secPanelTab)');
+    if (firstTab) firstTab.click();
+  }
+
   const btn = document.getElementById('secBtn');
   if (btn) { btn.style.color = ''; btn.style.borderColor = ''; }
   _secUnlocked = false;
