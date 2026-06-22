@@ -38,8 +38,9 @@ server.js  (HTTP + WebSocket on the same port)
 - **Traffic Recorder** — records the live datastream to a timestamped `.rec.json` file for offline analysis
 - **Replay Viewer** — plays back recorded sessions frame by frame at `/replay`
 - **Anomaly Detector** — flags suspicious screen patterns (RACF lockouts, unexpected field changes, WCC anomalies); on/off toggle, ephemeral flash bar, scrollable session log, one-click clear
+- **RACF Auto-Probe** — iterates a credential wordlist against TSO, z/VM, or CICS logon screens; auto-detects the active subsystem; classifies each response as SUCCESS, FAILURE, or LOCKOUT; stops immediately on lockout or success; configurable delay between attempts; live results table + CSV export
+- **Macro Recorder** — click ● REC in the sidebar to record real terminal interactions as reusable JSON macros; floating step counter while recording; STOP prompts for name + description and saves to the macro library immediately; recorded steps use the same schema as hand-authored macros
 - **Security Macros** — pre-built macro store for common security workflows (RACF auth probing, LISTAPF, TSO READY checks)
-- **RACF wordlist** — default credential list for lab/test environments
 - All tools live behind the 🔒 button in the OIA bar — the Security tab is hidden until a password is entered; clicking 🔒 again re-locks and hides the tab; every access attempt is logged server-side with LU name, IP, and timestamp
 
 ---

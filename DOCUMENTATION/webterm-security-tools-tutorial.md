@@ -502,6 +502,110 @@ A brief flash bar also appears above the OIA bar showing the most recent anomali
 
 ---
 
+## Part 2I — RACF Auto-Probe
+
+Wave 7 adds a reactive credential probe that iterates a wordlist against live TSO, z/VM, or CICS logon screens and classifies each response — faster and more informative than hand-editing the static security macros.
+
+### How it works
+
+The probe sends each credential pair through the active session's WebSocket connection using the same `type` + `ENTER` mechanism the terminal keyboard uses. After each ENTER it waits for the host's screen response, reads the full text, and classifies the result:
+
+| Result | Condition detected |
+|---|---|
+| **SUCCESS** | READY prompt (TSO), CP READ/CMS (z/VM), CICS application screen |
+| **FAILURE** | ICH error codes, "LOGON unsuccessful", wrong-password messages |
+| **LOCKOUT** | IKJ56421I, AUTHORIZATION FAILURE, REVOKED, "User revoked" |
+
+On LOCKOUT or SUCCESS the probe stops immediately. Each attempt is spaced by a configurable delay (default 1500 ms) to avoid rapid-fire lockout triggers.
+
+### Subsystem detection
+
+The probe reads the current screen text plus the OIA APP field to detect which subsystem is active before running. No manual configuration is needed.
+
+| Subsystem | Detection pattern | Userid field | Password field |
+|---|---|---|---|
+| TSO | `TSO/E LOGON`, `ENTER USERID` | row 5, col 15 | row 6, col 15 |
+| z/VM | `z/VM`, `USERID ==>` | row 9, col 14 | row 10, col 14 |
+| CICS | `CESN`, `SIGN ON TO CICS` | row 5, col 25 | row 6, col 25 |
+
+### How to use it
+
+1. Unlock the Security panel (🔒 Sec tab) and scroll to **RACF PROBE**
+2. Navigate the terminal to a TSO, z/VM, or CICS logon screen
+3. Click **Load defaults** — the wordlist pre-fills with the standard IBM default credentials for the detected subsystem
+4. Adjust the wordlist if needed (one `USERID,PASSWORD` per line; lines starting with `#` are comments)
+5. Set the delay between attempts (500–10000 ms; default 1500 ms)
+6. Click **▶ START** — the probe begins immediately, updating the results table after each attempt
+7. Click **■ STOP** to abort early
+
+Results are shown in a live table (userid, masked password, result). Click **↓ Export CSV** to download the full log including timestamps.
+
+### Default credential lists
+
+**TSO:** IBMUSER/SYS1, IBMUSER/IBMUSER, MAINT/MAINT, MAINT/SYS1, SYSPROG/SYSPROG, SYSADM/SYSADM, TSTADMIN/TSTADMIN, BATCH/BATCH, CICS/CICS, DB2/DB2, MQ/MQ
+
+**z/VM:** OPERATOR/OPERATOR, MAINT/MAINT, MAINT730/MAINT730, PMAINT/PMAINT, TCPMAINT/TCPMAINT, AUTOLOG1/AUTOLOG1
+
+**CICS:** CICSUSER/CICSUSER, CICS/CICS, ADMIN/ADMIN, IBMUSER/SYS1, SYSADM/SYSADM
+
+### Teaching use cases
+
+**Default credential enumeration** — run the probe against the mock TSO LPAR with defaults loaded. IBMUSER/SYS1 succeeds on the first attempt, demonstrating that the most common IBM-supplied default is also the first credential an attacker tries.
+
+**Lockout threshold demonstration** — add three wrong passwords before a correct one and show students exactly when the IKJ56421I lockout fires. The probe stops and marks the locked account — a clean example of RACF's lockout counter in action.
+
+**Cross-platform credential reuse** — load TSO defaults, then switch to the z/VM mock and load z/VM defaults. Many sites use the same passwords across subsystems. The probe makes this comparison fast and repeatable.
+
+**Timing as a side channel** — watch the delay between probe attempts and the screen response. Consistent fast failures may indicate a valid userid with wrong password; unusually fast responses can indicate an invalid userid rejected before password processing. Combine with the Session Viewer timestamps for a precise timing log.
+
+> **Note:** The probe uses `FOR AUTHORIZED USE ONLY` language in the UI. Remind students that running credential probes against real systems without written authorization is illegal under the Computer Fraud and Abuse Act and equivalent laws.
+
+---
+
+## Part 2J — Macro Recorder
+
+Wave 7 adds a UI-driven macro recorder that captures real interactions with the terminal and saves them as reusable JSON macros — no hand-editing required.
+
+### How to record a macro
+
+1. Connect to an LPAR and navigate to the screen where you want the macro to start
+2. Click **● REC** in the sidebar Macros header — a floating indicator appears at the bottom of the terminal: `● RECORDING — 0 steps`
+3. Interact with the terminal normally: type into fields, press ENTER, PF keys, or any AID key — every keystroke is captured as a step
+4. The step counter increments in real time as you interact
+5. Click **■ STOP** on the floating indicator — a save dialog appears
+6. Enter a name (required) and optional description, then click **Save Macro**
+7. The macro appears in the sidebar immediately and is ready to run
+
+Click **CANCEL** on the indicator at any time to discard the recording without saving.
+
+### What gets recorded
+
+| Action | Recorded as |
+|---|---|
+| Typing text into a field | `{ op: "type", row, col, text }` |
+| Pressing ENTER, PF1–PF24, PA1–PA3, CLEAR | `{ op: "aid", aid: "ENTER", fields: [...] }` |
+| Automatic wait for keyboard unlock | `{ op: "wait", condition: "unlock" }` |
+
+Cursor movements are not recorded — they add noise and are implied by field positions. A `wait: unlock` step is automatically inserted before each AID to ensure screen-synchronised replay.
+
+### Running a recorded macro
+
+Click the macro name in the sidebar (or use the Macros menu). The macro replays screen-synchronised — each step waits for the keyboard to unlock before proceeding, so replay timing adjusts automatically to host response time rather than using fixed delays.
+
+### Editing a recorded macro
+
+Click the **✎** button on any macro to open it in the JSON editor. Recorded macros use the same step format as hand-authored macros — you can add `wait: text` conditions, `branch` steps, or `comment` labels directly in the JSON. See the macro step schema at the top of `macros/engine.js` for the full reference.
+
+### Teaching use cases
+
+**Record once, replay many times** — record a login sequence (navigate to ISPF option 6, run LISTAPF) once, then replay it across multiple student sessions or against different LPARs. Eliminates the need for students to navigate manually before each lab exercise.
+
+**Student lab submission** — students record their own lab sessions (demonstrating a privilege escalation or enumeration step) and submit the `.rec.json` traffic recording alongside the macro. The instructor replays both to verify the correct sequence was followed.
+
+**Building security macros** — record the manual steps of a new attack workflow, save as a macro, then open in the JSON editor to add branch steps (check for RACF lockout, branch to stop) and wait conditions. The recorder generates the tedious boilerplate; editing adds the intelligence.
+
+---
+
 ## Part 5 — Security Macros
 
 Security macros live in `macros-security.json` — a separate file from the main `macros.json` that exists only in the security branch. They appear in the macro panel tagged and read-only; they cannot be edited or deleted from the UI.
