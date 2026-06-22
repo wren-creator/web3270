@@ -10,6 +10,20 @@
 const fs   = require('fs');
 const path = require('path');
 
+// ── Load SSH host profiles from ssh-hosts.txt ─────────────────────
+function loadSshHostsFile() {
+  const filePath = path.join(__dirname, 'ssh-hosts.txt');
+  if (!fs.existsSync(filePath)) return [];
+  return fs.readFileSync(filePath, 'utf8')
+    .split('\n')
+    .filter(line => line.trim() && !line.trim().startsWith('#'))
+    .map(line => {
+      const parts = line.split(',').map(s => s.trim());
+      const [id, name, host, port, user] = parts;
+      return { id, name: name || id, host: host || id, port: parseInt(port || '22', 10), user: user || '' };
+    });
+}
+
 // ── Load LPAR profiles from lpars.txt ─────────────────────────────
 function loadLparFile() {
   const filePath = path.join(__dirname, 'lpars.txt');
@@ -85,6 +99,7 @@ module.exports = {
    * Lines starting with # are treated as comments.
    */
 profiles: loadLparFile(),
+sshHosts: loadSshHostsFile(),
 
   logging: {
     /** 'debug' | 'info' | 'warn' | 'error' */
@@ -93,6 +108,7 @@ profiles: loadLparFile(),
 
   // Exposed so server.js can hot-reload after a save
   loadLparFile,
+  loadSshHostsFile,
 
   /**
    * Password required to unlock the Security Tools panel in the UI.
