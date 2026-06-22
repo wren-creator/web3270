@@ -143,7 +143,21 @@ cd ~/tn3270-bridge
 npm install
 ```
 
-This installs the `ws` WebSocket library — the only runtime dependency. You should see output ending in `added 1 package`.
+This installs all runtime dependencies (`ws` for WebSocket, `ssh2` for SSH terminal sessions). You should see output ending in `added N packages`.
+
+---
+
+## Step 5a · (Optional) Configure SSH hosts
+
+If you want to use the SSH terminal tab, create `ssh-hosts.txt` in the project root (it is created automatically as empty if missing):
+
+```
+# id, name, host/IP, port, user
+my-server, My Linux Box, 192.168.1.10, 22, britley
+uss-prod,  z/OS USS,     10.0.0.5,     22, sshuser
+```
+
+Passwords are never stored — you enter them each time you connect. You can also add hosts live from the SSH connect modal without restarting the bridge.
 
 ---
 

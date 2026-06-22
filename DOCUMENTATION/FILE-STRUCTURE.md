@@ -37,9 +37,11 @@ Bridge_server/
 │                                           · ws://localhost:8080  → WebSocket bridge
 │                                           · GET/POST/DELETE /api/profiles (lpars.txt CRUD)
 │                                           · GET/POST/DELETE /api/macros (macros.json CRUD)
-├── config.js                             LPAR profile loader (lpars.txt parser + defaults)
+│                                           · GET/POST /api/ssh-hosts (ssh-hosts.txt CRUD)
+│                                           · WS first-message type:"ssh.connect" → handleSshConnect()
+├── config.js                             Profile loaders: lpars.txt (loadLparFile) + ssh-hosts.txt (loadSshHostsFile)
 ├── logger.js                             Structured logger (LOG_LEVEL env var)
-├── package.json                          Deps: ws (production), nodemon (dev)
+├── package.json                          Deps: ws, ssh2 (production); nodemon (dev)
 │
 │  ── Startup scripts ─────────────────────────────────────────────
 │
@@ -99,6 +101,10 @@ Bridge_server/
 ├── lpars.txt                             LPAR profiles: id, name, host, port, tls, type, model
 ├── lpars.txt.bak                         Backup of lpars.txt
 ├── macros.json                           Saved macros (CRUD via /api/macros)
+├── ssh-hosts.txt                         SSH host profiles: id, name, host/IP, port, user
+│                                           · Password is never stored — prompted at connect time
+│                                           · Hot-reloaded by POST /api/ssh-hosts (no restart needed)
+│                                           · Same format/pattern as lpars.txt
 │
 │  ── Browser client ─────────────────────────────────────────────────
 │
@@ -124,7 +130,7 @@ Bridge_server/
 │   │
 │   └── js/                              Modular client JS (loaded in order by HTML)
 │       ├── state.js                      Shared globals: session map, cursor, xfer state,
-│       │                                   AI provider constants, BRIDGE_URL (ws://localhost:8081)
+│       │                                   activeSshSession, AI provider constants, BRIDGE_URL
 │       ├── copilot.js                    AI Assist panel: chat, provider config, model list
 │       ├── xfer.js                       File transfer: IND$FILE (z/VM), TSO EDIT upload,
 │       │                                   dataset listing, local file browser (File System API)
@@ -133,6 +139,15 @@ Bridge_server/
 │       ├── terminal.js                   Screen rendering, keyboard handler, cursor, field tracking
 │       ├── settings.js                   Theme, zoom, scanlines, cursor blink, password masking
 │       ├── ui.js                         Layout: sidebar toggle, panel tabs, menu, modals
+│       ├── ssh.js                        SSH terminal integration
+│       │                                   · sshSessions registry (Map<sid, session>)
+│       │                                   · xterm.js Terminal instance per session
+│       │                                   · openSshConnect() modal with host dropdown (ssh-hosts.txt)
+│       │                                   · sshConnect() → WebSocket → type:"ssh.connect"
+│       │                                   · sshActivateTab() / sshCloseTab() — tab lifecycle
+│       │                                   · sshSaveHost() — saves new entry via POST /api/ssh-hosts
+│       │                                   · Resize (FitAddon) on window resize
+│       │                                   · Split-screen helpers: sshRenderSplitPane / sshClearSplitPane
 │       └── main.js                       App init, WebSocket lifecycle, session tab management
 │
 │  ── Mock LPAR daemons ──────────────────────────────────────────────
@@ -171,9 +186,14 @@ One line in `.env`, restart the bridge — the browser UI is unaffected.
 ```
 Browser  (public/tn3270-client.html + public/js/*.js)
     │  WebSocket JSON  ws://localhost:8081
-    ▼
-server.js  (HTTP :8080 / WS :8081)
-    ├── tn3270/session.js ──────────────── TCP :23/:992 ──► Mainframe LPAR
+    │
+    │  type:"connect"    ─────────────────────────────────────────────────┐
+    │  type:"ssh.connect" ─────────────────────────────────────┐         │
+    ▼                                                           │         │
+server.js  (HTTP :8080 / WS :8081)                             │         │
+    ├── handleSshConnect() ─── ssh2 Client ── TCP :22 ──► SSH host       │
+    │       (xterm PTY pipe; one WS per SSH session)           │         │
+    ├── tn3270/session.js ──────────────────────── TCP :23/:992 ──► LPAR ┘
     │                                               (or mock-lpar/*.js)
     ├── macros/handler.js
     │       └── macros/engine.js
@@ -211,5 +231,6 @@ These files are mounted directly into the container — changes take effect imme
 |------|---------|
 | `lpars.txt` | LPAR profiles |
 | `macros.json` | Saved macros |
+| `ssh-hosts.txt` | SSH host profiles (created automatically if missing) |
 
-> Both files must exist as files on the host before `docker compose up` or Docker will create them as directories, breaking the bind mount.
+> All three files must exist as files on the host before `docker compose up` or Docker will create them as directories, breaking the bind mount.
