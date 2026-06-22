@@ -130,11 +130,13 @@ Bridge_server/
 │   │
 │   └── js/                              Modular client JS (loaded in order by HTML)
 │       ├── state.js                      Shared globals: session map, cursor, xfer state,
-│       │                                   activeSshSession, AI provider constants, BRIDGE_URL
+│       │                                   activeSshSession, secUnlocked, AI provider constants, BRIDGE_URL
 │       ├── copilot.js                    AI Assist panel: chat, provider config, model list
 │       ├── xfer.js                       File transfer: IND$FILE (z/VM), TSO EDIT upload,
 │       │                                   dataset listing, local file browser (File System API)
 │       ├── macros.js                     Macro CRUD UI, import/export JSON, run from sidebar
+│       │                                   · Security macros filtered from list when panel locked
+│       │                                   · Recorder save dialog: 🔒 checkbox routes to macros-security.json
 │       ├── profiles.js                   LPAR profile CRUD, sidebar list, management panel
 │       ├── terminal.js                   Screen rendering, keyboard handler, cursor, field tracking
 │       ├── settings.js                   Theme, zoom, scanlines, cursor blink, password masking
