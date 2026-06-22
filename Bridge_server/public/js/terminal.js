@@ -249,12 +249,8 @@ function _secReveal() {
 function _secLock() {
   const tab = document.getElementById('secPanelTab');
   if (tab) tab.style.display = 'none';
-  // If Security was the active tab, switch to Settings
-  const secContent = document.getElementById('panelSecurity');
-  if (secContent && secContent.classList.contains('active')) {
-    const settingsTab = document.querySelector('.panel-tab');
-    if (settingsTab) switchPanelTab(settingsTab, 'Settings');
-  }
+  const panel = document.getElementById('rightPanel');
+  if (panel) panel.classList.add('hidden');
   const btn = document.getElementById('secBtn');
   if (btn) { btn.style.color = ''; btn.style.borderColor = ''; }
   _secUnlocked = false;
