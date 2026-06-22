@@ -655,6 +655,103 @@
         </div>
       </div>
 
+      <!-- FUZZ section -->
+      <div class="sec-section">
+        <div class="sec-section-hdr">PROTOCOL FUZZER</div>
+        <div style="padding:6px 0">
+          <div class="sec-panel-hint" style="margin-bottom:8px">Sends mutated 3270 AID records and classifies host responses (screen / no-response / disconnect). FOR AUTHORIZED USE ONLY.</div>
+
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+            <label style="font-size:10px;color:var(--text-muted);white-space:nowrap">Mode</label>
+            <select id="fuzzMode" onchange="fuzzModeChanged()"
+              style="flex:1;background:#0a0f14;border:1px solid #1a2a3a;border-radius:3px;color:var(--text-main);font-family:inherit;font-size:11px;padding:2px 4px">
+              <option value="aidSweep">AID Sweep — iterate AID bytes 0x00–0xFF</option>
+              <option value="fieldOverflow">Field Overflow — send oversized field payload</option>
+              <option value="orderInject">Order Injection — inject 3270 order bytes into field data</option>
+              <option value="sbaMutation">SBA Mutation — malformed screen buffer addresses</option>
+            </select>
+          </div>
+
+          <!-- AID Sweep config -->
+          <div id="fuzzCfg_aidSweep" class="fuzz-mode-cfg" style="margin-bottom:6px">
+            <div style="display:flex;gap:6px;align-items:center">
+              <label style="font-size:10px;color:var(--text-muted)">Start (hex)</label>
+              <input id="fuzzAidStart" type="text" value="00" maxlength="2"
+                style="width:42px;background:#0a0f14;border:1px solid #1a2a3a;border-radius:3px;color:var(--text-main);font-family:'IBM Plex Mono',monospace;font-size:11px;padding:2px 4px;text-align:center">
+              <label style="font-size:10px;color:var(--text-muted)">End (hex)</label>
+              <input id="fuzzAidEnd" type="text" value="FF" maxlength="2"
+                style="width:42px;background:#0a0f14;border:1px solid #1a2a3a;border-radius:3px;color:var(--text-main);font-family:'IBM Plex Mono',monospace;font-size:11px;padding:2px 4px;text-align:center">
+            </div>
+          </div>
+
+          <!-- Field Overflow config -->
+          <div id="fuzzCfg_fieldOverflow" class="fuzz-mode-cfg" style="display:none;margin-bottom:6px">
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+              <label style="font-size:10px;color:var(--text-muted)">Field addr</label>
+              <input id="fuzzFieldAddr" type="number" value="415" min="0"
+                style="width:58px;background:#0a0f14;border:1px solid #1a2a3a;border-radius:3px;color:var(--text-main);font-family:inherit;font-size:11px;padding:2px 4px">
+              <label style="font-size:10px;color:var(--text-muted)">Length</label>
+              <input id="fuzzOverflowLen" type="number" value="100" min="1" max="4096"
+                style="width:58px;background:#0a0f14;border:1px solid #1a2a3a;border-radius:3px;color:var(--text-main);font-family:inherit;font-size:11px;padding:2px 4px">
+              <select id="fuzzOverflowPattern"
+                style="background:#0a0f14;border:1px solid #1a2a3a;border-radius:3px;color:var(--text-main);font-family:inherit;font-size:11px;padding:2px 4px">
+                <option value="alpha">EBCDIC A–Z repeat</option>
+                <option value="null">Null bytes 0x00</option>
+                <option value="ff">All 0xFF</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Order Injection config -->
+          <div id="fuzzCfg_orderInject" class="fuzz-mode-cfg" style="display:none;margin-bottom:6px">
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+              <label style="font-size:10px;color:var(--text-muted)">Field addr</label>
+              <input id="fuzzOrderFieldAddr" type="number" value="415" min="0"
+                style="width:58px;background:#0a0f14;border:1px solid #1a2a3a;border-radius:3px;color:var(--text-main);font-family:inherit;font-size:11px;padding:2px 4px">
+              <label style="font-size:10px;color:var(--text-muted)">Order byte</label>
+              <select id="fuzzOrderByte"
+                style="flex:1;background:#0a0f14;border:1px solid #1a2a3a;border-radius:3px;color:var(--text-main);font-family:inherit;font-size:11px;padding:2px 4px">
+                <option value="">Sweep all orders</option>
+                <option value="1d">SF  0x1D — Start Field</option>
+                <option value="29">SFE 0x29 — Start Field Extended</option>
+                <option value="11">SBA 0x11 — Set Buffer Address</option>
+                <option value="28">SA  0x28 — Set Attribute</option>
+                <option value="13">IC  0x13 — Insert Cursor</option>
+                <option value="3c">RA  0x3C — Repeat to Address</option>
+                <option value="12">EUA 0x12 — Erase Unprotected</option>
+                <option value="2c">MF  0x2C — Modify Field</option>
+                <option value="05">PT  0x05 — Program Tab</option>
+                <option value="ff">IAC 0xFF — Telnet escape</option>
+                <option value="00">NUL 0x00</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- SBA Mutation config (no extra config needed — uses preset cases) -->
+          <div id="fuzzCfg_sbaMutation" class="fuzz-mode-cfg" style="display:none;margin-bottom:6px">
+            <div style="font-size:10px;color:var(--text-muted)">Iterates 7 crafted SBA addresses: zero, max-14bit, all-bits-set, high-bit, both-top-bits, 12-bit-encoding, EBCDIC-boundary.</div>
+          </div>
+
+          <!-- Shared settings -->
+          <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+            <label style="font-size:10px;color:var(--text-muted);white-space:nowrap">Timeout (ms)</label>
+            <input id="fuzzTimeout" type="number" value="3000" min="500" max="10000" step="100"
+              style="width:62px;background:#0a0f14;border:1px solid #1a2a3a;border-radius:3px;color:var(--text-main);font-family:inherit;font-size:11px;padding:2px 4px">
+            <label style="font-size:10px;color:var(--text-muted);white-space:nowrap">Delay (ms)</label>
+            <input id="fuzzDelay" type="number" value="300" min="50" max="5000" step="50"
+              style="width:62px;background:#0a0f14;border:1px solid #1a2a3a;border-radius:3px;color:var(--text-main);font-family:inherit;font-size:11px;padding:2px 4px">
+          </div>
+
+          <div style="display:flex;gap:6px;margin-bottom:4px">
+            <button id="fuzzStartBtn" class="sec-inject-btn" onclick="startFuzz()" style="background:#1a2a1a">▶ START</button>
+            <button id="fuzzStopBtn"  class="sec-inject-btn" onclick="stopFuzz()"  style="background:#2a1a1a;display:none">■ STOP</button>
+            <button onclick="fuzzExportCsv()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:1px 8px;cursor:pointer">↓ CSV</button>
+          </div>
+          <div id="fuzzStatus" style="font-size:10px;color:var(--text-muted);min-height:14px;margin-bottom:2px"></div>
+          <div id="fuzzResultsTable"></div>
+        </div>
+      </div>
+
     </div><!-- end panelSecurity -->
 
   </div><!-- end right-panel -->
@@ -804,5 +901,6 @@
 <script src="js/ui.js"></script>
 <script src="js/main.js"></script>
 <script src="js/probe.js"></script>
+<script src="js/fuzz.js"></script>
 </body>
 </html>

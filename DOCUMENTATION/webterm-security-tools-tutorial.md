@@ -606,6 +606,74 @@ Click the **✎** button on any macro to open it in the JSON editor. Recorded ma
 
 ---
 
+## Part 2K — Protocol Fuzzer
+
+The Protocol Fuzzer sends intentionally malformed or mutated 3270 AID records directly to the host and classifies each response. This surfaces host-side parsing anomalies, unusual handling of invalid AID bytes, and how the host responds to buffer-address attacks — without modifying a production session.
+
+**Location:** Security panel → PROTOCOL FUZZER section (unlock with 🔒 first).
+
+### Four Modes
+
+**AID Sweep**
+Iterates a configurable range of AID byte values (0x00–0xFF). For each byte it sends the minimal valid-structure record `[AID byte][cursor addr 00 00]` with no field data. Most bytes outside the standard AID map will produce no-response; standard AIDs will get a screen update; invalid bytes sometimes cause the host to disconnect.
+
+*Configuration:*
+- **Start / End (hex):** byte range to sweep. Default `00`–`FF` (256 packets). Narrow the range for targeted testing, e.g. `60`–`6F` to focus on PA / CLEAR / NONE variants.
+
+**Field Overflow**
+Sends a single ENTER AID with one oversized field payload — more bytes than the field's declared length. The host should truncate cleanly; some implementations may behave unexpectedly when the payload extends into adjacent field attribute bytes.
+
+*Configuration:*
+- **Field addr:** buffer address of the target field (decimal). Default 415 = row 5, col 16 on an 80-column screen — where the TSO USERID field lives.
+- **Length:** number of bytes to send (max 4096).
+- **Pattern:** `EBCDIC A–Z repeat`, `Null bytes 0x00`, or `All 0xFF`.
+
+**Order Injection**
+Injects a 3270 order byte as the first character of a field payload. The host parser must decide whether to treat it as data or as a protocol order. Order bytes that duplicate `SF (0x1D)` or `SBA (0x11)` are particularly interesting — they can confuse field-boundary detection.
+
+*Configuration:*
+- **Field addr:** target field (decimal).
+- **Order byte:** select a specific order or choose "Sweep all orders" to iterate all 11 orders automatically (SF, SFE, SBA, SA, IC, RA, EUA, MF, PT, IAC, NUL).
+
+**SBA Mutation**
+Sends an ENTER AID with a single field whose SBA (Set Buffer Address) contains a crafted address. Runs 7 preset cases:
+- `0x0000` — zero address
+- `0x3FFF` — maximum 14-bit value
+- `0xFFFF` — all bits set
+- `0x8000` — high bit set (invalid in 14-bit encoding)
+- `0xC000` — both top bits
+- `0x4000` — 12-bit encoding bit pattern
+- `0x7E7F` — EBCDIC boundary bytes
+
+### Shared settings
+
+| Field | Default | Meaning |
+|---|---|---|
+| Timeout (ms) | 3000 | How long to wait for a host screen response before classifying as `no-response` |
+| Delay (ms) | 300 | Wait between successive packets (prevents flooding) |
+
+### Response classes
+
+| Class | Colour | Meaning |
+|---|---|---|
+| `screen` | Green | Host replied with a screen update |
+| `no-response` | Grey | No screen arrived within the timeout |
+| `disconnect` | Red | Host closed the TN3270 session |
+| `error` | Amber | Bridge-side error (no active session, empty payload) |
+
+### Workflow
+
+1. Connect to a host or mock LPAR.
+2. Unlock the Security panel with 🔒.
+3. In the **PROTOCOL FUZZER** section, choose a mode and configure it.
+4. Click **▶ START**. The status line shows live progress; the table populates row by row.
+5. **■ STOP** halts mid-run. The table retains all results collected so far.
+6. Use **↓ CSV** to export the full result log for offline analysis.
+
+> **Disconnect handling:** If a fuzz packet causes the host to terminate the session, the fuzzer stops automatically and marks the last entry as `disconnect`. You will need to reconnect before fuzzing further.
+
+---
+
 ## Part 5 — Security Macros
 
 Security macros live in `macros-security.json` — a separate file from the main `macros.json` that exists only in the security branch. They appear in the macro panel tagged and read-only; they cannot be edited or deleted from the UI.
