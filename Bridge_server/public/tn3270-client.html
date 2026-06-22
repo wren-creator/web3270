@@ -898,8 +898,12 @@
       style="width:100%;box-sizing:border-box;background:#000;border:1px solid #333;border-radius:3px;color:var(--text-primary);font-family:inherit;font-size:12px;padding:6px 8px;outline:none;margin-bottom:6px"
       onkeydown="if(event.key==='Enter')saveMacroRecord();if(event.key==='Escape')cancelMacroRecord();" />
     <input id="macroRecDesc" type="text" placeholder="Description (optional)"
-      style="width:100%;box-sizing:border-box;background:#000;border:1px solid #2a2a2a;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:11px;padding:5px 8px;outline:none;margin-bottom:16px"
+      style="width:100%;box-sizing:border-box;background:#000;border:1px solid #2a2a2a;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:11px;padding:5px 8px;outline:none;margin-bottom:10px"
       onkeydown="if(event.key==='Enter')saveMacroRecord();if(event.key==='Escape')cancelMacroRecord();" />
+    <label style="display:flex;align-items:center;gap:7px;margin-bottom:14px;cursor:pointer;user-select:none;">
+      <input id="macroRecSecurity" type="checkbox" style="accent-color:var(--accent-amber);width:13px;height:13px;cursor:pointer;" />
+      <span style="font-size:10px;color:var(--text-muted);">&#128274; Security macro — hidden until panel is unlocked</span>
+    </label>
     <div style="display:flex;gap:8px;justify-content:flex-end;">
       <button onclick="cancelMacroRecord()" style="background:none;border:1px solid #444;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:11px;padding:4px 12px;cursor:pointer">Discard</button>
       <button onclick="saveMacroRecord()" style="background:#1a3a1a;border:1px solid var(--accent-amber);border-radius:3px;color:var(--accent-amber);font-family:inherit;font-size:11px;padding:4px 12px;cursor:pointer">Save Macro</button>

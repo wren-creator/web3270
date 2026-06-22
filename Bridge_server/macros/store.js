@@ -198,7 +198,16 @@ class SecurityMacroStore {
     return JSON.stringify(m, null, 2);
   }
 
-  // ── Blocked operations ─────────────────────────────────────────
+  /** Save a newly-recorded macro to the security store (bypasses the read-only UI guard). */
+  async saveRecorded(macro) {
+    const macros = await this._load();
+    const idx = macros.findIndex(m => m.name === macro.name);
+    const entry = { ...macro, source: 'security', modified: new Date().toISOString() };
+    if (idx >= 0) macros[idx] = entry; else macros.push(entry);
+    await fs.writeFile(this.filePath, JSON.stringify(macros, null, 2), 'utf8');
+  }
+
+  // ── Blocked UI operations ──────────────────────────────────────
   async save()   { throw new Error('Security macros are read-only'); }
   async delete() { throw new Error('Security macros are read-only'); }
   async rename() { throw new Error('Security macros are read-only'); }
