@@ -81,6 +81,7 @@
     </div>
     <div class="menu-item" id="menuHelp" onclick="toggleMenu('menuHelp')">Help
       <div class="menu-dropdown">
+        <div class="menu-dd-item" onclick="openWalkthroughPicker()">Walkthroughs…</div>
         <div class="menu-dd-item" onclick="menuShowShortcuts()">Keyboard Shortcuts</div>
         <div class="menu-dd-sep"></div>
         <div class="menu-dd-item" onclick="menuAbout()">About WebTerm/3270</div>
@@ -911,6 +912,20 @@
 <script src="js/settings.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/main.js"></script>
+<!-- Walkthrough picker modal (Help menu → Walkthroughs) -->
+<div id="wtPickerModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9200;align-items:center;justify-content:center;">
+  <div style="background:#0a0f14;border:1px solid #1e3a5f;border-radius:6px;width:460px;max-width:95vw;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 4px 24px rgba(0,0,0,0.8);font-family:'IBM Plex Mono',monospace">
+    <div style="background:#0d1a2a;border-bottom:1px solid #1e3a5f;padding:12px 16px;border-radius:6px 6px 0 0;display:flex;align-items:center;justify-content:space-between">
+      <div style="font-size:12px;font-weight:700;color:var(--accent-amber)">Walkthroughs</div>
+      <button onclick="closeWalkthroughPicker()" style="background:none;border:none;color:var(--text-muted);font-size:16px;cursor:pointer;padding:0 2px">✕</button>
+    </div>
+    <div style="padding:4px 16px 12px;overflow-y:auto;flex:1">
+      <div style="font-size:10px;color:var(--text-muted);margin:8px 0 6px">Step-by-step guides for common WebTerm/3270 tasks. The walkthrough panel appears at the bottom-right of the terminal — you can interact with the UI normally while it is open.</div>
+      <div id="wtPickerList"></div>
+    </div>
+  </div>
+</div>
+
 <!-- Walkthrough overlay -->
 <div id="wtOverlay" style="display:none;position:fixed;bottom:56px;right:12px;z-index:7500;width:310px;background:#0a0f14;border:1px solid #1e3a5f;border-radius:6px;box-shadow:0 4px 24px rgba(0,0,0,0.7);flex-direction:column;font-family:'IBM Plex Mono',monospace">
   <div style="background:#0d1a2a;border-bottom:1px solid #1e3a5f;padding:8px 12px;border-radius:6px 6px 0 0;display:flex;align-items:center;justify-content:space-between">
