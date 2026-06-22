@@ -629,7 +629,8 @@ function openWalkthroughPicker() {
   }
   const modal = document.getElementById('wtPickerModal');
   if (modal) modal.style.display = 'flex';
-  closeAllMenus();
+  // Do NOT call closeAllMenus() here — let the click bubble naturally to
+  // toggleMenu() which sees wasOpen=true and closes the dropdown cleanly.
 }
 
 function closeWalkthroughPicker() {
