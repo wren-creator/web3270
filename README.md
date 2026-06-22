@@ -40,7 +40,7 @@ server.js  (HTTP + WebSocket on the same port)
 - **Anomaly Detector** — flags suspicious screen patterns (RACF lockouts, unexpected field changes, WCC anomalies); on/off toggle, ephemeral flash bar, scrollable session log, one-click clear
 - **Security Macros** — pre-built macro store for common security workflows (RACF auth probing, LISTAPF, TSO READY checks)
 - **RACF wordlist** — default credential list for lab/test environments
-- All tools live behind the 🔒 button in the OIA bar — hidden by default, collapsible
+- All tools live behind the 🔒 button in the OIA bar — the Security tab is hidden until a password is entered; clicking 🔒 again re-locks and hides the tab; every access attempt is logged server-side with LU name, IP, and timestamp
 
 ---
 
@@ -198,6 +198,7 @@ Set in `docker-compose.yml` (Docker) or `.env` (Node/WSL2):
 | `DEFAULT_CODEPAGE` | `37` | Default EBCDIC codepage (37 = US English) |
 | `COPILOT_PROVIDER` | `anthropic` | `anthropic` / `azure` / `github` / `openai` / `gemini` / `ollama` |
 | `TN3270_HEXDUMP` | `0` | Set `1` to dump raw TN3270 bytes to logs (noisy — for protocol debugging) |
+| `SECURITY_TOOLS_PASSWORD` | `2970` | Password required to unlock the Security Tools panel; access attempts are logged with LU name, IP, and timestamp |
 
 ---
 
