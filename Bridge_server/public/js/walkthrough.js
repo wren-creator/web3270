@@ -432,6 +432,525 @@ const _WALKTHROUGHS = [
     ],
   },
 
+  // ── Scenario 5: Field Map Overlay ─────────────────────────────────
+  {
+    id:       'fmo-standalone',
+    category: 'security',
+    title:    'Field Map Overlay',
+    desc:     'Visualise every field attribute byte on screen — colour-coded by type with hover tooltips.',
+    steps: [
+      {
+        title: 'What the FMO shows',
+        body:  'Every 3270 screen is divided into fields by Field Attribute (FA) bytes. Each FA byte encodes: protected vs unprotected, display intensity, numeric-only flag, and Modified Data Tag (MDT). The FMO makes these invisible bytes visible.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Enable the overlay',
+        body:  'Click "▸ Field Map Overlay" in the FIELD ANALYSIS section. The button turns amber. Every FA byte cell on screen is now highlighted with a coloured tag: P = protected, U = unprotected, N = non-display (password). Regular cells are tinted by their field type.',
+        highlight: 'fmoBtn',
+        autoFn: 'toggleFieldMap',
+        autoLabel: 'Enable FMO for me',
+      },
+      {
+        title: 'Hover for details',
+        body:  'Hover over any highlighted FA cell. A tooltip shows the raw hex value of the attribute byte and its decoded flags: PROT/UNPROT, NUMERIC, MDT SET/CLR, INTENSIFIED/NONDISPLAY/NORMAL.',
+        highlight: 'fmoBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Read the layout',
+        body:  'Protected fields (P) are read-only — labels, headers, command prompts. Unprotected fields (U) accept input. Non-display fields (N) are password fields — content is masked. MDT-set fields (MDT) will be included in the next AID transmission even if unchanged.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Disable the overlay',
+        body:  'Click the button again to remove the overlay and return the screen to normal rendering. FMO state is local — it does not send anything to the host.',
+        highlight: 'fmoBtn',
+        autoFn: null,
+      },
+    ],
+  },
+
+  // ── Scenario 6: Attribute Byte Inspector ──────────────────────────
+  {
+    id:       'abi-standalone',
+    category: 'security',
+    title:    'Attribute Byte Inspector (ABI)',
+    desc:     'Click any cell to decode its governing FA byte bit-by-bit, then mutate individual flags live.',
+    steps: [
+      {
+        title: 'Enable the inspector',
+        body:  'Click "⬡ Attribute Byte Inspector" in the FIELD ANALYSIS section. The button turns amber. The terminal is now in inspect mode — clicks decode cells instead of moving the cursor.',
+        highlight: 'abiBtn',
+        autoFn: 'toggleInspector',
+        autoLabel: 'Enable ABI for me',
+      },
+      {
+        title: 'Click a cell',
+        body:  'Click any character cell on the terminal. The ABI panel in the Security section updates to show: the raw FA byte (hex), its governing field\'s buffer address, and a bit-by-bit breakdown — PROT bit, NUMERIC bit, both DISPLAY bits, and MDT bit.',
+        highlight: 'abiBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Read the bit flags',
+        body:  'The display intensity bits decode to: 00 = normal, 01 = intensified (bright), 10 = non-display (password), 11 = non-display. The MDT bit tells you whether the field will be sent in the next AID record — 1 = it will be included, 0 = only if the user edits it.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Mutate a flag',
+        body:  'The FA Mutation controls below the inspector let you flip individual bits: PROTECT/UNPROTECT, ALPHA/NUMERIC, REVEAL/HIDE nondisplay, SET/CLEAR MDT. Changes write directly to the session buffer — no AID is sent yet. The field reflects the change immediately.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Disable the inspector',
+        body:  'Click the ABI button again to return to normal terminal mode. Any FA mutations you made remain in effect until the next screen update from the host repaints the buffer.',
+        highlight: 'abiBtn',
+        autoFn: null,
+      },
+    ],
+  },
+
+  // ── Scenario 7: Color Reveal ───────────────────────────────────────
+  {
+    id:       'color-reveal',
+    category: 'security',
+    title:    'Color Reveal',
+    desc:     'Strip all 3270 extended color attributes to expose text hidden via same-color-as-background tricks.',
+    steps: [
+      {
+        title: 'What color hiding is',
+        body:  'Some mainframe applications store sensitive data on screen by setting the text color the same as the background (e.g. white text on a white field). The data is transmitted to the terminal but invisible until you change the color. This is a common technique to pre-populate fields without user visibility.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Enable Color Reveal',
+        body:  'Click "🎨 Color Reveal" in the FIELD ANALYSIS section. All 3270 extended color attributes (SFE/SA color codes) are stripped — every cell renders in the terminal\'s default color regardless of what the host specified. Hidden same-color text becomes visible.',
+        highlight: 'colorRevealBtn',
+        autoFn: 'toggleColorReveal',
+        autoLabel: 'Enable Color Reveal for me',
+      },
+      {
+        title: 'Inspect the screen',
+        body:  'Scan the screen for text that was not visible before. Pre-populated credentials, hidden status fields, and concealed data all appear at the default color. Compare with a screenshot taken before enabling — the difference is the hidden content.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Disable Color Reveal',
+        body:  'Click the button again to restore original extended color rendering. Color Reveal is purely client-side — no data is sent to the host and the host application cannot detect it.',
+        highlight: 'colorRevealBtn',
+        autoFn: null,
+      },
+    ],
+  },
+
+  // ── Scenario 8: Traffic Recorder ──────────────────────────────────
+  {
+    id:       'traffic-recorder',
+    category: 'security',
+    title:    'Traffic Recorder',
+    desc:     'Record the live 3270 datastream to a timestamped .rec.json file for offline analysis or replay.',
+    steps: [
+      {
+        title: 'What is recorded',
+        body:  'The Traffic Recorder captures every screen update received from the host and every AID record sent from the client, with timestamps. The output is a .rec.json file readable by the Replay Viewer and importable for analysis.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Start recording',
+        body:  'Click "● Traffic Recorder" in the TRAFFIC section. The button turns red — recording is active. Use the terminal normally: log in, navigate screens, run commands. Every inbound screen and outbound AID is captured.',
+        highlight: 'recBtn',
+        autoFn: 'toggleRecording',
+        autoLabel: 'Start recording for me',
+      },
+      {
+        title: 'Generate traffic',
+        body:  'Perform the workflow you want to capture — log in, navigate, run the commands that matter for your analysis. The recorder captures everything including nondisplay (password) field values in the AID records.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Stop recording',
+        body:  'Click "● Traffic Recorder" again to stop. A .rec.json file is written to the Bridge_server directory (or /app inside Docker) with a timestamp in the filename, e.g. session-2026-06-22T14-30-00.rec.json.',
+        highlight: 'recBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Use the recording',
+        body:  'Open the Replay Viewer at /replay (or TRAFFIC → Replay Viewer) to play the recording back frame by frame. The JSON file also contains the raw screen text at each step — useful for scripting analysis without replay.',
+        highlight: null,
+        autoFn: null,
+      },
+    ],
+  },
+
+  // ── Scenario 9: Replay Viewer ──────────────────────────────────────
+  {
+    id:       'replay-viewer',
+    category: 'security',
+    title:    'Replay Viewer',
+    desc:     'Play back a recorded .rec.json session frame by frame — step through screens exactly as they appeared.',
+    steps: [
+      {
+        title: 'Prerequisite: a recording',
+        body:  'You need a .rec.json file produced by the Traffic Recorder. If you do not have one, run the Traffic Recorder walkthrough first to create one.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Open the Replay Viewer',
+        body:  'Click "▶ Replay Viewer" in the TRAFFIC section. It opens /replay in a new browser tab — a standalone page separate from the live terminal.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Load a recording',
+        body:  'In the Replay Viewer, click "Load Recording" and select your .rec.json file. The first frame appears — showing the initial screen state at the moment recording started.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Step through frames',
+        body:  'Use the Previous / Next buttons (or arrow keys) to move frame by frame. Each frame shows the full screen as it appeared to the user at that moment, along with the timestamp and the event that triggered it (screen update or AID sent).',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Analyse the session',
+        body:  'Look for: credentials typed into nondisplay fields (shown in the AID record data), screen state before and after each command, timing between screens. The replay is a complete audit trail of the session at the protocol level.',
+        highlight: null,
+        autoFn: null,
+      },
+    ],
+  },
+
+  // ── Scenario 10: Session Viewer ───────────────────────────────────
+  {
+    id:       'session-viewer',
+    category: 'security',
+    title:    'Session Viewer',
+    desc:     'Floating table of every AID key sent and screen received — with direction filter, screen expand, and CSV export.',
+    steps: [
+      {
+        title: 'Open the Session Viewer',
+        body:  'Click "⇄ Session Viewer" in the TRAFFIC section. A floating popup appears listing every event in the current session: outbound AID records (→ host) and inbound screen updates (← host), in chronological order.',
+        highlight: 'sessionViewerBtn',
+        autoFn: 'openTrafficViewer',
+        autoLabel: 'Open Session Viewer for me',
+      },
+      {
+        title: 'Filter by direction',
+        body:  'Use the direction filter at the top to show only outbound (AID keys you sent) or only inbound (screens received). This helps when tracing a specific command-response pair.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Expand a screen',
+        body:  'Click any screen row to expand it and see the full screen text at that moment. For AID rows, you see the key name (ENTER, PF3, etc.) and any modified field data that was sent.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Export to CSV',
+        body:  'Click ↓ Export CSV to download the full session log. Each row includes: timestamp, direction, AID name (for outbound rows), and screen text (for inbound rows). Useful for post-session analysis or pentest reporting.',
+        highlight: null,
+        autoFn: null,
+      },
+    ],
+  },
+
+  // ── Scenario 11: Proxy Viewer ─────────────────────────────────────
+  {
+    id:       'proxy-viewer',
+    category: 'security',
+    title:    'Proxy Viewer',
+    desc:     'Live SSE stream of the bridge log — with level filter, hex toggle, and auto-scroll.',
+    steps: [
+      {
+        title: 'Open the Proxy Viewer',
+        body:  'Click "≡ Proxy Viewer" in the TRAFFIC section. A floating popup streams the bridge server log in real time using Server-Sent Events (SSE). You see the same output as the server terminal, formatted and filterable.',
+        highlight: 'proxyViewerBtn',
+        autoFn: 'openLogsViewer',
+        autoLabel: 'Open Proxy Viewer for me',
+      },
+      {
+        title: 'Filter by log level',
+        body:  'Use the level filter to show only INFO, WARN, ERROR, or DEBUG entries. DEBUG reveals the raw TN3270 negotiation, EBCDIC-decoded field values, and AID outbound byte sequences — useful for diagnosing unexpected host behaviour.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Enable HEX mode',
+        body:  'Toggle HEX to show the raw byte representation of each log entry. This is most useful for inbound datastream entries — you can see the exact bytes the host sent before they were parsed into a screen model.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'TAIL mode',
+        body:  'Click TAIL to enable auto-scroll — the viewer follows the latest log entries as they arrive. Scroll up to pause auto-scroll and read a specific entry; scroll back to the bottom to resume. Useful when monitoring a long-running operation.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'What to look for',
+        body:  'For security analysis: look for AID outbound lines to see exactly what field data was sent (nondisplay fields are masked in the log). Look for WARN entries flagging unusual host responses. The proxy viewer shows the bridge\'s view of the session — a second perspective beyond what the terminal renders.',
+        highlight: null,
+        autoFn: null,
+      },
+    ],
+  },
+
+  // ── Scenario 12: Anomaly Detector ────────────────────────────────
+  {
+    id:       'anomaly-detector',
+    category: 'security',
+    title:    'Anomaly Detector',
+    desc:     'Automatically flags suspicious screen patterns — RACF lockouts, unexpected field changes, WCC anomalies.',
+    steps: [
+      {
+        title: 'Enable anomaly tracking',
+        body:  'Click "⚠ Anomaly Tracking" in the MONITOR section. The button turns amber — the detector is now watching every screen update from the host and applying pattern rules.',
+        highlight: 'anomBtn',
+        autoFn: 'toggleAnomalyEnabled',
+        autoLabel: 'Enable anomaly tracking for me',
+      },
+      {
+        title: 'What it detects',
+        body:  'The detector flags: RACF authentication failures and lockouts (ICH error codes), screens with unexpected WCC (Write Control Character) bytes that could indicate a misconfigured host or unusual application state, and field protection changes between screens that were not initiated by the user.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Reading alerts',
+        body:  'When an anomaly is detected, a red flash bar appears at the top of the terminal with a short description. The badge on the ⚠ button shows a running count of anomalies in the session. Click the ▾ icon next to the button to expand the session log.',
+        highlight: 'anomBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Session log',
+        body:  'The anomaly log lists every flagged event with a timestamp and description. It persists for the duration of the session — scroll through to build a picture of unusual host behaviour over time. Click the ✕ icon to clear the log.',
+        highlight: 'anomViewBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Pair with RACF probe',
+        body:  'Run the Anomaly Detector alongside the RACF Auto-Probe. The detector will flag lockout events independently, giving you a second signal if the probe misses a lockout due to an unusual RACF error code variant.',
+        highlight: null,
+        autoFn: null,
+      },
+    ],
+  },
+
+  // ── Scenario 13: Screen Watch ────────────────────────────────────
+  {
+    id:       'screen-watch',
+    category: 'security',
+    title:    'Screen Watch',
+    desc:     'Trigger an alert the moment a specific string appears on screen — useful for monitoring long-running operations.',
+    steps: [
+      {
+        title: 'Enable Screen Watch',
+        body:  'Click "🔔 Screen Watch" in the MONITOR section. A text input appears below the button. Type the string you want to watch for and press Enter (or just start typing — the watch activates immediately).',
+        highlight: 'watchBtn',
+        autoFn: 'toggleWatch',
+        autoLabel: 'Enable Screen Watch for me',
+      },
+      {
+        title: 'Set the watch string',
+        body:  'Enter any string that should appear on screen to trigger the alert — e.g. "READY" to detect TSO completion, "LOCKOUT" to catch a RACF lockout, "IKJ56421I" for a specific RACF error code, or any application-specific success/failure string.',
+        highlight: 'watchInput',
+        autoFn: null,
+      },
+      {
+        title: 'Let the session run',
+        body:  'Continue working normally — or leave the session idle while a long job runs. Every time the host sends a new screen, Screen Watch scans the full screen text for your string.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Alert fires',
+        body:  'When the string is found, a flash alert appears at the top of the terminal with the matched text highlighted. The browser tab title also changes to draw attention if you have switched to another tab.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Disable Watch',
+        body:  'Click "🔔 Screen Watch" again to turn it off and hide the input. The watch string is cleared. You can set a different string by enabling it again.',
+        highlight: 'watchBtn',
+        autoFn: null,
+      },
+    ],
+  },
+
+  // ── Scenario 14: Screen Fingerprinting ───────────────────────────
+  {
+    id:       'screen-fingerprint',
+    category: 'security',
+    title:    'Screen Fingerprinting',
+    desc:     'Auto-detects the active mainframe application from screen content and displays it in the OIA bar.',
+    steps: [
+      {
+        title: 'What fingerprinting does',
+        body:  'On every screen update, WebTerm/3270 scans the screen text against a rule set and identifies the active application: ISPF, SDSF, CICS, IMS, RACF, TSO READY, z/VM, or LOGON screen. The result appears in the APP field of the OIA status bar.',
+        highlight: 'oiaApp',
+        autoFn: null,
+      },
+      {
+        title: 'Read the APP field',
+        body:  'Look at the OIA bar at the bottom of the terminal. The APP field (between LU and ROW) shows the detected application name in colour. Green = TSO READY, amber = z/VM, red = RACF or LOGON screen, blue = ISPF, orange = CICS.',
+        highlight: 'oiaApp',
+        autoFn: null,
+      },
+      {
+        title: 'Navigate screens',
+        body:  'Move through different application screens. The APP field updates on every screen change. Enter ISPF from TSO — APP changes from TSO to ISPF. Enter SDSF from ISPF — APP changes to SDSF.',
+        highlight: 'oiaApp',
+        autoFn: null,
+      },
+      {
+        title: 'Use with RACF probe',
+        body:  'The RACF Auto-Probe uses the same fingerprinting logic to auto-detect which logon screen type to target. When you open the RACF PROBE section and the APP field shows LOGON or RACF, the probe knows which field layout to use for the credential attempt.',
+        highlight: null,
+        autoFn: null,
+      },
+    ],
+  },
+
+  // ── Scenario 15: Session Broadcast ──────────────────────────────
+  {
+    id:       'session-broadcast',
+    category: 'security',
+    title:    'Session Broadcast',
+    desc:     'Fan out every AID keystroke to all open sessions simultaneously — run the same command on multiple LPARs at once.',
+    steps: [
+      {
+        title: 'Prerequisites',
+        body:  'Open two or more sessions (＋ in the tab bar) and connect each to a different LPAR or the same one. Navigate all sessions to a screen that accepts the same input — e.g. a TSO READY prompt or ISPF menu.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Enable broadcast',
+        body:  'Click "📡 Session Broadcast" in the INJECT section. The button turns amber. All outbound AID records are now fanned out to every connected session simultaneously.',
+        highlight: 'broadcastBtn',
+        autoFn: 'toggleBroadcast',
+        autoLabel: 'Enable broadcast for me',
+      },
+      {
+        title: 'Send a command',
+        body:  'Type a command and press Enter in the active session. The same AID record — including all field data — is sent to every other connected session. Each session receives an identical copy of the outbound record.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Watch all sessions respond',
+        body:  'Switch between session tabs to see each session\'s screen after the broadcast. All sessions should show the same response if they were at equivalent screens. If screens diverge, the field positions may differ between sessions.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Disable broadcast',
+        body:  'Click "📡 Session Broadcast" again to turn it off. Keystrokes return to the active session only. Broadcast is useful for demonstrating that a single intercepted AID record can be replayed across multiple sessions simultaneously.',
+        highlight: 'broadcastBtn',
+        autoFn: null,
+      },
+    ],
+  },
+
+  // ── Scenario 16: Credential Harvest Log ─────────────────────────
+  {
+    id:       'harvest-log',
+    category: 'security',
+    title:    'Credential Harvest Log',
+    desc:     'View all nondisplay field values captured during MITM intercepts — plaintext credentials in one place.',
+    steps: [
+      {
+        title: 'What the harvest log captures',
+        body:  'Every time MITM intercepts an AID record that contains a nondisplay (password) field, it adds an entry to the Credential Harvest Log. The entry includes the session LU name, timestamp, AID type, field buffer address, and the plaintext value of the nondisplay field.',
+        highlight: 'harvestBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Prerequisite: MITM intercepts',
+        body:  'You need to have intercepted at least one logon attempt with MITM enabled. If the log is empty, run the "MITM Credential Intercept" walkthrough first to capture a credential.',
+        highlight: 'mitmBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Open the harvest log',
+        body:  'Click "🔐 Credential Harvest Log" in the INTERCEPT section. A floating popup lists every captured credential entry from the current session.',
+        highlight: 'harvestBtn',
+        autoFn: 'openHarvestLog',
+        autoLabel: 'Open harvest log for me',
+      },
+      {
+        title: 'Read the entries',
+        body:  'Each entry shows: the LU name that intercepted the record, the timestamp, the AID type (usually ENTER), the field address, and the plaintext field value. Multiple nondisplay fields in one AID record appear as separate entries — e.g. username field and password field from a TSO logon.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Export',
+        body:  'Use the CSV export in the harvest log to download all captured credentials. The log persists for the duration of the browser session — refreshing the page clears it.',
+        highlight: null,
+        autoFn: null,
+      },
+    ],
+  },
+
+  // ── Scenario 17: Protocol Fuzzer — Full Tour ─────────────────────
+  {
+    id:       'fuzzer-full',
+    category: 'security',
+    title:    'Protocol Fuzzer — Full Tour',
+    desc:     'Walk through all four fuzz modes: AID Sweep, Field Overflow, Order Injection, and SBA Mutation.',
+    steps: [
+      {
+        title: 'What the fuzzer does',
+        body:  'The Protocol Fuzzer sends intentionally malformed or mutated 3270 AID records directly to the host, bypassing the normal encoding pipeline. You observe which mutations produce a screen response, which are silently ignored, and which disconnect the session.',
+        highlight: 'fuzzMode',
+        autoFn: null,
+      },
+      {
+        title: 'AID Sweep',
+        body:  'Select "AID Sweep" from the mode dropdown. Set start=00, end=FF and click ▶ START to iterate every possible AID byte. Standard AIDs (0x7D ENTER, 0x6D CLEAR, PF keys) produce screens. Unknown bytes produce no-response. A disconnect suggests the host validates the AID byte strictly.',
+        highlight: 'fuzzMode',
+        autoFn: null,
+      },
+      {
+        title: 'Field Overflow',
+        body:  'Select "Field Overflow". Enter the buffer address of a known input field (default 415 = TSO USERID). Set length to 100 and pattern to "EBCDIC A–Z repeat", then click ▶ START. A host that truncates cleanly returns a screen; one that crashes or disconnects has a buffer handling bug.',
+        highlight: 'fuzzFieldAddr',
+        autoFn: null,
+      },
+      {
+        title: 'Order Injection',
+        body:  'Select "Order Injection". Leave order byte as "Sweep all orders" to iterate all 11 known 3270 order bytes. The fuzzer injects each order byte as the first byte of field data — the host parser must decide if it\'s data or a protocol order. Interesting responses: screen changes on SF/SBA injection, disconnect on IAC 0xFF.',
+        highlight: 'fuzzOrderByte',
+        autoFn: null,
+      },
+      {
+        title: 'SBA Mutation',
+        body:  'Select "SBA Mutation" and click ▶ START. The fuzzer sends 7 preset crafted addresses: zero, max 14-bit, all-bits-set, high-bit-set, etc. Most produce no-response on a strict host. A host that disconnects on 0xFFFF is performing address validation; one that returns a screen on every address is more permissive.',
+        highlight: 'fuzzResultsTable',
+        autoFn: null,
+      },
+      {
+        title: 'Read and export results',
+        body:  'The result table colour codes each packet: green = screen, grey = no-response, red = disconnect, amber = error. Click ↓ CSV to export the full run. Build a fingerprint library by comparing results across different host types and firmware versions.',
+        highlight: 'fuzzResultsTable',
+        autoFn: 'fuzzExportCsv',
+        autoLabel: 'Export results CSV for me',
+      },
+    ],
+  },
+
   // ── Scenario 4: Protocol Fingerprint via AID Sweep ─────────────────
   {
     id:       'aid-fingerprint',
@@ -613,10 +1132,17 @@ function _wtClearHighlight() {
 // ── Security panel list (category: security only) ──────────────────
 
 function renderWalkthroughList() {
-  const el = document.getElementById('wtList');
-  if (!el) return;
+  const sel = document.getElementById('wtSecSelect');
+  if (!sel) return;
   const list = _WALKTHROUGHS.filter(s => s.category === 'security');
-  el.innerHTML = list.map(s => _wtCard(s)).join('');
+  const opts = list.map(s => `<option value="${s.id}">${s.title}</option>`).join('');
+  sel.innerHTML = '<option value="">Select a walkthrough…</option>' + opts;
+}
+
+function wtStartSelected() {
+  const sel = document.getElementById('wtSecSelect');
+  if (!sel || !sel.value) return;
+  openWalkthrough(sel.value);
 }
 
 // ── Help menu picker (category: general) ───────────────────────────

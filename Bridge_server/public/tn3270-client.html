@@ -475,8 +475,14 @@
       <div class="sec-section">
         <div class="sec-section-hdr">WALKTHROUGHS</div>
         <div style="padding:6px 0">
-          <div class="sec-panel-hint" style="margin-bottom:6px">Step-by-step guided scenarios. Each walkthrough highlights the relevant UI element and offers one-click auto-actions where safe.</div>
-          <div id="wtList"></div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <select id="wtSecSelect"
+              style="flex:1;background:#0a0f14;border:1px solid #1a2a3a;border-radius:3px;color:var(--text-main);font-family:inherit;font-size:11px;padding:2px 4px">
+              <option value="">Select a walkthrough…</option>
+            </select>
+            <button onclick="wtStartSelected()"
+              style="background:#0d1a2d;border:1px solid #1e3a5f;border-radius:3px;color:#4a9fd4;font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer;white-space:nowrap;font-weight:700">▶ Start</button>
+          </div>
         </div>
       </div>
 
@@ -522,13 +528,13 @@
             </a>
           </div>
           <div class="sec-row">
-            <button class="sec-panel-btn" onclick="openTrafficViewer()">
+            <button id="sessionViewerBtn" class="sec-panel-btn" onclick="openTrafficViewer()">
               <span class="sec-panel-btn-label">⇄ Session Viewer</span>
               <span class="sec-panel-btn-sub">AID keys sent and screens received, CSV export</span>
             </button>
           </div>
           <div class="sec-row">
-            <button class="sec-panel-btn" onclick="openLogsViewer()">
+            <button id="proxyViewerBtn" class="sec-panel-btn" onclick="openLogsViewer()">
               <span class="sec-panel-btn-label">≡ Proxy Viewer</span>
               <span class="sec-panel-btn-sub">Live bridge log stream with level filter</span>
             </button>
