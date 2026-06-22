@@ -174,7 +174,11 @@ function toggleFieldMap() {
 }
 
 // ── Security Toolbar ──────────────────────────────────────────────
-let _secUnlocked = false;
+// secUnlocked is declared in state.js — referenced here as _secUnlocked alias
+Object.defineProperty(window, '_secUnlocked', {
+  get() { return secUnlocked; },
+  set(v) { secUnlocked = v; },
+});
 
 function toggleSecurityPanel() {
   if (_secUnlocked) {
@@ -244,6 +248,7 @@ function _secReveal() {
   const btn = document.getElementById('secBtn');
   if (btn) { btn.style.color = 'var(--accent-amber)'; btn.style.borderColor = 'var(--accent-amber)'; }
   if (typeof renderWalkthroughList === 'function') renderWalkthroughList();
+  if (typeof renderSidebarMacros === 'function') renderSidebarMacros();
   setTimeout(fitScreen, 210);
 }
 
@@ -262,6 +267,7 @@ function _secLock() {
   const btn = document.getElementById('secBtn');
   if (btn) { btn.style.color = ''; btn.style.borderColor = ''; }
   _secUnlocked = false;
+  if (typeof renderSidebarMacros === 'function') renderSidebarMacros();
   setTimeout(fitScreen, 210);
 }
 
