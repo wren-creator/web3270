@@ -1094,7 +1094,8 @@ function addSessionTab(name, type, sid) {
 
 function activateTabEl(tabEl, sid) {
   document.querySelectorAll('.session-tab').forEach(t => t.classList.remove('active'));
-  tabEl.classList.add('active'); activateSession(sid);
+  tabEl.classList.add('active');
+  if (tabEl.dataset.type === 'ssh') { sshActivateTab(sid); } else { activateSession(sid); }
 }
 
 function activateSession(sid) {
