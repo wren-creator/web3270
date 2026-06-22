@@ -1536,7 +1536,13 @@ function handleSshConnect(ws, wsId, params) {
     conn.end();
   });
 
-  conn.connect({ host, port, username, password, readyTimeout: 15000 });
+  // tryKeyboard: handles PAM / keyboard-interactive servers (most Linux)
+  // The handler just echoes the password back for every prompt.
+  conn.on('keyboard-interactive', (_name, _instructions, _lang, _prompts, finish) => {
+    finish(Array(_prompts.length).fill(password));
+  });
+
+  conn.connect({ host, port, username, password, tryKeyboard: true, readyTimeout: 15000 });
 }
 
 // ── Graceful shutdown ──────────────────────────────────────────────
