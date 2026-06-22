@@ -27,6 +27,7 @@ function renderSidebarMacros() {
   const container = document.getElementById('sidebarMacroList'); if (!container) return;
   container.innerHTML = '';
   macros.forEach((m, idx) => {
+    if (m.source === 'security' && !secUnlocked) return;
     const item = document.createElement('div'); item.className = 'macro-item';
     item.innerHTML = '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">\u25b6 ' + esc(m.name) + '</span><button class="macro-edit-btn" title="Edit">&#x270E;</button><button class="macro-delete-btn" title="Delete">&#128465;</button>';
     item.querySelector('.macro-edit-btn').addEventListener('click', e => { e.stopPropagation(); editMacro(idx); });
@@ -39,8 +40,10 @@ function renderSidebarMacros() {
 function renderModalMacros() {
   const container = document.getElementById('modalMacroList'); if (!container) return;
   container.innerHTML = '';
-  if (!macros.length) { container.innerHTML = '<div style="font-size:10px;color:var(--text-muted);padding:4px 0">No macros saved yet.</div>'; return; }
-  macros.forEach((m, idx) => {
+  const visible = macros.filter((m, _i) => m.source !== 'security' || secUnlocked);
+  if (!visible.length) { container.innerHTML = '<div style="font-size:10px;color:var(--text-muted);padding:4px 0">No macros saved yet.</div>'; return; }
+  visible.forEach((m) => {
+    const idx = macros.indexOf(m);
     const item = document.createElement('div');
     item.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 8px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:3px;margin-bottom:4px;cursor:pointer;transition:border-color 0.15s';
     item.innerHTML = '<div style="flex:1"><div style="font-size:11px;font-family:\'IBM Plex Mono\',monospace;color:var(--text-primary)">' + esc(m.name) + '</div><div style="font-size:10px;color:var(--text-muted)">' + (m.steps?m.steps.length+' steps':'') + (m.description?' \u00b7 '+esc(m.description):'') + '</div></div><button class="macro-edit-btn" style="display:inline-block" title="Edit">&#x270E;</button><button class="macro-delete-btn" style="display:inline-block" title="Delete">&#128465;</button>';
@@ -166,11 +169,14 @@ function cancelMacroRecord() {
 function saveMacroRecord() {
   const name = (document.getElementById('macroRecName') || {}).value.trim();
   if (!name) { document.getElementById('macroRecName').focus(); return; }
-  const desc = (document.getElementById('macroRecDesc') || {}).value.trim();
+  const desc     = (document.getElementById('macroRecDesc')     || {}).value.trim();
+  const secCheck = document.getElementById('macroRecSecurity');
+  const security = secCheck ? secCheck.checked : false;
   const s = sessions.get(activeSession);
   if (s && s.ws.readyState === WebSocket.OPEN) {
-    s.ws.send(JSON.stringify({ type: 'macro.record.stop', name, description: desc }));
+    s.ws.send(JSON.stringify({ type: 'macro.record.stop', name, description: desc, security }));
   }
+  if (secCheck) secCheck.checked = false;
   const modal = document.getElementById('macroRecSaveModal');
   if (modal) modal.style.display = 'none';
   _hideMacroRecIndicator();

@@ -99,7 +99,11 @@ class MacroHandler {
           if (!msg.name) return this._error('macro.record.stop requires "name"');
           const recorded = this.engine.stopRecording(msg.name, msg.description || '');
           if (recorded) {
-            await this.store.save(recorded);
+            if (msg.security) {
+              await this.secStore.saveRecorded(recorded);
+            } else {
+              await this.store.save(recorded);
+            }
             this._send({ type: 'macro.recording.stopped', macro: recorded });
           }
           break;

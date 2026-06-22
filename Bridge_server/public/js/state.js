@@ -70,3 +70,6 @@ let splitSid          = null;    // session id rendered in the right (passive) p
 
 // ── SSH ────────────────────────────────────────────────────────────
 let activeSshSession  = null;    // sid of the currently active SSH session (or null)
+
+// ── Security panel lock state ──────────────────────────────────────
+let secUnlocked       = false;   // true when the security panel has been unlocked
