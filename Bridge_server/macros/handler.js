@@ -98,7 +98,10 @@ class MacroHandler {
         case 'macro.record.stop':
           if (!msg.name) return this._error('macro.record.stop requires "name"');
           const recorded = this.engine.stopRecording(msg.name, msg.description || '');
-          if (recorded) await this.store.save(recorded);
+          if (recorded) {
+            await this.store.save(recorded);
+            this._send({ type: 'macro.recording.stopped', macro: recorded });
+          }
           break;
 
         case 'macro.record.cancel':
@@ -174,10 +177,10 @@ class MacroHandler {
     e.on('paused',   () => this._send({ type: 'macro.paused' }));
     e.on('resumed',  () => this._send({ type: 'macro.resumed' }));
 
-    e.on('recordingStarted',  ()      => this._send({ type: 'macro.recording.started' }));
-    e.on('recordingCancelled',()      => this._send({ type: 'macro.recording.cancelled' }));
-    e.on('stepRecorded',     (s, n)   => this._send({ type: 'macro.recording.step', stepCount: n }));
-    e.on('recordingStopped', macro    => this._send({ type: 'macro.recording.stopped', macro }));
+    e.on('recordingStarted',  ()    => this._send({ type: 'macro.recording.started' }));
+    e.on('recordingCancelled',()    => this._send({ type: 'macro.recording.cancelled' }));
+    e.on('stepRecorded',     (s, n) => this._send({ type: 'macro.recording.step', stepCount: n }));
+    // recordingStopped is sent after store.save() in the macro.record.stop handler above
   }
 
   // ── Helpers ───────────────────────────────────────────────────
