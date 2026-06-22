@@ -175,7 +175,7 @@
       <div class="oia-field"><span class="oia-label">COL</span><span class="oia-val" id="oiaCol">00</span></div>
       <div class="oia-field"><span class="oia-label">APP</span><span class="oia-val" id="oiaApp">—</span></div>
       <div class="oia-spacer"></div>
-      <div class="oia-field"><button id="secBtn" onclick="openSecurityPanel()" title="Security Tools" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:11px;padding:1px 6px;cursor:pointer;">🔒</button></div>
+      <div class="oia-field"><button id="secBtn" onclick="toggleSecurityPanel()" title="Security Tools" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:11px;padding:1px 6px;cursor:pointer;">🔒</button></div>
       <div class="oia-field"><button id="demoBtn" onclick="toggleDemoMode()" title="Demo Mode — masks host IP/LU in OIA bar" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:1px 6px;cursor:pointer;letter-spacing:0.05em">DEMO</button></div>
       <div class="oia-field"><span class="oia-val blue" id="oiaMode">NOT CONNECTED</span></div>
       <div class="oia-field"><span class="oia-val" id="oiaTls">3270</span></div>
@@ -206,7 +206,7 @@
       <div class="panel-tab"                  onclick="switchPanelTab(this,'Xfer')">Transfer</div>
       <div class="panel-tab aiconfig-tab"     onclick="switchPanelTab(this,'AIConfig')">⚙ AI</div>
       <div class="panel-tab copilot-tab"      onclick="switchPanelTab(this,'Copilot')">⬡ Assist</div>
-      <div class="panel-tab sec-panel-tab" id="secPanelTab" onclick="switchPanelTab(this,'Security')">🔒 Sec</div>
+      <div class="panel-tab sec-panel-tab" id="secPanelTab" onclick="switchPanelTab(this,'Security')" style="display:none">🔒 Sec</div>
     </div>
 
     <!-- Settings -->
@@ -717,6 +717,22 @@
       <button class="btn btn-secondary" onclick="hideConnectModal()">Cancel</button>
       <button class="btn btn-secondary" id="saveProfileBtn" onclick="saveProfileFromForm()">Save Profile</button>
       <button class="btn btn-primary" onclick="connectManual()">Connect</button>
+    </div>
+  </div>
+</div>
+
+<!-- Security unlock modal -->
+<div id="secUnlockOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9000;align-items:center;justify-content:center;">
+  <div style="background:#0d1a0d;border:1px solid #2a4a2a;border-radius:6px;padding:24px 28px;min-width:280px;max-width:340px;font-family:'IBM Plex Mono',monospace;">
+    <div style="color:var(--accent-amber);font-size:13px;margin-bottom:4px;letter-spacing:0.08em;">🔒 SECURITY TOOLS</div>
+    <div style="color:var(--text-muted);font-size:11px;margin-bottom:16px;">Enter access password to continue</div>
+    <input id="secUnlockInput" type="password" placeholder="Password"
+      style="width:100%;box-sizing:border-box;background:#000;border:1px solid #333;border-radius:3px;color:var(--text-primary);font-family:inherit;font-size:12px;padding:6px 8px;outline:none;margin-bottom:8px;"
+      onkeydown="if(event.key==='Enter')secUnlockSubmit();if(event.key==='Escape')secUnlockCancel();" />
+    <div id="secUnlockError" style="display:none;color:#e06060;font-size:11px;margin-bottom:8px;">Incorrect password</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button onclick="secUnlockCancel()" style="background:none;border:1px solid #444;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:11px;padding:4px 12px;cursor:pointer;">Cancel</button>
+      <button onclick="secUnlockSubmit()" style="background:#1a3a1a;border:1px solid var(--accent-amber);border-radius:3px;color:var(--accent-amber);font-family:inherit;font-size:11px;padding:4px 12px;cursor:pointer;">Unlock</button>
     </div>
   </div>
 </div>

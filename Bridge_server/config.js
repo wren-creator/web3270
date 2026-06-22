@@ -95,6 +95,12 @@ profiles: loadLparFile(),
   loadLparFile,
 
   /**
+   * Password required to unlock the Security Tools panel in the UI.
+   * Override with SECURITY_TOOLS_PASSWORD env var.
+   */
+  securityPassword: process.env.SECURITY_TOOLS_PASSWORD || '2970',
+
+  /**
    * Security macro library — separate from main macros.json.
    * Only loaded in the security branch. Never merged into main.
    * Override with MACRO_SECURITY_FILE env var.

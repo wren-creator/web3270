@@ -174,15 +174,95 @@ function toggleFieldMap() {
 }
 
 // ── Security Toolbar ──────────────────────────────────────────────
-function openSecurityPanel() {
+let _secUnlocked = false;
+
+function toggleSecurityPanel() {
+  if (_secUnlocked) {
+    // Already unlocked — toggle the tab visibility / panel
+    const tab = document.getElementById('secPanelTab');
+    const visible = tab && tab.style.display !== 'none';
+    if (visible) {
+      _secLock();
+    } else {
+      _secReveal();
+    }
+  } else {
+    // Show password modal
+    const overlay = document.getElementById('secUnlockOverlay');
+    if (overlay) { overlay.style.display = 'flex'; }
+    setTimeout(() => {
+      const inp = document.getElementById('secUnlockInput');
+      if (inp) inp.focus();
+    }, 50);
+  }
+}
+
+function secUnlockSubmit() {
+  const inp = document.getElementById('secUnlockInput');
+  const err = document.getElementById('secUnlockError');
+  const password = inp ? inp.value : '';
+  const lu = (document.getElementById('oiaLu') || {}).textContent || '—';
+  fetch('/api/security-unlock', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password, lu }),
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) {
+        _secUnlocked = true;
+        if (inp) inp.value = '';
+        if (err) err.style.display = 'none';
+        const overlay = document.getElementById('secUnlockOverlay');
+        if (overlay) overlay.style.display = 'none';
+        _secReveal();
+      } else {
+        if (err) err.style.display = 'block';
+        if (inp) { inp.value = ''; inp.focus(); }
+      }
+    })
+    .catch(() => {
+      if (err) err.style.display = 'block';
+    });
+}
+
+function secUnlockCancel() {
+  const overlay = document.getElementById('secUnlockOverlay');
+  if (overlay) overlay.style.display = 'none';
+  const inp = document.getElementById('secUnlockInput');
+  if (inp) inp.value = '';
+  const err = document.getElementById('secUnlockError');
+  if (err) err.style.display = 'none';
+}
+
+function _secReveal() {
+  const tab = document.getElementById('secPanelTab');
+  if (tab) tab.style.display = '';
   const panel = document.getElementById('rightPanel');
   if (panel) panel.classList.remove('hidden');
-  const tab = document.getElementById('secPanelTab');
   if (tab) switchPanelTab(tab, 'Security');
   const btn = document.getElementById('secBtn');
   if (btn) { btn.style.color = 'var(--accent-amber)'; btn.style.borderColor = 'var(--accent-amber)'; }
   setTimeout(fitScreen, 210);
 }
+
+function _secLock() {
+  const tab = document.getElementById('secPanelTab');
+  if (tab) tab.style.display = 'none';
+  // If Security was the active tab, switch to Settings
+  const secContent = document.getElementById('panelSecurity');
+  if (secContent && secContent.classList.contains('active')) {
+    const settingsTab = document.querySelector('.panel-tab');
+    if (settingsTab) switchPanelTab(settingsTab, 'Settings');
+  }
+  const btn = document.getElementById('secBtn');
+  if (btn) { btn.style.color = ''; btn.style.borderColor = ''; }
+  _secUnlocked = false;
+  setTimeout(fitScreen, 210);
+}
+
+// Legacy alias kept for any existing callers
+function openSecurityPanel() { toggleSecurityPanel(); }
 
 // ── Security toolbar helpers ──────────────────────────────────────
 let _keyFeedbackTimer = null;
