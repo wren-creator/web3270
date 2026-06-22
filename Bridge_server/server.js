@@ -17,6 +17,7 @@ const path     = require('path');
 const config        = require('./config');
 const Tn3270Session = require('./tn3270/session');
 const logger        = require('./logger');
+const { Client: SshClient } = require('ssh2');
 const MacroHandler  = require('./macros/handler');
 const { MacroStore } = require('./macros/store');
 const CopilotHandler = require('./copilot/copilot-handler');
@@ -137,6 +138,35 @@ const httpServer = http.createServer((req, res) => {
       'Access-Control-Allow-Origin': '*',
     });
     res.end(JSON.stringify(profiles));
+    return;
+  }
+
+  // GET /api/ssh-hosts — returns SSH host list from ssh-hosts.txt
+  if (req.url === '/api/ssh-hosts' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify(config.sshHosts));
+    return;
+  }
+
+  // POST /api/ssh-hosts — add or update an SSH host in ssh-hosts.txt
+  if (req.url === '/api/ssh-hosts' && req.method === 'POST') {
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', () => {
+      try {
+        const p = JSON.parse(body);
+        if (!p.id || !p.host) { res.writeHead(400); res.end(JSON.stringify({ error: 'id and host required' })); return; }
+        const filePath = path.join(__dirname, 'ssh-hosts.txt');
+        let lines = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8').split('\n') : ['# id, name, host/IP, port, user'];
+        const newLine = [p.id, p.name || p.id, p.host, p.port || 22, p.user || ''].join(', ');
+        const idx = lines.findIndex(l => { const t = l.trim(); return t && !t.startsWith('#') && t.split(',')[0].trim() === p.id; });
+        if (idx >= 0) lines[idx] = newLine; else lines.push(newLine);
+        fs.writeFileSync(filePath, lines.join('\n'));
+        config.sshHosts = config.loadSshHostsFile();
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ ok: true }));
+      } catch (err) { res.writeHead(500); res.end(JSON.stringify({ error: err.message })); }
+    });
     return;
   }
 
@@ -462,6 +492,12 @@ wss.on('connection', (ws, req) => {
     catch {
       send(ws, { type: 'error', message: 'Invalid connect payload — expected JSON' });
       ws.close(); return;
+    }
+
+    // ── SSH connect ───────────────────────────────────────────────────
+    if (params.type === 'ssh.connect') {
+      handleSshConnect(ws, wsId, params);
+      return;
     }
 
     if (params.type !== 'connect') {
@@ -1435,6 +1471,72 @@ function loadMacroFile() {
     } catch { /* skip unreadable security file */ }
   }
   return macros;
+}
+
+// ── SSH session handler ────────────────────────────────────────────
+// Manages the full lifecycle of one SSH session over a WebSocket.
+// The first message on the WS is type:"ssh.connect"; thereafter stdin/stdout
+// are piped as type:"ssh.data" in both directions.  Resize via "ssh.resize".
+function handleSshConnect(ws, wsId, params) {
+  const { host, port = 22, username, password } = params;
+  if (!host || !username || !password) {
+    send(ws, { type: 'ssh.error', message: 'host, username and password are required' });
+    ws.close(); return;
+  }
+
+  logger.info(`[ws:${wsId}] SSH → ${username}@${host}:${port}`);
+  send(ws, { type: 'ssh.status', state: 'connecting' });
+
+  const conn = new SshClient();
+  let stream = null;
+
+  conn.on('ready', () => {
+    logger.info(`[ws:${wsId}] SSH authenticated`);
+    send(ws, { type: 'ssh.status', state: 'connected' });
+
+    conn.shell({ term: 'xterm-256color', rows: params.rows || 24, cols: params.cols || 80 }, (err, sh) => {
+      if (err) {
+        send(ws, { type: 'ssh.error', message: err.message });
+        conn.end(); ws.close(); return;
+      }
+      stream = sh;
+      sh.on('data',   d  => { if (ws.readyState === WebSocket.OPEN) send(ws, { type: 'ssh.data', data: d.toString('base64') }); });
+      sh.stderr.on('data', d => { if (ws.readyState === WebSocket.OPEN) send(ws, { type: 'ssh.data', data: d.toString('base64') }); });
+      sh.on('close', () => {
+        logger.info(`[ws:${wsId}] SSH shell closed`);
+        send(ws, { type: 'ssh.status', state: 'disconnected' });
+        conn.end();
+        ws.close();
+      });
+    });
+  });
+
+  conn.on('error', err => {
+    logger.warn(`[ws:${wsId}] SSH error: ${err.message}`);
+    send(ws, { type: 'ssh.error', message: err.message });
+    ws.close();
+  });
+
+  // Route subsequent WS messages to the SSH shell
+  ws.on('message', raw => {
+    let msg;
+    try { msg = JSON.parse(raw); } catch { return; }
+    if (msg.type === 'ssh.data' && stream) {
+      stream.write(Buffer.from(msg.data, 'base64'));
+    } else if (msg.type === 'ssh.resize' && stream) {
+      stream.setWindow(msg.rows || 24, msg.cols || 80);
+    } else if (msg.type === 'ssh.disconnect') {
+      if (stream) stream.end();
+      conn.end();
+    }
+  });
+
+  ws.on('close', () => {
+    if (stream) stream.end();
+    conn.end();
+  });
+
+  conn.connect({ host, port, username, password, readyTimeout: 15000 });
 }
 
 // ── Graceful shutdown ──────────────────────────────────────────────

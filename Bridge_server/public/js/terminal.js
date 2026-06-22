@@ -1098,6 +1098,14 @@ function activateTabEl(tabEl, sid) {
 }
 
 function activateSession(sid) {
+  // Coming from an SSH tab — restore 3270 terminal visibility
+  if (activeSshSession !== null) {
+    activeSshSession = null;
+    const term3270 = document.getElementById('terminal');
+    const sshPane  = document.getElementById('sshTerminal');
+    if (term3270) term3270.style.display = '';
+    if (sshPane)  sshPane.style.display  = 'none';
+  }
   activeSession = sid;
   const session = sessions.get(sid);
   if (!session) return;
