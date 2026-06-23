@@ -1,0 +1,233 @@
+'use strict';
+
+const WebSocket      = require('ws');
+const fs             = require('fs');
+const Tn3270Session  = require('../tn3270/session');
+const MacroHandler   = require('../macros/handler');
+const { MacroStore } = require('../macros/store');
+const CopilotHandler = require('../copilot/copilot-handler');
+
+const send               = require('../utils/send');
+const { logTraffic }     = require('../features/traffic');
+const { recordings }     = require('../features/recording');
+const { handleSshConnect } = require('../features/ssh');
+const { handleFuzz }     = require('../features/fuzz');
+const mitm               = require('../features/mitm');
+const { createHandlers: createXferHandlers, screenToLinesMasked } = require('../features/transfer');
+
+function buildTlsOptions(params, config) {
+  const opts = { rejectUnauthorized: params.verifyTls ?? config.bridge.verifyTls };
+  if (params.clientCert) opts.cert = fs.readFileSync(params.clientCert);
+  if (params.clientKey)  opts.key  = fs.readFileSync(params.clientKey);
+  if (params.caCert)     opts.ca   = fs.readFileSync(params.caCert);
+  return opts;
+}
+
+function createWsHandler({ config, logger, sessions, Ebcdic }) {
+  const macroStore = new MacroStore();
+  let nextId = 1;
+
+  const xfer = createXferHandlers({ logger, send, Ebcdic });
+
+  return function handleConnection(ws, req) {
+    const wsId   = nextId++;
+    const origin = req.socket.remoteAddress;
+    logger.info(`[ws:${wsId}] Browser connected from ${origin}`);
+
+    ws.once('message', rawMsg => {
+      let params;
+      try   { params = JSON.parse(rawMsg); }
+      catch {
+        send(ws, { type: 'error', message: 'Invalid connect payload — expected JSON' });
+        ws.close(); return;
+      }
+
+      // ── SSH connect ──────────────────────────────────────────────
+      if (params.type === 'ssh.connect') {
+        handleSshConnect(ws, wsId, params, send, logger);
+        return;
+      }
+
+      if (params.type !== 'connect') {
+        send(ws, { type: 'error', message: `Expected type:"connect", got "${params.type}"` });
+        ws.close(); return;
+      }
+
+      const { host, luName = null } = params;
+      const port      = parseInt(params.port, 10) || 339;
+      const useTls    = params.tls ?? (port === 992);
+      const model     = params.model    || config.defaults.model;
+      const codepage  = params.codepage || config.defaults.codepage;
+      const useTn3270e = params.tn3270e ?? true;
+
+      if (!host) {
+        send(ws, { type: 'error', message: 'Missing required field: host' });
+        ws.close(); return;
+      }
+
+      logger.info(`[ws:${wsId}] Connecting → ${host}:${port} tls=${useTls} tn3270e=${useTn3270e} lu=${luName||'any'} model=${model}`);
+      send(ws, { type: 'status', state: 'connecting', host, port });
+
+      // ── Create TN3270 session ────────────────────────────────────
+      const session = new Tn3270Session({
+        wsId, host, port, useTls, luName, model, codepage,
+        useTn3270e,
+        tlsOptions: buildTlsOptions(params, config),
+      });
+
+      sessions.set(wsId, session);
+
+      const macroHandler  = new MacroHandler(session, ws, wsId, macroStore);
+      CopilotHandler.sendProviderInfo(ws);
+
+      // ── Session → Browser events ─────────────────────────────────
+      session.on('connected', ({ tlsVersion } = {}) => {
+        logger.info(`[ws:${wsId}] TCP connected to ${host}:${port}`);
+        send(ws, { type: 'status', state: 'connected', host, port, lu: session.negotiatedLu, model, tlsVersion, wsId });
+      });
+
+      session.on('screen', screenData => {
+        session.lastScreen = screenData;
+        session.lastScreen.fields = screenData.fields || [];
+        send(ws, { type: 'screen', ...screenData });
+        logTraffic({
+          ts: new Date().toISOString(),
+          wsId,
+          direction: 'host→client',
+          aid: '',
+          screenText: screenToLinesMasked(screenData).filter(l => l.trim()).join(' | ').substring(0, 300),
+        });
+        if (recordings.has(wsId)) {
+          const rec = recordings.get(wsId);
+          rec.events.push({ t: Date.now() - rec.start, dir: 'host→client', type: 'screen', data: screenData });
+        }
+      });
+
+      session.on('oia',          oiaData => { send(ws, { type: 'oia', ...oiaData }); });
+      session.on('lu',           lu      => { send(ws, { type: 'status', state: 'lu', lu }); });
+      session.on('error',        err     => { logger.error(`[ws:${wsId}] Session error: ${err.message}`); send(ws, { type: 'error', message: err.message }); });
+      session.on('disconnected', reason  => { logger.info(`[ws:${wsId}] Disconnected: ${reason}`); send(ws, { type: 'status', state: 'disconnected', reason }); });
+
+      // ── IND$FILE events ──────────────────────────────────────────
+      session.on('indfile-complete', info => {
+        if (info.direction === 'download') {
+          const saveAs  = session._indFileSaveAs || 'transfer.bin';
+          const encoded = info.data.toString('base64');
+          send(ws, { type: 'xfer.data', data: encoded, saveAs, bytes: info.bytes });
+          logger.info(`[ws:${wsId}] IND$FILE download complete: ${info.bytes} bytes → ${saveAs}`);
+        } else {
+          send(ws, { type: 'xfer.ok', message: `Upload complete (${info.bytes} bytes)` });
+          logger.info(`[ws:${wsId}] IND$FILE upload complete: ${info.bytes} bytes`);
+        }
+        session._indFileSaveAs = null;
+      });
+      session.on('indfile-error',    info => { send(ws, { type: 'xfer.error', message: info.message }); });
+      session.on('indfile-progress', info => { send(ws, { type: 'xfer.progress', direction: info.direction, bytes: info.bytes }); });
+
+      // ── Browser → Session messages ───────────────────────────────
+      ws.on('message', rawMsg => {
+        let msg;
+        try { msg = JSON.parse(rawMsg); } catch { return; }
+
+        if (recordings.has(wsId) && (msg.type === 'key' || msg.type === 'type')) {
+          const rec = recordings.get(wsId);
+          rec.events.push({ t: Date.now() - rec.start, dir: 'client→host', type: msg.type, data: msg });
+        }
+
+        if (typeof msg.type === 'string' && msg.type.startsWith('macro.')) {
+          macroHandler.handle(msg); return;
+        }
+        if (msg.type === 'copilot.chat') {
+          CopilotHandler.handle(msg, ws, wsId); return;
+        }
+
+        // ── Transfer messages ────────────────────────────────────
+        if (msg.type === 'xfer.queue-upload')  { xfer.handleXferQueueUpload(msg, ws, wsId, session); return; }
+        if (msg.type === 'xfer.download')      { xfer.handleXferDownload(msg, ws, wsId, session); return; }
+        if (msg.type === 'xfer.tso-upload')    { xfer.handleXferTsoUpload(msg, ws, wsId, session); return; }
+        if (msg.type === 'xfer.tso-download')  { xfer.handleXferTsoDownload(msg, ws, wsId, session); return; }
+        if (msg.type === 'xfer.listdatasets')  { xfer.handleXferListDatasets(msg, ws, wsId, session); return; }
+        if (msg.type === 'xfer.ensure-cms') {
+          xfer.ensureCmsReady(session, ws, wsId)
+            .then(() => send(ws, { type: 'xfer.cms-ready' }))
+            .catch(err => send(ws, { type: 'xfer.error', message: err.message }));
+          return;
+        }
+
+        macroHandler.interceptIfRecording(msg);
+
+        switch (msg.type) {
+
+          case 'key': {
+            if (mitm.isEnabled(wsId)) {
+              mitm.interceptKey(wsId, ws, session, msg, send, logger);
+            } else {
+              session.sendAid(msg.aid, (Array.isArray(msg.fields) && msg.fields.length) ? msg.fields : session.getModifiedFields());
+              logTraffic({
+                ts: new Date().toISOString(), wsId, direction: 'client→host', aid: msg.aid,
+                screenText: session.lastScreen ? screenToLinesMasked(session.lastScreen).filter(l => l.trim()).join(' | ').substring(0, 300) : '',
+              });
+            }
+            break;
+          }
+
+          case 'type':
+            session.typeAt(msg.row, msg.col, msg.text);
+            break;
+
+          case 'cursor':
+            session.moveCursor(msg.row, msg.col);
+            break;
+
+          case 'erase':
+            session.eraseAt(msg.row, msg.col);
+            break;
+
+          case 'fillField': {
+            const cols = session.cols || 80;
+            for (let c = msg.col; c <= cols - 1; c++) session.eraseAt(msg.row, c);
+            for (let i = 0; i < msg.text.length; i++) session.typeAt(msg.row, msg.col + i, msg.text[i]);
+            break;
+          }
+
+          case 'sec.patchFa':
+            if (typeof msg.addr === 'number' && typeof msg.fa === 'number') {
+              session.patchFieldAttr(msg.addr, msg.fa);
+            }
+            break;
+
+          case 'sec.mitm.toggle':   mitm.toggle(wsId, ws, send, logger);   break;
+          case 'sec.mitm.release':  mitm.release(wsId, ws, session, msg, send, logger, logTraffic);  break;
+          case 'sec.mitm.drop':     mitm.drop(wsId, ws, send, logger);     break;
+          case 'sec.mitm.replay':   mitm.replay(wsId, ws, session, send, logger, logTraffic);  break;
+
+          case 'sec.fuzz':
+            handleFuzz(msg, ws, wsId, session, send, logger);
+            break;
+
+          case 'disconnect':
+            session.disconnect('client request');
+            break;
+
+          default:
+            logger.warn(`[ws:${wsId}] Unknown message type: ${msg.type}`);
+        }
+      });
+
+      ws.on('close', () => {
+        logger.info(`[ws:${wsId}] Browser disconnected`);
+        session.disconnect('browser closed');
+        sessions.delete(wsId);
+        mitm.cleanup(wsId);
+      });
+
+      ws.on('error', err => {
+        logger.error(`[ws:${wsId}] WebSocket error: ${err.message}`);
+      });
+
+      session.connect();
+    });
+  };
+}
+
+module.exports = { createWsHandler };
