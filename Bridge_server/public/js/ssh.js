@@ -132,10 +132,13 @@ function _sshOpenSession(sid, name, host, port, username, password) {
     } else if (msg.type === 'ssh.status') {
       if (msg.state === 'connected') {
         session.state = 'connected';
+        if (msg.sshVersion) session.sshVersion = msg.sshVersion.replace(/^SSH-\d+\.\d+-/, '');
         _sshUpdateTabDot(sid, '#3a9a6a');
         if (activeSshSession === sid) {
           const oiaMode = document.getElementById('oiaMode');
           if (oiaMode) { oiaMode.textContent = 'SSH CONNECTED'; oiaMode.className = 'oia-val blue'; }
+          const oiaTls = document.getElementById('oiaTls');
+          if (oiaTls && session.sshVersion) oiaTls.textContent = session.sshVersion;
         }
       } else if (msg.state === 'disconnected') {
         session.state = 'disconnected';
@@ -228,7 +231,7 @@ function sshActivateTab(sid) {
   const oiaMode  = document.getElementById('oiaMode');
   if (oiaSys)   oiaSys.textContent   = session.host;
   if (oiaLu)    oiaLu.textContent    = session.username;
-  if (oiaTls)   oiaTls.textContent   = 'SSH';
+  if (oiaTls)   oiaTls.textContent   = session.sshVersion || 'SSH';
   if (oiaModel) oiaModel.textContent = '—';
   if (oiaApp)   { oiaApp.textContent = '—'; oiaApp.style.color = ''; }
   const connColor = session.state === 'connected' ? 'var(--accent-green)' : session.state === 'connecting' ? 'var(--accent-amber)' : 'var(--text-muted)';
