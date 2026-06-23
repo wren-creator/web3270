@@ -1116,7 +1116,7 @@ function activateSession(sid) {
   activeSession = sid;
   const session = sessions.get(sid);
   if (!session) return;
-  setConnStatus(session.name, session.ws.readyState === WebSocket.OPEN ? 'connected' : 'disconnected');
+  setConnStatus(session.name, session.tn3270Connected ? 'connected' : 'disconnected');
 
   // FIX: Refresh OIA identity fields when switching sessions
   const oiaSys   = document.getElementById('oiaSys');
@@ -1127,6 +1127,11 @@ function activateSession(sid) {
   if (oiaLu)    oiaLu.textContent    = demoMode ? '******'      : (session.lastLu          || '\u2014');
   if (oiaModel) oiaModel.textContent = session.profile?.model  || '\u2014';
   if (oiaTls)   oiaTls.textContent   = session.tlsVersion ? (session.tlsVersion === 'PLAIN' ? '3270' : session.tlsVersion) : '3270';
+
+  if (!session.tn3270Connected) {
+    _showDisconnectScreen(session.name, null, sid);
+    return;
+  }
 
   if (session.lastScreen) {
     renderLiveScreen(session.lastScreen); liveScreenText = screenToText(session.lastScreen);
@@ -1175,16 +1180,33 @@ function cycleSession(direction) {
 }
 function switchTab(el) { document.querySelectorAll('.session-tab').forEach(t => t.classList.remove('active')); el.classList.add('active'); }
 
-function _showDisconnectScreen(sessionName, termEl) {
+function _showDisconnectScreen(sessionName, termEl, sid) {
   const term = termEl || document.getElementById('terminal');
   term.innerHTML = '';
   const msg = document.createElement('div');
   msg.style.cssText = 'padding:32px 24px;color:var(--text-muted);font-family:"IBM Plex Mono",monospace;font-size:12px;line-height:2;user-select:none;';
-  msg.innerHTML = `<div style="color:var(--t-red);font-size:13px;margin-bottom:12px;">SESSION ENDED</div>` +
+  msg.innerHTML =
+    `<div style="color:var(--t-red);font-size:13px;margin-bottom:12px;">SESSION ENDED</div>` +
     `<div>${esc(sessionName)} disconnected by host.</div>` +
-    `<div style="margin-top:12px;color:var(--text-muted)">Use <span style="color:var(--t-green)">Session → Reconnect</span> or open a new session to continue.</div>`;
+    `<div style="margin-top:16px;display:flex;gap:8px;">` +
+      `<button id="_discReconnect" style="background:#0a2040;border:1px solid #2a5a8a;border-radius:3px;color:#5a9acc;font-family:inherit;font-size:11px;padding:5px 14px;cursor:pointer;">Reconnect</button>` +
+      `<button id="_discClose" style="background:#12121f;border:1px solid #333;border-radius:3px;color:#666;font-family:inherit;font-size:11px;padding:5px 14px;cursor:pointer;">Close Tab</button>` +
+    `</div>`;
   term.appendChild(msg);
   liveScreen = null;
+  if (!sid) return;
+  msg.querySelector('#_discReconnect').addEventListener('click', () => {
+    const s = sessions.get(sid);
+    if (!s) return;
+    const profile = s.profile;
+    const tab = document.querySelector(`.session-tab[data-sid="${sid}"]`);
+    if (tab) { const cl = tab.querySelector('.tab-close'); if (cl) closeSessionTab({ stopPropagation: () => {} }, cl); }
+    openSession(profile);
+  });
+  msg.querySelector('#_discClose').addEventListener('click', () => {
+    const tab = document.querySelector(`.session-tab[data-sid="${sid}"]`);
+    if (tab) { const cl = tab.querySelector('.tab-close'); if (cl) closeSessionTab({ stopPropagation: () => {} }, cl); }
+  });
 }
 
 // ── Split-screen ──────────────────────────────────────────────────

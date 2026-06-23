@@ -179,9 +179,9 @@ function openSession(profile) {
   };
   ws.onmessage = event => { let msg; try { msg = JSON.parse(event.data); } catch { return; } handleBridgeMsg(sid, msg); };
   ws.onerror   = () => { setConnStatus(name, 'error'); showBridgeError('Could not connect to bridge at ' + BRIDGE_URL + '.\n\nMake sure Docker Desktop is running:\n  docker compose ps\n  docker compose logs tn3270-bridge'); };
-  ws.onclose   = () => { if (sessions.has(sid)) { setConnStatus(name, 'disconnected'); updateSessionDot(sid, 'disconnected'); if (sid === activeSession) _showDisconnectScreen(name); else if (splitMode && sid === splitSid) _showDisconnectScreen(name, document.getElementById('terminal-split')); } };
+  ws.onclose   = () => { if (sessions.has(sid)) { const s = sessions.get(sid); if (s) s.tn3270Connected = false; setConnStatus(name, 'disconnected'); updateSessionDot(sid, 'disconnected'); if (sid === activeSession) _showDisconnectScreen(name, null, sid); else if (splitMode && sid === splitSid) _showDisconnectScreen(name, document.getElementById('terminal-split'), sid); } };
   const tabEl = addSessionTab(name, profile.type || 'TSO', sid);
-  sessions.set(sid, { ws, profile, tabEl, name });
+  sessions.set(sid, { ws, profile, tabEl, name, tn3270Connected: false });
   // In split mode the second session goes to the right pane; don't steal focus
   if (splitMode && sessions.size === 2) {
     splitSid = sid;
@@ -198,6 +198,7 @@ function handleBridgeMsg(sid, msg) {
   switch (msg.type) {
     case 'status':
       if (msg.state === 'connected') {
+        session.tn3270Connected = true;
         setConnStatus(session.name, 'connected'); updateSessionDot(sid, 'connected');
         if (msg.lu)    { const e = document.getElementById('oiaLu');    if (e) e.textContent = msg.lu; }
         if (msg.model) { const e = document.getElementById('oiaModel'); if (e) e.textContent = msg.model; }
@@ -211,12 +212,13 @@ function handleBridgeMsg(sid, msg) {
         }
         if (msg.wsId !== undefined && typeof recorderSetSession === 'function') recorderSetSession(msg.wsId);
       } else if (msg.state === 'disconnected') {
+        session.tn3270Connected = false;
         setConnStatus(session.name, 'disconnected'); updateSessionDot(sid, 'disconnected');
         const luE = document.getElementById('oiaLu'); const modelE = document.getElementById('oiaModel'); const appE = document.getElementById('oiaApp');
         if (luE) luE.textContent = '-'; if (modelE) modelE.textContent = '-'; if (appE) { appE.textContent = '—'; appE.style.color = ''; }
         if (sid === activeSession) { const tlsE = document.getElementById('oiaTls'); if (tlsE) tlsE.textContent = '—'; }
-        if (sid === activeSession) _showDisconnectScreen(session.name);
-        else if (splitMode && sid === splitSid) _showDisconnectScreen(session.name, document.getElementById('terminal-split'));
+        if (sid === activeSession) _showDisconnectScreen(session.name, null, sid);
+        else if (splitMode && sid === splitSid) _showDisconnectScreen(session.name, document.getElementById('terminal-split'), sid);
       } else if (msg.state === 'connecting') { setConnStatus(session.name, 'connecting'); }
       break;
     case 'screen':
