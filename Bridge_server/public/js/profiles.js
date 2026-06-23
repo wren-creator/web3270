@@ -202,11 +202,19 @@ function handleBridgeMsg(sid, msg) {
         if (msg.lu)    { const e = document.getElementById('oiaLu');    if (e) e.textContent = msg.lu; }
         if (msg.model) { const e = document.getElementById('oiaModel'); if (e) e.textContent = msg.model; }
         if (msg.host)  { const e = document.getElementById('oiaSys');   if (e) e.textContent = msg.host; }
+        if (msg.tlsVersion !== undefined) {
+          session.tlsVersion = msg.tlsVersion;
+          if (sid === activeSession) {
+            const e = document.getElementById('oiaTls');
+            if (e) e.textContent = msg.tlsVersion === 'PLAIN' ? '3270' : msg.tlsVersion;
+          }
+        }
         if (msg.wsId !== undefined && typeof recorderSetSession === 'function') recorderSetSession(msg.wsId);
       } else if (msg.state === 'disconnected') {
         setConnStatus(session.name, 'disconnected'); updateSessionDot(sid, 'disconnected');
         const luE = document.getElementById('oiaLu'); const modelE = document.getElementById('oiaModel'); const appE = document.getElementById('oiaApp');
         if (luE) luE.textContent = '-'; if (modelE) modelE.textContent = '-'; if (appE) { appE.textContent = '—'; appE.style.color = ''; }
+        if (sid === activeSession) { const tlsE = document.getElementById('oiaTls'); if (tlsE) tlsE.textContent = '—'; }
         if (sid === activeSession) _showDisconnectScreen(session.name);
         else if (splitMode && sid === splitSid) _showDisconnectScreen(session.name, document.getElementById('terminal-split'));
       } else if (msg.state === 'connecting') { setConnStatus(session.name, 'connecting'); }

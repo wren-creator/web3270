@@ -114,7 +114,7 @@ function _sshOpenSession(sid, name, host, port, username, password) {
   term.loadAddon(fitAddon);
   term.open(container);
 
-  const session = { ws, term, fitAddon, container, host, name, port, username, type: 'ssh', sid };
+  const session = { ws, term, fitAddon, container, host, name, port, username, type: 'ssh', sid, state: 'connecting' };
   sshSessions.set(sid, session);
 
   ws.onopen = () => {
@@ -131,17 +131,33 @@ function _sshOpenSession(sid, name, host, port, username, password) {
       term.write(Uint8Array.from(atob(msg.data), c => c.charCodeAt(0)));
     } else if (msg.type === 'ssh.status') {
       if (msg.state === 'connected') {
+        session.state = 'connected';
         _sshUpdateTabDot(sid, '#3a9a6a');
+        if (activeSshSession === sid) {
+          const oiaMode = document.getElementById('oiaMode');
+          if (oiaMode) { oiaMode.textContent = 'SSH CONNECTED'; oiaMode.className = 'oia-val blue'; }
+        }
       } else if (msg.state === 'disconnected') {
+        session.state = 'disconnected';
         _sshUpdateTabDot(sid, '#c0392b');
+        if (activeSshSession === sid) {
+          const oiaMode = document.getElementById('oiaMode');
+          if (oiaMode) { oiaMode.textContent = 'SSH CLOSED'; oiaMode.className = 'oia-val'; }
+        }
       }
     } else if (msg.type === 'ssh.error') {
+      session.state = 'error';
       term.writeln(`\r\n\x1b[31m[SSH Error] ${msg.message}\x1b[0m`);
       _sshUpdateTabDot(sid, '#c0392b');
+      if (activeSshSession === sid) {
+        const oiaMode = document.getElementById('oiaMode');
+        if (oiaMode) { oiaMode.textContent = 'SSH ERROR'; oiaMode.className = 'oia-val'; }
+      }
     }
   };
 
   ws.onclose = () => {
+    session.state = 'closed';
     _sshUpdateTabDot(sid, '#888');
   };
 
@@ -203,12 +219,28 @@ function sshActivateTab(sid) {
   activeSession = null;
   activeSshSession = sid;
 
-  // Hide right panel security/transfer tools (not useful for SSH)
-  // but keep it open if user had it — just don't update OIA
-  const oiaSys = document.getElementById('oiaSys');
-  const oiaLu  = document.getElementById('oiaLu');
-  if (oiaSys) oiaSys.textContent = session.host;
-  if (oiaLu)  oiaLu.textContent  = session.username;
+  // Update OIA bar to reflect SSH protocol
+  const oiaSys   = document.getElementById('oiaSys');
+  const oiaLu    = document.getElementById('oiaLu');
+  const oiaTls   = document.getElementById('oiaTls');
+  const oiaModel = document.getElementById('oiaModel');
+  const oiaApp   = document.getElementById('oiaApp');
+  const oiaMode  = document.getElementById('oiaMode');
+  if (oiaSys)   oiaSys.textContent   = session.host;
+  if (oiaLu)    oiaLu.textContent    = session.username;
+  if (oiaTls)   oiaTls.textContent   = 'SSH';
+  if (oiaModel) oiaModel.textContent = '—';
+  if (oiaApp)   { oiaApp.textContent = '—'; oiaApp.style.color = ''; }
+  const connColor = session.state === 'connected' ? 'var(--accent-green)' : session.state === 'connecting' ? 'var(--accent-amber)' : 'var(--text-muted)';
+  const dot = document.getElementById('mainConnDot');
+  const txt = document.getElementById('connStatusText');
+  if (dot) { dot.className = session.state === 'connected' ? 'conn-dot' : session.state === 'connecting' ? 'conn-dot connecting' : 'conn-dot disconnected'; }
+  if (txt) { txt.textContent = session.name + (session.state === 'connected' ? ' · Connected' : session.state === 'connecting' ? ' · Connecting…' : ' · Disconnected'); txt.style.color = connColor; }
+  if (oiaMode) {
+    if (session.state === 'connected')       { oiaMode.textContent = 'SSH CONNECTED';  oiaMode.className = 'oia-val blue'; }
+    else if (session.state === 'connecting') { oiaMode.textContent = 'SSH CONNECTING'; oiaMode.className = 'oia-val amber'; }
+    else                                     { oiaMode.textContent = 'SSH CLOSED';     oiaMode.className = 'oia-val'; }
+  }
 }
 
 function sshCloseTab(e, closeBtn) {
