@@ -13,15 +13,15 @@
 // ======================================================================
 
 // ── SSH session registry ──────────────────────────────────────────
-// sshSessions: Map<sid, { ws, term, fitAddon, host, name, container }>
-const sshSessions = new Map();
-let sshHosts = [];
+// _sshSessions: Map<sid, { ws, term, fitAddon, host, name, container }>
+const _sshSessions = new Map();
+let __sshHosts = [];
 
 // ── Load host list from server ────────────────────────────────────
 async function sshLoadHosts() {
   try {
     const res = await fetch('/api/ssh-hosts');
-    sshHosts = await res.json();
+    _sshHosts = await res.json();
     _sshRenderHostDropdown();
   } catch (e) {
     console.warn('ssh: could not load ssh-hosts.txt', e);
@@ -32,7 +32,7 @@ function _sshRenderHostDropdown() {
   const sel = document.getElementById('sshHostSelect');
   if (!sel) return;
   const placeholder = '<option value="">— Select SSH host —</option>';
-  const opts = sshHosts.map(h =>
+  const opts = _sshHosts.map(h =>
     `<option value="${esc(h.id)}" data-user="${esc(h.user)}" data-host="${esc(h.host)}" data-port="${h.port}">${esc(h.name)} (${esc(h.host)})</option>`
   ).join('');
   sel.innerHTML = placeholder + opts;
@@ -115,7 +115,7 @@ function _sshOpenSession(sid, name, host, port, username, password) {
   term.open(container);
 
   const session = { ws, term, fitAddon, container, host, name, port, username, type: 'ssh', sid, state: 'connecting' };
-  sshSessions.set(sid, session);
+  _sshSessions.set(sid, session);
 
   ws.onopen = () => {
     ws.send(JSON.stringify({
@@ -208,7 +208,7 @@ function sshActivateTab(sid) {
   if (sshPane)  sshPane.style.display   = 'flex';
 
   // Move this session's xterm container into the visible pane
-  const session = sshSessions.get(sid);
+  const session = _sshSessions.get(sid);
   if (!session) return;
   if (sshPane) {
     sshPane.innerHTML = '';
@@ -250,13 +250,13 @@ function sshCloseTab(e, closeBtn) {
   e.stopPropagation();
   const tab = closeBtn.closest('.session-tab');
   const sid = Number(tab.dataset.sid);
-  const session = sshSessions.get(sid);
+  const session = _sshSessions.get(sid);
   if (session) {
     session.ws.send(JSON.stringify({ type: 'ssh.disconnect' }));
     session.ws.close();
     session.term.dispose();
     session.container.remove();
-    sshSessions.delete(sid);
+    _sshSessions.delete(sid);
   }
   tab.remove();
   if (activeSshSession === sid) {
@@ -275,7 +275,7 @@ function sshCloseTab(e, closeBtn) {
 // ── Resize on window resize ───────────────────────────────────────
 function sshFitActive() {
   if (activeSshSession == null) return;
-  const session = sshSessions.get(activeSshSession);
+  const session = _sshSessions.get(activeSshSession);
   if (!session) return;
   try { session.fitAddon.fit(); } catch {}
   if (session.ws.readyState === WebSocket.OPEN) {
@@ -286,7 +286,7 @@ function sshFitActive() {
 // ── Split-screen support ──────────────────────────────────────────
 // Called from toggleSplitMode when splitSid resolves to an SSH session
 function sshRenderSplitPane(sid) {
-  const session = sshSessions.get(sid);
+  const session = _sshSessions.get(sid);
   const pane    = document.getElementById('sshTerminalSplit');
   const pane3270 = document.getElementById('terminal-split');
   if (!session || !pane) return;

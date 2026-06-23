@@ -1118,7 +1118,6 @@ function activateSession(sid) {
   if (!session) return;
   setConnStatus(session.name, session.tn3270Connected ? 'connected' : 'disconnected');
 
-  // FIX: Refresh OIA identity fields when switching sessions
   const oiaSys   = document.getElementById('oiaSys');
   const oiaLu    = document.getElementById('oiaLu');
   const oiaModel = document.getElementById('oiaModel');

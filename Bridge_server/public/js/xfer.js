@@ -17,9 +17,9 @@
 
 
 // ── State (xferFileData / xferFileName live in state.js) ──────────
-let xferExpertMode  = false;
-let xferCurrentDir  = 'upload';
-let xferUseTsoEdit  = false;  // use TSO EDIT path instead of IND$FILE
+let __xferExpertMode = false;
+let __xferCurrentDir = 'upload';
+let _xferUseTsoEdit = false;
 let _xferDataset    = '';     // persists across panel re-renders
 let _xferSaveAs     = '';
 
@@ -36,7 +36,7 @@ function xferGetSystemType() {
 function xferBuildCommand(direction) {
   const sysType = xferGetSystemType();
 
-  if (xferExpertMode) {
+  if (_xferExpertMode) {
     return (document.getElementById('xferExpertCmd')?.value || '').trim() || null;
   }
 
@@ -89,8 +89,8 @@ function xferRenderPanel() {
     <div class="xfer-title">&#x21C4; IND$FILE Transfer</div>
     <div class="xfer-sys-badge xfer-sys-${sysType.toLowerCase()}" title="Detected from LPAR profile">${sysLabel}</div>
     <button class="xfer-mode-toggle" onclick="xferToggleExpert()"
-            title="${xferExpertMode ? 'Switch to guided mode' : 'Switch to expert mode'}">
-      ${xferExpertMode ? '&#9670; Guided' : '&#9671; Expert'}
+            title="${_xferExpertMode ? 'Switch to guided mode' : 'Switch to expert mode'}">
+      ${_xferExpertMode ? '&#9670; Guided' : '&#9671; Expert'}
     </button>
   </div>
 
@@ -107,7 +107,7 @@ function xferRenderPanel() {
 
   <!-- Upload section -->
   <div class="xfer-section" id="xferSectionUp">
-    ${xferExpertMode ? xferExpertBlock('upload', sysType) : xferGuidedUpload(sysType)}
+    ${_xferExpertMode ? xferExpertBlock('upload', sysType) : xferGuidedUpload(sysType)}
     <div class="xfer-field-group">
       <label class="xfer-label">
         Local file
@@ -129,7 +129,7 @@ function xferRenderPanel() {
 
   <!-- Download section -->
   <div class="xfer-section xfer-hidden" id="xferSectionDown">
-    ${xferExpertMode ? xferExpertBlock('download', sysType) : xferGuidedDownload(sysType)}
+    ${_xferExpertMode ? xferExpertBlock('download', sysType) : xferGuidedDownload(sysType)}
     <div class="xfer-field-group">
       <label class="xfer-label">
         Save as
@@ -144,14 +144,14 @@ function xferRenderPanel() {
     </button>
   </div>
 
-  ${sysType === 'TSO' && !xferExpertMode ? `
+  ${sysType === 'TSO' && !_xferExpertMode ? `
   <label class="xfer-tso-edit-toggle" title="Use TSO EDIT instead of IND\$FILE. Required for hosts where IND\$FILE is not installed.">
-    <input type="checkbox" id="xferTsoEditChk" onchange="xferUseTsoEdit=this.checked;xferUpdateCmdPreview()"
-           ${xferUseTsoEdit ? 'checked' : ''}>
+    <input type="checkbox" id="xferTsoEditChk" onchange="_xferUseTsoEdit=this.checked;xferUpdateCmdPreview()"
+           ${_xferUseTsoEdit ? 'checked' : ''}>
     Use TSO EDIT <span style="color:var(--text-muted)">(no IND\$FILE)</span>
   </label>` : ''}
 
-  ${!xferExpertMode ? `
+  ${!_xferExpertMode ? `
   <div class="xfer-cmd-preview" id="xferCmdPreview">
     <span class="xfer-cmd-label">Command preview</span>
     <code id="xferCmdText">&#8212;</code>
@@ -259,7 +259,7 @@ function xferRenderPanel() {
 </style>
 `;
 
-  if (!xferExpertMode) {
+  if (!_xferExpertMode) {
     const inputs = panel.querySelectorAll('.xfer-input, .xfer-select');
     inputs.forEach(el => el.addEventListener('input', xferUpdateCmdPreview));
     xferUpdateCmdPreview();
@@ -272,7 +272,7 @@ function xferRenderPanel() {
   if (_ds) _ds.addEventListener('input', () => { _xferDataset = _ds.value; });
   if (_sa) _sa.addEventListener('input', () => { _xferSaveAs  = _sa.value; });
 
-  xferSetDir(xferCurrentDir || 'upload', true);
+  xferSetDir(_xferCurrentDir || 'upload', true);
 }
 
 // ── Guided upload fields ───────────────────────────────────────────
@@ -454,7 +454,7 @@ GET 'USER01.DATA.CSV' TEXT CRLF
 
 // ── Direction toggle ───────────────────────────────────────────────
 function xferSetDir(dir, noRender) {
-  xferCurrentDir = dir;
+  _xferCurrentDir = dir;
   const up   = document.getElementById('xferSectionUp');
   const down = document.getElementById('xferSectionDown');
   const tabU = document.getElementById('xferTabUp');
@@ -476,7 +476,7 @@ function xferSetDir(dir, noRender) {
 
 // ── Expert mode toggle ─────────────────────────────────────────────
 function xferToggleExpert() {
-  xferExpertMode = !xferExpertMode;
+  _xferExpertMode = !_xferExpertMode;
   xferRenderPanel();
 }
 
@@ -484,7 +484,7 @@ function xferToggleExpert() {
 function xferUpdateCmdPreview() {
   const el = document.getElementById('xferCmdText');
   if (!el) return;
-  el.textContent = xferBuildCommand(xferCurrentDir) || '—';
+  el.textContent = xferBuildCommand(_xferCurrentDir) || '—';
 }
 
 // ── Auto-populate save-as ──────────────────────────────────────────
@@ -591,15 +591,15 @@ async function xferSend() {
   }
   if (!xferFileData) { xferSetStatus('Select a local file first', 'error'); return; }
 
-  const mode = xferExpertMode ? xferGuessMode(cmd) : (document.getElementById('xferMode')?.value || 'TEXT');
+  const mode = _xferExpertMode ? xferGuessMode(cmd) : (document.getElementById('xferMode')?.value || 'TEXT');
   const btn  = document.getElementById('xferSendBtn');
   if (btn) { btn.disabled = true; btn.textContent = '⟳'; }
   xferSetStatus('Sending to host…', 'working');
   xferLog(`UPLOAD → ${cmd}`, 'var(--accent-amber)');
 
   // TSO EDIT path — for hosts without IND$FILE
-  if (xferGetSystemType() === 'TSO' && xferUseTsoEdit) {
-    const dataset = xferExpertMode
+  if (xferGetSystemType() === 'TSO' && _xferUseTsoEdit) {
+    const dataset = _xferExpertMode
       ? (cmd.match(/PUT\s+('?[^\s']+'?)/i)?.[1] || '')
       : (document.getElementById('xferDataset')?.value || '').trim().toUpperCase();
     try {
@@ -648,7 +648,7 @@ async function xferReceive() {
   const btn    = document.getElementById('xferRecvBtn');
 
   // TSO EDIT download path — bypasses IND$FILE entirely
-  if (xferGetSystemType() === 'TSO' && xferUseTsoEdit) {
+  if (xferGetSystemType() === 'TSO' && _xferUseTsoEdit) {
     const ds = (document.getElementById('xferDataset')?.value || _xferDataset || '').trim().toUpperCase();
     if (!ds) { xferSetStatus('Enter a dataset name', 'error'); return; }
     if (btn) { btn.disabled = true; btn.textContent = '⧳'; }
@@ -671,7 +671,7 @@ async function xferReceive() {
     return;
   }
 
-  const mode   = xferExpertMode ? xferGuessMode(cmd) : (document.getElementById('xferMode')?.value || 'TEXT');
+  const mode   = _xferExpertMode ? xferGuessMode(cmd) : (document.getElementById('xferMode')?.value || 'TEXT');
   if (btn) { btn.disabled = true; btn.textContent = '⧳'; }
   xferSetStatus('Receiving from host…', 'working');
   xferLog(`DOWNLOAD ← ${cmd}`, 'var(--t-blue)');
