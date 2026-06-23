@@ -1512,8 +1512,9 @@ function handleSshConnect(ws, wsId, params) {
   let stream = null;
 
   conn.on('ready', () => {
-    logger.info(`[ws:${wsId}] SSH authenticated`);
-    send(ws, { type: 'ssh.status', state: 'connected' });
+    const sshVersion = conn._remoteVer || 'SSH';
+    logger.info(`[ws:${wsId}] SSH authenticated (${sshVersion})`);
+    send(ws, { type: 'ssh.status', state: 'connected', sshVersion });
 
     conn.shell({ term: 'xterm-256color', rows: params.rows || 24, cols: params.cols || 80 }, (err, sh) => {
       if (err) {
