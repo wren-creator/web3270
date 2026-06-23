@@ -1122,9 +1122,11 @@ function activateSession(sid) {
   const oiaSys   = document.getElementById('oiaSys');
   const oiaLu    = document.getElementById('oiaLu');
   const oiaModel = document.getElementById('oiaModel');
+  const oiaTls   = document.getElementById('oiaTls');
   if (oiaSys)   oiaSys.textContent   = demoMode ? '***.***.***' : (session.profile?.host  || '\u2014');
   if (oiaLu)    oiaLu.textContent    = demoMode ? '******'      : (session.lastLu          || '\u2014');
   if (oiaModel) oiaModel.textContent = session.profile?.model  || '\u2014';
+  if (oiaTls)   oiaTls.textContent   = session.tlsVersion ? (session.tlsVersion === 'PLAIN' ? '3270' : session.tlsVersion) : '3270';
 
   if (session.lastScreen) {
     renderLiveScreen(session.lastScreen); liveScreenText = screenToText(session.lastScreen);
