@@ -1,43 +1,24 @@
 // ── js/state.js ───────────────────────────────────────────────────
-// Shared application state — loaded before the main inline script.
-// Declared on window so all existing code continues to work unchanged.
-// ──────────────────────────────────────────────────────────────────
+// Single mutable state object shared across all modules.
+// Import { state } and read/write state.x — no globals needed.
 
-'use strict';
+export const BRIDGE_URL = 'ws://localhost:8081';
 
-// ── Core session state ─────────────────────────────────────────────
-const BRIDGE_URL      = 'ws://localhost:8081';
-let sessions          = new Map();
-let activeSession     = null;
-let sessionSeq        = 0;
-let liveScreenText    = '';
-let liveScreen        = null;
-let cursorRow         = 0;
-let cursorCol         = 0;
-
-// ── Copilot state ──────────────────────────────────────────────────
-let chatHistory       = [];
-let includeScreen     = true;
-let isStreaming       = false;
-let aiProvider        = 'anthropic';
-let aiCachedModels    = {};
-
-// ── AI provider constants ──────────────────────────────────────────
-const AI_CTX_LABELS = {
+export const AI_CTX_LABELS = {
   anthropic: '200K ctx',
   openai:    '128K ctx',
   gemini:    '1M ctx',
   ollama:    'local',
   github:    '200K ctx',
 };
-const AI_CHIP_COLORS = {
+export const AI_CHIP_COLORS = {
   anthropic: '#E8793A',
   openai:    '#1D9E75',
   gemini:    '#378ADD',
   ollama:    '#888780',
   github:    '#5f5e5a',
 };
-const AI_PROVIDER_LABELS = {
+export const AI_PROVIDER_LABELS = {
   anthropic: 'Anthropic Claude',
   openai:    'OpenAI GPT',
   gemini:    'Google Gemini',
@@ -45,31 +26,47 @@ const AI_PROVIDER_LABELS = {
   github:    'GitHub Models',
 };
 
-// ── Profile / macro state ──────────────────────────────────────────
-let macros            = [];
-let editingProfileId  = null;
-let LPAR_PROFILES     = [];
+export const state = {
+  // Session
+  sessions:          new Map(),
+  activeSession:     null,
+  sessionSeq:        0,
 
-// ── File transfer state ────────────────────────────────────────────
-let xferFileData      = null;
-let xferFileName      = null;
-let xferSelectedLocal = null;
-let xferCurrentPath   = null;
-let xferDirHandle     = null;
-let xferDirStack      = [];
+  // Screen
+  liveScreenText:    '',
+  liveScreen:        null,
+  cursorRow:         0,
+  cursorCol:         0,
 
-// ── Demo mode ──────────────────────────────────────────────────────
-let demoMode          = false;   // when true, masks host IP/hostname in OIA bar
+  // AI / Copilot
+  chatHistory:       [],
+  includeScreen:     true,
+  isStreaming:       false,
+  aiProvider:        'anthropic',
+  aiCachedModels:    {},
 
-// ── Command history index (ui cycling state only) ──────────────────
-let cmdHistoryIndex   = -1;      // -1 = not cycling; per active session
+  // Profiles / macros
+  macros:            [],
+  editingProfileId:  null,
+  LPAR_PROFILES:     [],
 
-// ── Split-screen ───────────────────────────────────────────────────
-let splitMode         = false;   // true when two terminals are shown side by side
-let splitSid          = null;    // session id rendered in the right (passive) pane
+  // File transfer
+  xferFileData:      null,
+  xferFileName:      null,
+  xferSelectedLocal: null,
+  xferCurrentPath:   null,
+  xferDirHandle:     null,
+  xferDirStack:      [],
 
-// ── SSH ────────────────────────────────────────────────────────────
-let activeSshSession  = null;    // sid of the currently active SSH session (or null)
+  // UI toggles
+  demoMode:          false,
+  cmdHistoryIndex:   -1,
+  splitMode:         false,
+  splitSid:          null,
 
-// ── Security panel lock state ──────────────────────────────────────
-let secUnlocked       = false;   // true when the security panel has been unlocked
+  // SSH
+  activeSshSession:  null,
+
+  // Security
+  secUnlocked:       false,
+};

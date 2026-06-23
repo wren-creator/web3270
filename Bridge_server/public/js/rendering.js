@@ -1,24 +1,15 @@
-'use strict';
-
-// ── js/rendering.js — Screen rendering, fingerprinting, OIA updates ─
+import { state } from './state.js';
+import { fitScreen, measureCellWidth } from './geometry.js';
 
 const NONDISPLAY_MASK = '#';
 
-const COLOR_CLASS = {
-  0xF1: 'c-blue',
-  0xF2: 'c-red',
-  0xF3: 'c-pink',
-  0xF4: 'c-green',
-  0xF5: 'c-turq',
-  0xF6: 'c-yellow',
-  0xF7: 'c-white',
+export const COLOR_CLASS = {
+  0xF1: 'c-blue', 0xF2: 'c-red',   0xF3: 'c-pink',
+  0xF4: 'c-green',0xF5: 'c-turq',  0xF6: 'c-yellow', 0xF7: 'c-white',
 };
 
-const HIGHLIGHT_CLASS = {
-  0xF1: 'hl-blink',
-  0xF2: 'hl-reverse',
-  0xF4: 'hl-under',
-  0xF8: 'hl-intens',
+export const HIGHLIGHT_CLASS = {
+  0xF1: 'hl-blink', 0xF2: 'hl-reverse', 0xF4: 'hl-under', 0xF8: 'hl-intens',
 };
 
 const _FP_RULES = [
@@ -40,18 +31,22 @@ function _fingerprintScreen(screenData) {
   ).join('\n');
   for (const rule of _FP_RULES) {
     if (rule.patterns.some(p => p.test(text))) {
-      el.textContent = rule.name;
-      el.style.color  = rule.color;
-      return;
+      el.textContent = rule.name; el.style.color = rule.color; return;
     }
   }
-  el.textContent = '—';
-  el.style.color = '';
+  el.textContent = '—'; el.style.color = '';
 }
 
-// termEl is optional — omit to render to the primary #terminal.
-// Passing the split terminal element renders there without touching OIA or fit.
-function renderLiveScreen(screenData, termEl) {
+// Imported lazily at call-time to avoid circular deps
+function _initInspectorListener() { window._initInspectorListener?.(); }
+function _showAnomalies(a)        { window._showAnomalies?.(a); }
+function _checkWatch(sd)          { window._checkWatch?.(sd); }
+
+// fieldMapOverlay and _decodeFa live in terminal.js (security module)
+function _getFieldMapOverlay()    { return window.fieldMapOverlay ?? false; }
+function _decodeFa(fa)            { return window._decodeFa?.(fa) ?? {}; }
+
+export function renderLiveScreen(screenData, termEl) {
   const isPrimary = !termEl;
   const term = termEl || document.getElementById('terminal');
   term.innerHTML = '';
@@ -61,6 +56,7 @@ function renderLiveScreen(screenData, termEl) {
   const cRow    = screenData.cursorRow ?? 0;
   const cCol    = screenData.cursorCol ?? 0;
   const showPw  = document.body.classList.contains('show-passwords');
+  const fmo     = _getFieldMapOverlay();
   rows.forEach((row, ri) => {
     const rowEl = document.createElement('div');
     rowEl.className = 'screen-row';
@@ -74,7 +70,7 @@ function renderLiveScreen(screenData, termEl) {
       cellEl.textContent = ch;
       cellEl.dataset.ri  = ri;
       cellEl.dataset.ci  = ci;
-      if (ri === cRow && ci === cCol)           cellEl.className = 'screen-cell cursor-cell';
+      if (ri === cRow && ci === cCol) cellEl.className = 'screen-cell cursor-cell';
       else if (cell.fa !== undefined) {
         const prot   = !!(cell.fa & 0x20);
         const intens = (cell.fa & 0x0C) >> 2;
@@ -83,11 +79,10 @@ function renderLiveScreen(screenData, termEl) {
         else if (prot)                 cellEl.className = 'screen-cell field-protected';
         else                           cellEl.className = 'screen-cell field-label';
       }
-      if (cell.nondisplay) cellEl.classList.add('field-nondisplay');
-      if (cell.color     && COLOR_CLASS[cell.color])         cellEl.classList.add(COLOR_CLASS[cell.color]);
+      if (cell.nondisplay)                               cellEl.classList.add('field-nondisplay');
+      if (cell.color     && COLOR_CLASS[cell.color])     cellEl.classList.add(COLOR_CLASS[cell.color]);
       if (cell.highlight && HIGHLIGHT_CLASS[cell.highlight]) cellEl.classList.add(HIGHLIGHT_CLASS[cell.highlight]);
-
-      if (fieldMapOverlay) {
+      if (fmo) {
         if (cell.fa !== undefined) {
           const d = _decodeFa(cell.fa);
           cellEl.classList.add('fmo-fa-cell');
@@ -97,12 +92,7 @@ function renderLiveScreen(screenData, termEl) {
           if (d.mdt)          cellEl.classList.add('fmo-mdt');
           cellEl.textContent = '▸';
           const hex   = '0x' + cell.fa.toString(16).toUpperCase().padStart(2,'0');
-          const flags = [
-            d.prot    ? 'PROT'    : 'UNPROT',
-            d.intensLabel,
-            d.numeric ? 'NUM'     : '',
-            d.mdt     ? 'MDT'     : '',
-          ].filter(Boolean).join(' · ');
+          const flags = [d.prot ? 'PROT' : 'UNPROT', d.intensLabel, d.numeric ? 'NUM' : '', d.mdt ? 'MDT' : ''].filter(Boolean).join(' · ');
           cellEl.title = `FA ${hex} — ${flags}`;
         } else if (cell.char !== undefined) {
           const cls = cellEl.className;
@@ -128,7 +118,7 @@ function renderLiveScreen(screenData, termEl) {
   }
 }
 
-function screenToText(screenData) {
+export function screenToText(screenData) {
   return (screenData.rows || []).map(row =>
     (Array.isArray(row) ? row : []).map(c => {
       const ch = c.char && c.char !== '\x00' ? c.char : ' ';
@@ -138,13 +128,13 @@ function screenToText(screenData) {
   ).join('\n');
 }
 
-function updateOIA(oia) {
+export function updateOIA(oia) {
   const mode = document.getElementById('oiaMode');
   if (oia.kbdLocked) { mode.textContent = 'X SYSTEM'; mode.className = 'oia-val amber'; }
   else               { mode.textContent = 'READY';    mode.className = 'oia-val blue'; }
 }
 
-function showBridgeError(msg) {
+export function showBridgeError(msg) {
   const term  = document.getElementById('terminal');
   const toast = document.createElement('div');
   toast.style.cssText = "position:absolute;top:8px;left:50%;transform:translateX(-50%);background:#1a0a0a;border:1px solid var(--t-red);border-radius:4px;padding:8px 16px;font-size:11px;color:var(--t-red);z-index:50;font-family:'IBM Plex Mono',monospace;white-space:pre;max-width:90%;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,0.6)";

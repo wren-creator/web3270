@@ -1,8 +1,6 @@
-'use strict';
+import { state } from './state.js';
 
-// ── js/geometry.js — Terminal sizing: fitScreen + measureCellWidth ──
-
-function fitScreen() {
+export function fitScreen() {
   try {
     const wrapper = document.getElementById('screenWrapper');
     const term    = document.getElementById('terminal');
@@ -19,7 +17,7 @@ function fitScreen() {
     const intrinsicWidth  = Math.ceil(cellCount * cellW);
     const intrinsicHeight = term.offsetHeight;
     term.style.width = term.style.minWidth = term.style.maxWidth = intrinsicWidth + 'px';
-    const paneW  = splitMode ? Math.floor(wrapper.clientWidth / 2) : wrapper.clientWidth;
+    const paneW  = state.splitMode ? Math.floor(wrapper.clientWidth / 2) : wrapper.clientWidth;
     const availW = paneW    - 16;
     const availH = wrapper.clientHeight - 16;
     if (availW <= 0 || availH <= 0) return;
@@ -35,7 +33,7 @@ function fitScreen() {
       term.style.width = term.style.minWidth = term.style.maxWidth = lockedW + 'px';
     }
     term.style.transform = 'none';
-    if (splitMode) {
+    if (state.splitMode) {
       const term2 = document.getElementById('terminal-split');
       if (term2) {
         term2.style.fontSize = newFontSize + 'px';
@@ -50,7 +48,7 @@ function fitScreen() {
   } catch (err) { console.error('[fitScreen]', err); }
 }
 
-function measureCellWidth() {
+export function measureCellWidth() {
   const term  = document.getElementById('terminal');
   const ruler = document.createElement('span');
   ruler.style.cssText = [
