@@ -1,22 +1,8 @@
-'use strict';
+import { state } from './state.js';
+import { esc } from './utils.js';
 
-// ======================================================================
-//  js/ssh.js — SSH Terminal Integration
-//  WebTerm/3270
-//
-//  SSH sessions appear as first-class tabs alongside TN3270 sessions.
-//  Each SSH session owns an xterm.js Terminal instance.  When the tab is
-//  active the xterm fills the workspace; TN3270 canvas is hidden.
-//  Supports split-screen: one pane TN3270, one pane SSH.
-//
-//  Host profiles loaded from /api/ssh-hosts (ssh-hosts.txt on server).
-// ======================================================================
-
-// ── SSH host list ─────────────────────────────────────────────────
-// SSH sessions are stored in the shared `sessions` Map (state.js) with type:'ssh'
 let _sshHosts = [];
 
-// ── Load host list from server ────────────────────────────────────
 async function sshLoadHosts() {
   try {
     const res = await fetch('/api/ssh-hosts');
@@ -37,21 +23,19 @@ function _sshRenderHostDropdown() {
   sel.innerHTML = placeholder + opts;
 }
 
-// ── Open SSH connect modal ────────────────────────────────────────
-function openSshConnect() {
+export function openSshConnect() {
   sshLoadHosts();
   const modal = document.getElementById('sshConnectModal');
   if (modal) modal.style.display = 'flex';
   setTimeout(() => document.getElementById('sshPassword')?.focus(), 80);
 }
 
-function closeSshConnect() {
+export function closeSshConnect() {
   const modal = document.getElementById('sshConnectModal');
   if (modal) modal.style.display = 'none';
 }
 
-// Pre-fill user when host is selected from dropdown
-function sshHostChanged() {
+export function sshHostChanged() {
   const sel = document.getElementById('sshHostSelect');
   const opt = sel?.options[sel.selectedIndex];
   if (!opt || !opt.value) return;
@@ -59,8 +43,7 @@ function sshHostChanged() {
   if (userInput && opt.dataset.user) userInput.value = opt.dataset.user;
 }
 
-// ── Connect ───────────────────────────────────────────────────────
-async function sshConnect() {
+export async function sshConnect() {
   const sel      = document.getElementById('sshHostSelect');
   const opt      = sel?.options[sel.selectedIndex];
   const userEl   = document.getElementById('sshUser');
@@ -84,18 +67,15 @@ async function sshConnect() {
   _sshOpenSession(sid, name, host, port, username, password);
 }
 
-// ── Open a new SSH session tab ────────────────────────────────────
 function _sshOpenSession(sid, name, host, port, username, password) {
   const WS_URL = `ws://${location.host}`;
   const ws = new WebSocket(WS_URL);
 
-  // Container div that xterm will live in — moved between panes on activate
   const container = document.createElement('div');
   container.className = 'ssh-xterm-container';
   container.style.cssText = 'width:100%;height:100%;display:none;';
   document.getElementById('sshPool').appendChild(container);
 
-  // Create xterm instance
   const term = new Terminal({
     fontFamily: "'IBM Plex Mono', 'Courier New', monospace",
     fontSize: 14,
@@ -114,7 +94,7 @@ function _sshOpenSession(sid, name, host, port, username, password) {
   term.open(container);
 
   const session = { ws, term, fitAddon, container, host, name, port, username, type: 'ssh', sid, state: 'connecting' };
-  sessions.set(sid, session);
+  state.sessions.set(sid, session);
 
   ws.onopen = () => {
     ws.send(JSON.stringify({
@@ -133,7 +113,7 @@ function _sshOpenSession(sid, name, host, port, username, password) {
         session.state = 'connected';
         if (msg.sshVersion) session.sshVersion = msg.sshVersion.replace(/^SSH-\d+\.\d+-/, '');
         _sshUpdateTabDot(sid, '#3a9a6a');
-        if (activeSshSession === sid) {
+        if (state.activeSshSession === sid) {
           const oiaMode = document.getElementById('oiaMode');
           if (oiaMode) { oiaMode.textContent = 'SSH CONNECTED'; oiaMode.className = 'oia-val blue'; }
           const oiaTls = document.getElementById('oiaTls');
@@ -142,7 +122,7 @@ function _sshOpenSession(sid, name, host, port, username, password) {
       } else if (msg.state === 'disconnected') {
         session.state = 'disconnected';
         _sshUpdateTabDot(sid, '#c0392b');
-        if (activeSshSession === sid) {
+        if (state.activeSshSession === sid) {
           const oiaMode = document.getElementById('oiaMode');
           if (oiaMode) { oiaMode.textContent = 'SSH CLOSED'; oiaMode.className = 'oia-val'; }
         }
@@ -151,7 +131,7 @@ function _sshOpenSession(sid, name, host, port, username, password) {
       session.state = 'error';
       term.writeln(`\r\n\x1b[31m[SSH Error] ${msg.message}\x1b[0m`);
       _sshUpdateTabDot(sid, '#c0392b');
-      if (activeSshSession === sid) {
+      if (state.activeSshSession === sid) {
         const oiaMode = document.getElementById('oiaMode');
         if (oiaMode) { oiaMode.textContent = 'SSH ERROR'; oiaMode.className = 'oia-val'; }
       }
@@ -163,18 +143,15 @@ function _sshOpenSession(sid, name, host, port, username, password) {
     _sshUpdateTabDot(sid, '#888');
   };
 
-  // xterm keystrokes → WebSocket
   term.onData(data => {
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'ssh.data', data: btoa(data) }));
     }
   });
 
-  // Add the session tab
   _sshAddTab(sid, name);
 }
 
-// ── Tab management ────────────────────────────────────────────────
 function _sshAddTab(sid, name) {
   const tabs   = document.querySelector('.session-tabs');
   const addBtn = tabs.querySelector('.tab-add');
@@ -194,20 +171,17 @@ function _sshUpdateTabDot(sid, color) {
   if (dot) { dot.style.background = color; dot.style.boxShadow = `0 0 4px ${color}`; }
 }
 
-function sshActivateTab(sid) {
-  // Deactivate all 3270 sessions visually
+export function sshActivateTab(sid) {
   document.querySelectorAll('.session-tab').forEach(t => t.classList.remove('active'));
   const tab = document.querySelector(`.session-tab[data-sid="${sid}"]`);
   if (tab) tab.classList.add('active');
 
-  // Hide 3270 terminal, show SSH pane
   const term3270  = document.getElementById('terminal');
   const sshPane   = document.getElementById('sshTerminal');
   if (term3270) term3270.style.display  = 'none';
   if (sshPane)  sshPane.style.display   = 'flex';
 
-  // Move this session's xterm container into the visible pane
-  const session = sessions.get(sid);
+  const session = state.sessions.get(sid);
   if (!session) return;
   if (sshPane) {
     sshPane.innerHTML = '';
@@ -217,11 +191,9 @@ function sshActivateTab(sid) {
     session.term.focus();
   }
 
-  // Mark no active TN3270 session
-  activeSession = null;
-  activeSshSession = sid;
+  state.activeSession    = null;
+  state.activeSshSession = sid;
 
-  // Update OIA bar to reflect SSH protocol
   const oiaSys   = document.getElementById('oiaSys');
   const oiaLu    = document.getElementById('oiaLu');
   const oiaTls   = document.getElementById('oiaTls');
@@ -245,36 +217,33 @@ function sshActivateTab(sid) {
   }
 }
 
-function sshCloseTab(e, closeBtn) {
+export function sshCloseTab(e, closeBtn) {
   e.stopPropagation();
   const tab = closeBtn.closest('.session-tab');
   const sid = Number(tab.dataset.sid);
-  const session = sessions.get(sid);
+  const session = state.sessions.get(sid);
   if (session) {
     session.ws.send(JSON.stringify({ type: 'ssh.disconnect' }));
     session.ws.close();
     session.term.dispose();
     session.container.remove();
-    sessions.delete(sid);
+    state.sessions.delete(sid);
   }
   tab.remove();
-  if (activeSshSession === sid) {
-    activeSshSession = null;
-    // Restore 3270 terminal view
+  if (state.activeSshSession === sid) {
+    state.activeSshSession = null;
     const term3270 = document.getElementById('terminal');
     const sshPane  = document.getElementById('sshTerminal');
     if (term3270) term3270.style.display = '';
     if (sshPane)  sshPane.style.display  = 'none';
-    // Activate first remaining session tab if any
     const remaining = document.querySelector('.session-tab');
     if (remaining) remaining.click();
   }
 }
 
-// ── Resize on window resize ───────────────────────────────────────
-function sshFitActive() {
-  if (activeSshSession == null) return;
-  const session = sessions.get(activeSshSession);
+export function sshFitActive() {
+  if (state.activeSshSession == null) return;
+  const session = state.sessions.get(state.activeSshSession);
   if (!session) return;
   try { session.fitAddon.fit(); } catch {}
   if (session.ws.readyState === WebSocket.OPEN) {
@@ -282,10 +251,8 @@ function sshFitActive() {
   }
 }
 
-// ── Split-screen support ──────────────────────────────────────────
-// Called from toggleSplitMode when splitSid resolves to an SSH session
-function sshRenderSplitPane(sid) {
-  const session = sessions.get(sid);
+export function sshRenderSplitPane(sid) {
+  const session = state.sessions.get(sid);
   const pane    = document.getElementById('sshTerminalSplit');
   const pane3270 = document.getElementById('terminal-split');
   if (!session || !pane) return;
@@ -297,15 +264,14 @@ function sshRenderSplitPane(sid) {
   try { session.fitAddon.fit(); } catch {}
 }
 
-function sshClearSplitPane() {
+export function sshClearSplitPane() {
   const pane = document.getElementById('sshTerminalSplit');
   if (pane) { pane.style.display = 'none'; pane.innerHTML = ''; }
   const pane3270 = document.getElementById('terminal-split');
   if (pane3270) pane3270.style.display = '';
 }
 
-// ── Save a new host to ssh-hosts.txt ─────────────────────────────
-async function sshSaveHost() {
+export async function sshSaveHost() {
   const id   = document.getElementById('sshNewId')?.value.trim();
   const name = document.getElementById('sshNewName')?.value.trim();
   const host = document.getElementById('sshNewHost')?.value.trim();
@@ -316,5 +282,9 @@ async function sshSaveHost() {
   await sshLoadHosts();
 }
 
-// ── Init ──────────────────────────────────────────────────────────
 window.addEventListener('resize', sshFitActive);
+
+Object.assign(window, {
+  openSshConnect, closeSshConnect, sshHostChanged, sshConnect,
+  sshActivateTab, sshCloseTab, sshFitActive, sshRenderSplitPane, sshClearSplitPane, sshSaveHost,
+});

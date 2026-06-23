@@ -1,8 +1,9 @@
-'use strict';
+import { state } from './state.js';
+import { renderLiveScreen, screenToText } from './rendering.js';
+import { fitScreen } from './geometry.js';
+import { renderCmdHistory } from './keyboard.js';
 
-// ── js/tabs.js — Session tab management, OIA status, split-screen ───
-
-function setConnStatus(name, state) {
+export function setConnStatus(name, connState) {
   const dot  = document.getElementById('mainConnDot');
   const txt  = document.getElementById('connStatusText');
   const mode = document.getElementById('oiaMode');
@@ -12,25 +13,25 @@ function setConnStatus(name, state) {
     disconnected: { dotClass:'conn-dot disconnected',color:'var(--text-muted)',   modeText:'DISCONNECTED', modeClass:'oia-val'       },
     error:        { dotClass:'conn-dot disconnected',color:'var(--t-red)',        modeText:'ERROR',        modeClass:'oia-val'       },
   };
-  const s = states[state] || states.disconnected;
+  const s = states[connState] || states.disconnected;
   dot.className   = s.dotClass;
-  txt.textContent = name + (state === 'connecting' ? ' · Connecting…' : state === 'connected' ? ' · Connected' : state === 'error' ? ' · Error' : ' · Disconnected');
+  txt.textContent = name + (connState === 'connecting' ? ' · Connecting…' : connState === 'connected' ? ' · Connected' : connState === 'error' ? ' · Error' : ' · Disconnected');
   txt.style.color  = s.color;
   mode.textContent = s.modeText;
   mode.className   = s.modeClass;
 }
 
-function updateSessionDot(sid, state) {
-  const session = sessions.get(sid);
+export function updateSessionDot(sid, dotState) {
+  const session = state.sessions.get(sid);
   if (!session?.tabEl) return;
   const dot = session.tabEl.querySelector('.tab-dot');
   if (!dot) return;
   const colors = { connected:'#33ff66', connecting:'#ffaa00', disconnected:'#555', error:'#ff4444' };
-  const c = colors[state] || '#555';
-  dot.style.background = c; dot.style.boxShadow = state === 'connected' ? '0 0 4px ' + c : 'none';
+  const c = colors[dotState] || '#555';
+  dot.style.background = c; dot.style.boxShadow = dotState === 'connected' ? '0 0 4px ' + c : 'none';
 }
 
-function addSessionTab(name, type, sid) {
+export function addSessionTab(name, type, sid) {
   const tabs   = document.querySelector('.session-tabs');
   const addBtn = tabs.querySelector('.tab-add');
   const existing = [...tabs.querySelectorAll('.session-tab')].find(t => t.dataset.sid === String(sid));
@@ -44,22 +45,22 @@ function addSessionTab(name, type, sid) {
   return tab;
 }
 
-function activateTabEl(tabEl, sid) {
+export function activateTabEl(tabEl, sid) {
   document.querySelectorAll('.session-tab').forEach(t => t.classList.remove('active'));
   tabEl.classList.add('active');
-  if (tabEl.dataset.type === 'ssh') { sshActivateTab(sid); } else { activateSession(sid); }
+  if (tabEl.dataset.type === 'ssh') { window.sshActivateTab(sid); } else { activateSession(sid); }
 }
 
-function activateSession(sid) {
-  if (activeSshSession !== null) {
-    activeSshSession = null;
+export function activateSession(sid) {
+  if (state.activeSshSession !== null) {
+    state.activeSshSession = null;
     const term3270 = document.getElementById('terminal');
     const sshPane  = document.getElementById('sshTerminal');
     if (term3270) term3270.style.display = '';
     if (sshPane)  sshPane.style.display  = 'none';
   }
-  activeSession = sid;
-  const session = sessions.get(sid);
+  state.activeSession = sid;
+  const session = state.sessions.get(sid);
   if (!session) return;
   setConnStatus(session.name, session.tn3270Connected ? 'connected' : 'disconnected');
 
@@ -67,8 +68,8 @@ function activateSession(sid) {
   const oiaLu    = document.getElementById('oiaLu');
   const oiaModel = document.getElementById('oiaModel');
   const oiaTls   = document.getElementById('oiaTls');
-  if (oiaSys)   oiaSys.textContent   = demoMode ? '***.***.***' : (session.profile?.host  || '—');
-  if (oiaLu)    oiaLu.textContent    = demoMode ? '******'      : (session.lastLu          || '—');
+  if (oiaSys)   oiaSys.textContent   = state.demoMode ? '***.***.***' : (session.profile?.host  || '—');
+  if (oiaLu)    oiaLu.textContent    = state.demoMode ? '******'      : (session.lastLu          || '—');
   if (oiaModel) oiaModel.textContent = session.profile?.model  || '—';
   if (oiaTls)   oiaTls.textContent   = session.tlsVersion ? (session.tlsVersion === 'PLAIN' ? '3270' : session.tlsVersion) : '3270';
 
@@ -76,56 +77,30 @@ function activateSession(sid) {
     _showDisconnectScreen(session.name, null, sid);
     return;
   }
-
   if (session.lastScreen) {
-    renderLiveScreen(session.lastScreen); liveScreenText = screenToText(session.lastScreen);
-    liveScreen = session.lastScreen; cursorRow = session.lastScreen.cursorRow ?? 0; cursorCol = session.lastScreen.cursorCol ?? 0;
+    renderLiveScreen(session.lastScreen); state.liveScreenText = screenToText(session.lastScreen);
+    state.liveScreen = session.lastScreen; state.cursorRow = session.lastScreen.cursorRow ?? 0; state.cursorCol = session.lastScreen.cursorCol ?? 0;
   } else { document.getElementById('terminal').innerHTML = ''; }
-  cmdHistoryIndex = -1;
+  state.cmdHistoryIndex = -1;
   renderCmdHistory();
 }
 
-function closeSessionTab(e, closeBtn) {
+export function closeSessionTab(e, closeBtn) {
   e.stopPropagation();
   const tab  = closeBtn.closest('.session-tab');
   const sid  = Number(tab.dataset.sid);
   const tabs = document.querySelector('.session-tabs');
   const all  = [...tabs.querySelectorAll('.session-tab')];
   const idx  = all.indexOf(tab);
-  const session = sessions.get(sid);
-  if (session) { session.ws.send(JSON.stringify({ type: 'disconnect' })); session.ws.close(); sessions.delete(sid); }
+  const session = state.sessions.get(sid);
+  if (session) { session.ws.send(JSON.stringify({ type: 'disconnect' })); session.ws.close(); state.sessions.delete(sid); }
   tab.remove();
   const remaining = [...tabs.querySelectorAll('.session-tab')];
   if (remaining.length) { const next = remaining[Math.max(0, idx-1)]; activateTabEl(next, Number(next.dataset.sid)); }
-  else { activeSession = null; document.getElementById('terminal').innerHTML = ''; setConnStatus('', 'disconnected'); }
+  else { state.activeSession = null; document.getElementById('terminal').innerHTML = ''; setConnStatus('', 'disconnected'); }
 }
 
-function applyDemoMode() {
-  const oiaSys = document.getElementById('oiaSys');
-  const oiaLu  = document.getElementById('oiaLu');
-  const btn    = document.getElementById('demoBtn');
-  const session = sessions.get(activeSession);
-  if (oiaSys) oiaSys.textContent = demoMode ? '***.***.***' : (session?.profile?.host || '—');
-  if (oiaLu)  oiaLu.textContent  = demoMode ? '******'      : (session?.lastLu        || '—');
-  if (btn) { btn.style.color = demoMode ? 'var(--accent-amber)' : 'var(--text-muted)'; btn.style.borderColor = demoMode ? 'var(--accent-amber)' : '#333'; }
-}
-
-function toggleDemoMode() {
-  demoMode = !demoMode;
-  applyDemoMode();
-}
-
-function cycleSession(direction) {
-  const tabs = [...document.querySelectorAll('.session-tab')];
-  if (tabs.length < 2) return;
-  const current = tabs.findIndex(t => t.classList.contains('active'));
-  const next = (current + direction + tabs.length) % tabs.length;
-  activateTabEl(tabs[next], Number(tabs[next].dataset.sid));
-}
-
-function switchTab(el) { document.querySelectorAll('.session-tab').forEach(t => t.classList.remove('active')); el.classList.add('active'); }
-
-function _showDisconnectScreen(sessionName, termEl, sid) {
+export function _showDisconnectScreen(sessionName, termEl, sid) {
   const term = termEl || document.getElementById('terminal');
   term.innerHTML = '';
   const msg = document.createElement('div');
@@ -138,15 +113,15 @@ function _showDisconnectScreen(sessionName, termEl, sid) {
       `<button id="_discClose" style="background:#12121f;border:1px solid #333;border-radius:3px;color:#666;font-family:inherit;font-size:11px;padding:5px 14px;cursor:pointer;">Close Tab</button>` +
     `</div>`;
   term.appendChild(msg);
-  liveScreen = null;
+  state.liveScreen = null;
   if (!sid) return;
   msg.querySelector('#_discReconnect').addEventListener('click', () => {
-    const s = sessions.get(sid);
+    const s = state.sessions.get(sid);
     if (!s) return;
     const profile = s.profile;
     const tab = document.querySelector(`.session-tab[data-sid="${sid}"]`);
     if (tab) { const cl = tab.querySelector('.tab-close'); if (cl) closeSessionTab({ stopPropagation: () => {} }, cl); }
-    openSession(profile);
+    window.openSession(profile);
   });
   msg.querySelector('#_discClose').addEventListener('click', () => {
     const tab = document.querySelector(`.session-tab[data-sid="${sid}"]`);
@@ -154,56 +129,76 @@ function _showDisconnectScreen(sessionName, termEl, sid) {
   });
 }
 
-function termClick(e) {
+export function termClick(e) {
   const term = e.currentTarget;
   const rect = term.getBoundingClientRect();
   const rows = term.querySelectorAll('.screen-row');
   if (!rows.length) return;
   const cellH = rows[0].offsetHeight || 1;
   const cells = rows[0].querySelectorAll('.screen-cell');
-  const cellW = cells.length ?
-    (rows[0].offsetWidth / cells.length) : 8;
-  cursorCol = Math.max(0, Math.min(Math.floor((e.clientX - rect.left) / cellW), (cells.length || 80) - 1));
-  cursorRow = Math.max(0, Math.min(Math.floor((e.clientY - rect.top)  / cellH), rows.length - 1));
-  const session = sessions.get(activeSession);
+  const cellW = cells.length ? (rows[0].offsetWidth / cells.length) : 8;
+  state.cursorCol = Math.max(0, Math.min(Math.floor((e.clientX - rect.left) / cellW), (cells.length || 80) - 1));
+  state.cursorRow = Math.max(0, Math.min(Math.floor((e.clientY - rect.top)  / cellH), rows.length - 1));
+  const session = state.sessions.get(state.activeSession);
   if (session && session.ws.readyState === WebSocket.OPEN)
-    session.ws.send(JSON.stringify({ type: 'cursor', row: cursorRow, col: cursorCol }));
+    session.ws.send(JSON.stringify({ type: 'cursor', row: state.cursorRow, col: state.cursorCol }));
 }
 
-function toggleSplitMode() {
-  splitMode = !splitMode;
+export function applyDemoMode() {
+  const oiaSys = document.getElementById('oiaSys');
+  const oiaLu  = document.getElementById('oiaLu');
+  const btn    = document.getElementById('demoBtn');
+  const session = state.sessions.get(state.activeSession);
+  if (oiaSys) oiaSys.textContent = state.demoMode ? '***.***.***' : (session?.profile?.host || '—');
+  if (oiaLu)  oiaLu.textContent  = state.demoMode ? '******'      : (session?.lastLu        || '—');
+  if (btn) { btn.style.color = state.demoMode ? 'var(--accent-amber)' : 'var(--text-muted)'; btn.style.borderColor = state.demoMode ? 'var(--accent-amber)' : '#333'; }
+}
+
+export function toggleDemoMode() { state.demoMode = !state.demoMode; applyDemoMode(); }
+
+export function cycleSession(direction) {
+  const tabs = [...document.querySelectorAll('.session-tab')];
+  if (tabs.length < 2) return;
+  const current = tabs.findIndex(t => t.classList.contains('active'));
+  const next = (current + direction + tabs.length) % tabs.length;
+  activateTabEl(tabs[next], Number(tabs[next].dataset.sid));
+}
+
+export function switchTab(el) { document.querySelectorAll('.session-tab').forEach(t => t.classList.remove('active')); el.classList.add('active'); }
+
+export function toggleSplitMode() {
+  state.splitMode = !state.splitMode;
   const wrapper  = document.getElementById('screenWrapper');
   const paneR    = document.getElementById('splitPaneRight');
   const splitBtn = document.getElementById('tabSplitBtn');
-  wrapper.classList.toggle('split-mode', splitMode);
-  if (splitBtn) splitBtn.classList.toggle('split-active', splitMode);
-
-  if (splitMode) {
-    const allSids = [...sessions.keys()];
-    splitSid = allSids.find(s => s !== activeSession) ?? null;
+  wrapper.classList.toggle('split-mode', state.splitMode);
+  if (splitBtn) splitBtn.classList.toggle('split-active', state.splitMode);
+  if (state.splitMode) {
+    const allSids = [...state.sessions.keys()];
+    state.splitSid = allSids.find(s => s !== state.activeSession) ?? null;
     if (paneR) paneR.style.display = 'flex';
     const term2 = document.getElementById('terminal-split');
-    if (splitSid && term2) {
-      const sess = sessions.get(splitSid);
+    if (state.splitSid && term2) {
+      const sess = state.sessions.get(state.splitSid);
       if (sess?.lastScreen) renderLiveScreen(sess.lastScreen, term2);
     } else if (term2) {
       term2.innerHTML = '<div style="padding:24px;color:var(--text-muted);font-size:11px;font-family:\'IBM Plex Mono\',monospace">No second session open.<br>Open a second connection to compare.</div>';
     }
   } else {
     if (paneR) paneR.style.display = 'none';
-    splitSid = null;
+    state.splitSid = null;
   }
   setTimeout(fitScreen, 50);
 }
 
-function splitTermClick(e) {
-  if (!splitSid) return;
-  const prevActive = activeSession;
-  activateSession(splitSid);
-  splitSid = prevActive;
+export function splitTermClick(e) {
+  if (!state.splitSid) return;
+  const prevActive = state.activeSession;
+  activateSession(state.splitSid);
+  state.splitSid = prevActive;
   const term2 = document.getElementById('terminal-split');
-  if (term2 && splitSid) {
-    const sess = sessions.get(splitSid);
+  if (term2 && state.splitSid) {
+    const sess = state.sessions.get(state.splitSid);
     if (sess?.lastScreen) renderLiveScreen(sess.lastScreen, term2);
   }
   const term = document.getElementById('terminal');
@@ -213,9 +208,16 @@ function splitTermClick(e) {
   const cellH = rows[0].offsetHeight || 1;
   const cells = rows[0].querySelectorAll('.screen-cell');
   const cellW = cells.length ? (rows[0].offsetWidth / cells.length) : 8;
-  cursorCol = Math.max(0, Math.min(Math.floor((e.clientX - rect.left) / cellW), (cells.length || 80) - 1));
-  cursorRow = Math.max(0, Math.min(Math.floor((e.clientY - rect.top)  / cellH), rows.length - 1));
-  const session = sessions.get(activeSession);
+  state.cursorCol = Math.max(0, Math.min(Math.floor((e.clientX - rect.left) / cellW), (cells.length || 80) - 1));
+  state.cursorRow = Math.max(0, Math.min(Math.floor((e.clientY - rect.top)  / cellH), rows.length - 1));
+  const session = state.sessions.get(state.activeSession);
   if (session && session.ws.readyState === WebSocket.OPEN)
-    session.ws.send(JSON.stringify({ type: 'cursor', row: cursorRow, col: cursorCol }));
+    session.ws.send(JSON.stringify({ type: 'cursor', row: state.cursorRow, col: state.cursorCol }));
 }
+
+Object.assign(window, {
+  addSessionTab, activateTabEl, activateSession, closeSessionTab,
+  _showDisconnectScreen, setConnStatus, updateSessionDot,
+  termClick, splitTermClick, applyDemoMode, toggleDemoMode,
+  cycleSession, switchTab, toggleSplitMode,
+});

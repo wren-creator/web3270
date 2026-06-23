@@ -1,17 +1,13 @@
-'use strict';
-
-// ======================================================================
-//  js/terminal.js — Security overlay, MITM panel, inspector, anomaly,
-//                   screen watch, credential harvest, broadcast controls
-//
-//  Rendering → rendering.js  |  Geometry → geometry.js
-//  Keyboard  → keyboard.js   |  Tabs     → tabs.js
-// ======================================================================
+import { state } from './state.js';
+import { renderLiveScreen, screenToText, showBridgeError } from './rendering.js';
+import { sendKey } from './keyboard.js';
+import { fitScreen } from './geometry.js';
+import { saveAs } from './utils.js';
 
 // ── Session Broadcast ─────────────────────────────────────────────────
 let _broadcastActive = false;
 
-function toggleBroadcast() {
+export function toggleBroadcast() {
   _broadcastActive = !_broadcastActive;
   const btn = document.getElementById('broadcastBtn');
   if (btn) btn.classList.toggle('sec-panel-btn-active', _broadcastActive);
@@ -20,45 +16,46 @@ function toggleBroadcast() {
 // ── Color Reveal ──────────────────────────────────────────────────────
 let _colorRevealActive = false;
 
-function toggleColorReveal() {
+export function toggleColorReveal() {
   _colorRevealActive = !_colorRevealActive;
   document.body.classList.toggle('color-reveal', _colorRevealActive);
   const btn = document.getElementById('colorRevealBtn');
   if (btn) btn.classList.toggle('sec-panel-btn-active', _colorRevealActive);
-  if (liveScreen) renderLiveScreen(liveScreen);
+  if (state.liveScreen) renderLiveScreen(state.liveScreen);
 }
 
 // ── Field Map Overlay ─────────────────────────────────────────────────
-let fieldMapOverlay = false;
+export let fieldMapOverlay = false;
 
-function toggleFieldMap() {
+export function toggleFieldMap() {
   fieldMapOverlay = !fieldMapOverlay;
   const btn = document.getElementById('fmoBtn');
   if (btn) btn.classList.toggle('sec-panel-btn-active', fieldMapOverlay);
   document.body.classList.toggle('field-map-overlay', fieldMapOverlay);
-  if (liveScreen) renderLiveScreen(liveScreen);
+  if (state.liveScreen) renderLiveScreen(state.liveScreen);
 }
 
-// ── Security Panel ────────────────────────────────────────────────────
-// secUnlocked declared in state.js; aliased here for module-local reference
-Object.defineProperty(window, '_secUnlocked', {
-  get() { return secUnlocked; },
-  set(v) { secUnlocked = v; },
+// rendering.js reads fieldMapOverlay via window.fieldMapOverlay — keep in sync
+Object.defineProperty(window, 'fieldMapOverlay', {
+  get() { return fieldMapOverlay; },
+  set(v) { fieldMapOverlay = v; },
+  configurable: true,
 });
 
-function toggleSecurityPanel() {
-  if (_secUnlocked) {
+// ── Security Panel ────────────────────────────────────────────────────
+export function toggleSecurityPanel() {
+  if (state.secUnlocked) {
     const tab = document.getElementById('secPanelTab');
     const visible = tab && tab.style.display !== 'none';
     if (visible) _secLock(); else _secReveal();
   } else {
     const overlay = document.getElementById('secUnlockOverlay');
-    if (overlay) { overlay.style.display = 'flex'; }
+    if (overlay) overlay.style.display = 'flex';
     setTimeout(() => { const inp = document.getElementById('secUnlockInput'); if (inp) inp.focus(); }, 50);
   }
 }
 
-function secUnlockSubmit() {
+export function secUnlockSubmit() {
   const inp = document.getElementById('secUnlockInput');
   const err = document.getElementById('secUnlockError');
   const password = inp ? inp.value : '';
@@ -71,7 +68,7 @@ function secUnlockSubmit() {
     .then(r => r.json())
     .then(data => {
       if (data.ok) {
-        _secUnlocked = true;
+        state.secUnlocked = true;
         if (inp) inp.value = '';
         if (err) err.style.display = 'none';
         const overlay = document.getElementById('secUnlockOverlay');
@@ -85,7 +82,7 @@ function secUnlockSubmit() {
     .catch(() => { if (err) err.style.display = 'block'; });
 }
 
-function secUnlockCancel() {
+export function secUnlockCancel() {
   const overlay = document.getElementById('secUnlockOverlay');
   if (overlay) overlay.style.display = 'none';
   const inp = document.getElementById('secUnlockInput');
@@ -99,11 +96,11 @@ function _secReveal() {
   if (tab) tab.style.display = '';
   const panel = document.getElementById('rightPanel');
   if (panel) panel.classList.remove('hidden');
-  if (tab) switchPanelTab(tab, 'Security');
+  if (tab) window.switchPanelTab?.(tab, 'Security');
   const btn = document.getElementById('secBtn');
   if (btn) { btn.style.color = 'var(--accent-amber)'; btn.style.borderColor = 'var(--accent-amber)'; }
-  if (typeof renderWalkthroughList === 'function') renderWalkthroughList();
-  if (typeof renderSidebarMacros === 'function') renderSidebarMacros();
+  window.renderWalkthroughList?.();
+  window.renderSidebarMacros?.();
   setTimeout(fitScreen, 210);
 }
 
@@ -117,22 +114,22 @@ function _secLock() {
   }
   const btn = document.getElementById('secBtn');
   if (btn) { btn.style.color = ''; btn.style.borderColor = ''; }
-  _secUnlocked = false;
-  if (typeof renderSidebarMacros === 'function') renderSidebarMacros();
+  state.secUnlocked = false;
+  window.renderSidebarMacros?.();
   setTimeout(fitScreen, 210);
 }
 
-function openSecurityPanel() { toggleSecurityPanel(); }
+export function openSecurityPanel() { toggleSecurityPanel(); }
 
 // ── Security Toolbar Helpers ──────────────────────────────────────────
 let _keyFeedbackTimer = null;
 
-function secInjectKey() {
+export function secInjectKey() {
   const sel      = document.getElementById('keyInjectSelect');
   const feedback = document.getElementById('keyInjectFeedback');
   if (!sel) return;
   const key     = sel.value;
-  const session = sessions.get(activeSession);
+  const session = state.sessions.get(state.activeSession);
   if (!session || session.ws.readyState !== WebSocket.OPEN) {
     if (feedback) { feedback.style.color = '#aa4040'; feedback.textContent = 'not connected'; feedback.style.opacity = '1'; }
     clearTimeout(_keyFeedbackTimer);
@@ -151,14 +148,14 @@ function secInjectKey() {
 
 // ── Attribute Byte Inspector ──────────────────────────────────────────
 let inspectorActive = false;
-function toggleInspector() {
+export function toggleInspector() {
   inspectorActive = !inspectorActive;
   const btn = document.getElementById('abiBtn');
   if (btn) btn.classList.toggle('sec-panel-btn-active', inspectorActive);
   if (!inspectorActive) _dismissInspector();
 }
 
-function _decodeFa(fa) {
+export function _decodeFa(fa) {
   const prot    = !!(fa & 0x20);
   const intens  = (fa & 0x0C) >> 2;
   const mdt     = !!(fa & 0x01);
@@ -174,13 +171,13 @@ let _inspectorFaAddr  = null;
 let _inspectorCurFa   = null;
 
 function _patchFa(newFa) {
-  const session = sessions.get(activeSession);
+  const session = state.sessions.get(state.activeSession);
   if (!session || session.ws.readyState !== WebSocket.OPEN) return;
   session.ws.send(JSON.stringify({ type: 'sec.patchFa', addr: _inspectorFaAddr, fa: newFa }));
   _dismissInspector();
 }
 
-function _initInspectorListener() {
+export function _initInspectorListener() {
   const term = document.getElementById('terminal');
   if (!term || term.dataset.inspectorBound) return;
   term.dataset.inspectorBound = '1';
@@ -190,18 +187,18 @@ function _initInspectorListener() {
     if (!cellEl) return;
     const ri = parseInt(cellEl.dataset.ri, 10);
     const ci = parseInt(cellEl.dataset.ci, 10);
-    if (isNaN(ri) || isNaN(ci) || !liveScreen) return;
-    const row  = (liveScreen.rows || [])[ri] || [];
+    if (isNaN(ri) || isNaN(ci) || !state.liveScreen) return;
+    const row  = (state.liveScreen.rows || [])[ri] || [];
     const cell = row[ci] || {};
-    const cols    = liveScreen.cols || 80;
-    const numRows = (liveScreen.rows || []).length;
+    const cols    = state.liveScreen.cols || 80;
+    const numRows = (state.liveScreen.rows || []).length;
     let fa = null, faAddr = null;
     let pos = ri * cols + ci;
     for (let i = 0; i <= numRows * cols; i++) {
       const p   = ((pos - i) + numRows * cols) % (numRows * cols);
       const r2  = Math.floor(p / cols);
       const c2  = p % cols;
-      const c   = ((liveScreen.rows || [])[r2] || [])[c2] || {};
+      const c   = ((state.liveScreen.rows || [])[r2] || [])[c2] || {};
       if (c.fa !== undefined) { fa = c.fa; faAddr = p; break; }
     }
     const isFaCell = cell.fa !== undefined;
@@ -209,7 +206,7 @@ function _initInspectorListener() {
     _showInspector(e.clientX, e.clientY, ri, ci, fa, faAddr, cell, isFaCell);
   });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') _dismissInspector(); });
-  document.addEventListener('click',   e => {
+  document.addEventListener('click', e => {
     if (_inspectorEl && !_inspectorEl.contains(e.target) && !e.target.closest('.screen-cell'))
       _dismissInspector();
   }, true);
@@ -224,8 +221,8 @@ function _showInspector(x, y, ri, ci, fa, faAddr, cell, isFaCell) {
   const faHex  = '0x' + fa.toString(16).toUpperCase().padStart(2, '0');
   const faBin  = fa.toString(2).padStart(8, '0');
   const addr   = faAddr !== null ? faAddr : '?';
-  const row14  = faAddr !== null ? `R${String(Math.floor(faAddr / (liveScreen.cols||80)) + 1).padStart(2,'0')} C${String((faAddr % (liveScreen.cols||80)) + 1).padStart(2,'0')}` : '?';
-  const field  = (liveScreen.fields || []).find(f => f.startAddr === faAddr);
+  const row14  = faAddr !== null ? `R${String(Math.floor(faAddr / (state.liveScreen.cols||80)) + 1).padStart(2,'0')} C${String((faAddr % (state.liveScreen.cols||80)) + 1).padStart(2,'0')}` : '?';
+  const field  = (state.liveScreen.fields || []).find(f => f.startAddr === faAddr);
   const contentLen = field ? field.content.trimEnd().length : '?';
   const bit = (n, label, val) =>
     `<tr><td class="abi-bit">bit ${n}</td><td class="abi-label">${label}</td><td class="abi-val ${val ? 'abi-on' : 'abi-off'}">${val ? '1 ✓' : '0'}</td></tr>`;
@@ -283,7 +280,7 @@ function _showInspector(x, y, ri, ci, fa, faAddr, cell, isFaCell) {
   el.style.top  = py + 'px';
 }
 
-function _dismissInspector() {
+export function _dismissInspector() {
   if (_inspectorEl) { _inspectorEl.remove(); _inspectorEl = null; }
 }
 
@@ -293,29 +290,29 @@ let _mitmHolding      = false;
 let _mitmPanel        = null;
 let _mitmPanelFields  = [];
 
-function toggleMitm() {
-  const session = sessions.get(activeSession);
+export function toggleMitm() {
+  const session = state.sessions.get(state.activeSession);
   if (!session || session.ws.readyState !== WebSocket.OPEN) return;
   session.ws.send(JSON.stringify({ type: 'sec.mitm.toggle' }));
 }
 
-function mitmHandleState(msg) {
+export function mitmHandleState(msg) {
   _mitmActive = msg.active;
   const btn = document.getElementById('mitmBtn');
   if (btn) btn.classList.toggle('sec-panel-btn-active', _mitmActive);
   if (!_mitmActive) { _mitmHolding = false; _hideMitmPanel(); _hideReplayBadge(); }
 }
 
-function mitmHandleHeld(msg) {
+export function mitmHandleHeld(msg) {
   _mitmHolding = true;
   _hideReplayBadge();
   _harvestCapture(msg);
   _showMitmPanel(msg);
 }
 
-function mitmHandleReleased(msg) { _mitmHolding = false; _hideMitmPanel(); _showReplayBadge(msg); }
-function mitmHandleDropped()     { _mitmHolding = false; _hideMitmPanel(); _hideReplayBadge(); }
-function mitmHandleReplayed()    {}
+export function mitmHandleReleased(msg) { _mitmHolding = false; _hideMitmPanel(); _showReplayBadge(msg); }
+export function mitmHandleDropped()     { _mitmHolding = false; _hideMitmPanel(); _hideReplayBadge(); }
+export function mitmHandleReplayed()    {}
 
 function _showReplayBadge(msg) {
   _hideReplayBadge();
@@ -323,7 +320,7 @@ function _showReplayBadge(msg) {
   const el  = document.createElement('div');
   el.id = 'mitmReplayBadge';
   el.className = 'mitm-replay-badge';
-  el.innerHTML = `<span class="mitm-replay-label">last: <strong>${esc(aid)}</strong></span>` +
+  el.innerHTML = `<span class="mitm-replay-label">last: <strong>${window.esc?.(aid) ?? aid}</strong></span>` +
     `<button class="mitm-btn mitm-btn-replay" onclick="_mitmReplay()">↺ REPLAY</button>` +
     `<button class="mitm-replay-dismiss" onclick="_hideReplayBadge()" title="Dismiss">✕</button>`;
   document.body.appendChild(el);
@@ -340,6 +337,7 @@ function _showMitmPanel(msg) {
   const aidColor  = AID_COLOR[msg.aid] || '#c8a840';
   const curRow    = String(msg.cursorRow + 1).padStart(2, '0');
   const curCol    = String(msg.cursorCol + 1).padStart(2, '0');
+  const esc = window.esc ?? (s => String(s));
   _mitmPanelFields = msg.fields || [];
   const fieldsHtml = _mitmPanelFields.length
     ? _mitmPanelFields.map((f, i) => {
@@ -377,7 +375,7 @@ function _hideMitmPanel() {
 }
 
 function _mitmRelease() {
-  const session = sessions.get(activeSession);
+  const session = state.sessions.get(state.activeSession);
   if (!session || session.ws.readyState !== WebSocket.OPEN) return;
   const editedFields = _mitmPanelFields.map((f, i) => {
     const input = document.getElementById(`mitmField${i}`);
@@ -387,13 +385,13 @@ function _mitmRelease() {
 }
 
 function _mitmDrop() {
-  const session = sessions.get(activeSession);
+  const session = state.sessions.get(state.activeSession);
   if (!session || session.ws.readyState !== WebSocket.OPEN) return;
   session.ws.send(JSON.stringify({ type: 'sec.mitm.drop' }));
 }
 
 function _mitmReplay() {
-  const session = sessions.get(activeSession);
+  const session = state.sessions.get(state.activeSession);
   if (!session || session.ws.readyState !== WebSocket.OPEN) return;
   session.ws.send(JSON.stringify({ type: 'sec.mitm.replay' }));
 }
@@ -402,7 +400,7 @@ function _mitmReplay() {
 let _anomalyLog     = [];
 let _anomalyEnabled = false;
 
-function toggleAnomalyEnabled() {
+export function toggleAnomalyEnabled() {
   _anomalyEnabled = !_anomalyEnabled;
   const btn     = document.getElementById('anomBtn');
   const viewBtn = document.getElementById('anomViewBtn');
@@ -416,7 +414,7 @@ function toggleAnomalyEnabled() {
   }
 }
 
-function _showAnomalies(anomalies) {
+export function _showAnomalies(anomalies) {
   if (!_anomalyEnabled || !anomalies || anomalies.length === 0) return;
   const now = Date.now();
   anomalies.forEach(a => _anomalyLog.push({ ...a, ts: now }));
@@ -454,7 +452,7 @@ function _flashAnomalyBar(anomalies) {
   setTimeout(() => { bar.classList.remove('anomaly-flash'); bar.innerHTML = ''; }, 2000);
 }
 
-function toggleAnomalyLog() {
+export function toggleAnomalyLog() {
   const panel = document.getElementById('anomalyLogPanel');
   if (!panel) return;
   const open = panel.classList.toggle('anomaly-log-open');
@@ -478,7 +476,7 @@ function _renderAnomalyLog() {
   }).join('');
 }
 
-function clearAnomalyLog() {
+export function clearAnomalyLog() {
   _anomalyLog = [];
   _updateAnomalyBadge();
   const panel = document.getElementById('anomalyLogPanel');
@@ -488,9 +486,9 @@ function clearAnomalyLog() {
 }
 
 // ── Screen Export ─────────────────────────────────────────────────────
-function exportScreen() {
-  if (!liveScreen) return;
-  const text = screenToText(liveScreen);
+export function exportScreen() {
+  if (!state.liveScreen) return;
+  const text = screenToText(state.liveScreen);
   navigator.clipboard.writeText(text).catch(() => {});
   const ts   = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   saveAs(new Blob([text], { type: 'text/plain' }), `screen-${ts}.txt`);
@@ -514,9 +512,10 @@ function _updateHarvestBadge() {
   if (btn) btn.classList.toggle('sec-panel-btn-active', _harvestLog.length > 0);
 }
 
-function openHarvestLog() {
+export function openHarvestLog() {
   const existing = document.getElementById('harvestPanel');
   if (existing) { existing.remove(); return; }
+  const esc = window.esc ?? (s => String(s));
   const el = document.createElement('div');
   el.id = 'harvestPanel';
   el.className = 'harvest-panel';
@@ -566,7 +565,7 @@ let _watchActive  = false;
 let _watchString  = '';
 let _watchLastHit = '';
 
-function toggleWatch() {
+export function toggleWatch() {
   _watchActive = !_watchActive;
   const btn = document.getElementById('watchBtn');
   if (btn) btn.classList.toggle('sec-panel-btn-active', _watchActive);
@@ -576,12 +575,12 @@ function toggleWatch() {
   if (!_watchActive) _hideWatchAlert();
 }
 
-function _checkWatch(screenData) {
+export function _checkWatch(screenData) {
   if (!_watchActive || !_watchString.trim()) return;
   const text = (screenData.rows || []).map(row =>
     (Array.isArray(row) ? row : []).map(c => (c.char && c.char !== '\x00' ? c.char : ' ')).join('')
   ).join('\n');
-  const needle = _watchString.trim().toUpperCase();
+  const needle   = _watchString.trim().toUpperCase();
   const haystack = text.toUpperCase();
   if (!haystack.includes(needle)) return;
   if (text === _watchLastHit) return;
@@ -611,6 +610,37 @@ function _showWatchAlert(needle) {
 
 function _hideWatchAlert() {
   const el = document.getElementById('watchAlert');
-  if (el) { el.classList.remove('watch-alert-visible'); }
+  if (el) el.classList.remove('watch-alert-visible');
   _watchLastHit = '';
 }
+
+Object.assign(window, {
+  toggleBroadcast, toggleColorReveal, toggleFieldMap,
+  toggleSecurityPanel, secUnlockSubmit, secUnlockCancel, openSecurityPanel,
+  secInjectKey, toggleInspector, _decodeFa, _initInspectorListener, _dismissInspector,
+  _patchFa,
+  toggleMitm, mitmHandleState, mitmHandleHeld, mitmHandleReleased, mitmHandleDropped, mitmHandleReplayed,
+  _mitmRelease, _mitmDrop, _mitmReplay, _hideReplayBadge,
+  toggleAnomalyEnabled, toggleAnomalyLog, clearAnomalyLog, _showAnomalies,
+  exportScreen, openHarvestLog, _harvestExport, _harvestClear,
+  toggleWatch, _checkWatch, _hideWatchAlert,
+  _broadcastActive: undefined,
+});
+
+// _broadcastActive is read by keyboard.js via window._broadcastActive
+Object.defineProperty(window, '_broadcastActive', {
+  get() { return _broadcastActive; },
+  configurable: true,
+});
+// _mitmHolding is read by keyboard.js via window._mitmHolding
+Object.defineProperty(window, '_mitmHolding', {
+  get() { return _mitmHolding; },
+  configurable: true,
+});
+
+// _watchString is read/written from HTML input
+Object.defineProperty(window, '_watchString', {
+  get() { return _watchString; },
+  set(v) { _watchString = v; },
+  configurable: true,
+});

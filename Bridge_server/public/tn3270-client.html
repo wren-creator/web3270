@@ -927,20 +927,6 @@
   </div>
 </div>
 
-<script src="js/state.js"></script>
-<script src="js/recorder.js"></script>
-<script src="js/copilot.js"></script>
-<script src="js/xfer.js"></script>
-<script src="js/macros.js"></script>
-<script src="js/profiles.js"></script>
-<script src="js/geometry.js"></script>
-<script src="js/rendering.js"></script>
-<script src="js/keyboard.js"></script>
-<script src="js/tabs.js"></script>
-<script src="js/terminal.js"></script>
-<script src="js/settings.js"></script>
-<script src="js/ui.js"></script>
-<script src="js/main.js"></script>
 <!-- SSH connect modal -->
 <div id="sshConnectModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9300;align-items:center;justify-content:center;">
   <div style="background:#0a0f14;border:1px solid #1e4a2f;border-radius:6px;width:380px;max-width:95vw;box-shadow:0 4px 24px rgba(0,0,0,0.9);font-family:'IBM Plex Mono',monospace">
@@ -1031,12 +1017,9 @@
   </div>
 </div>
 
-<script src="js/probe.js"></script>
-<script src="js/fuzz.js"></script>
-<script src="js/walkthrough.js"></script>
-<!-- xterm.js for SSH terminal rendering -->
+<!-- xterm.js for SSH terminal rendering (must load before ES6 module) -->
 <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.js"></script>
-<script src="js/ssh.js"></script>
+<script type="module" src="js/main.js"></script>
 </body>
 </html>
