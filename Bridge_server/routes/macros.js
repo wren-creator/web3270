@@ -24,7 +24,7 @@ export function handle(req, res, { config, logger }) {
         const macros = loadMacroFile(config);
         const idx = macros.findIndex(m => m.id === macro.id);
         if (idx >= 0) macros[idx] = macro; else macros.push(macro);
-        fs.writeFileSync(macroPath, JSON.stringify(macros.filter(m => m.source !== 'security'), null, 2));
+        fs.writeFileSync(macroPath, JSON.stringify(macros.filter(m => m.source !== 'security' && m.source !== 'library'), null, 2));
         logger.info(`[api] Macro "${macro.name}" saved`);
         res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
         res.end(JSON.stringify({ ok: true, macro }));
@@ -49,6 +49,8 @@ export function handle(req, res, { config, logger }) {
         const allMacros = loadMacroFile(config);
         const isSec = allMacros.find(m => (m.id === macroId || m.name === macroId) && m.source === 'security');
         if (isSec) { res.writeHead(403, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Security macros are read-only' })); return true; }
+        const isLib = allMacros.find(m => (m.id === macroId || m.name === macroId) && m.source === 'library');
+        if (isLib) { res.writeHead(403, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Library macros are read-only — remove the file from macros/library/ to delete' })); return true; }
         res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Macro not found' })); return true;
       }
       mainMacros.splice(idx, 1);
