@@ -1,0 +1,17 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY mock-lpar/mock-tpf.js    ./mock-lpar/mock-tpf.js
+COPY mock-lpar/package.json   ./mock-lpar/package.json
+
+RUN addgroup -S mocktpf && adduser -S mocktpf -G mocktpf
+USER mocktpf
+
+EXPOSE 3274
+
+ENV MOCK_PORT=3274 \
+    MOCK_SYSID=TPFPROD \
+    LOG_LEVEL=info
+
+CMD ["node", "mock-lpar/mock-tpf.js"]
