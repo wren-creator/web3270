@@ -1,8 +1,6 @@
-'use strict';
+import { trafficLog } from '../features/traffic.js';
 
-const { trafficLog } = require('../features/traffic');
-
-function handle(req, res) {
+export function handle(req, res) {
   if (req.url === '/api/traffic' && req.method === 'GET') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify(trafficLog));
@@ -29,5 +27,3 @@ function handle(req, res) {
 
   return false;
 }
-
-module.exports = { handle };

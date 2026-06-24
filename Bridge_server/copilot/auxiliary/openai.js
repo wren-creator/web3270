@@ -27,7 +27,7 @@
 
 'use strict';
 
-const logger = require('../../logger');
+const logger = require('../../logger.cjs');
 
 const MODEL      = process.env.OPENAI_MODEL     || 'gpt-4o';
 const MAX_TOKENS = parseInt(process.env.COPILOT_MAX_TOKENS || '1000', 10);

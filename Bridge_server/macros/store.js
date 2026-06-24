@@ -17,12 +17,13 @@
  * }
  */
 
-'use strict';
+import { promises as fs } from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import logger from '../logger.cjs';
+import config from '../config.js';
 
-const fs      = require('fs').promises;
-const path    = require('path');
-const logger  = require('../logger');
-
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_LIBRARY_DIR = path.join(__dirname, 'library');
 
 class MacroStore {
@@ -144,15 +145,11 @@ class MacroStore {
   }
 }
 
-module.exports = MacroStore;
-
 // ── SecurityMacroStore ────────────────────────────────────────────
 // Reads from macros-security.json (flat array, bind-mounted).
 // All macros are tagged source:'security' and are read-only —
 // save/delete/import/rename are intentionally blocked.
 // Never import this file into the main branch.
-
-const config = require('../config');
 
 class SecurityMacroStore {
   constructor(filePath = config.macroSecurityFile) {
@@ -234,7 +231,5 @@ class SecurityMacroStore {
   }
 }
 
-module.exports.MacroStore         = MacroStore;
-module.exports.SecurityMacroStore = SecurityMacroStore;
-// Keep default export for backwards compatibility with existing requires
-module.exports.default            = MacroStore;
+export { MacroStore, SecurityMacroStore };
+export default MacroStore;

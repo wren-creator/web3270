@@ -1,19 +1,17 @@
-'use strict';
+import { WebSocket } from 'ws';
+import fs from 'fs';
+import Tn3270Session from '../tn3270/session.js';
+import MacroHandler from '../macros/handler.js';
+import { MacroStore } from '../macros/store.js';
+import CopilotHandler from '../copilot/copilot-handler.js';
 
-const WebSocket      = require('ws');
-const fs             = require('fs');
-const Tn3270Session  = require('../tn3270/session');
-const MacroHandler   = require('../macros/handler');
-const { MacroStore } = require('../macros/store');
-const CopilotHandler = require('../copilot/copilot-handler');
-
-const send               = require('../utils/send');
-const { logTraffic }     = require('../features/traffic');
-const { recordings }     = require('../features/recording');
-const { handleSshConnect } = require('../features/ssh');
-const { handleFuzz }     = require('../features/fuzz');
-const mitm               = require('../features/mitm');
-const { createHandlers: createXferHandlers, screenToLinesMasked } = require('../features/transfer');
+import send from '../utils/send.js';
+import { logTraffic } from '../features/traffic.js';
+import { recordings } from '../features/recording.js';
+import { handleSshConnect } from '../features/ssh.js';
+import { handleFuzz } from '../features/fuzz.js';
+import * as mitm from '../features/mitm.js';
+import { createHandlers as createXferHandlers, screenToLinesMasked } from '../features/transfer.js';
 
 function buildTlsOptions(params, config) {
   const opts = { rejectUnauthorized: params.verifyTls ?? config.bridge.verifyTls };
@@ -23,7 +21,7 @@ function buildTlsOptions(params, config) {
   return opts;
 }
 
-function createWsHandler({ config, logger, sessions, Ebcdic }) {
+export function createWsHandler({ config, logger, sessions, Ebcdic }) {
   const macroStore = new MacroStore();
   let nextId = 1;
 
@@ -77,7 +75,7 @@ function createWsHandler({ config, logger, sessions, Ebcdic }) {
 
       sessions.set(wsId, session);
 
-      const macroHandler  = new MacroHandler(session, ws, wsId, macroStore);
+      const macroHandler = new MacroHandler(session, ws, wsId, macroStore);
       CopilotHandler.sendProviderInfo(ws);
 
       // ── Session → Browser events ─────────────────────────────────
@@ -137,7 +135,7 @@ function createWsHandler({ config, logger, sessions, Ebcdic }) {
         if (typeof msg.type === 'string' && msg.type.startsWith('macro.')) {
           macroHandler.handle(msg); return;
         }
-        if (msg.type === 'copilot.chat') {
+        if (msg.type === 'copilot.chat' || msg.type === 'copilot.configure' || msg.type === 'copilot.list-models') {
           CopilotHandler.handle(msg, ws, wsId); return;
         }
 
@@ -229,5 +227,3 @@ function createWsHandler({ config, logger, sessions, Ebcdic }) {
     });
   };
 }
-
-module.exports = { createWsHandler };

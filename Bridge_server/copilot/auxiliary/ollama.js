@@ -48,7 +48,7 @@
 
 'use strict';
 
-const logger = require('../../logger');
+const logger = require('../../logger.cjs');
 
 const HOST       = (process.env.OLLAMA_HOST || 'http://localhost:11434').replace(/\/$/, '');
 const MODEL      = process.env.OLLAMA_MODEL || 'llama3.1';

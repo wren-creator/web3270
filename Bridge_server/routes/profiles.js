@@ -1,11 +1,11 @@
-'use strict';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-const fs   = require('fs');
-const path = require('path');
-
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const lparsPath = path.join(__dirname, '..', 'lpars.txt');
 
-function handle(req, res, { config, logger }) {
+export function handle(req, res, { config, logger }) {
   if (req.url === '/api/profiles' && req.method === 'GET') {
     const profiles = config.profiles.map(p => ({
       id: p.id, name: p.name, host: p.host, port: p.port,
@@ -66,5 +66,3 @@ function handle(req, res, { config, logger }) {
 
   return false;
 }
-
-module.exports = { handle };

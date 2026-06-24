@@ -1,11 +1,11 @@
-'use strict';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-const fs   = require('fs');
-const path = require('path');
-
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const sshHostsPath = path.join(__dirname, '..', 'ssh-hosts.txt');
 
-function handle(req, res, { config }) {
+export function handle(req, res, { config }) {
   if (req.url === '/api/ssh-hosts' && req.method === 'GET') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify(config.sshHosts));
@@ -47,5 +47,3 @@ function handle(req, res, { config }) {
 
   return false;
 }
-
-module.exports = { handle };

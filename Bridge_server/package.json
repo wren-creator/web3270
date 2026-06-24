@@ -2,6 +2,7 @@
   "name": "webterm-3270-bridge",
   "version": "1.0.0",
   "description": "WebSocket ↔ TN3270(E) bridge for WebTerm/3270",
+  "type": "module",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

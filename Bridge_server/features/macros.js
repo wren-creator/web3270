@@ -1,16 +1,16 @@
-'use strict';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-const fs   = require('fs');
-const path = require('path');
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-function loadMacroFile(config) {
+export function loadMacroFile(config) {
   const macroPath = path.join(__dirname, '..', 'macros.json');
   let macros = [];
   if (fs.existsSync(macroPath)) {
     try { macros = JSON.parse(fs.readFileSync(macroPath, 'utf8')); } catch { macros = []; }
   }
 
-  // Merge macros recorded via MacroStore into the library directory
   const libDir = path.join(__dirname, '..', 'macros', 'library');
   if (fs.existsSync(libDir)) {
     try {
@@ -29,7 +29,6 @@ function loadMacroFile(config) {
     } catch { /* skip unreadable library dir */ }
   }
 
-  // Merge security macros (read-only)
   const secPath = config.macroSecurityFile;
   if (fs.existsSync(secPath)) {
     try {
@@ -40,5 +39,3 @@ function loadMacroFile(config) {
 
   return macros;
 }
-
-module.exports = { loadMacroFile };

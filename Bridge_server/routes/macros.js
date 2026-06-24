@@ -1,13 +1,12 @@
-'use strict';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { loadMacroFile } from '../features/macros.js';
 
-const fs   = require('fs');
-const path = require('path');
-
-const { loadMacroFile } = require('../features/macros');
-
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const macroPath = path.join(__dirname, '..', 'macros.json');
 
-function handle(req, res, { config, logger }) {
+export function handle(req, res, { config, logger }) {
   if (req.url === '/api/macros' && req.method === 'GET') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify(loadMacroFile(config)));
@@ -67,5 +66,3 @@ function handle(req, res, { config, logger }) {
 
   return false;
 }
-
-module.exports = { handle };

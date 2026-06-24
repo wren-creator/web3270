@@ -1,16 +1,16 @@
-'use strict';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-const fs   = require('fs');
-const path = require('path');
+import * as traffic   from '../routes/traffic.js';
+import * as logs      from '../routes/logs.js';
+import * as profiles  from '../routes/profiles.js';
+import * as sshHosts  from '../routes/ssh-hosts.js';
+import * as macros    from '../routes/macros.js';
+import * as recording from '../routes/recording.js';
+import * as security  from '../routes/security.js';
 
-const traffic   = require('../routes/traffic');
-const logs      = require('../routes/logs');
-const profiles  = require('../routes/profiles');
-const sshHosts  = require('../routes/ssh-hosts');
-const macros    = require('../routes/macros');
-const recording = require('../routes/recording');
-const security  = require('../routes/security');
-
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 
 const MIME = {
@@ -25,7 +25,7 @@ const MIME = {
 
 const ROUTES = [traffic, logs, profiles, sshHosts, macros, recording, security];
 
-function createRequestHandler({ config, logger, sessions }) {
+export function createRequestHandler({ config, logger, sessions }) {
   const ctx = { config, logger, sessions };
 
   return function handleRequest(req, res) {
@@ -60,5 +60,3 @@ function createRequestHandler({ config, logger, sessions }) {
     });
   };
 }
-
-module.exports = { createRequestHandler };
