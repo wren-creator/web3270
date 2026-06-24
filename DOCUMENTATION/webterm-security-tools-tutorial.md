@@ -1294,6 +1294,140 @@ All three tools write to a shared CSV via **↓ Export all DB2 results CSV** at 
 
 ---
 
+## Part 2R — TN3270E Negotiation Analyzer (Wave 14)
+
+The TN3270E Negotiation Analyzer reads live TLS socket state from the bridge server and surfaces cipher suite, certificate details, and TN3270E protocol negotiation flags for every active session.
+
+---
+
+### Location
+
+Security panel → TN3270E NEGOTIATION ANALYZER
+
+### How it works
+
+The bridge server's `/api/negotiate` endpoint iterates active sessions and calls `socket.getCipher()` and `socket.getPeerCertificate()` on the underlying Node.js TLS socket. These calls return the post-handshake TLS state without triggering any new network traffic. The client then flags weaknesses client-side.
+
+### Fields returned per session
+
+| Field | Source | Notes |
+|---|---|---|
+| TLS version | `socket.getProtocol()` | TLSv1.3, TLSv1.2, or PLAIN |
+| Cipher | `socket.getCipher().standardName` | IANA name (e.g. `TLS_AES_256_GCM_SHA384`) |
+| Cert CN | `cert.subject.CN` | Common name of the host certificate |
+| Cert issuer | `cert.issuer.CN` | CA that signed the certificate |
+| Cert expiry | `cert.valid_to` | Expiration date string |
+| Self-signed | subject.CN === issuer.CN | Flag — no trusted CA chain |
+| TN3270E | `session.tn3270eEnabled` | Whether TN3270E was negotiated |
+| Model | `session.model` | e.g. IBM-3278-2, IBM-3278-5 |
+| LU | `session.negotiatedLu` | LU name assigned during TN3270E |
+
+### Weakness flags
+
+| Finding | Risk | Condition |
+|---|---|---|
+| PLAIN session | CRITICAL | No TLS at all |
+| Weak cipher | HIGH | RC4, DES, 3DES, NULL, EXPORT, ANON, MD5 |
+| Self-signed cert | HIGH | subject CN == issuer CN |
+| Expired cert | CRITICAL | Valid-to date is past |
+| Near-expiry cert | HIGH | < 30 days remaining |
+| No peer cert | MEDIUM | Server didn't present a certificate |
+| TN3270E inactive | MEDIUM | Fell back to classic TN3270 |
+| Unknown cipher | MEDIUM | Not matched as weak or strong |
+
+### Teaching scenario
+
+**Plaintext detection:** Connect to a host without enabling TLS (TLS toggle off). Refresh the analyzer — the session shows PLAIN in red with a CRITICAL finding. Toggle TLS on, reconnect, refresh again to show TLSv1.3 with a strong cipher.
+
+**Cipher downgrade:** If the host supports TLSv1.2 with older cipher suites, connect and compare the negotiated cipher against TLSv1.3. Illustrate why TLS 1.0 and 1.1 are deprecated (RC4 exposure, BEAST/POODLE attacks).
+
+**Self-signed certs in lab:** Lab and mock environments often have self-signed certificates — the analyzer flags them HIGH. Explain that in production, self-signed certs should be replaced with CA-signed certificates so clients can validate host identity and prevent MITM attacks.
+
+---
+
+## Part 2S — SDSF Job Scanner (Wave 14)
+
+The SDSF Job Scanner parses the visible SDSF ST or DA panel to enumerate running jobs and started tasks (STCs). No SDSF line commands are issued — the tool reads the current terminal screen passively.
+
+---
+
+### Location
+
+Security panel → SDSF JOB & STC SCANNER → SDSF JOB PARSER
+
+### How to use
+
+1. Connect to TSO, log in, type `SDSF` at READY, press ENTER.
+2. At SDSF Primary Menu, type `ST` (Status) or `DA` (Display Active) and press ENTER.
+3. Scroll to SDSF JOB PARSER in the Security panel and click ↺ Refresh.
+4. The tool reads `state.liveScreen` — the current terminal screen — and parses visible job rows.
+
+### What it detects
+
+The parser looks for rows matching the SDSF job line format: `[NP] JOBNAME JOBID OWNER PRTY QUEUE [STATUS]`. It then classifies each job:
+
+| Risk | Condition | Security relevance |
+|---|---|---|
+| HIGH | System STC (STC* jobid) with system owner (SYS1, VTAM, RACF, TCPIP) | System task is visible from your privilege level — information disclosure |
+| MEDIUM | STC without system owner | Check whether a RACF STARTED profile constrains this STC |
+| INFO | STC not in ACTIVE queue | Idle — lower risk |
+| OK | User batch job | Normal |
+
+### Teaching scenario
+
+**Information disclosure:** Log in as a low-privilege TSO user. If SDSF shows RACF or VTAM in the job list, the user can see which security infrastructure is active — an attacker now knows RACF is the security product and can target RACF-specific privilege escalation paths.
+
+**SDSFPREF access gap:** In many shops, the SDSF resource class (`SDSFPREF`) is not configured — all authenticated users see all jobs. Compare what a restricted user sees vs a system programmer to identify the gap.
+
+---
+
+## Part 2T — STC Profile Scanner (Wave 14)
+
+The STC Profile Scanner issues `RLIST STARTED stcname.* ALL` at a TSO READY prompt for each started task in a wordlist. A missing RACF STARTED class profile means the STC runs under the default user — a common misconfiguration that creates unaudited privilege and RACF bypass paths.
+
+---
+
+### Location
+
+Security panel → SDSF JOB & STC SCANNER → STC PROFILE SCANNER
+
+### Prerequisites
+
+TSO READY prompt. The scan issues RLIST commands that appear in the TSO session and are visible in any SMF logging that captures TSO READY commands.
+
+### How STARTED class profiles work
+
+When a started task launches, JES2/JES3 looks up the STC name in the RACF STARTED class. The profile (e.g. `JES2.*`) maps the STC to a user ID and optionally sets PRIVILEGED or TRUSTED attributes. Without a profile, the STC is assigned to the installation default user (often IBMUSER or a highly privileged account), running without any RACF identity for that task.
+
+### Risk levels
+
+| Risk | Meaning |
+|---|---|
+| CRITICAL | Profile found with PRIVILEGED attribute — STC bypasses all RACF access checks |
+| HIGH | `ICH10006I` — no STARTED profile — STC runs as default user, no RACF accountability |
+| MEDIUM | Profile found but USER field could not be parsed |
+| OK | Profile found with named USER and GROUP |
+
+### Default STC wordlist
+
+`JES2`, `JES3`, `VTAM`, `RACF`, `SMF`, `TCPIP`, `FTPD`, `SYSLOG`, `CATALOG`, `DFHSM`, `DFRMM`, `PCAUTH`, `RASP`, `CONSOLE`, `OPER`, `MASTER`
+
+### Import from SDSF scan
+
+After running the SDSF Job Scanner, click "⇦ Import STCs from SDSF" to populate the wordlist with actual STC names visible in the current environment — more accurate than a static wordlist.
+
+### Teaching scenario
+
+**No profile = identity gap:** Run the scanner against an environment where JES2 has no STARTED profile. Show the HIGH finding. Explain that every SMF record produced by JES2 will show the default user ID — making forensic attribution during an incident impossible for anything JES2 touched.
+
+**PRIVILEGED attribute risk:** If a STARTED profile has `PRIVILEGED(YES)`, the STC bypasses all RACF checks. This is intentional for some system tasks (JES2 needs to access everything) but is frequently over-applied. A PRIVILEGED STC that an attacker can influence — through its JCL PROC, its load library, or a linked dataset — becomes a superuser escalation path.
+
+**Remediation:** For each HIGH finding, create a RACF STARTED profile: `RDEFINE STARTED stcname.* STDATA(USER(stcuser) GROUP(stcgrp))`. Then `SETROPTS RACLIST(STARTED) REFRESH` to activate. Create a dedicated low-privilege user ID for each STC rather than sharing one system account.
+
+> **Note:** All SDSF and RACF probe tools display `FOR AUTHORIZED USE ONLY` in the Security panel. Running these checks against a system without written authorization is illegal under the Computer Fraud and Abuse Act and equivalent laws.
+
+---
+
 ## Appendix — The .rec.json format
 
 The recording file is plain JSON and human-readable:

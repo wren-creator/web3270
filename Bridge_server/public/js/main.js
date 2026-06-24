@@ -20,6 +20,8 @@ import './recon.js';
 import './transit.js';
 import './syscheck.js';
 import './cics.js';
+import './negotiate.js';
+import './sdsf.js';
 import './walkthrough.js';
 
 function tick() {

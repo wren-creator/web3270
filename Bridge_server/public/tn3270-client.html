@@ -968,6 +968,61 @@
         </div>
       </div>
 
+      <!-- TN3270E NEGOTIATION ANALYZER section -->
+      <div class="sec-section">
+        <div class="sec-section-hdr">TN3270E NEGOTIATION ANALYZER</div>
+        <div class="sec-section-body">
+          <div class="sec-panel-hint" style="margin-bottom:8px">Displays TLS version, cipher suite, and certificate details for every active session. Also surfaces TN3270E negotiation status, terminal model, and LU. Flags plaintext sessions, weak ciphers, self-signed or expired certs, and missing TN3270E negotiation.</div>
+
+          <div style="margin-bottom:6px;display:flex;align-items:center;gap:6px">
+            <button onclick="negotiateRefresh()" style="background:none;border:1px solid #446688;border-radius:3px;color:#446688;font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↺ Refresh</button>
+            <button onclick="negotiateExportCsv()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ Export CSV</button>
+            <span id="negotiateStatus" style="font-size:9px;color:var(--text-muted)">Click Refresh to analyze active sessions</span>
+          </div>
+
+          <div id="negotiateOut" style="min-height:30px"></div>
+        </div>
+      </div>
+
+      <!-- SDSF JOB SCANNER + STC PROFILE SCANNER section -->
+      <div class="sec-section">
+        <div class="sec-section-hdr">SDSF JOB &amp; STC SCANNER</div>
+        <div class="sec-section-body">
+          <div class="sec-panel-hint" style="margin-bottom:8px">Two tools: (1) SDSF Screen Parser — navigate to an SDSF ST or DA panel, then click Refresh to parse visible jobs and flag system STCs visible from your privilege level. (2) STC Profile Scanner — at TSO READY, checks each STC's RACF STARTED class profile. Missing profiles mean STCs run under the default user. FOR AUTHORIZED USE ONLY.</div>
+
+          <!-- ── SDSF Screen Parser ── -->
+          <div style="margin-bottom:10px">
+            <div style="font-size:10px;color:var(--text-muted);font-weight:600;letter-spacing:.06em;margin-bottom:4px">SDSF JOB PARSER</div>
+            <div style="font-size:9px;color:#555;margin-bottom:4px">Navigate to SDSF → ST or DA panel in the terminal, then click Refresh. No commands are sent — the tool reads the visible screen.</div>
+            <div style="margin-bottom:6px;display:flex;align-items:center;gap:6px">
+              <button onclick="sdsfRefresh()" style="background:none;border:1px solid #446688;border-radius:3px;color:#446688;font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↺ Refresh</button>
+              <button onclick="sdsfExportCsv()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ Export CSV</button>
+              <span id="sdsfStatus" style="font-size:9px;color:var(--text-muted)">Navigate to SDSF first</span>
+            </div>
+            <div style="font-size:9px;color:#555;font-family:'IBM Plex Mono',monospace;margin-bottom:2px">RISK         JOBNAME         JOBID           OWNER           PRTY    QUEUE</div>
+            <div id="sdsfOut" style="min-height:20px"></div>
+          </div>
+
+          <!-- ── STC Profile Scanner ── -->
+          <div style="margin-top:10px;padding-top:8px;border-top:1px solid #1a1a1a">
+            <div style="font-size:10px;color:var(--text-muted);font-weight:600;letter-spacing:.06em;margin-bottom:4px">STC PROFILE SCANNER</div>
+            <div style="font-size:9px;color:#555;margin-bottom:4px">Requires TSO READY prompt. Checks RACF STARTED class profile for each STC — missing profile means the STC runs without a dedicated user ID.</div>
+            <div style="margin-bottom:4px">
+              <label style="font-size:9px;color:var(--text-muted);display:block;margin-bottom:2px">STC NAMES (comma or space separated)</label>
+              <textarea id="stcWordlist" rows="3" style="width:100%;box-sizing:border-box;background:#0a0a0a;border:1px solid #2a2a2a;color:#aaa;font-family:'IBM Plex Mono',monospace;font-size:9px;padding:4px;resize:vertical" placeholder="JES2, VTAM, TCPIP, RACF, …"></textarea>
+            </div>
+            <div style="margin-bottom:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+              <button id="stcStartBtn" onclick="startStcScan()" style="background:none;border:1px solid #a06040;border-radius:3px;color:#a06040;font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">▶ Start Scan</button>
+              <button onclick="stopStcScan()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">■ Stop</button>
+              <button onclick="stcImportFromSdsf()" style="background:none;border:1px solid #446688;border-radius:3px;color:#446688;font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">⇦ Import STCs from SDSF</button>
+              <button onclick="stcExportCsv()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ Export CSV</button>
+            </div>
+            <div style="font-size:9px;color:var(--text-muted)" id="stcStatus">Idle</div>
+            <div id="stcOut" style="margin-top:6px;min-height:20px"></div>
+          </div>
+        </div>
+      </div>
+
       <!-- DB2 TOOLS section -->
       <div class="sec-section">
         <div class="sec-section-hdr">DB2 TOOLS</div>
