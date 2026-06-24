@@ -60,9 +60,11 @@ function renderModalMacros() {
 
 function refreshMenuMacroList() {
   const container = document.getElementById('menuMacroList'); if (!container) return;
-  if (!state.macros.length) { container.innerHTML = '<div class="menu-dd-item disabled">No macros saved</div>'; return; }
+  const visible = state.macros.filter(m => m.source !== 'security' || state.secUnlocked);
+  if (!visible.length) { container.innerHTML = '<div class="menu-dd-item disabled">No macros saved</div>'; return; }
   container.innerHTML = '';
-  state.macros.forEach((m, idx) => {
+  visible.forEach(m => {
+    const idx = state.macros.indexOf(m);
     const item = document.createElement('div'); item.className = 'menu-dd-item';
     item.textContent = '▶ ' + m.name;
     item.addEventListener('click', () => { window.closeAllMenus?.(); runMacro(idx); });
