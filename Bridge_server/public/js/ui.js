@@ -1,11 +1,10 @@
-'use strict';
+import { state } from './state.js';
+import { renderLiveScreen } from './rendering.js';
+import { fitScreen, measureCellWidth } from './geometry.js';
+import { sendKey, sendType, AID_MAP, cmdHistoryRecall } from './keyboard.js';
+import { cycleSession } from './tabs.js';
 
-// ==================================================================
-//  js/ui.js — Panel/tab switching, menus, settings
-//  Extracted from tn3270-client.html
-// ==================================================================
-
-function switchPanelTab(el, name) {
+export function switchPanelTab(el, name) {
   document.querySelectorAll('.panel-tab').forEach(t => t.classList.remove('active'));
   el.classList.add('active');
   document.querySelectorAll('.panel-content').forEach(p => { p.style.display = 'none'; });
@@ -14,34 +13,24 @@ function switchPanelTab(el, name) {
     panel.style.display = (name === 'Copilot' || name === 'Xfer') ? 'flex' : 'block';
     if (name === 'Copilot' || name === 'Xfer') { panel.style.flexDirection = 'column'; panel.style.padding = '0'; }
     else { panel.style.flexDirection = ''; panel.style.padding = '12px'; }
-    if (name === 'Xfer') { xferRenderPanel(); }
+    if (name === 'Xfer') window.xferRenderPanel?.();
   }
 }
 
-function toggleRightPanel() {
+export function toggleRightPanel() {
   document.getElementById('rightPanel').classList.toggle('hidden');
   setTimeout(fitScreen, 210);
 }
 
-// ======================================================================
-//  MENU HELPERS
-// ======================================================================
-function toggleMenu(id) {
+export function toggleMenu(id) {
   const item = document.getElementById(id);
   const wasOpen = item.classList.contains('open');
   closeAllMenus();
   if (!wasOpen) item.classList.add('open');
 }
-function closeAllMenus() {
-  document.querySelectorAll('.menu-item.open').forEach(m => m.classList.remove('open'));
-}
+export function closeAllMenus() { document.querySelectorAll('.menu-item.open').forEach(m => m.classList.remove('open')); }
 document.addEventListener('click', e => { if (!e.target.closest('.menu-item')) closeAllMenus(); });
 
-// ======================================================================
-//  FIELD COLLECTION
-//  Gather modified unprotected fields from liveScreen before sending AID.
-//  PA keys and CLEAR do NOT transmit field data per 3270 spec.
-// ======================================================================
 const AIDS_WITH_FIELDS = new Set([
   'ENTER',
   'PF1','PF2','PF3','PF4','PF5','PF6','PF7','PF8','PF9','PF10','PF11','PF12',
@@ -49,183 +38,120 @@ const AIDS_WITH_FIELDS = new Set([
 ]);
 
 function collectModifiedFields() {
-  if (!liveScreen || !liveScreen.rows || !liveScreen.fields) return [];
-  const cols = liveScreen.cols || 80;
-  const rows = liveScreen.rows;
-  const screenFields = liveScreen.fields;
+  if (!state.liveScreen || !state.liveScreen.rows || !state.liveScreen.fields) return [];
+  const cols = state.liveScreen.cols || 80;
+  const rows = state.liveScreen.rows;
+  const screenFields = state.liveScreen.fields;
   const result = [];
-
   for (let fi = 0; fi < screenFields.length; fi++) {
-    const f = screenFields[fi];
-    if (f.protected) continue;
-
-    // Data starts one cell after the FA byte (startAddr is the FA cell itself)
+    const f = screenFields[fi]; if (f.protected) continue;
     const dataStart = f.startAddr + 1;
-    // Data ends one cell before the next field's FA, or at end of buffer
     const nextFa = screenFields[fi + 1] ? screenFields[fi + 1].startAddr : (rows.length * cols);
     const dataEnd = nextFa - 1;
-
-    let data = '';
-    let hasModified = false;
+    let data = ''; let hasModified = false;
     for (let addr = dataStart; addr <= dataEnd; addr++) {
-      const r = Math.floor(addr / cols);
-      const c = addr % cols;
+      const r = Math.floor(addr / cols); const c = addr % cols;
       const cell = rows[r] && rows[r][c];
       if (!cell) { data += ' '; continue; }
       const ch = (cell.char && cell.char !== '\x00') ? cell.char : ' ';
-      data += ch;
-      if (cell.modified) hasModified = true;
+      data += ch; if (cell.modified) hasModified = true;
     }
-
-    // Only include fields that have been modified (MDT set by user input)
-    if (hasModified) {
-      result.push({ addr: dataStart, data: data.trimEnd() });
-    }
+    if (hasModified) result.push({ addr: dataStart, data: data.trimEnd() });
   }
   return result;
 }
 
 document.addEventListener('keydown', e => {
   if (e.repeat) return;
-  if (e.ctrlKey && e.key === 'k') {
-    e.preventDefault();
-    if (document.getElementById('rightPanel').classList.contains('hidden')) document.getElementById('rightPanel').classList.remove('hidden');
-    switchPanelTab(document.querySelector('.copilot-tab'), 'Copilot');
-    document.getElementById('copilot-input').focus();
-    setTimeout(fitScreen, 210); return;
-  }
+  if (e.ctrlKey && e.key === 'k') { e.preventDefault(); if (document.getElementById('rightPanel').classList.contains('hidden')) document.getElementById('rightPanel').classList.remove('hidden'); switchPanelTab(document.querySelector('.copilot-tab'), 'Copilot'); document.getElementById('copilot-input').focus(); setTimeout(fitScreen, 210); return; }
   if (e.ctrlKey && e.key === 'b') { e.preventDefault(); document.getElementById('sidebar').classList.toggle('collapsed'); setTimeout(fitScreen, 210); return; }
-  if (e.ctrlKey && e.key === 't') { e.preventDefault(); closeAllMenus(); showConnectModal(); return; }
+  if (e.ctrlKey && e.key === 't') { e.preventDefault(); closeAllMenus(); window.showConnectModal?.(); return; }
   if (e.ctrlKey && e.key === 'p') { e.preventDefault(); menuCaptureScreen(); return; }
   if (e.ctrlKey && e.key === '.') { e.preventDefault(); cycleSession(1); return; }
   if (e.ctrlKey && e.key === ',') { e.preventDefault(); cycleSession(-1); return; }
   const tag = document.activeElement?.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-  // Shift+F1–F12 → PF13–PF24
   let mappedKey = e.key;
   if (e.shiftKey && /^F([1-9]|1[0-2])$/.test(e.key)) mappedKey = 'F' + (parseInt(e.key.slice(1)) + 12);
   const aid = AID_MAP[mappedKey];
   if (aid) {
-    // F11/F12 — cycle command history instead of sending to host
-    const session = sessions.get(activeSession);
+    const session = state.sessions.get(state.activeSession);
     const history = session?.cmdHistory || [];
     if ((aid === 'PF11' || aid === 'PF12') && history.length > 0) {
       e.preventDefault();
-      if (aid === 'PF12') {
-        if (cmdHistoryIndex === -1) cmdHistoryIndex = history.length - 1;
-        else if (cmdHistoryIndex > 0) cmdHistoryIndex--;
-      } else {
-        if (cmdHistoryIndex === -1) return;
-        if (cmdHistoryIndex < history.length - 1) cmdHistoryIndex++;
-        else { cmdHistoryIndex = -1; return; }
-      }
-      cmdHistoryRecall(cmdHistoryIndex);
-      return;
+      if (aid === 'PF12') { if (state.cmdHistoryIndex === -1) state.cmdHistoryIndex = history.length - 1; else if (state.cmdHistoryIndex > 0) state.cmdHistoryIndex--; }
+      else { if (state.cmdHistoryIndex === -1) return; if (state.cmdHistoryIndex < history.length - 1) state.cmdHistoryIndex++; else { state.cmdHistoryIndex = -1; return; } }
+      cmdHistoryRecall(state.cmdHistoryIndex); return;
     }
     e.preventDefault();
     const fields = AIDS_WITH_FIELDS.has(aid) ? collectModifiedFields() : [];
-    sendKey(aid, fields);
-    return;
+    sendKey(aid, fields); return;
   }
   if (e.key === 'PageUp')   { e.preventDefault(); sendKey('PF7', collectModifiedFields()); return; }
   if (e.key === 'PageDown') { e.preventDefault(); sendKey('PF8', collectModifiedFields()); return; }
   if (e.key === 'ArrowRight') {
-    e.preventDefault();
-    if (!liveScreen) return;
-    const cols = liveScreen.cols || 80; const numRows = liveScreen.rows?.length || 24;
-    cursorCol++; if (cursorCol >= cols) { cursorCol = 0; cursorRow = (cursorRow + 1) % numRows; }
-    liveScreen.cursorRow = cursorRow; liveScreen.cursorCol = cursorCol; renderLiveScreen(liveScreen); return;
+    e.preventDefault(); if (!state.liveScreen) return;
+    const cols = state.liveScreen.cols || 80; const numRows = state.liveScreen.rows?.length || 24;
+    state.cursorCol++; if (state.cursorCol >= cols) { state.cursorCol = 0; state.cursorRow = (state.cursorRow + 1) % numRows; }
+    state.liveScreen.cursorRow = state.cursorRow; state.liveScreen.cursorCol = state.cursorCol; renderLiveScreen(state.liveScreen); return;
   }
   if (e.key === 'ArrowLeft') {
-    e.preventDefault();
-    if (!liveScreen) return;
-    const cols = liveScreen.cols || 80; const numRows = liveScreen.rows?.length || 24;
-    cursorCol--; if (cursorCol < 0) { cursorCol = cols - 1; cursorRow = (cursorRow - 1 + numRows) % numRows; }
-    liveScreen.cursorRow = cursorRow; liveScreen.cursorCol = cursorCol; renderLiveScreen(liveScreen); return;
+    e.preventDefault(); if (!state.liveScreen) return;
+    const cols = state.liveScreen.cols || 80; const numRows = state.liveScreen.rows?.length || 24;
+    state.cursorCol--; if (state.cursorCol < 0) { state.cursorCol = cols - 1; state.cursorRow = (state.cursorRow - 1 + numRows) % numRows; }
+    state.liveScreen.cursorRow = state.cursorRow; state.liveScreen.cursorCol = state.cursorCol; renderLiveScreen(state.liveScreen); return;
   }
   if (e.key === 'ArrowDown') {
-    e.preventDefault();
-    if (!liveScreen) return;
-    cursorRow = (cursorRow + 1) % (liveScreen.rows?.length || 24);
-    liveScreen.cursorRow = cursorRow; liveScreen.cursorCol = cursorCol; renderLiveScreen(liveScreen); return;
+    e.preventDefault(); if (!state.liveScreen) return;
+    state.cursorRow = (state.cursorRow + 1) % (state.liveScreen.rows?.length || 24);
+    state.liveScreen.cursorRow = state.cursorRow; state.liveScreen.cursorCol = state.cursorCol; renderLiveScreen(state.liveScreen); return;
   }
   if (e.key === 'ArrowUp') {
-    e.preventDefault();
-    if (!liveScreen) return;
-    const numRows = liveScreen.rows?.length || 24;
-    cursorRow = (cursorRow - 1 + numRows) % numRows;
-    liveScreen.cursorRow = cursorRow; liveScreen.cursorCol = cursorCol; renderLiveScreen(liveScreen); return;
+    e.preventDefault(); if (!state.liveScreen) return;
+    const numRows = state.liveScreen.rows?.length || 24;
+    state.cursorRow = (state.cursorRow - 1 + numRows) % numRows;
+    state.liveScreen.cursorRow = state.cursorRow; state.liveScreen.cursorCol = state.cursorCol; renderLiveScreen(state.liveScreen); return;
   }
   if (e.key === 'Tab') {
     e.preventDefault();
-    if (liveScreen && liveScreen.fields) {
-      const inputFields = liveScreen.fields.filter(f => !f.protected);
+    if (state.liveScreen && state.liveScreen.fields) {
+      const inputFields = state.liveScreen.fields.filter(f => !f.protected);
       if (inputFields.length > 0) {
-        const cols      = liveScreen.cols || 80;
-        const curAddr   = cursorRow * cols + cursorCol;
+        const cols = state.liveScreen.cols || 80; const curAddr = state.cursorRow * cols + state.cursorCol;
         const nextField = inputFields.find(f => f.startAddr > curAddr) || inputFields[0];
-        // startAddr is the FA byte; first writable position is startAddr+1, which may wrap to the next row
         const dataAddr  = nextField.startAddr + 1;
-        cursorRow = Math.floor(dataAddr / cols);
-        cursorCol = dataAddr % cols;
-        liveScreen.cursorRow = cursorRow; liveScreen.cursorCol = cursorCol;
-        renderLiveScreen(liveScreen);
+        state.cursorRow = Math.floor(dataAddr / cols); state.cursorCol = dataAddr % cols;
+        state.liveScreen.cursorRow = state.cursorRow; state.liveScreen.cursorCol = state.cursorCol;
+        renderLiveScreen(state.liveScreen);
       }
     }
     return;
   }
   if (e.key === 'Backspace') {
     e.preventDefault();
-    if (cursorCol > 0) {
-      cursorCol--;
-      if (liveScreen && liveScreen.rows) {
-        liveScreen.rows[cursorRow][cursorCol].char = ' ';
-        liveScreen.rows[cursorRow][cursorCol].modified = true;
-        liveScreen.cursorRow = cursorRow; liveScreen.cursorCol = cursorCol;
-        renderLiveScreen(liveScreen);
+    if (state.cursorCol > 0) {
+      state.cursorCol--;
+      if (state.liveScreen && state.liveScreen.rows) {
+        state.liveScreen.rows[state.cursorRow][state.cursorCol].char = ' ';
+        state.liveScreen.rows[state.cursorRow][state.cursorCol].modified = true;
+        state.liveScreen.cursorRow = state.cursorRow; state.liveScreen.cursorCol = state.cursorCol;
+        renderLiveScreen(state.liveScreen);
       }
-      const session = sessions.get(activeSession);
+      const session = state.sessions.get(state.activeSession);
       if (session && session.ws.readyState === WebSocket.OPEN)
-        session.ws.send(JSON.stringify({ type: 'erase', row: cursorRow, col: cursorCol }));
+        session.ws.send(JSON.stringify({ type: 'erase', row: state.cursorRow, col: state.cursorCol }));
     }
     return;
   }
-  if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) { e.preventDefault(); sendType(cursorRow, cursorCol, e.key); }
+  if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) { e.preventDefault(); sendType(state.cursorRow, state.cursorCol, e.key); }
 });
 
+export function menuDisconnect() { closeAllMenus(); const s = state.sessions.get(state.activeSession); if (!s) return; s.ws.send(JSON.stringify({ type: 'disconnect' })); }
+export function menuReconnect()  { closeAllMenus(); const s = state.sessions.get(state.activeSession); if (!s) return; window.openSession?.(s.profile); }
+export function menuCloseActiveSession() { closeAllMenus(); const tab = document.querySelector('.session-tab.active'); if (tab) { const close = tab.querySelector('.tab-close'); if (close) window.closeSessionTab?.({ stopPropagation: () => {} }, close); } }
+export function menuCaptureScreen() { closeAllMenus(); window.exportScreen?.(); }
 
-function setFontSize(v) {
-  document.getElementById('fontSizeLabel').textContent = v;
-  document.getElementById('terminal').style.fontSize   = v + 'px';
-  requestAnimationFrame(() => { measureCellWidth(); fitScreen(); });
-  setTimeout(fitScreen, 50);
-}
-const themes = {
-  green: { bg: '#000810', fg: '#33ff66', prot: '#6699ff' },
-  blue:  { bg: '#00060f', fg: '#7799ff', prot: '#aaccff' },
-  amber: { bg: '#080400', fg: '#ffaa00', prot: '#ff8800' },
-  white: { bg: '#0a0a0a', fg: '#e8e8e8', prot: '#aaaacc' },
-  teal:  { bg: '#001010', fg: '#00ffdd', prot: '#66ddff' },
-};
-function setTheme(name, el) {
-  document.querySelectorAll('.theme-swatch').forEach(s => s.classList.remove('active'));
-  el.classList.add('active');
-  const t = themes[name];
-  document.documentElement.style.setProperty('--t-bg',    t.bg);
-  document.documentElement.style.setProperty('--t-green', t.fg);
-  document.documentElement.style.setProperty('--t-blue',  t.prot);
-  document.getElementById('terminal').style.color = t.fg;
-}
-
-function menuDisconnect() { closeAllMenus(); const s = sessions.get(activeSession); if (!s) return; s.ws.send(JSON.stringify({ type: 'disconnect' })); }
-function menuReconnect()  { closeAllMenus(); const s = sessions.get(activeSession); if (!s) return; openSession(s.profile); }
-function menuCloseActiveSession() { closeAllMenus(); const tab = document.querySelector('.session-tab.active'); if (tab) { const close = tab.querySelector('.tab-close'); if (close) closeSessionTab({ stopPropagation: () => {} }, close); } }
-function menuCaptureScreen() {
-  closeAllMenus();
-  exportScreen();
-}
-
-function menuOpenPanel(name) {
+export function menuOpenPanel(name) {
   closeAllMenus();
   const rightPanel = document.getElementById('rightPanel');
   if (rightPanel.classList.contains('hidden')) { rightPanel.classList.remove('hidden'); setTimeout(fitScreen, 210); }
@@ -235,8 +161,14 @@ function menuOpenPanel(name) {
   if (tabs[idx]) switchPanelTab(tabs[idx], name);
 }
 
-function menuOpenCopilot() { menuOpenPanel('Copilot'); document.getElementById('copilot-input')?.focus(); }
-function menuOpenTransfer()  { menuOpenPanel('Xfer'); }
-function menuShowShortcuts() { menuOpenPanel('Keys'); }
-function menuAbout() { closeAllMenus(); showBridgeError('WebTerm/3270\nModern web-based IBM mainframe terminal emulator.\n\nProtocol: TN3270 / TN3270E  (RFC 1576 / RFC 2355)\nBridge: Node.js WebSocket \u00b7 Client: HTML5'); }
-function menuImportMacro() { closeAllMenus(); showAddMacroModal(); setTimeout(() => importMacroFromFile(), 150); }
+export function menuOpenCopilot()  { menuOpenPanel('Copilot'); document.getElementById('copilot-input')?.focus(); }
+export function menuOpenTransfer() { menuOpenPanel('Xfer'); }
+export function menuShowShortcuts(){ menuOpenPanel('Keys'); }
+export function menuAbout() { closeAllMenus(); window.showBridgeError?.('WebTerm/3270\nModern web-based IBM mainframe terminal emulator.\n\nProtocol: TN3270 / TN3270E  (RFC 1576 / RFC 2355)\nBridge: Node.js WebSocket · Client: HTML5'); }
+export function menuImportMacro() { closeAllMenus(); window.showAddMacroModal?.(); setTimeout(() => window.importMacroFromFile?.(), 150); }
+
+Object.assign(window, {
+  switchPanelTab, toggleRightPanel, toggleMenu, closeAllMenus,
+  menuDisconnect, menuReconnect, menuCloseActiveSession, menuCaptureScreen,
+  menuOpenPanel, menuOpenCopilot, menuOpenTransfer, menuShowShortcuts, menuAbout, menuImportMacro,
+});

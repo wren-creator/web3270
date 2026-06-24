@@ -1,4 +1,4 @@
-'use strict';
+import { esc } from './utils.js';
 
 // Wave 9 — Guided Scenario Walkthroughs
 // Option B: narrated steps with optional one-click auto-actions.
@@ -1177,3 +1177,9 @@ function _wtCard(s) {
     `</div>`
   );
 }
+
+Object.assign(window, {
+  openWalkthrough, closeWalkthrough, walkthroughNext, walkthroughPrev,
+  wtAutoStep, openWalkthroughPicker, closeWalkthroughPicker,
+  renderWalkthroughList, wtStartSelected,
+});
