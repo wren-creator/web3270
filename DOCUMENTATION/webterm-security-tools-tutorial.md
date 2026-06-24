@@ -1003,6 +1003,92 @@ Connect to the same mainframe host twice — once on port 23 (TN3270, no TLS) an
 
 ---
 
+## Part 2Q — CICS Transaction Scanner (Wave 13)
+
+CICS returns different error codes for "transaction not defined" vs "transaction exists but not authorized." The scanner exploits this distinction: DFHAC2001 ("not authorized") proves a transaction is defined without needing authority to run it. DFHAC2206 ("not defined") means it genuinely does not exist.
+
+---
+
+### Location
+
+Security panel → CICS TRANSACTION SCANNER
+
+### Prerequisites
+
+Must be at a CICS clear screen — blank screen, cursor at top-left, ready to accept a transaction ID. The OIA APP field shows CICS in orange. Press PA2 (CLEAR) to ensure a clean state before starting.
+
+### Response classification
+
+| Code | Result | Meaning |
+|---|---|---|
+| `DFHAC2206` | NOT FOUND | Transaction not defined in this CICS region |
+| `DFHME0102` | NOT FOUND | Alternate "not defined" message |
+| `DFHAC2001` | DENIED | Transaction defined — user not authorized |
+| `DFHAC2004` | DENIED | Not authorized to attach |
+| Screen changes | ACCESSIBLE | Transaction ran |
+
+DENIED is the high-value result — it confirms existence.
+
+### Default wordlist
+
+`CEDA` (resource definitions), `CEMT` (task management), `CEDF` (debugger), `CEBR` (queue browser), `CESF` (sign off), `CESN` (sign on), `CEST` (statistics), `CEVS` (event services), `SIGN`, `LOGO`, `ABRF`, `AUTR`, `DBDC`, `DSNC` (DB2 connection), `MQSC` (MQ commands).
+
+### Teaching scenario
+
+Run the scanner against a CICS development region. Point out that CEDA DENIED is a critical finding even without access — it confirms the region can define and modify CICS resources. Cross-reference DENIED results: an attacker who later gains access to CEDA can alter transaction definitions to inject code into running transactions.
+
+---
+
+## Part 2P — System Access Checks (Wave 13)
+
+Two TSO-based checks that probe system library protection: APF library RACF coverage and SYS1.PARMLIB member read access.
+
+---
+
+### Tool 1 — APF Library Scanner
+
+**Location:** Security panel → SYSTEM ACCESS CHECKS → APF LIBRARY SCANNER
+
+**Commands:** `LISTAPF` then `LISTDSD DATASET('libname')` per library
+
+**Why it matters:** APF (Authorized Program Facility) libraries hold programs that run with z/OS supervisor authority. Any program loaded from an APF library can bypass RACF and acquire superuser status. An unprotected APF library — one with no RACF dataset profile — is writable by any authenticated user and is a direct privilege escalation path.
+
+**Risk levels:**
+
+| RACF Status | Risk | Condition |
+|---|---|---|
+| UNPROTECTED | CRITICAL | `ICH10006I` — no RACF profile defined |
+| WEAK | HIGH | RACF profile exists, UACC=UPDATE or ALTER |
+| UNKNOWN | — | LISTDSD denied — likely protected |
+| PROTECTED | OK | UACC READ or NONE |
+
+**What to do with CRITICAL:** In ISPF, attempt to edit the library (option 3.4). If editable, a member containing `MODESET KEY=ZERO` and an SVC 11 call acquires supervisor state. Remediation: `ADDSD 'libname' UACC(NONE)` and restrict ALTER to the systems programming group.
+
+---
+
+### Tool 2 — PARMLIB Access Check
+
+**Location:** Security panel → SYSTEM ACCESS CHECKS → PARMLIB ACCESS CHECK
+
+**Method:** `ALLOC FI(PTEST) DA('SYS1.PARMLIB(member)') SHR REUSE` — shared read-only allocation, non-destructive. If ALLOC succeeds (no IKJ/ICH error), the current user can read the member.
+
+**Default members checked:**
+
+| Member | Contains |
+|---|---|
+| `IEASYS00` | Main system parameters — buffer sizes, paging, console config |
+| `SMFPRM00` | SMF record types and subtypes being logged — maps security monitoring gaps |
+| `BPXPRM00` | z/OS UNIX parameters — file system config, UID/GID limits |
+| `IEAAPF00` | Static APF library list (compare with LISTAPF dynamic list) |
+| `LNKLST00` | LNKLST library concatenation — programs searched on every load |
+| `IEASVC00` | SVC dispatch table — which SVCs are installed |
+| `IEFSSN00` | Subsystem names — JES2/JES3, RACF, DB2, CICS subsystem IDs |
+| `IEFJOBS00` | Job-related parameters |
+
+**High-priority findings:** `SMFPRM00` readable = attacker knows which security events are NOT logged. `IEAAPF00` readable = static APF list known. `IEASVC00` readable = SVC table structure known, aids exploit development.
+
+---
+
 ## Part 2N — Encryption At Rest Audit Scanner (Wave 12)
 
 Most z/OS shops have enabled DFSMS at-rest encryption for new datasets but never went back to encrypt older ones. The Encryption Audit Scanner surfaces exactly this gap: it runs `LISTCAT ENT(dsname) ALL` against a list of datasets and looks for the `ENCRYPTION-KEY-LABEL` field that indicates DFSMS encryption is active.
