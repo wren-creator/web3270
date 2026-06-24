@@ -764,6 +764,165 @@ The mock LPAR sends full SFE/SA color attributes on every screen (Wave 3). Scree
 
 ---
 
+## Part 2M — Recon Tools (Wave 11)
+
+Wave 11 adds a **RECON TOOLS** section to the Security panel with three host reconnaissance tools, a timing extension to the RACF probe, and ACF2/TopSecret detection in the screen fingerprinter. All tools operate from a TSO READY prompt and require no elevated RACF authority.
+
+---
+
+### ACF2 / TopSecret Fingerprinting
+
+The screen fingerprinter in the OIA bar now detects ACF2 and CA Top Secret in addition to RACF. Patterns:
+
+| Label | Detection patterns |
+|---|---|
+| `ACF2` | `ACF2`, `LOGONID:`, `ACF LOGON`, `NULLID` |
+| `TopSecret` | `CA Top Secret`, `TSSUTIL`, `TSS LOGON`, `Accessor` |
+
+Both display in orange in the APP field. The RACF probe and DB2 tools are designed for RACF — if the fingerprinter shows ACF2 or TopSecret, note it as context and adjust the probe approach accordingly (ACF2 and TopSecret use different error codes and field layouts).
+
+---
+
+### RACF Probe — Timing Column
+
+The RACF Auto-Probe results table now includes a **ms** column showing the round-trip time between sending the ENTER key and receiving the host's response screen. This enables timing side-channel analysis:
+
+- **Fast responses (<800ms, amber)** — RACF may have rejected the userid before evaluating the password (early-exit path). Consistent fast responses for specific userids across multiple runs suggest those userids do not exist.
+- **Slower responses** — RACF evaluated the password hash. The userid is likely valid regardless of whether the result is SUCCESS or FAILURE.
+- **Use with wrong passwords** — Run the probe with a known-wrong password against a list of target userids. Sort the exported CSV by `response_ms` — the fastest responses cluster around invalid userids.
+
+The `response_ms` field is included in the CSV export.
+
+> **Note:** This technique works best on LAN-adjacent targets where network jitter is low (<50ms). Over high-latency connections, the timing signal drowns in noise.
+
+---
+
+### Tool 1 — RACF Settings Analyzer
+
+**Location:** Security panel → RECON TOOLS → RACF SETTINGS ANALYZER
+
+**Command:** `SETROPTS LIST`
+
+**What it parses:**
+
+| Section | Fields extracted |
+|---|---|
+| Password policy | Expiry interval (days), history count, lockout threshold, NOREVOKE flag, min/max length |
+| Class activation | Which of 8 key security classes are ACTIVE, WARNING, or INACTIVE |
+
+**Key findings surfaced:**
+
+| Finding | Severity |
+|---|---|
+| `NOREVOKE` — lockout disabled | CRITICAL |
+| Password interval > 90 days | HIGH |
+| Password history < 8 | MEDIUM |
+| Minimum length < 8 chars | MEDIUM |
+| Passphrases disabled | LOW |
+| Security class INACTIVE | HIGH (varies by class) |
+| Security class in WARNING mode | MEDIUM — logging but not enforcing |
+
+**Classes checked:**
+
+| Class | Protects |
+|---|---|
+| `DSNR` | DB2 subsystem connections |
+| `MDSNPN` | DB2 application plan names |
+| `MDSNTB` | DB2 table/view names |
+| `GCICSTRN` | CICS transactions |
+| `DCICSDCT` | CICS tables |
+| `STARTED` | Started task authority |
+| `FACILITY` | Facility resources |
+| `UNIXPRIV` | z/OS UNIX privileges |
+
+**NOREVOKE significance:** When NOREVOKE is set globally, the RACF Auto-Probe can run without any risk of triggering lockouts — no matter how many failed attempts accumulate, no account will be suspended. This dramatically changes the risk calculus for credential testing.
+
+---
+
+### Tool 2 — RACF User/Group Enumerator
+
+**Location:** Security panel → RECON TOOLS → RACF USER/GROUP ENUMERATOR
+
+**Commands:** `SEARCH CLASS(USER)` then `SEARCH CLASS(GROUP)`
+
+**What it does:** Collects every RACF user profile name and every group name, paging through `***MORE***` output automatically. Displays both lists with counts.
+
+**Authority required:** `SEARCH CLASS(USER)` typically requires READ access to the RACF database — available to most TSO users by default. No RACF SPECIAL or AUDITOR attribute is needed.
+
+**What to look for:**
+
+*Users:*
+- `IBMUSER` — IBM default superuser; often has RACF SPECIAL authority and a default password
+- `MAINT`, `SYS1`, `SYSPROG`, `SYSADM` — elevated privilege naming conventions
+- Service accounts: `DB2`, `CICS`, `MQ`, `IMS` — often share passwords with their subsystem name
+- Vendor/contractor IDs — may have relaxed password rules or be inactive but not removed
+
+*Groups:*
+- `SYS1` — typically contains users with RACF-privileged authority
+- Application admin groups: `MQADMIN`, `DB2ADMIN`, `CICSADM` — high-value targets
+- Group names reveal the site's organizational structure and naming conventions
+
+**Practical use:**
+1. Export the user list and cross-reference with the RACF probe wordlist
+2. Look for userids matching subsystem names (DB2/DB2, CICS/CICS) — these are in the default probe wordlist
+3. Group names often suggest credential naming patterns (e.g., a group `FINANCE` suggests userid `FINUSER` or `FINADM`)
+
+---
+
+### Tool 3 — Dataset Recon Scanner
+
+**Location:** Security panel → RECON TOOLS → DATASET RECON SCANNER
+
+**Command:** `LISTCAT LEVEL(prefix)` per prefix in the wordlist
+
+**What it does:** Runs LISTCAT for each high-level qualifier (HLQ) prefix and collects all dataset names returned. Flags entries matching sensitive name patterns:
+
+| Pattern | Examples of what it catches |
+|---|---|
+| `PASSWORD`, `PASSWD` | `PAYROLL.PASSWORD.FILE`, `USER.PASSWD.CNTL` |
+| `KEY`, `CERT` | `SECURITY.PRIVATE.KEYS`, `TLS.CERT.STORE` |
+| `SECRET`, `PRIVATE` | `SYS1.PRIVATE.PARMLIB`, `ADMIN.SECRET.DATA` |
+| `PARMLIB` | `SYS1.PARMLIB`, `USER.PARMLIB` |
+| `PAYROLL`, `SSN` | Any HR/payroll dataset |
+| `MASTER` | `PAYROLL.MASTER`, `DB2.MASTER.CATALOG` |
+| `PROD` | Production datasets in non-prod environments |
+
+**Default prefixes:** `SYS1`, `SYS2`, `IBMUSER`, `ADMIN`, `PROD`, `PAYROLL`, `FINANCE`, `HR`, `SECURITY`
+
+**Important note on DATASET class:** If the RACF Settings Analyzer shows the `DATASET` class is in WARNING mode or the class is not referenced in CLASSACT, RACF is not enforcing dataset access control — every catalogued dataset is readable by default. In that case, every flagged dataset is immediately accessible, not just potentially accessible.
+
+**Follow-up:** Flagged datasets should be opened in ISPF Browse (option 1) or Edit (option 2) to confirm read access. A dataset named `ADMIN.PRIVATE.KEYS` that opens without an authorization error is a critical finding.
+
+---
+
+### Combined CSV export
+
+All three Recon tools share a single CSV export via **↓ Export all Recon results CSV** at the bottom of the RECON TOOLS section.
+
+| Column | Values |
+|---|---|
+| `tool` | `racf-settings`, `racf-enum`, `dataset-recon` |
+| `key` | Setting name, userid/group name, or dataset name |
+| `value` | Setting value or empty |
+| `flag` | Severity label or matched keyword |
+| `timestamp` | ISO 8601 |
+
+---
+
+### Teaching scenarios (Recon Tools)
+
+**NOREVOKE demonstration:** Run SETROPTS LIST and show the NOREVOKE flag. Explain that the RACF probe can now run indefinitely with no risk. Run the probe with a 10-entry wordlist at 500ms delay — show that no lockout occurs regardless of failure count.
+
+**Userid timing oracle:** Run the RACF probe with 5 real userids (wrong passwords) and 5 random strings. Export the CSV and sort by `response_ms`. Show students how the timing clusters reveal valid vs invalid userids without a single success.
+
+**Service account enumeration:** Run SEARCH CLASS(USER) and highlight `DB2`, `CICS`, `MQ` in the results. Load those into the RACF probe wordlist with their subsystem name as the password (DB2/DB2, CICS/CICS). Demonstrate that service accounts with default credentials are a common path to DB2/CICS access.
+
+**Dataset discovery → access chain:** Run the dataset scanner on prefix `SYS1`. Find `SYS1.PARMLIB`. Attempt ISPF Browse — if it opens without authorization error, the system's entire configuration is readable. Combine with RACF Settings Analyzer showing DATASET class inactive to explain why.
+
+> **Note:** All Recon tools display `FOR AUTHORIZED USE ONLY` in the Security panel. Running SEARCH CLASS or LISTCAT against a system without written authorization may constitute unauthorized access under applicable law.
+
+---
+
 ## Part 2L — DB2 Security Tools
 
 Wave 10 adds three DB2-focused tools to the Security panel under a dedicated **DB2 TOOLS** section. All three operate from a TSO READY prompt and require no SPUFI dataset configuration — they issue standard TSO and RACF commands through the live terminal session.

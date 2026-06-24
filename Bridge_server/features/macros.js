@@ -21,7 +21,7 @@ export function loadMacroFile(config) {
           const m = JSON.parse(fs.readFileSync(path.join(libDir, file), 'utf8'));
           if (m.name && !existingNames.has(m.name)) {
             if (!m.id) m.id = m.name;
-            macros.push(m);
+            macros.push({ ...m, source: 'library', readOnly: true });
             existingNames.add(m.name);
           }
         } catch { /* skip unreadable file */ }

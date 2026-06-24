@@ -228,6 +228,7 @@ export function handleBridgeMsg(sid, msg) {
         state.cursorRow = msg.cursorRow ?? 0; state.cursorCol = msg.cursorCol ?? 0;
         window.probeOnScreen?.(msg);
         window.db2OnScreen?.(msg);
+        window.reconOnScreen?.(msg);
         window.tpfOnScreen?.(msg);
       } else if (state.splitMode && sid === state.splitSid) {
         const term2 = document.getElementById('terminal-split');

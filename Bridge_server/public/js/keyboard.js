@@ -17,34 +17,34 @@ export function sendKey(aid, fields = []) {
   if (aid === 'ENTER' && state.liveScreen && state.liveScreen.rows) {
     const cmdRow = state.liveScreen.rows[state.cursorRow];
     if (cmdRow) {
-      const hasNondisplay = cmdRow.some(c => c && c.nondisplay);
-      if (!hasNondisplay) {
-        // Walk backward from the cursor to find the FA byte that opens the
-        // field the cursor is in, then capture only that field's text.
-        const FA_PROTECTED = 0x20;
-        let fieldStart = 0;
-        let fieldUnprotected = false;
-        for (let i = state.cursorCol; i >= 0; i--) {
-          if (cmdRow[i] && cmdRow[i].fa !== undefined) {
-            fieldStart = i + 1;
-            fieldUnprotected = !(cmdRow[i].fa & FA_PROTECTED);
-            break;
-          }
+      // Walk backward from the cursor to find the FA byte that opens the
+      // field the cursor is in, then capture only that field's text.
+      const FA_PROTECTED = 0x20;
+      let fieldStart = 0;
+      let fieldUnprotected = false;
+      for (let i = state.cursorCol; i >= 0; i--) {
+        if (cmdRow[i] && cmdRow[i].fa !== undefined) {
+          fieldStart = i + 1;
+          fieldUnprotected = !(cmdRow[i].fa & FA_PROTECTED);
+          break;
         }
-        let fieldEnd = cmdRow.length;
-        for (let i = fieldStart; i < cmdRow.length; i++) {
-          if (cmdRow[i] && cmdRow[i].fa !== undefined) { fieldEnd = i; break; }
-        }
-        const cmd = fieldUnprotected
-          ? cmdRow.slice(fieldStart, fieldEnd).map(c => (c && c.char && c.char !== '\x00') ? c.char : ' ').join('').trimEnd()
-          : '';
-        if (cmd.trim().length > 0) {
-          if (!session.cmdHistory) session.cmdHistory = [];
-          session.cmdHistory.push(cmd);
-          if (session.cmdHistory.length > 100) session.cmdHistory.shift();
-          state.cmdHistoryIndex = -1;
-          renderCmdHistory();
-        }
+      }
+      let fieldEnd = cmdRow.length;
+      for (let i = fieldStart; i < cmdRow.length; i++) {
+        if (cmdRow[i] && cmdRow[i].fa !== undefined) { fieldEnd = i; break; }
+      }
+      // Only skip recording if the cursor field itself is nondisplay (password field).
+      // Checking the whole row was too broad — many screens have hidden attr bytes elsewhere.
+      const fieldIsNondisplay = cmdRow.slice(fieldStart, fieldEnd).some(c => c && c.nondisplay);
+      const cmd = (fieldUnprotected && !fieldIsNondisplay)
+        ? cmdRow.slice(fieldStart, fieldEnd).map(c => (c && c.char && c.char !== '\x00') ? c.char : ' ').join('').trimEnd()
+        : '';
+      if (cmd.trim().length > 0) {
+        if (!session.cmdHistory) session.cmdHistory = [];
+        session.cmdHistory.push(cmd);
+        if (session.cmdHistory.length > 100) session.cmdHistory.shift();
+        state.cmdHistoryIndex = -1;
+        renderCmdHistory();
       }
     }
   }
