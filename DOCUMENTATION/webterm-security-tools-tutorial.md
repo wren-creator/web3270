@@ -764,6 +764,129 @@ The mock LPAR sends full SFE/SA color attributes on every screen (Wave 3). Scree
 
 ---
 
+## Part 2L — DB2 Security Tools
+
+Wave 10 adds three DB2-focused tools to the Security panel under a dedicated **DB2 TOOLS** section. All three operate from a TSO READY prompt and require no SPUFI dataset configuration — they issue standard TSO and RACF commands through the live terminal session.
+
+### Architecture note
+
+The DB2 tools reuse the same `type` / `fillField` / `key` WebSocket message pipeline as the RACF probe and protocol fuzzer. On each screen update, `db2OnScreen()` is called alongside `probeOnScreen()` in the screen-dispatch path, so all three tools share the same wait-for-screen machinery without interfering with each other.
+
+---
+
+### Tool 1 — DB2 Subsystem Scanner
+
+**Location:** Security panel → DB2 TOOLS → SUBSYSTEM SCANNER
+
+**What it does:** Issues `DSN SYSTEM(xxx)` from TSO READY for each subsystem ID in the wordlist and classifies the response.
+
+| Result | Meaning |
+|---|---|
+| `ACCESSIBLE` | DSN> prompt returned — connection succeeded. DB2 version extracted from banner. |
+| `DENIED` | RACF blocked the connection (ICH408I or equivalent). |
+| `NOT_FOUND` | No active subsystem by that name (DSNL004I / DSN9021I). |
+| `ERROR` | Unexpected response — manual inspection required. |
+
+**Default wordlist:** `DB2`, `DB21`, `DB22`, `DB23`, `DBPD`, `DBQA`, `DBLP`, `DBPR`, `DBC1`, `DBC2`, `DBST`, `DBTS`, `DBP1`, `DBP2`, `DSN1`, `DSN2`. Click **Load defaults** to populate.
+
+**Version fingerprinting:** When a connection succeeds, the scanner reads the `DSNE003I` banner line and extracts the DB2 release string (e.g. `12.1.5`). This maps directly to IBM's published PTF history and known CVE exposure windows.
+
+**Exit behavior:** On ACCESSIBLE results, the scanner issues `END` and waits for TSO READY before continuing to the next subsystem — clean session state is maintained throughout the scan.
+
+**Practical use:**
+1. Navigate to TSO READY
+2. Unlock the Security panel and scroll to DB2 TOOLS
+3. Click **Load defaults**, optionally add site-specific IDs
+4. Set delay ≥ 1500 ms
+5. Click **▶ START** — results populate in real time
+6. Note ACCESSIBLE entries; use them as input to the Permission Probe
+
+> **Note:** The wordlist can include comments (`# lines starting with # are ignored`) and custom subsystem IDs up to 4 characters.
+
+---
+
+### Tool 2 — RACF-DB2 Authority Scan
+
+**Location:** Security panel → DB2 TOOLS → RACF-DB2 AUTHORITY SCAN
+
+**What it does:** Issues `SEARCH CLASS(xxx)` against four DB2 RACF resource classes and lists every protected profile name.
+
+| Class | Protects | Color |
+|---|---|---|
+| `DSNR` | Subsystem connections (BATCH, DB2CALL, DDF, SPACENAM) | Amber |
+| `MDSNPN` | Application plan names (EXECUTE privilege) | Blue |
+| `MDSNTB` | Table and view names | Purple |
+| `MDSNSP` | Stored procedures | Teal |
+
+**What an empty class means:** If `SEARCH CLASS(MDSNPN)` returns no profiles, plan-level access control is not in use — any authenticated DB2 user can EXECUTE any application plan. Similarly, an empty `MDSNTB` means table access relies solely on DB2 internal GRANT statements rather than RACF profiles.
+
+**Paging:** The tool handles `***MORE***` screens automatically, pressing ENTER to advance through multi-page SEARCH output until `READY` reappears.
+
+**Output parsing:** Lines that match RACF resource name patterns (no spaces, no system-message prefixes) are collected. Lines starting with `IKJ`, `ICH`, `IRR`, `READY`, or `***` are filtered as system output.
+
+**Practical use:**
+1. Navigate to TSO READY
+2. Click **▶ SCAN** — the tool scans all four classes in sequence
+3. An empty MDSNPN or MDSNTB result is itself a finding: those objects are unprotected at the RACF layer
+4. Cross-reference DSNR profiles with subsystem scanner results to confirm coverage
+
+---
+
+### Tool 3 — Connection Permission Probe
+
+**Location:** Security panel → DB2 TOOLS → CONNECTION PERMISSION PROBE
+
+**What it does:** For a specific DB2 subsystem, issues `RLIST DSNR subsys.TYPE ALL` for four connection types and parses the permit list — revealing exactly which user IDs and groups have access via each path, and flagging `PUBLIC` grants.
+
+**Connection types probed:**
+
+| Profile | Controls |
+|---|---|
+| `subsys.BATCH` | Batch jobs connecting to DB2 via JCL |
+| `subsys.DB2CALL` | TSO foreground and CICS application attach |
+| `subsys.DDF` | Distributed Data Facility — DRDA/JDBC from remote systems |
+| `subsys.SPACENAM` | Access to specific tablespaces (DB2 11+) |
+
+**PUBLIC access flag:** Permit entries for `PUBLIC` are displayed with a red background badge. A `PUBLIC READ` on `subsys.DB2CALL` means every authenticated TSO user can connect to DB2 without individual authorization — the most common DB2 RACF misconfiguration in production environments.
+
+**NOT DEFINED results:** If RACF has no profile for a connection type, it falls back to generic profiles or operates in WARNING mode (logs but does not enforce). This is displayed as `NOT DEFINED` in grey. Document it — intended or not, it represents a gap in the access control model.
+
+**Permit parsing:** Extracts lines matching `WORD (READ|UPDATE|ALTER|CONTROL|NONE) DIGITS` from the `RLIST` output — the standard RACF permit table format. Access level colors: green = READ, amber = UPDATE, red = ALTER/CONTROL.
+
+**Practical use:**
+1. Run the Subsystem Scanner first; note an ACCESSIBLE subsystem ID
+2. Enter that ID in the Subsystem field (e.g. `DB2`)
+3. Click **▶ PROBE** — four RLIST commands run in sequence
+4. Any PUBLIC badge is a report finding; any NOT DEFINED entry warrants documentation
+
+---
+
+### Combined CSV export
+
+All three tools write to a shared CSV via **↓ Export all DB2 results CSV** at the bottom of the DB2 TOOLS section. The CSV has five columns:
+
+| Column | Content |
+|---|---|
+| `tool` | `subsystem-scan`, `racf-auth-scan`, or `perm-probe` |
+| `key` | Subsystem ID, profile name, or DSNR resource |
+| `status` | Result classification |
+| `detail` | DB2 version, RACF class, or permit list (ID:ACCESS pairs) |
+| `timestamp` | ISO 8601 |
+
+---
+
+### Teaching scenarios (DB2 Tools)
+
+**Subsystem enumeration attack surface:** Run the scanner against the default wordlist. Most environments have 2–4 active subsystems. Show that `DB2CALL` and `BATCH` connection types have different RACF profiles, meaning an attacker who can reach TSO may have a different path to DB2 than a batch job.
+
+**RACF class activation gap:** Issue `SEARCH CLASS(MDSNPN)` manually in a TSO shell. If it returns `NO PROFILES FOUND`, explain that the class must also be active in the RACF class descriptor table (`SETROPTS CLASSACT(MDSNPN)`) — returning no profiles could mean the class is inactive, not just empty.
+
+**PUBLIC access demonstration:** If the Permission Probe finds `PUBLIC READ` on `subsys.DB2CALL`, show what that means: any TSO user — including a service account with minimal RACF authority — can attach a DB2 session. Combined with DB2 internal `PUBLIC` grants (common in development environments), this creates a path to read production data.
+
+> **Note:** All DB2 tools display `FOR AUTHORIZED USE ONLY` in the Security panel. Running DB2 enumeration or RACF probes against a system without written authorization is illegal under the Computer Fraud and Abuse Act and equivalent laws.
+
+---
+
 ## Appendix — The .rec.json format
 
 The recording file is plain JSON and human-readable:
