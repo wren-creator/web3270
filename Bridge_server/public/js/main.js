@@ -18,6 +18,8 @@ import './fuzz.js';
 import './db2.js';
 import './recon.js';
 import './transit.js';
+import './syscheck.js';
+import './cics.js';
 import './walkthrough.js';
 
 function tick() {
