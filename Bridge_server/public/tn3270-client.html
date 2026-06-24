@@ -828,6 +828,73 @@
         </div>
       </div>
 
+      <!-- DB2 TOOLS section -->
+      <div class="sec-section">
+        <div class="sec-section-hdr">DB2 TOOLS</div>
+        <div class="sec-section-body">
+          <div class="sec-panel-hint" style="margin-bottom:8px">Three tools for DB2 security reconnaissance: subsystem enumeration, RACF authority scanning, and connection profile analysis. All require a TSO READY prompt. FOR AUTHORIZED USE ONLY.</div>
+
+          <!-- ── Tool 1: Subsystem Scanner ── -->
+          <div style="margin-bottom:10px">
+            <div style="font-size:10px;color:var(--text-muted);font-weight:600;letter-spacing:.06em;margin-bottom:4px">SUBSYSTEM SCANNER</div>
+            <div style="font-size:10px;color:#555;margin-bottom:4px">Tries <code style="color:#8acce8">DSN SYSTEM(xxx)</code> for each ID — classifies ACCESSIBLE / DENIED / NOT_FOUND, extracts version from connection banner.</div>
+            <div class="sec-row" style="justify-content:space-between;align-items:center;margin-bottom:4px">
+              <span style="font-size:10px;color:var(--text-muted)">Subsystem IDs — one per line</span>
+              <button onclick="db2LoadDefaults()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:1px 8px;cursor:pointer">Load defaults</button>
+            </div>
+            <textarea id="db2Wordlist" rows="5"
+              placeholder="DB2&#10;DB21&#10;DBPD&#10;# lines starting with # are comments"
+              style="width:100%;box-sizing:border-box;background:#000;border:1px solid #2a2a2a;border-radius:3px;color:#8acce8;font-family:'IBM Plex Mono',monospace;font-size:10px;padding:4px 6px;resize:vertical;outline:none"></textarea>
+            <div class="sec-row" style="gap:8px;align-items:center;margin-top:4px">
+              <span style="font-size:10px;color:var(--text-muted);flex-shrink:0">Delay (ms)</span>
+              <input id="db2ScanDelay" type="number" value="1500" min="500" max="10000" step="100"
+                style="width:68px;background:#000;border:1px solid #333;border-radius:3px;color:#ccc;font-family:inherit;font-size:10px;padding:2px 6px;outline:none">
+              <div style="flex:1"></div>
+              <button id="db2ScanStartBtn" class="sec-inject-btn" onclick="startDb2Scan()" style="background:#1a2a1a">▶ START</button>
+              <button id="db2ScanStopBtn"  class="sec-inject-btn" onclick="stopDb2Scan()"  style="background:#2a1a1a;display:none">■ STOP</button>
+            </div>
+            <div id="db2ScanStatus" style="font-size:10px;color:var(--text-muted);margin-top:4px;min-height:14px"></div>
+            <div id="db2ScanResults"></div>
+          </div>
+
+          <!-- ── Tool 2: RACF-DB2 Authority Scan ── -->
+          <div style="margin-bottom:10px;padding-top:8px;border-top:1px solid #111">
+            <div style="font-size:10px;color:var(--text-muted);font-weight:600;letter-spacing:.06em;margin-bottom:4px">RACF-DB2 AUTHORITY SCAN</div>
+            <div style="font-size:10px;color:#555;margin-bottom:6px">Issues <code style="color:#8acce8">SEARCH CLASS(xxx)</code> for four DB2 RACF resource classes — maps which DB2 objects are RACF-protected and lists profile names.</div>
+            <div style="font-size:10px;color:#3a3a4a;margin-bottom:6px">
+              Classes: <span style="color:#e0a060">DSNR</span> (connections) · <span style="color:#8acce8">MDSNPN</span> (plans) · <span style="color:#c0a0e0">MDSNTB</span> (tables) · <span style="color:#6acca0">MDSNSP</span> (procs)
+            </div>
+            <div style="display:flex;gap:6px;margin-bottom:4px">
+              <button id="db2AuthStartBtn" class="sec-inject-btn" onclick="startDb2AuthScan()" style="background:#1a2a1a">▶ SCAN</button>
+              <button id="db2AuthStopBtn"  class="sec-inject-btn" onclick="stopDb2Auth()"      style="background:#2a1a1a;display:none">■ STOP</button>
+            </div>
+            <div id="db2AuthStatus" style="font-size:10px;color:var(--text-muted);min-height:14px"></div>
+            <div id="db2AuthResults"></div>
+          </div>
+
+          <!-- ── Tool 3: DB2 Permission Detail ── -->
+          <div style="padding-top:8px;border-top:1px solid #111">
+            <div style="font-size:10px;color:var(--text-muted);font-weight:600;letter-spacing:.06em;margin-bottom:4px">CONNECTION PERMISSION PROBE</div>
+            <div style="font-size:10px;color:#555;margin-bottom:6px">Issues <code style="color:#8acce8">RLIST DSNR subsys.TYPE ALL</code> for BATCH / DB2CALL / DDF / SPACENAM. Highlights PUBLIC access grants — a common misconfiguration.</div>
+            <div class="sec-row" style="gap:6px;align-items:center;margin-bottom:6px">
+              <span style="font-size:10px;color:var(--text-muted);flex-shrink:0">Subsystem</span>
+              <input id="db2PermSubsys" type="text" value="DB2" maxlength="4" placeholder="DB2"
+                style="width:52px;background:#000;border:1px solid #333;border-radius:3px;color:#8acce8;font-family:'IBM Plex Mono',monospace;font-size:11px;padding:2px 6px;outline:none;text-transform:uppercase">
+              <div style="flex:1"></div>
+              <button id="db2PermStartBtn" class="sec-inject-btn" onclick="startDb2PermProbe()" style="background:#1a2a1a">▶ PROBE</button>
+              <button id="db2PermStopBtn"  class="sec-inject-btn" onclick="stopDb2Perm()"       style="background:#2a1a1a;display:none">■ STOP</button>
+            </div>
+            <div id="db2PermStatus" style="font-size:10px;color:var(--text-muted);min-height:14px"></div>
+            <div id="db2PermResults"></div>
+          </div>
+
+          <!-- ── Shared export ── -->
+          <div style="margin-top:8px;padding-top:6px;border-top:1px solid #111">
+            <button onclick="db2ExportCsv()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ Export all DB2 results CSV</button>
+          </div>
+        </div>
+      </div>
+
     </div><!-- end panelSecurity -->
 
   </div><!-- end right-panel -->
