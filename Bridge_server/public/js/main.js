@@ -16,6 +16,7 @@ import './ui.js';
 import './probe.js';
 import './fuzz.js';
 import './db2.js';
+import './recon.js';
 import './walkthrough.js';
 
 function tick() {

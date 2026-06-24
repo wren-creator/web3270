@@ -136,17 +136,19 @@ export async function startProbe() {
       _probeSend({ type: 'type', row: profile.userRow, col: profile.userCol, text: userid   });
       _probeSend({ type: 'type', row: profile.passRow, col: profile.passCol, text: password });
       await new Promise(r => setTimeout(r, 150));
+      const t0 = Date.now();
       _probeSend({ type: 'key', aid: 'ENTER', fields: [] });
 
-      const screen = await _probeWaitScreen(8000);
-      const txt    = _probeText(screen);
+      const screen  = await _probeWaitScreen(8000);
+      const elapsed = Date.now() - t0;
+      const txt     = _probeText(screen);
 
       let result;
       if      (profile.lockout(txt)) result = 'LOCKOUT';
       else if (profile.success(txt)) result = 'SUCCESS';
       else                           result = 'FAILURE';
 
-      _probeResults.push({ userid, password, result, ts: new Date().toISOString() });
+      _probeResults.push({ userid, password, result, elapsed, ts: new Date().toISOString() });
       _probeRenderResults();
 
       if (result === 'LOCKOUT') { _probeSetStatus(`🔴 LOCKOUT — ${userid} is locked. Stopped.`); break; }
@@ -158,7 +160,7 @@ export async function startProbe() {
       }
 
     } catch (err) {
-      _probeResults.push({ userid, password, result: 'ERR', ts: new Date().toISOString() });
+      _probeResults.push({ userid, password, result: 'ERR', elapsed: null, ts: new Date().toISOString() });
       _probeRenderResults();
       _probeSetStatus('Error: ' + err.message);
       break;
@@ -187,8 +189,8 @@ export function stopProbe() {
 export function probeExportCsv() {
   if (!_probeResults.length) return;
   const rows = [
-    ['userid', 'password', 'result', 'timestamp'],
-    ..._probeResults.map(r => [r.userid, r.password, r.result, r.ts]),
+    ['userid', 'password', 'result', 'response_ms', 'timestamp'],
+    ..._probeResults.map(r => [r.userid, r.password, r.result, r.elapsed ?? '', r.ts]),
   ];
   const csv  = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
@@ -201,17 +203,21 @@ function _probeRenderResults() {
   if (!_probeResults.length) { el.innerHTML = ''; return; }
   const C = { SUCCESS: '#3a9a6a', LOCKOUT: '#e06060', FAILURE: '#555', ERR: '#e0a060' };
   const esc = window.esc ?? (s => String(s));
+  // Timing color: fast <800ms may indicate userid enumeration side-channel
+  const tColor = ms => ms == null ? '#333' : ms < 800 ? '#e0a060' : ms < 2000 ? '#777' : '#555';
   el.innerHTML =
     '<table style="width:100%;border-collapse:collapse;font-size:10px;margin-top:4px">' +
     '<tr style="color:var(--text-muted)"><th style="text-align:left;padding:2px 4px;font-weight:normal">USERID</th>' +
     '<th style="text-align:left;padding:2px 4px;font-weight:normal">PASS</th>' +
-    '<th style="text-align:left;padding:2px 4px;font-weight:normal">RESULT</th></tr>' +
+    '<th style="text-align:left;padding:2px 4px;font-weight:normal">RESULT</th>' +
+    '<th style="text-align:right;padding:2px 4px;font-weight:normal">ms</th></tr>' +
     _probeResults.map(r => {
       const c = C[r.result] || '#777';
       return `<tr>` +
         `<td style="padding:2px 4px;color:#aaa;font-family:'IBM Plex Mono',monospace">${esc(r.userid)}</td>` +
         `<td style="padding:2px 4px;color:#444;font-family:'IBM Plex Mono',monospace">${'•'.repeat(Math.min(r.password.length, 8))}</td>` +
-        `<td style="padding:2px 4px;color:${c};font-weight:700">${esc(r.result)}</td></tr>`;
+        `<td style="padding:2px 4px;color:${c};font-weight:700">${esc(r.result)}</td>` +
+        `<td style="padding:2px 4px;color:${tColor(r.elapsed)};text-align:right;font-family:'IBM Plex Mono',monospace">${r.elapsed != null ? r.elapsed : '—'}</td></tr>`;
     }).join('') + '</table>';
 }
 
