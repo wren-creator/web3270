@@ -448,14 +448,12 @@ function screenConsole(operId, role, outputLog) {
 function extractInputText(data, rows = 24, cols = 80) {
   let i = 3; // skip AID (1) + cursor address (2)
   let addr = 0;
-  let lastUnprot = -1;
   const text = {};
   while (i < data.length) {
     const b = data[i];
     if (b === ORDER_SBA && i + 2 < data.length) {
-      const hi = data[i+1], lo = data[i+2];
-      const dec6 = x => (x >= 0xC0) ? x - 0xC0 + 0x3F : x - 0x40;
-      addr = (dec6(hi) << 6) | dec6(lo);
+      // Bridge sends raw 12-bit binary address, NOT 6-bit encoded
+      addr = (data[i+1] << 8) | data[i+2];
       i += 3; continue;
     }
     if (b === ORDER_IC) { i++; continue; }
@@ -466,14 +464,17 @@ function extractInputText(data, rows = 24, cols = 80) {
       i++;
     } else { i++; }
   }
-  // Return the field with highest address (the command input field at row 21)
-  const addrs = Object.keys(text).map(Number).sort((a,b) => b - a);
+  // Return all non-empty fields in ascending address order, space-separated.
+  // This gives "TPFOP01 TPF1" for the logon form and "ZSHOW E" for the console.
+  const addrs = Object.keys(text).map(Number).sort((a, b) => a - b);
+  const fields = [];
   for (const a of addrs) {
-    const s = text[a].map(b => EBCDIC_TO_ASCII[b]).filter(c => c >= 0x20 && c < 0x7F)
-                      .map(c => String.fromCharCode(c)).join('').trim();
-    if (s.length > 0) return s;
+    const s = text[a].map(b => EBCDIC_TO_ASCII[b])
+                     .filter(c => c >= 0x20 && c < 0x7F)
+                     .map(c => String.fromCharCode(c)).join('').trim();
+    if (s.length > 0) fields.push(s);
   }
-  return '';
+  return fields.join(' ');
 }
 
 // ── TN3270E negotiation state ─────────────────────────────────────────────
