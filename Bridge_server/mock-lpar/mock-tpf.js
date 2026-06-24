@@ -446,7 +446,7 @@ function screenConsole(operId, role, outputLog) {
 
 // ── Extract field text from client write ─────────────────────────────────
 function extractInputText(data, rows = 24, cols = 80) {
-  let i = 2; // skip AID + cursor addr
+  let i = 3; // skip AID (1) + cursor address (2)
   let addr = 0;
   let lastUnprot = -1;
   const text = {};
@@ -624,8 +624,8 @@ function createSession(socket) {
   }
 
   function handleFrame(frame) {
-    // TN3270E header is 5 bytes when tn3270e mode active
-    const data = tn3270e ? frame.slice(5) : frame;
+    // Client→server data is always raw 3270 — no TN3270E header to strip.
+    const data = frame;
     // Un-escape IAC IAC
     const unesc = [];
     for (let i = 0; i < data.length; i++) {
