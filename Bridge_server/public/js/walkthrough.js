@@ -1417,6 +1417,142 @@ const _WALKTHROUGHS = [
     ],
   },
 
+  // ── Wave 14: TN3270E Negotiation Analyzer ────────────────────────
+  {
+    id:       'tn3270e-negotiation',
+    category: 'security',
+    title:    'TN3270E Negotiation Analyzer',
+    desc:     'Inspect TLS version, cipher suite, certificate details, and TN3270E protocol negotiation for every active session — flags plaintext, weak ciphers, and self-signed certs.',
+    steps: [
+      {
+        title: 'Why TN3270 security matters',
+        body:  'TN3270 was designed in an era before TLS. Mainframe shops often tunnel TN3270 over TLS (TN3270E with TELNET/TLS), but many legacy configurations leave sessions in plaintext — every keystroke, including passwords, crosses the network unencrypted. The Negotiation Analyzer shows the exact TLS handshake parameters negotiated for each active session so you can confirm whether your mainframe access is actually encrypted.',
+        highlight: 'negotiateOut',
+        autoFn: null,
+      },
+      {
+        title: 'Connect to a host and open the analyzer',
+        body:  'Connect to your mainframe target using the main connection panel. Once connected, unlock the Security panel and scroll to TN3270E NEGOTIATION ANALYZER.',
+        highlight: 'negotiateStatus',
+        autoFn: null,
+      },
+      {
+        title: 'Click Refresh',
+        body:  'Click ↺ Refresh. The tool calls /api/negotiate on the bridge server, which reads live TLS socket state for every active session and returns cipher suite, TLS version, peer certificate details, and TN3270E negotiation flags.',
+        highlight: 'negotiateStatus',
+        autoFn: 'negotiateRefresh',
+        autoLabel: 'Refresh for me',
+      },
+      {
+        title: 'Reading the results',
+        body:  'Each session shows: TLS version (TLSv1.3 / TLSv1.2 / PLAIN), cipher suite name, certificate CN and issuer, certificate expiry, whether TN3270E was negotiated, the terminal model (e.g. IBM-3278-2), and the negotiated LU name. The left border color signals the worst finding: red = CRITICAL, amber = HIGH, yellow = MEDIUM, green = OK.',
+        highlight: 'negotiateOut',
+        autoFn: null,
+      },
+      {
+        title: 'Common findings',
+        body:  'CRITICAL (red border): session is PLAIN — no TLS at all. HIGH (amber): weak cipher (RC4, DES, NULL, EXPORT) or self-signed certificate. MEDIUM (yellow): TN3270E not negotiated — the session falls back to classic TN3270, which lacks LU pooling and the TN3270E data stream header. Unknown cipher strength. GREEN: strong AES-256 or ChaCha20 cipher, valid certificate, TN3270E active.',
+        highlight: 'negotiateOut',
+        autoFn: null,
+      },
+      {
+        title: 'Export',
+        body:  'Click ↓ Export CSV to record the negotiation posture for all sessions. Useful for audit evidence: "all mainframe sessions use TLSv1.3 with AES-256-GCM-SHA384 and a valid corporate CA."',
+        highlight: 'negotiateStatus',
+        autoFn: 'negotiateExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
+  // ── Wave 14: SDSF Job Scanner ─────────────────────────────────────
+  {
+    id:       'sdsf-job-scanner',
+    category: 'security',
+    title:    'SDSF Job Scanner',
+    desc:     'Parses the visible SDSF ST or DA screen to enumerate running jobs and STCs — flags system tasks visible from your privilege level, flagging information disclosure.',
+    steps: [
+      {
+        title: 'What SDSF visibility reveals',
+        body:  'SDSF (System Display and Search Facility) shows all running jobs, started tasks (STCs), and TSO users visible to your RACF profile. If you can see a system STC like VTAM or RACF in SDSF, that is information disclosure: you know which security infrastructure is running, which could inform targeting. If your RACF profile has broad SDSF access (SDSFPREF CLASS with wide permissions), you may see far more than intended.',
+        highlight: 'sdsfOut',
+        autoFn: null,
+      },
+      {
+        title: 'Navigate to SDSF',
+        body:  'From TSO READY, type SDSF and press ENTER. At the SDSF Primary Menu, type ST and press ENTER to see the Status panel (all jobs), or type DA for Display Active (currently running tasks). The OIA APP bar should show SDSF in green.',
+        highlight: 'oiaApp',
+        autoFn: null,
+      },
+      {
+        title: 'Click Refresh in the scanner',
+        body:  'With the SDSF screen visible, scroll to SDSF JOB & STC SCANNER in the Security panel and click ↺ Refresh. The tool reads the current terminal screen — it sends no commands — and parses the visible job rows. No SDSF line commands are issued.',
+        highlight: 'sdsfStatus',
+        autoFn: 'sdsfRefresh',
+        autoLabel: 'Parse current screen for me',
+      },
+      {
+        title: 'Reading the results',
+        body:  'Each row shows: RISK level, JOBNAME, JOBID, OWNER, priority, queue. HIGH (amber) = system STC with a system owner (SYS1, VTAM, RACF, TCPIP) visible from your session — security finding. MEDIUM = STC without system owner — check its RACF STARTED profile next. INFO = idle STC. OK = ordinary user batch job.',
+        highlight: 'sdsfOut',
+        autoFn: null,
+      },
+      {
+        title: 'Feed STCs to the profile scanner',
+        body:  'After scanning SDSF, use "⇦ Import STCs from SDSF" in the STC Profile Scanner section below. This copies the STC names from the SDSF scan into the profile scanner wordlist so you can then check each STC\'s RACF STARTED class profile in one click.',
+        highlight: 'stcStatus',
+        autoFn: null,
+      },
+    ],
+  },
+
+  // ── Wave 14: STC Profile Scanner ─────────────────────────────────
+  {
+    id:       'stc-profile-scanner',
+    category: 'security',
+    title:    'STC Profile Scanner',
+    desc:     'Issues RLIST STARTED stcname.* for each started task — a missing RACF STARTED profile means the STC runs under the default user, a common misconfiguration and privilege escalation vector.',
+    steps: [
+      {
+        title: 'RACF STARTED class and why it matters',
+        body:  'The RACF STARTED class maps started task (STC) names to user IDs and groups. When a started task launches, RACF looks up its STARTED profile — if no profile exists, the STC runs under the default user (usually a highly privileged system account). An attacker who can start or influence a profiled STC gains that STC\'s user ID. STCs without profiles are a blank check: RACF cannot audit what they do.',
+        highlight: 'stcOut',
+        autoFn: null,
+      },
+      {
+        title: 'Get to TSO READY',
+        body:  'The scanner issues RLIST commands at the TSO READY prompt. Connect to TSO, log in, and ensure the cursor is at a READY prompt before starting the scan.',
+        highlight: 'stcStatus',
+        autoFn: null,
+      },
+      {
+        title: 'Enter STC names or import from SDSF',
+        body:  'Type STC names in the wordlist (comma or space separated), or click "⇦ Import STCs from SDSF" if you ran the SDSF Job Scanner first. The default wordlist covers common infrastructure STCs: JES2, VTAM, TCPIP, RACF, SMF, FTPD, SYSLOG, CATALOG, DFHSM, DFRMM.',
+        highlight: 'stcWordlist',
+        autoFn: null,
+      },
+      {
+        title: 'Run the scan',
+        body:  'Click ▶ Start Scan. For each STC name the tool issues "RLIST STARTED stcname.* ALL" and reads the response. ICH10006I means no profile exists — that STC runs without a defined identity. Otherwise the tool extracts USER= (the user ID the STC runs as) and the PRIVILEGED flag.',
+        highlight: 'stcStartBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Interpreting results',
+        body:  'CRITICAL (red) = STC has a STARTED profile with PRIVILEGED attribute — it bypasses all RACF access checks. HIGH (amber) = no STARTED profile — STC runs as default user, identity unknown. MEDIUM = profile found but USER could not be parsed. OK = profile found with a named user ID and group.',
+        highlight: 'stcOut',
+        autoFn: null,
+      },
+      {
+        title: 'Export',
+        body:  'Click ↓ Export CSV for a complete audit report: STC name, status (PROFILED/NO_PROFILE), user, group, PRIVILEGED flag, and risk rating.',
+        highlight: 'stcOut',
+        autoFn: 'stcExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
   // ── DB2 Scenario 1: Subsystem Scanner ────────────────────────────
   {
     id:       'db2-subsystem-scan',

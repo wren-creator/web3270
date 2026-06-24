@@ -9,6 +9,7 @@ import * as sshHosts  from '../routes/ssh-hosts.js';
 import * as macros    from '../routes/macros.js';
 import * as recording from '../routes/recording.js';
 import * as security  from '../routes/security.js';
+import * as negotiate from '../routes/negotiate.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -23,7 +24,7 @@ const MIME = {
   '.svg':  'image/svg+xml',
 };
 
-const ROUTES = [traffic, logs, profiles, sshHosts, macros, recording, security];
+const ROUTES = [traffic, logs, profiles, sshHosts, macros, recording, security, negotiate];
 
 export function createRequestHandler({ config, logger, sessions }) {
   const ctx = { config, logger, sessions };
