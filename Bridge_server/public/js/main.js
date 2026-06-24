@@ -15,6 +15,7 @@ import './terminal.js';
 import './ui.js';
 import './probe.js';
 import './fuzz.js';
+import './db2.js';
 import './walkthrough.js';
 
 function tick() {
