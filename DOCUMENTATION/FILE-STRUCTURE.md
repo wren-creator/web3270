@@ -150,6 +150,13 @@ Bridge_server/
 │       │                                   · sshSaveHost() — saves new entry via POST /api/ssh-hosts
 │       │                                   · Resize (FitAddon) on window resize
 │       │                                   · Split-screen helpers: sshRenderSplitPane / sshClearSplitPane
+│       ├── probe.js                      RACF Auto-Probe: wordlist credential enumeration against TSO/z/VM/CICS logon screens
+│       ├── fuzz.js                       Protocol Fuzzer: AID Sweep, Field Overflow, Order Injection, SBA Mutation
+│       ├── db2.js                        DB2 Security Tools (Wave 10):
+│       │                                   · Subsystem Scanner — DSN SYSTEM() wordlist probe, version from banner
+│       │                                   · RACF-DB2 Auth Scan — SEARCH CLASS for DSNR/MDSNPN/MDSNTB/MDSNSP
+│       │                                   · Permission Probe — RLIST DSNR BATCH/DB2CALL/DDF/SPACENAM, PUBLIC flagging
+│       ├── walkthrough.js                Guided scenario walkthroughs (security + general), overlay engine
 │       └── main.js                       App init, WebSocket lifecycle, session tab management
 │
 │  ── Mock LPAR daemons ──────────────────────────────────────────────
