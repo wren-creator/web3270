@@ -19,11 +19,25 @@ export function sendKey(aid, fields = []) {
     if (cmdRow) {
       const hasNondisplay = cmdRow.some(c => c && c.nondisplay);
       if (!hasNondisplay) {
-        const firstInput = cmdRow.findIndex(c => c && !c.protected);
-        const cmd = firstInput === -1 ? '' : cmdRow.slice(firstInput).map(c => {
-          if (!c || c.protected) return ' ';
-          return (c.char && c.char !== '\x00') ? c.char : ' ';
-        }).join('').trimEnd();
+        // Walk backward from the cursor to find the FA byte that opens the
+        // field the cursor is in, then capture only that field's text.
+        const FA_PROTECTED = 0x20;
+        let fieldStart = 0;
+        let fieldUnprotected = false;
+        for (let i = state.cursorCol; i >= 0; i--) {
+          if (cmdRow[i] && cmdRow[i].fa !== undefined) {
+            fieldStart = i + 1;
+            fieldUnprotected = !(cmdRow[i].fa & FA_PROTECTED);
+            break;
+          }
+        }
+        let fieldEnd = cmdRow.length;
+        for (let i = fieldStart; i < cmdRow.length; i++) {
+          if (cmdRow[i] && cmdRow[i].fa !== undefined) { fieldEnd = i; break; }
+        }
+        const cmd = fieldUnprotected
+          ? cmdRow.slice(fieldStart, fieldEnd).map(c => (c && c.char && c.char !== '\x00') ? c.char : ' ').join('').trimEnd()
+          : '';
         if (cmd.trim().length > 0) {
           if (!session.cmdHistory) session.cmdHistory = [];
           session.cmdHistory.push(cmd);
