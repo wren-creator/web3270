@@ -1159,6 +1159,66 @@ const _WALKTHROUGHS = [
     ],
   },
 
+  // ── Recon 5: Encryption Audit Scanner ────────────────────────────
+  {
+    id:       'recon-encrypt-audit',
+    category: 'security',
+    title:    'Encryption At Rest — Audit Scanner',
+    desc:     'Use LISTCAT ENT() ALL to check whether z/OS datasets are encrypted with DFSMS at-rest encryption — identifying unencrypted sensitive data stores.',
+    steps: [
+      {
+        title: 'The gap most shops miss',
+        body:  'z/OS DFSMS at-rest encryption (via ICSF key labels) is optional and not retroactively applied to existing datasets. A shop may have encrypted new datasets for years while older PAYROLL or KEY datasets remain in plaintext — on the same disk. LISTCAT ENT() ALL surfaces the ENCRYPTION-KEY-LABEL field, which is absent on unencrypted datasets.',
+        highlight: 'reconEncryptOut',
+        autoFn: null,
+      },
+      {
+        title: 'Navigate to TSO READY',
+        body:  'You must be at a TSO READY prompt. Exit ISPF if needed. The APP field in the OIA bar should show TSO in green.',
+        highlight: 'oiaApp',
+        autoFn: null,
+      },
+      {
+        title: 'Unlock and find Encryption Audit Scanner',
+        body:  'Click 🔒, enter the security password. In the RECON TOOLS section, scroll past the Dataset Recon Scanner to find the ENCRYPTION AUDIT SCANNER subsection.',
+        highlight: 'secBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Option A: Import flagged datasets from recon',
+        body:  'If you already ran the Dataset Recon Scanner, click "⬆ Import Flagged" to pull every sensitive-named dataset directly into the audit list. This is the fastest path — discover names first, then audit encryption for the high-risk ones.',
+        highlight: 'reconEncryptDatasets',
+        autoFn: 'encryptImportFlagged',
+        autoLabel: 'Import flagged datasets for me',
+      },
+      {
+        title: 'Option B: Enter names manually',
+        body:  'Paste dataset names directly — one per line. Use fully qualified names (e.g. PAYROLL.MASTER.FILE, SYS1.PARMLIB, FINANCE.ACCOUNTS.DATA). The scanner accepts up to any number; run in batches for large lists.',
+        highlight: 'reconEncryptDatasets',
+        autoFn: null,
+      },
+      {
+        title: 'Run the audit',
+        body:  'Click ▶ AUDIT. For each dataset the tool issues LISTCAT ENT(dsname) ALL and parses the output. Results appear as they complete — CRITICAL (red) rows at the top for sensitive unencrypted datasets, INFO (green) for encrypted, MEDIUM/HIGH (amber/yellow) in between.',
+        highlight: 'reconEncryptStartBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Interpret the results',
+        body:  'CRITICAL = sensitive pattern (PASSWORD, KEY, CERT, SSN, TOKEN) + no encryption — these are the highest-priority findings. HIGH = production or system dataset (PROD, PAYROLL, SYS1.PARMLIB, FINANCE) + no encryption. MEDIUM = any unencrypted dataset. INFO = encrypted, key label shown in the KEY LABEL column. ERR = LISTCAT failed (dataset may not exist or be catalogued).',
+        highlight: 'reconEncryptOut',
+        autoFn: null,
+      },
+      {
+        title: 'Export and report',
+        body:  'Click "↓ Export all Recon results CSV" — the encrypt-audit rows include dataset name, encryption status (ENCRYPTED/UNENCRYPTED), key label or risk level, and timestamp. Sort by the flag column in a spreadsheet to produce the findings table for your report.',
+        highlight: 'reconEncryptOut',
+        autoFn: 'reconExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
   // ── DB2 Scenario 1: Subsystem Scanner ────────────────────────────
   {
     id:       'db2-subsystem-scan',

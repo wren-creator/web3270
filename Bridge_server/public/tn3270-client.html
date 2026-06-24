@@ -874,6 +874,22 @@
             <div id="reconDatasetOut" style="max-height:180px;overflow-y:auto"></div>
           </div>
 
+          <!-- ── Encryption Audit Scanner ── -->
+          <div style="margin-top:10px;padding-top:8px;border-top:1px solid #1a1a1a">
+            <div style="font-size:10px;color:var(--text-muted);font-weight:600;letter-spacing:.06em;margin-bottom:4px">ENCRYPTION AUDIT SCANNER</div>
+            <div class="sec-panel-hint" style="margin-bottom:6px">Audit specific datasets for DFSMS at-rest encryption status via LISTCAT ENT() ALL. Import flagged datasets from the recon scan above, or enter names manually.</div>
+            <textarea id="reconEncryptDatasets" rows="4"
+              placeholder="PAYROLL.MASTER.FILE&#10;SYS1.PARMLIB&#10;FINANCE.ACCOUNTS.DATA"
+              style="width:100%;box-sizing:border-box;background:#0d0d0d;border:1px solid #222;color:#aaa;font-family:'IBM Plex Mono',monospace;font-size:10px;padding:4px 6px;resize:vertical;border-radius:2px;margin-bottom:4px"></textarea>
+            <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px">
+              <button onclick="encryptImportFlagged()" class="sec-inject-btn" style="background:#1a1a2a">⬆ Import Flagged</button>
+              <button id="reconEncryptStartBtn" class="sec-inject-btn" onclick="startReconEncrypt()" style="background:#1a2a1a">▶ AUDIT</button>
+              <button id="reconEncryptStopBtn"  class="sec-inject-btn" onclick="stopReconEncrypt()"  style="background:#2a1a1a;display:none">■ STOP</button>
+            </div>
+            <div id="reconEncryptStatus" style="font-size:10px;color:var(--text-muted);margin-bottom:4px;min-height:14px"></div>
+            <div id="reconEncryptOut" style="max-height:180px;overflow-y:auto"></div>
+          </div>
+
           <!-- ── Shared export ── -->
           <div style="margin-top:8px;padding-top:6px;border-top:1px solid #111">
             <button onclick="reconExportCsv()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ Export all Recon results CSV</button>
