@@ -828,6 +828,22 @@
         </div>
       </div>
 
+      <!-- IN-TRANSIT MONITOR section -->
+      <div class="sec-section">
+        <div class="sec-section-hdr">IN-TRANSIT MONITOR</div>
+        <div class="sec-section-body">
+          <div class="sec-panel-hint" style="margin-bottom:8px">Detects and flags unencrypted TN3270 sessions. Plaintext traffic is shown with captured screen data as exposed bytes — proving what an on-path attacker sees. IND$FILE transfers are flagged individually. FOR AUTHORIZED USE ONLY.</div>
+          <div id="transitBanner" style="margin-bottom:8px"></div>
+          <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px">
+            <button onclick="transitRefresh()" class="sec-inject-btn" style="background:#1a2a1a">↺ Refresh</button>
+            <button onclick="transitClear()"   class="sec-inject-btn" style="background:#2a1a1a">✕ Clear Log</button>
+            <button onclick="transitExportCsv()" class="sec-inject-btn" style="background:#1a1a2a">↓ Export CSV</button>
+          </div>
+          <div id="transitStatus" style="font-size:10px;color:var(--text-muted);margin-bottom:4px;min-height:14px"></div>
+          <div id="transitLog" style="max-height:240px;overflow-y:auto;font-size:10px"></div>
+        </div>
+      </div>
+
       <!-- RECON TOOLS section -->
       <div class="sec-section">
         <div class="sec-section-hdr">RECON TOOLS</div>
