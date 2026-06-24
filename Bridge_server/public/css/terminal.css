@@ -971,3 +971,88 @@ body.field-map-overlay .oia-bar::before {
 .tpf-priv-medium  .tpf-priv-role { color: #e0c060; }
 .tpf-priv-critical .tpf-priv-role { color: #e06040; }
 .tpf-priv-risk { font-size: 10px; color: #4a6a52; }
+
+/* ── z/TPF tour button (in section header) ─────────────────────────────────── */
+.tpf-tour-start {
+  margin-left: auto;
+  background: none;
+  border: 1px solid #1a3a2a;
+  border-radius: 50%;
+  color: #2a6a4a;
+  font-size: 10px;
+  font-weight: 700;
+  width: 16px; height: 16px;
+  line-height: 14px;
+  text-align: center;
+  cursor: pointer;
+  padding: 0;
+  transition: border-color 0.15s, color 0.15s;
+}
+.tpf-tour-start:hover { border-color: #40d080; color: #40d080; }
+
+/* ── tour backdrop + spotlight ──────────────────────────────────────────────── */
+.tpf-tour-backdrop {
+  position: fixed; inset: 0;
+  z-index: 9997;
+  cursor: default;
+}
+.tpf-tour-spotlight {
+  position: fixed;
+  z-index: 9998;
+  pointer-events: none;
+  box-shadow: 0 0 0 9999px rgba(0,0,0,0.78);
+  border: 2px solid #40d080;
+  border-radius: 4px;
+  transition: top 0.22s ease, left 0.22s ease, width 0.22s ease, height 0.22s ease;
+}
+
+/* ── tour popover ───────────────────────────────────────────────────────────── */
+.tpf-tour-popover {
+  position: fixed;
+  z-index: 9999;
+  width: 300px;
+  background: #060f08;
+  border: 1px solid #40d080;
+  border-radius: 6px;
+  padding: 14px 16px 12px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: #a8d5a2;
+  box-shadow: 0 6px 32px rgba(0,0,0,0.7), 0 0 0 1px rgba(64,208,128,0.08);
+  transition: top 0.22s ease, left 0.22s ease;
+}
+.tpf-tour-close {
+  position: absolute; top: 8px; right: 10px;
+  background: none; border: none;
+  color: #2a6a4a; font-size: 16px; line-height: 1;
+  cursor: pointer; padding: 0;
+}
+.tpf-tour-close:hover { color: #40d080; }
+.tpf-tour-step {
+  font-size: 9.5px; letter-spacing: 0.1em;
+  color: #2a6a4a; margin-bottom: 6px;
+}
+.tpf-tour-title {
+  font-size: 12px; font-weight: 700;
+  color: #40d080; text-transform: uppercase;
+  letter-spacing: 0.07em; margin-bottom: 8px;
+}
+.tpf-tour-body { color: #8ab890; }
+.tpf-tour-footer {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-top: 14px; gap: 8px;
+}
+.tpf-tour-btn {
+  background: #0a1a0d; border: 1px solid #1a4a2a;
+  color: #40d080; border-radius: 3px;
+  padding: 4px 12px; font-size: 11px;
+  font-family: 'IBM Plex Mono', monospace;
+  cursor: pointer; transition: background 0.12s;
+}
+.tpf-tour-btn:hover:not(:disabled) { background: #0d2a1a; }
+.tpf-tour-btn:disabled { opacity: 0.3; cursor: default; }
+.tpf-tour-btn-primary {
+  background: #0d2a1a; border-color: #40d080;
+  font-weight: 700;
+}

@@ -5,3 +5,4 @@ import './inspector.js';
 import './mitm.js';
 import './anomaly.js';
 import './tpf-security.js';
+import './tpf-tour.js';
