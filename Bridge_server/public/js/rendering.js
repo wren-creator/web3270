@@ -13,14 +13,16 @@ export const HIGHLIGHT_CLASS = {
 };
 
 const _FP_RULES = [
-  { name: 'ISPF',   color: '#5a9acc', patterns: [/OPTION\s*===>/i, /ISREDIT/i, /ISPF\s+(PRIMARY|OPTION)/i, /PDF\s+MENU/i] },
-  { name: 'SDSF',   color: '#8acc5a', patterns: [/SDSF\s+(OUTPUT|STATUS|LOG|DA|H |JES)/i, /FILTER\s+OWNER/i] },
-  { name: 'CICS',   color: '#cc8a5a', patterns: [/CICS\s+/i, /DFHCS/i, /CESF\s+LOGOFF/i, /TRANSACTION\s+/i] },
-  { name: 'IMS',    color: '#aa7acc', patterns: [/IMS\/VS/i, /MFS\s+/i, /LTERM\s+/i, /\bIMS\b.*\bREADY\b/i] },
-  { name: 'RACF',   color: '#cc5a5a', patterns: [/RACF\s+/i, /ICH\d{5}I/i, /NEW\s+PASSWORD/i, /REVOKED/i] },
-  { name: 'TSO',    color: '#5acc8a', patterns: [/READY\s*$|^\s*READY\s/m, /TSO\/E\s+/i, /LOGON\s+IN\s+PROGRESS/i] },
-  { name: 'z/VM',   color: '#ccaa5a', patterns: [/z\/VM\s+/i, /\bCMS\b/i, /CP\s+QUERY/i, /RECONNECT/i] },
-  { name: 'LOGON',  color: '#cc6a6a', patterns: [/ENTER\s+USERID/i, /ENTER\s+PASSWORD/i, /IBM\s+z\/OS/i] },
+  { name: 'ISPF',     color: '#5a9acc', patterns: [/OPTION\s*===>/i, /ISREDIT/i, /ISPF\s+(PRIMARY|OPTION)/i, /PDF\s+MENU/i] },
+  { name: 'SDSF',     color: '#8acc5a', patterns: [/SDSF\s+(OUTPUT|STATUS|LOG|DA|H |JES)/i, /FILTER\s+OWNER/i] },
+  { name: 'CICS',     color: '#cc8a5a', patterns: [/CICS\s+/i, /DFHCS/i, /CESF\s+LOGOFF/i, /TRANSACTION\s+/i] },
+  { name: 'IMS',      color: '#aa7acc', patterns: [/IMS\/VS/i, /MFS\s+/i, /LTERM\s+/i, /\bIMS\b.*\bREADY\b/i] },
+  { name: 'ACF2',     color: '#e07840', patterns: [/\bACF2\b/i, /LOGONID\s*:/i, /ACF\s+LOGON/i, /\bNULLID\b/i] },
+  { name: 'TopSecret',color: '#e07840', patterns: [/CA\s+Top\s+Secret/i, /TSSUTIL/i, /TSS\s+LOGON/i, /Accessor/i] },
+  { name: 'RACF',     color: '#cc5a5a', patterns: [/RACF\s+/i, /ICH\d{5}I/i, /NEW\s+PASSWORD/i, /REVOKED/i] },
+  { name: 'TSO',      color: '#5acc8a', patterns: [/READY\s*$|^\s*READY\s/m, /TSO\/E\s+/i, /LOGON\s+IN\s+PROGRESS/i] },
+  { name: 'z/VM',     color: '#ccaa5a', patterns: [/z\/VM\s+/i, /\bCMS\b/i, /CP\s+QUERY/i, /RECONNECT/i] },
+  { name: 'LOGON',    color: '#cc6a6a', patterns: [/ENTER\s+USERID/i, /ENTER\s+PASSWORD/i, /IBM\s+z\/OS/i] },
 ];
 
 function _fingerprintScreen(screenData) {
