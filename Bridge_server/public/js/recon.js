@@ -374,6 +374,123 @@ function _renderDataset() {
     ).join('') + '</table>';
 }
 
+// ── Tool 4: Dataset Encryption Audit Scanner ──────────────────────────────
+// LISTCAT ENT(dsname) ALL for each named dataset — detects missing encryption.
+
+const _CRIT_ENC_PATTERNS = [/PASSWORD/i, /PASSWD/i, /SECRET/i, /\bKEY\b/i, /CERT/i, /TOKEN/i, /APIKEY/i, /\bSSN\b/i, /CRED/i];
+const _HIGH_ENC_PATTERNS = [/\bPROD\b/i, /PAYROLL/i, /FINANCE/i, /PARMLIB/i, /MASTER/i, /\bHR\b/i, /^SYS1\./i, /SECURITY/i];
+
+let _encryptRunning = false;
+let _encryptAborted = false;
+let _encryptResults = [];  // { name, encrypted, keyLabel, risk }
+
+function _encryptStatus(msg) {
+  const el = document.getElementById('reconEncryptStatus');
+  if (el) el.textContent = msg;
+}
+
+export function encryptImportFlagged() {
+  const el = document.getElementById('reconEncryptDatasets');
+  if (!el) return;
+  const flagged = _datasetResults.filter(r => r.flagged).map(r => r.name);
+  if (!flagged.length) { _encryptStatus('No flagged datasets — run Dataset Recon Scanner first'); return; }
+  el.value = flagged.join('\n');
+  _encryptStatus(`${flagged.length} flagged dataset(s) imported from recon`);
+}
+
+function _parseEncryption(text) {
+  // z/OS DFSMS encryption surfaces as ENCRYPTION-KEY-LABEL in LISTCAT ALL output
+  const keyMatch = text.match(/ENCRYPTION[-\s]*KEY[-\s]*LABEL[-\s]+(\S+)/i);
+  if (keyMatch) return { encrypted: true, keyLabel: keyMatch[1] };
+  const encMatch = text.match(/\bENCRYPTED\b[^A-Z]*(YES|NO)/i);
+  if (encMatch) return { encrypted: encMatch[1].toUpperCase() === 'YES', keyLabel: '' };
+  return { encrypted: false, keyLabel: '' };
+}
+
+function _encryptRisk(name, encrypted) {
+  if (encrypted) return 'INFO';
+  if (_CRIT_ENC_PATTERNS.some(p => p.test(name))) return 'CRITICAL';
+  if (_HIGH_ENC_PATTERNS.some(p => p.test(name))) return 'HIGH';
+  return 'MEDIUM';
+}
+
+export async function startReconEncrypt() {
+  if (_encryptRunning) return;
+  if (!_isReady(state.liveScreenText || '')) {
+    _encryptStatus('Navigate to a TSO READY prompt first'); return;
+  }
+  const raw = (document.getElementById('reconEncryptDatasets') || {}).value || '';
+  const datasets = raw.split('\n').map(s => s.trim().toUpperCase()).filter(s => s && !s.startsWith('#') && /^[A-Z@#$]/.test(s));
+  if (!datasets.length) { _encryptStatus('Enter dataset names or import from Dataset Recon'); return; }
+
+  _encryptRunning = true;
+  _encryptAborted = false;
+  _encryptResults = [];
+  _renderEncrypt();
+
+  document.getElementById('reconEncryptStartBtn').style.display = 'none';
+  document.getElementById('reconEncryptStopBtn').style.display  = '';
+
+  for (let i = 0; i < datasets.length; i++) {
+    if (_encryptAborted) break;
+    const dsn = datasets[i];
+    _encryptStatus(`[${i + 1}/${datasets.length}] Auditing ${dsn}…`);
+    try {
+      _fillInput(`LISTCAT ENT(${dsn}) ALL`);
+      await new Promise(r => setTimeout(r, 120));
+      _pressEnter();
+      const output = await _collectOutput(6000);
+      const { encrypted, keyLabel } = _parseEncryption(output);
+      _encryptResults.push({ name: dsn, encrypted, keyLabel, risk: _encryptRisk(dsn, encrypted) });
+      _renderEncrypt();
+      await new Promise(r => setTimeout(r, 300));
+    } catch {
+      _encryptResults.push({ name: dsn, encrypted: null, keyLabel: '', risk: 'ERR' });
+      _renderEncrypt();
+    }
+  }
+
+  _encryptRunning = false;
+  document.getElementById('reconEncryptStartBtn').style.display = '';
+  document.getElementById('reconEncryptStopBtn').style.display  = 'none';
+  if (!_encryptAborted) {
+    const unenc = _encryptResults.filter(r => r.encrypted === false).length;
+    _encryptStatus(`Done — ${_encryptResults.length} audited, ${unenc} unencrypted`);
+  }
+}
+
+export function stopReconEncrypt() {
+  _encryptAborted = true;
+  _encryptRunning = false;
+  _screenCb = null;
+  _encryptStatus('Stopped');
+  document.getElementById('reconEncryptStartBtn').style.display = '';
+  document.getElementById('reconEncryptStopBtn').style.display  = 'none';
+}
+
+function _renderEncrypt() {
+  const el = document.getElementById('reconEncryptOut');
+  if (!el) return;
+  if (!_encryptResults.length) { el.innerHTML = ''; return; }
+  const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  const RISK_C = { CRITICAL: '#e06060', HIGH: '#e0a060', MEDIUM: '#cccc60', INFO: '#3a9a6a', ERR: '#555' };
+  const ORDER  = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, INFO: 3, ERR: 4 };
+  const sorted = [..._encryptResults].sort((a, b) => (ORDER[a.risk] ?? 5) - (ORDER[b.risk] ?? 5));
+  el.innerHTML =
+    '<table style="width:100%;border-collapse:collapse;font-size:10px;margin-top:4px">' +
+    '<tr style="color:var(--text-muted)"><th style="text-align:left;padding:2px 4px;font-weight:normal">DATASET</th>' +
+    '<th style="text-align:left;padding:2px 4px;font-weight:normal">ENC</th>' +
+    '<th style="text-align:left;padding:2px 4px;font-weight:normal">KEY LABEL</th>' +
+    '<th style="text-align:left;padding:2px 4px;font-weight:normal">RISK</th></tr>' +
+    sorted.map(r =>
+      `<tr>` +
+      `<td style="padding:2px 4px;color:${r.risk === 'INFO' ? '#555' : '#999'};font-family:'IBM Plex Mono',monospace;font-size:9px">${esc(r.name)}</td>` +
+      `<td style="padding:2px 4px;color:${r.encrypted ? '#3a9a6a' : r.encrypted === null ? '#444' : '#e06060'}">${r.encrypted === null ? '?' : r.encrypted ? '✓' : '✗'}</td>` +
+      `<td style="padding:2px 4px;color:#555;font-family:'IBM Plex Mono',monospace;font-size:9px">${esc(r.keyLabel || '—')}</td>` +
+      `<td style="padding:2px 4px;color:${RISK_C[r.risk] || '#999'};font-weight:${r.risk === 'CRITICAL' ? '700' : 'normal'}">${esc(r.risk)}</td></tr>`
+    ).join('') + '</table>';
+}
+
 // ── Combined CSV export ────────────────────────────────────────────────────
 export function reconExportCsv() {
   const rows = [['tool', 'key', 'value', 'flag', 'timestamp']];
@@ -391,6 +508,8 @@ export function reconExportCsv() {
   for (const g of _enumGroups)  rows.push(['racf-enum', 'group',   g, '', new Date().toISOString()]);
   for (const d of _datasetResults)
     rows.push(['dataset-recon', d.name, '', d.flagged ? d.reason : '', new Date().toISOString()]);
+  for (const e of _encryptResults)
+    rows.push(['encrypt-audit', e.name, e.encrypted === null ? 'ERR' : e.encrypted ? 'ENCRYPTED' : 'UNENCRYPTED', e.keyLabel || e.risk, new Date().toISOString()]);
 
   if (rows.length === 1) return;
   const csv  = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
@@ -400,4 +519,5 @@ export function reconExportCsv() {
 Object.assign(window, {
   reconOnScreen, startReconSettings, startReconEnum, stopReconEnum,
   datasetLoadDefaults, startReconDataset, stopReconDataset, reconExportCsv,
+  encryptImportFlagged, startReconEncrypt, stopReconEncrypt,
 });

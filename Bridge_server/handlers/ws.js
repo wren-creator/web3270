@@ -81,6 +81,7 @@ export function createWsHandler({ config, logger, sessions, Ebcdic }) {
       // ── Session → Browser events ─────────────────────────────────
       session.on('connected', ({ tlsVersion } = {}) => {
         logger.info(`[ws:${wsId}] TCP connected to ${host}:${port}`);
+        session.tlsVersion = tlsVersion || 'PLAIN';
         send(ws, { type: 'status', state: 'connected', host, port, lu: session.negotiatedLu, model, tlsVersion, wsId });
       });
 
@@ -93,6 +94,7 @@ export function createWsHandler({ config, logger, sessions, Ebcdic }) {
           wsId,
           direction: 'host→client',
           aid: '',
+          tls: session.tlsVersion || 'PLAIN',
           screenText: screenToLinesMasked(screenData).filter(l => l.trim()).join(' | ').substring(0, 300),
         });
         if (recordings.has(wsId)) {
@@ -108,6 +110,13 @@ export function createWsHandler({ config, logger, sessions, Ebcdic }) {
 
       // ── IND$FILE events ──────────────────────────────────────────
       session.on('indfile-complete', info => {
+        logTraffic({
+          ts: new Date().toISOString(), wsId,
+          direction: info.direction === 'download' ? 'host→client' : 'client→host',
+          aid: 'IND$FILE',
+          tls: session.tlsVersion || 'PLAIN',
+          screenText: `IND$FILE ${info.direction}: ${info.bytes} bytes`,
+        });
         if (info.direction === 'download') {
           const saveAs  = session._indFileSaveAs || 'transfer.bin';
           const encoded = info.data.toString('base64');
@@ -163,6 +172,7 @@ export function createWsHandler({ config, logger, sessions, Ebcdic }) {
               session.sendAid(msg.aid, (Array.isArray(msg.fields) && msg.fields.length) ? msg.fields : session.getModifiedFields());
               logTraffic({
                 ts: new Date().toISOString(), wsId, direction: 'client→host', aid: msg.aid,
+                tls: session.tlsVersion || 'PLAIN',
                 screenText: session.lastScreen ? screenToLinesMasked(session.lastScreen).filter(l => l.trim()).join(' | ').substring(0, 300) : '',
               });
             }
