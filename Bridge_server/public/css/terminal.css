@@ -922,3 +922,52 @@ body.field-map-overlay .oia-bar::before {
   vertical-align: middle;
 }
 .watch-input::placeholder { color: #444; }
+
+/* ── z/TPF Security Tools ────────────────────────────────────────── */
+.tpf-running {
+  color: var(--text-muted); font-size: 10px; padding: 8px 10px;
+  font-style: italic;
+}
+.tpf-result-hdr {
+  font-size: 10px; font-weight: 700; color: #40d080;
+  letter-spacing: 0.08em; padding: 6px 10px 4px;
+  border-bottom: 1px solid #0d2a1a;
+}
+.tpf-result-note {
+  font-size: 10px; color: var(--text-muted); padding: 4px 10px 6px;
+}
+.tpf-table {
+  width: 100%; border-collapse: collapse; font-size: 10px;
+}
+.tpf-table th {
+  color: #2a6a4a; font-size: 9px; font-weight: 700; text-align: left;
+  padding: 3px 8px; border-bottom: 1px solid #0d2a1a;
+  letter-spacing: 0.06em; text-transform: uppercase;
+}
+.tpf-table td { padding: 3px 8px; border-bottom: 1px solid #061408; color: #90b098; }
+.tpf-mono   { font-family: 'IBM Plex Mono', monospace; }
+.tpf-dim    { color: #4a6a52; }
+.tpf-ok     { color: #40d080; }
+.tpf-idle   { color: #6a6a6a; }
+.tpf-deny   { color: #d04040; }
+.tpf-warn   { color: #d08020; font-weight: 700; }
+.tpf-priv-row td { background: rgba(200,80,20,0.06); }
+.tpf-warn-row td { background: rgba(200,130,20,0.08); }
+.tpf-priv-flag {
+  font-size: 9px; font-weight: 700; color: #e05030;
+  background: rgba(200,60,20,0.18); border: 1px solid rgba(200,60,20,0.3);
+  border-radius: 2px; padding: 0 4px; letter-spacing: 0.05em;
+}
+.tpf-priv-result {
+  margin: 6px 8px 0; padding: 6px 8px;
+  border-radius: 3px; border: 1px solid #1a2a1a;
+}
+.tpf-priv-low      { border-color: #1a3a2a; background: #040d06; }
+.tpf-priv-medium   { border-color: #3a2a0a; background: #0a0800; }
+.tpf-priv-critical { border-color: #4a1a0a; background: #0d0400; }
+.tpf-priv-role {
+  font-size: 11px; font-weight: 700; color: #c0e8c8; margin-bottom: 3px;
+}
+.tpf-priv-medium  .tpf-priv-role { color: #e0c060; }
+.tpf-priv-critical .tpf-priv-role { color: #e06040; }
+.tpf-priv-risk { font-size: 10px; color: #4a6a52; }

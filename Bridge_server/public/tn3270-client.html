@@ -785,6 +785,48 @@
         </div>
       </div>
 
+      <!-- z/TPF TOOLS section — shown only when a z/TPF console is detected -->
+      <div class="sec-section" id="tpfSection" style="display:none">
+        <div class="sec-section-hdr" style="display:flex;align-items:center;gap:8px">
+          z/TPF CONSOLE
+          <span id="tpfDetectBadge" style="font-size:9px;background:#1a4a2a;color:#40d080;border:1px solid #2a6a3a;border-radius:3px;padding:0 5px;letter-spacing:0.05em">DETECTED</span>
+          <span id="tpfPrivBadge" style="display:none;font-size:9px;color:#fff;border-radius:3px;padding:0 5px;letter-spacing:0.05em;margin-left:2px">OPER</span>
+        </div>
+        <div class="sec-section-body">
+          <div class="sec-panel-hint" style="margin-bottom:4px">
+            z/TPF operator console detected. Tools inject ZSHOW/ZTEST commands and parse responses. Connect as TPFOP01, SYSOP01, or ADMIN01 to test privilege boundaries. FOR AUTHORIZED USE ONLY.
+          </div>
+          <div class="sec-row">
+            <button class="sec-panel-btn" onclick="tpfEnumEcbs()">
+              <span class="sec-panel-btn-label">⊞ ECB Enumerator</span>
+              <span class="sec-panel-btn-sub">ZSHOW E — list all loaded entry control blocks + privilege flags</span>
+            </button>
+          </div>
+          <div class="sec-row">
+            <button class="sec-panel-btn" onclick="tpfScanPriv()">
+              <span class="sec-panel-btn-label">⚡ Privilege Scanner</span>
+              <span class="sec-panel-btn-sub">Probe OPER / SYSOP / SYSPROG boundary with ZSTOP + ZEND</span>
+            </button>
+          </div>
+          <div class="sec-row">
+            <button class="sec-panel-btn" onclick="tpfProbeEntries()">
+              <span class="sec-panel-btn-label">⬡ Entry Point Prober</span>
+              <span class="sec-panel-btn-sub">ZTEST each ECB — response time, status, privilege flags</span>
+            </button>
+          </div>
+          <div class="sec-row">
+            <button class="sec-panel-btn" onclick="tpfCheckPools()">
+              <span class="sec-panel-btn-label">≣ Pool Monitor</span>
+              <span class="sec-panel-btn-sub">ZSHOW P — flag memory pools above 90% capacity</span>
+            </button>
+          </div>
+          <!-- Tool results panel -->
+          <div id="tpfResults" style="display:none;margin-top:6px;border:1px solid #0d2a1a;border-radius:3px;background:#020a05;max-height:260px;overflow-y:auto">
+            <div id="tpfResultsContent"></div>
+          </div>
+        </div>
+      </div>
+
     </div><!-- end panelSecurity -->
 
   </div><!-- end right-panel -->
