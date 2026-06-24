@@ -1273,6 +1273,150 @@ const _WALKTHROUGHS = [
     ],
   },
 
+  // ── SysCheck 1: APF Library Scanner ──────────────────────────────
+  {
+    id:       'apf-library-scanner',
+    category: 'security',
+    title:    'APF Library Scanner',
+    desc:     'List all APF-authorized libraries via LISTAPF and check each for a RACF dataset profile — a missing or weak profile is a privilege escalation path to superuser.',
+    steps: [
+      {
+        title: 'Why APF libraries matter',
+        body:  'APF (Authorized Program Facility) libraries hold programs that run with z/OS supervisor authority. Any program loaded from an APF library can call privileged SVCs, bypass RACF, and acquire superuser status. If an APF library is writable by a non-privileged user, that user can drop in a backdoor and escalate to the most privileged level on the system.',
+        highlight: 'apfOut',
+        autoFn: null,
+      },
+      {
+        title: 'Navigate to TSO READY and unlock Security',
+        body:  'You must be at a TSO READY prompt. Click 🔒 in the OIA bar, enter the password, then scroll to the SYSTEM ACCESS CHECKS section.',
+        highlight: 'secBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Run the APF scan',
+        body:  'Click ▶ SCAN APF LIST. The tool first issues LISTAPF to get all APF-authorized library names and volumes, then runs LISTDSD on each to check for a RACF dataset profile. This may take 30–60 seconds on a system with many APF libraries.',
+        highlight: 'apfScanBtn',
+        autoFn: 'startApfScan',
+        autoLabel: 'Run APF scan for me',
+      },
+      {
+        title: 'Interpret RACF status',
+        body:  'CRITICAL (red) = no RACF profile — ICH10006I "not defined" from LISTDSD. Any authenticated user can write to this library. WEAK = RACF profile exists but UACC is UPDATE or ALTER — still broadly writable. UNKNOWN = LISTDSD was denied (likely protected, but cannot confirm). OK = protected with UACC READ or NONE.',
+        highlight: 'apfOut',
+        autoFn: null,
+      },
+      {
+        title: 'What to do with CRITICAL findings',
+        body:  'An unprotected APF library is a critical escalation path. Document the library name and volume. In ISPF, try option 3.4 to browse — if you can EDIT the library, you can create a member that calls MODESET KEY=ZERO or AXSET to acquire superuser state. The finding should trigger immediate remediation: add a RACF profile with UACC(NONE) and restrict UPDATE/ALTER to authorized users.',
+        highlight: 'apfOut',
+        autoFn: null,
+      },
+      {
+        title: 'Export',
+        body:  'Click ↓ Export System Checks CSV to capture library names, volumes, RACF status, and risk level.',
+        highlight: 'apfOut',
+        autoFn: 'syscheckExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
+  // ── SysCheck 2: PARMLIB Access Check ─────────────────────────────
+  {
+    id:       'parmlib-access-check',
+    category: 'security',
+    title:    'PARMLIB Access Check',
+    desc:     'Test read access to SYS1.PARMLIB members via ALLOC SHR — non-destructive. Readable members expose SMF configuration, the APF list, SVC table, and z/OS UNIX parameters.',
+    steps: [
+      {
+        title: 'What SYS1.PARMLIB contains',
+        body:  'SYS1.PARMLIB is the system parameter library — it controls almost everything about how z/OS runs. IEASYS00 is the main system config, SMFPRM00 controls security logging (knowing what SMF records are captured helps an attacker avoid detection), IEAAPF00 is the static APF list, BPXPRM00 controls z/OS UNIX, and IEASVC00 is the SVC dispatch table.',
+        highlight: 'parmlibOut',
+        autoFn: null,
+      },
+      {
+        title: 'Navigate to TSO READY and unlock Security',
+        body:  'You must be at a TSO READY prompt. Click 🔒, enter the password, find SYSTEM ACCESS CHECKS → PARMLIB ACCESS CHECK.',
+        highlight: 'secBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Load defaults and run',
+        body:  'Click "Load defaults" to populate the member list with eight key PARMLIB members. Click ▶ CHECK. For each member, the tool issues ALLOC FI(PTEST) DA(\'SYS1.PARMLIB(member)\') SHR — a read-only allocation test that returns immediately without modifying anything.',
+        highlight: 'parmlibStartBtn',
+        autoFn: 'parmlibLoadDefaults',
+        autoLabel: 'Load defaults for me',
+      },
+      {
+        title: 'Interpret results',
+        body:  'READABLE (red ✗) = ALLOC succeeded — the current user can read this member. BLOCKED (green ✓) = ICH408I from RACF — the member is protected. "Not found" = member doesn\'t exist or isn\'t catalogued. Any READABLE result on SMFPRM00 or IEAAPF00 is a high-severity finding — the attacker can map the security logging strategy and the complete APF list.',
+        highlight: 'parmlibOut',
+        autoFn: null,
+      },
+      {
+        title: 'Export',
+        body:  'Click ↓ Export System Checks CSV. PARMLIB results export with CRITICAL for readable members and OK for blocked.',
+        highlight: 'parmlibOut',
+        autoFn: 'syscheckExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
+  // ── CICS 1: Transaction Scanner ───────────────────────────────────
+  {
+    id:       'cics-transaction-scanner',
+    category: 'security',
+    title:    'CICS Transaction Scanner',
+    desc:     'Probe CICS transaction IDs from a wordlist — DFHAC2001 "not authorized" proves the transaction exists even if the user cannot run it.',
+    steps: [
+      {
+        title: 'The CICS enumeration side-channel',
+        body:  'CICS returns different error codes for "transaction not defined" (DFHAC2206) vs "transaction exists but you are not authorized" (DFHAC2001). This distinction is a side-channel: an attacker gets a yes/no answer on every transaction\'s existence without needing authority to run it. DFHAC2001 is a higher-value finding than a successful run — it confirms the transaction is defined and worth targeting.',
+        highlight: 'cicsOut',
+        autoFn: null,
+      },
+      {
+        title: 'Get to a CICS clear screen',
+        body:  'Connect to a CICS session. The OIA APP field should show CICS in orange. Press PA2 (CLEAR) or press F3 until you are at a blank CICS screen — the cursor should be at the top left, ready to accept a transaction ID. This is the starting position the scanner expects.',
+        highlight: 'oiaApp',
+        autoFn: null,
+      },
+      {
+        title: 'Unlock Security and find CICS TRANSACTION SCANNER',
+        body:  'Click 🔒, enter the password, scroll to the CICS TRANSACTION SCANNER section.',
+        highlight: 'secBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Load defaults and customize',
+        body:  'Click "Load defaults" to load common CICS administrative transactions: CEDA (resource definitions), CEMT (task management), CEDF (debugger), CEBR (queue browser), CESF (sign off), SIGN, MQSC, and others. Add site-specific transaction IDs you know from screen captures or documentation.',
+        highlight: 'cicsTxnList',
+        autoFn: 'cicsLoadDefaults',
+        autoLabel: 'Load defaults for me',
+      },
+      {
+        title: 'Run the scan',
+        body:  'Click ▶ SCAN. For each transaction the tool clears the screen (PA2), types the ID, and presses ENTER. The response is classified: ACCESSIBLE (red) = ran, DENIED (amber) = exists but security blocked, NOT FOUND (grey) = not defined. Results sort by severity — ACCESSIBLE first.',
+        highlight: 'cicsScanBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Interpret DENIED results',
+        body:  'DENIED transactions are the most valuable findings. They confirm the transaction is defined on this CICS region — an attacker can now target privilege escalation through that transaction specifically (e.g., CEDA is the resource definition editor — even a denial confirms CEDA is active, meaning the region has full resource definition capability). Cross-reference DENIED transactions with known privilege-escalation paths.',
+        highlight: 'cicsOut',
+        autoFn: null,
+      },
+      {
+        title: 'Export',
+        body:  'Click ↓ Export CICS Scan CSV to capture all results with transaction ID, result, and detail message.',
+        highlight: 'cicsOut',
+        autoFn: 'cicsExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
   // ── DB2 Scenario 1: Subsystem Scanner ────────────────────────────
   {
     id:       'db2-subsystem-scan',
