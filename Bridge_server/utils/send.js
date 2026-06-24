@@ -1,9 +1,7 @@
-'use strict';
-
-const WebSocket = require('ws');
+import { WebSocket } from 'ws';
 
 function send(ws, obj) {
   if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
 }
 
-module.exports = send;
+export default send;

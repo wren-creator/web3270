@@ -1,8 +1,6 @@
-'use strict';
+import { Client as SshClient } from 'ssh2';
 
-const { Client: SshClient } = require('ssh2');
-
-function handleSshConnect(ws, wsId, params, send, logger) {
+export function handleSshConnect(ws, wsId, params, send, logger) {
   const { host, port = 22, username, password } = params;
   if (!host || !username || !password) {
     send(ws, { type: 'ssh.error', message: 'host, username and password are required' });
@@ -67,5 +65,3 @@ function handleSshConnect(ws, wsId, params, send, logger) {
 
   conn.connect({ host, port, username, password, tryKeyboard: true, readyTimeout: 15000 });
 }
-
-module.exports = { handleSshConnect };

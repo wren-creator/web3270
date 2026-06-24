@@ -47,7 +47,7 @@
 
 'use strict';
 
-const logger = require('../logger');
+const logger = require('../logger.cjs');
 const router = require('./router');   // Proxy — always reflects active provider
 
 /**

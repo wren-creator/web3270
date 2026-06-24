@@ -63,7 +63,7 @@
 
 'use strict';
 
-const logger = require('../../logger');
+const logger = require('../../logger.cjs');
 
 const API_URL    = 'https://models.inference.ai.azure.com/chat/completions';
 const MODEL      = process.env.GITHUB_MODEL || 'claude-opus-4-5';

@@ -41,11 +41,9 @@
  *   { type: 'macro.error',    message }
  */
 
-'use strict';
-
-const MacroEngine                          = require('./engine');
-const { MacroStore, SecurityMacroStore }   = require('./store');
-const logger                               = require('../logger');
+import MacroEngine from './engine.js';
+import { MacroStore, SecurityMacroStore } from './store.js';
+import logger from '../logger.cjs';
 
 class MacroHandler {
   constructor(session, ws, wsId, sharedStore = null) {
@@ -201,4 +199,4 @@ class MacroHandler {
   }
 }
 
-module.exports = MacroHandler;
+export default MacroHandler;

@@ -4,10 +4,9 @@
 'use strict';
 
 const { EventEmitter } = require('events');
-const config = require('./config');
 
 const LEVELS = { debug: 0, info: 1, warn: 2, error: 3 };
-const currentLevel = LEVELS[config.logging.level] ?? 1;
+const currentLevel = LEVELS[process.env.LOG_LEVEL || 'info'] ?? 1;
 
 // Ring buffer for live log viewer (last 2000 entries)
 const LOG_BUFFER_MAX = 2000;

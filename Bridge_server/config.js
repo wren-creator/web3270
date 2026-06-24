@@ -5,10 +5,11 @@
  * Values can be overridden via environment variables.
  */
 
-'use strict';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-const fs   = require('fs');
-const path = require('path');
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // ── Load SSH host profiles from ssh-hosts.txt ─────────────────────
 function loadSshHostsFile() {
@@ -36,91 +37,48 @@ function loadLparFile() {
     .split('\n')
     .filter(line => line && !line.startsWith('#'))
     .map(line => {
-  const parts = line.split(',').map(s => s.trim());
-  const [id, name, host, port, tls, type, model] = parts;
-  return {
-    id,
-    name: name || id.toUpperCase(),
-    host: host || id,
-    port: parseInt(port || '23', 10),
-    tls: (tls || 'false') === 'true',
-    type: (type || 'TSO').toUpperCase(),
-    model: model || process.env.DEFAULT_MODEL || '3278-2',
-    codepage: 37,
-    tn3270e: parts[7] !== undefined ? parts[7] === 'true' : true,
-  };
-});
-
+      const parts = line.split(',').map(s => s.trim());
+      const [id, name, host, port, tls, type, model] = parts;
+      return {
+        id,
+        name: name || id.toUpperCase(),
+        host: host || id,
+        port: parseInt(port || '23', 10),
+        tls: (tls || 'false') === 'true',
+        type: (type || 'TSO').toUpperCase(),
+        model: model || process.env.DEFAULT_MODEL || '3278-2',
+        codepage: 37,
+        tn3270e: parts[7] !== undefined ? parts[7] === 'true' : true,
+      };
+    });
 }
 
-module.exports = {
+export default {
   bridge: {
-    /** Port the WebSocket server listens on (browser connects here) */
     port: parseInt(process.env.BRIDGE_PORT || '8081', 10),
-
-    /**
-     * Whether to verify TLS certificates when connecting to the mainframe.
-     * Set to false only in dev/test environments with self-signed certs.
-     */
     verifyTls: process.env.BRIDGE_VERIFY_TLS !== 'false',
-
-    /** Socket idle timeout in milliseconds (0 = disabled) */
     socketTimeoutMs: parseInt(process.env.BRIDGE_SOCKET_TIMEOUT_MS || '300000', 10),
-
-    /** Max concurrent sessions per bridge instance */
     maxSessions: parseInt(process.env.BRIDGE_MAX_SESSIONS || '100', 10),
-
-    /** CORS origin allowed for browser WebSocket connections ('*' = all) */
     corsOrigin: process.env.BRIDGE_CORS_ORIGIN || '*',
   },
 
   defaults: {
-    /**
-     * Default 3270 terminal model when not specified by client.
-     * Options: 3278-2 (80x24), 3278-3 (80x32), 3278-4 (80x43),
-     *          3278-5 (132x27), 3279-2, 3279-5
-     */
     model: process.env.DEFAULT_MODEL || '3278-5',
-
-    /**
-     * Default EBCDIC code page.
-     * 37  = US English (most common)
-     * 500 = International
-     * 273 = Germany, 277 = Denmark/Norway, 278 = Finland/Sweden
-     * 280 = Italy, 284 = Spain, 285 = UK, 297 = France
-     */
     codepage: parseInt(process.env.DEFAULT_CODEPAGE || '37', 10),
   },
 
-  /**
-   * LPAR connection profiles — loaded from lpars.txt at startup.
-   * Format (one per line):  id, name, host/IP, port, tls, type
-   * Example:  cdsctv01, CDSCTV01, 10.80.1.1, 23, false, TSO
-   * Lines starting with # are treated as comments.
-   */
-profiles: loadLparFile(),
-sshHosts: loadSshHostsFile(),
+  profiles: loadLparFile(),
+  sshHosts: loadSshHostsFile(),
 
   logging: {
-    /** 'debug' | 'info' | 'warn' | 'error' */
     level: process.env.LOG_LEVEL || 'info',
   },
 
-  // Exposed so server.js can hot-reload after a save
   loadLparFile,
   loadSshHostsFile,
 
-  /**
-   * Password required to unlock the Security Tools panel in the UI.
-   * Override with SECURITY_TOOLS_PASSWORD env var.
-   */
   securityPassword: process.env.SECURITY_TOOLS_PASSWORD || '2970',
 
-  /**
-   * Security macro library — separate from main macros.json.
-   * Only loaded in the security branch. Never merged into main.
-   * Override with MACRO_SECURITY_FILE env var.
-   */
   macroSecurityFile: process.env.MACRO_SECURITY_FILE ||
     path.join(__dirname, 'macros-security.json'),
 };
