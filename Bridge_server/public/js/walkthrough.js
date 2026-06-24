@@ -951,6 +951,178 @@ const _WALKTHROUGHS = [
     ],
   },
 
+  // ── DB2 Scenario 1: Subsystem Scanner ────────────────────────────
+  {
+    id:       'db2-subsystem-scan',
+    category: 'security',
+    title:    'DB2 Subsystem Scanner',
+    desc:     'Enumerate accessible DB2 subsystems from TSO using a wordlist — classifies each as ACCESSIBLE, DENIED, or NOT_FOUND and extracts the DB2 version.',
+    steps: [
+      {
+        title: 'What the scanner does',
+        body:  'For each subsystem ID in the wordlist, the scanner issues "DSN SYSTEM(xxx)" from your TSO READY prompt and reads the response. ACCESSIBLE means the connection succeeded — the banner also reveals the DB2 release. DENIED means RACF blocked the connection. NOT_FOUND means no subsystem by that name is active.',
+        highlight: 'db2ScanResults',
+        autoFn: null,
+      },
+      {
+        title: 'Prerequisites',
+        body:  'You must be at a TSO READY prompt before starting. If you are in ISPF, exit to TSO first (type "=X" or "END" from the ISPF primary menu). The scanner will not work from a logon screen, SDSF, or any ISPF panel.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click 🔒 in the OIA bar and enter the security password (default: 2970). The Security panel opens. Scroll down to the DB2 TOOLS section.',
+        highlight: 'secBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Load the default wordlist',
+        body:  'Click "Load defaults" to populate the wordlist with 16 common subsystem IDs used on IBM mainframes: DB2, DB21–DB23, DBPD, DBQA, and others. You can edit this list — one ID per line, lines starting with # are ignored.',
+        highlight: 'db2Wordlist',
+        autoFn: 'db2LoadDefaults',
+        autoLabel: 'Load defaults for me',
+      },
+      {
+        title: 'Set the delay',
+        body:  'The delay controls how long the scanner waits between attempts. 1500 ms is the default — enough time for TSO to respond and for the host to process the disconnect. On production systems use 2000 ms or more to avoid triggering session-rate alarms.',
+        highlight: 'db2ScanDelay',
+        autoFn: null,
+      },
+      {
+        title: 'Start the scan',
+        body:  'Click ▶ START. The status line updates for each attempt. Watch the results table populate: green ACCESSIBLE entries are targets — the version column tells you the exact DB2 release. DENIED entries confirm the subsystem exists but is RACF-protected. NOT_FOUND entries mean no active subsystem by that name.',
+        highlight: 'db2ScanStartBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Interpret ACCESSIBLE results',
+        body:  'An ACCESSIBLE result means your TSO user has RACF authority to connect to that DB2 subsystem. The scanner exits DSN cleanly after confirming access — it does not execute any SQL. The DB2 version in the banner (e.g. RELEASE 12.1.5) is useful for matching known CVEs.',
+        highlight: 'db2ScanResults',
+        autoFn: null,
+      },
+      {
+        title: 'Export',
+        body:  'Click "↓ Export all DB2 results CSV" at the bottom of the DB2 TOOLS section to download a CSV covering all three DB2 tools. Use ACCESSIBLE entries as input to the Connection Permission Probe for deeper analysis.',
+        highlight: 'db2ScanResults',
+        autoFn: 'db2ExportCsv',
+        autoLabel: 'Export results CSV for me',
+      },
+    ],
+  },
+
+  // ── DB2 Scenario 2: RACF-DB2 Authority Scan ──────────────────────
+  {
+    id:       'db2-auth-scan',
+    category: 'security',
+    title:    'RACF-DB2 Authority Scan',
+    desc:     'Issue SEARCH CLASS across four DB2 RACF resource classes to map which DB2 objects are protected and discover profile names.',
+    steps: [
+      {
+        title: 'What RACF resource classes protect',
+        body:  'DB2 on z/OS integrates with RACF through four resource classes. DSNR controls who can connect to each subsystem. MDSNPN protects application plan names (EXECUTE privilege). MDSNTB protects table and view names. MDSNSP protects stored procedures. If any of these classes is not activated, that area of DB2 is unprotected by RACF.',
+        highlight: 'db2AuthResults',
+        autoFn: null,
+      },
+      {
+        title: 'Prerequisites',
+        body:  'You must be at a TSO READY prompt. The SEARCH CLASS command requires READ access to the RACF database — most TSO users have this. You do not need RACF administrator authority to list profile names.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Unlock and navigate to DB2 TOOLS',
+        body:  'Click 🔒 in the OIA bar, enter the security password, and scroll to the DB2 TOOLS section in the Security panel. The RACF-DB2 AUTHORITY SCAN subsection shows the four class labels with colour coding.',
+        highlight: 'secBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Start the scan',
+        body:  'Click ▶ SCAN. The tool issues SEARCH CLASS(DSNR), then MDSNPN, MDSNTB, and MDSNSP in sequence. Each command\'s output is parsed and appended to the results table. The status line shows which class is currently being scanned.',
+        highlight: 'db2AuthStartBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Interpret the results',
+        body:  'Each row is a RACF profile in that class. DSNR profiles (amber) follow the pattern "subsystem.connectiontype" — e.g. DB2.BATCH, DB2.DB2CALL. MDSNPN profiles (blue) are plan names. MDSNTB profiles (purple) are table names. An empty result for a class means it is either not activated or all profiles are generic.',
+        highlight: 'db2AuthResults',
+        autoFn: null,
+      },
+      {
+        title: 'What an empty class means',
+        body:  'If SEARCH CLASS(MDSNPN) returns no profiles, plan-level access control is not in use — any authenticated DB2 user can EXECUTE any application plan. This is a common finding in environments that rely solely on table-level grants. Flag it in your report.',
+        highlight: 'db2AuthResults',
+        autoFn: null,
+      },
+      {
+        title: 'Export and cross-reference',
+        body:  'Export with "↓ Export all DB2 results CSV". Cross-reference DSNR profile names with the Subsystem Scanner results to confirm which subsystems have RACF protection. Use the DSNR profile names as input to the Connection Permission Probe for permit-level detail.',
+        highlight: 'db2AuthResults',
+        autoFn: 'db2ExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
+  // ── DB2 Scenario 3: Connection Permission Probe ───────────────────
+  {
+    id:       'db2-perm-probe',
+    category: 'security',
+    title:    'DB2 Connection Permission Probe',
+    desc:     'Run RLIST DSNR against BATCH, DB2CALL, DDF, and SPACENAM profiles for a specific subsystem to expose who has access — and whether PUBLIC is granted.',
+    steps: [
+      {
+        title: 'What DSNR connection types control',
+        body:  'The DSNR class has four standard connection type profiles per subsystem. BATCH controls batch jobs connecting to DB2. DB2CALL controls TSO foreground and CICS attach. DDF controls Distributed Data Facility — remote DRDA/JDBC connections from off-platform. SPACENAM controls access to specific tablespaces. If PUBLIC has READ on any of these, any user on the system can connect via that path.',
+        highlight: 'db2PermResults',
+        autoFn: null,
+      },
+      {
+        title: 'Prerequisites',
+        body:  'You need a DB2 subsystem ID to probe. Run the Subsystem Scanner first to identify accessible subsystems. Then return here and enter one of the ACCESSIBLE subsystem IDs. You must be at a TSO READY prompt.',
+        highlight: 'db2PermSubsys',
+        autoFn: null,
+      },
+      {
+        title: 'Unlock and navigate to DB2 TOOLS',
+        body:  'Click 🔒 in the OIA bar, enter the security password, and scroll to CONNECTION PERMISSION PROBE in the DB2 TOOLS section.',
+        highlight: 'secBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Enter the subsystem ID',
+        body:  'Type the subsystem ID (e.g. DB2, DBPD, DBC1) into the Subsystem field. The field is limited to 4 characters and auto-uppercases. This is the same ID you found with the Subsystem Scanner.',
+        highlight: 'db2PermSubsys',
+        autoFn: null,
+      },
+      {
+        title: 'Start the probe',
+        body:  'Click ▶ PROBE. The tool issues RLIST DSNR subsys.BATCH ALL, then DB2CALL, DDF, and SPACENAM in sequence. Each RLIST response is parsed for permit entries — user IDs and their access level (READ, UPDATE, ALTER, CONTROL).',
+        highlight: 'db2PermStartBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Spot PUBLIC access',
+        body:  'Each permit appears as a badge: green for READ, amber for UPDATE, red for ALTER/CONTROL. PUBLIC access grants are highlighted with a red background border — these mean any authenticated mainframe user can connect to DB2 via that path without individual RACF authorization. This is the most common DB2 RACF misconfiguration.',
+        highlight: 'db2PermResults',
+        autoFn: null,
+      },
+      {
+        title: 'NOT DEFINED profiles',
+        body:  'A "NOT DEFINED" result for a connection type means RACF has no specific profile for it — the system falls back to generic profiles or RACF WARNING mode. In some environments this is intentional; in others it means the access control was never configured. Document it either way.',
+        highlight: 'db2PermResults',
+        autoFn: null,
+      },
+      {
+        title: 'Export the findings',
+        body:  'Click "↓ Export all DB2 results CSV" to capture the permit lists for your report. The CSV includes each resource name, whether it exists, and the full list of ID:ACCESS pairs — ready to paste into a findings table.',
+        highlight: 'db2PermResults',
+        autoFn: 'db2ExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
   // ── Scenario 4: Protocol Fingerprint via AID Sweep ─────────────────
   {
     id:       'aid-fingerprint',
