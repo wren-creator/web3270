@@ -6,9 +6,9 @@ Three lightweight TN3270 daemons for local development and demos — no mainfram
 |--------|------|-------------|-----------|
 | Mock z/OS LPAR | `mock-lpar/mock-lpar.js` | **3270** | IBM z/OS · TSO/E · ISPF · SDSF |
 | Mock z/VM | `mock-lpar/mock-zvm.js` | **3271** | IBM z/VM · CP · CMS · XEDIT |
-| Mock z/TPF | `mock-lpar/mock-tpf.js` | **3274** | IBM z/TPF · Operator Console · ECB management |
+| Mock z/TPF | `mock-lpar/mock-tpf.js` | **3274** | IBM z/TPF · Operator Console · ZSHOW/ZTEST |
 
-Both daemons implement the **full TN3270(E) protocol stack** — real Telnet negotiation, EBCDIC encoding, and proper 3270 datastream — so the bridge and client exercise the complete code path exactly as they would against a real mainframe.
+All three daemons implement the **full TN3270(E) protocol stack** — real Telnet negotiation, EBCDIC encoding, and proper 3270 datastream — so the bridge and client exercise the complete code path exactly as they would against a real mainframe.
 
 ---
 
@@ -24,11 +24,10 @@ Both daemons implement the **full TN3270(E) protocol stack** — real Telnet neg
   - [Commands and keys](#zvm-commands-and-keys)
   - [Configuration](#zvm-configuration)
 - [Mock z/TPF](#mock-ztpf)
-  - [Screen flow](#ztpf-screen-flow)
-  - [Privilege levels](#ztpf-privilege-levels)
-  - [Commands](#ztpf-commands)
-  - [Simulated ECBs](#ztpf-simulated-ecbs)
-  - [Configuration](#ztpf-configuration)
+  - [Screen flow](#tpf-screen-flow)
+  - [Commands and privilege levels](#tpf-commands)
+  - [ECB table](#tpf-ecb-table)
+  - [Configuration](#tpf-configuration)
 - [Running all servers](#running-all-servers)
 - [Docker](#docker)
 - [lpars.txt entries](#lparstxt-entries)
@@ -370,133 +369,105 @@ Startup output:
 
 ## Mock z/TPF
 
-Simulates an IBM z/TPF (Transaction Processing Facility) operator console. z/TPF is a high-performance transaction processing OS used in airline reservation systems, credit card networks, and package delivery. This daemon is designed for **educational security demonstrations** — it shows mainframe admins how vulnerable an exposed TPF operator console can be.
+Simulates an IBM z/TPF operator console. z/TPF is the Transaction Processing Facility OS used by airlines and credit card networks. The session starts at the operator logon screen and drops into a scrolling command console after login.
 
-The session starts at an operator logon screen and, once authenticated, drops into a scrolling TPF console where operator commands are entered and responses accumulate as a log.
-
-> **Educational use only.** Not connected to any live production system.
-
-### z/TPF Screen Flow
+### TPF Screen Flow
 
 ```
 ┌─────────────────────────────┐
-│   Operator Console Logon    │  Enter Operator ID + Password
+│   z/TPF Operator Logon      │  OPER ID + PASSWORD, press Enter
 └──────────────┬──────────────┘
                │ ENTER (valid credentials)
                ▼
-┌─────────────────────────────────────────────────────┐
-│   z/TPF Operator Console                            │
-│                                                     │
-│   [scrolling output log — 18 lines]                 │
-│   ─────────────────────────────────────────────     │
-│   ENTER TPF COMMAND: ________________________       │
-└─────────────────────────────────────────────────────┘
-       │ Commands typed here, output appends to log
-       │ PF3 = Logoff    PF12 = Clear log
+┌─────────────────────────────┐
+│   Operator Console          │  Scrolling 18-line output log
+│   SYSNAME  HH:MM:SS  ROLE  │  Command input at row 21
+│  ──────────────────────     │
+│  [output log lines]        │
+│  [output log lines]        │
+│  ────────────────────────  │
+│  OPERID ==> _              │
+└─────────────────────────────┘
 ```
 
----
+### TPF Commands
 
-### z/TPF Privilege Levels
+Commands are typed at the `OPERID ==>` prompt. Privilege level is set at logon.
 
-Three operator roles with escalating access. This models real z/TPF privilege boundaries and lets you demonstrate what happens when each level attempts restricted commands.
-
-| Operator ID | Password | Role | Level | Can Execute |
-|-------------|----------|------|-------|-------------|
-| `TPFOP01` | `TPF1` | OPER | 1 | `ZSHOW` (view only) |
-| `SYSOP01` | `SYS1` | SYSOP | 2 | `ZSHOW` + `ZSTOP` + `ZENTRY` + `ZPROG` |
-| `ADMIN01` | `ADMIN` | SYSPROG | 3 | All commands including `ZEND` |
-
-Attempting a privileged command as OPER returns a `ZTPF900E AUTHORIZATION FAILURE` message and logs the attempt — demonstrating the audit trail admins should look for in real systems.
-
----
-
-### z/TPF Commands
-
-All commands are typed into the `ENTER TPF COMMAND:` field and confirmed with **Enter**.
-
-#### ZSHOW — Display system information (all roles)
+**ZSHOW — available to all operators**
 
 | Command | Description |
 |---------|-------------|
-| `ZSHOW S` or `ZSHOW SYSTEM` | System status: uptime, CPU utilization, active entry points, alerts |
-| `ZSHOW E` or `ZSHOW ENTRY` | Full entry point directory — lists all 15 simulated ECBs with type, status, transaction count, and privilege flag |
-| `ZSHOW P` or `ZSHOW POOLS` | Memory pool utilization — IPOOL (95%) and XPOOL (97%) show warnings |
-| `ZSHOW T` or `ZSHOW TRANS` | Active in-flight transactions with age — long-running transactions flagged |
-| `ZSHOW O` or `ZSHOW OPER` | Operators currently logged on with role and last command |
-| `ZSHOW V` or `ZSHOW VERSION` | z/TPF release, build, and protocol info |
+| `ZSHOW E` | List all ECBs (entry control blocks) — name, type, status, transaction count, privilege flag |
+| `ZSHOW P` | Memory pool status — size, used, percent, warnings for pools above 90% |
+| `ZSHOW S` | System status — CPU, active ECBs, transactions/sec |
+| `ZSHOW T` | Transaction monitor — TPS, peak, totals, queue depth |
+| `ZSHOW O` | Active operator list |
+| `ZSHOW V` | System version and uptime |
+| `ZTEST ENTRY,<ecb>` | Test an individual entry point — response time and status |
+| `HELP` or `?` | Show available commands for current privilege level |
 
-#### ZTEST — Probe entry points (all roles)
-
-| Command | Description |
-|---------|-------------|
-| `ZTEST ENTRY,<name>` | Probe a specific ECB: shows address, entry count, privilege flag, response time, lifetime transaction count |
-
-Example: `ZTEST ENTRY,CCARD` probes the Credit Card Authorization entry point and reports it as privileged.
-
-#### Management commands (SYSOP and SYSPROG only)
+**SYSOP commands — require priv ≥ 2**
 
 | Command | Description |
 |---------|-------------|
-| `ZSTOP,<name>` | Stop an entry point — drains in-flight transactions, sets status to STOPPED. Blocked for SYSTEM-type entries. |
-| `ZENTRY,<name>` | Show entry point detail: base address, load module, auth level, active connections |
-| `ZPROG` | Program management summary: loaded segments, active vs. idle counts |
+| `ZSTOP,RPRT` | Report how many entry points would be stopped (non-destructive) |
+| `ZSTOP,<ecb>` | Quiesce a specific entry point |
+| `ZENTRY <ecb>` | Manage an entry point |
+| `ZPROG <name>` | Load a program module |
 
-#### ZEND — System control (SYSPROG only)
-
-| Subcommand | Description |
-|------------|-------------|
-| `ZEND CHECK` | System integrity verification — checks entry point table, pool integrity, operator sessions, security module |
-| `ZEND STATUS` | Current system control state: quiesce, drain, maintenance mode |
-| `ZEND QUIESCE` | Simulated quiesce — shows what would happen in a live system (no actual action taken) |
-
-Attempting `ZEND` as OPER or SYSOP returns an authorization failure and logs the attempt.
-
-#### Session commands
+**SYSPROG commands — require priv = 3**
 
 | Command | Description |
 |---------|-------------|
-| `LOGOFF` | End the operator session |
-| **PF3** | Logoff |
-| **PF12** or **Clear** | Clear the console output log |
+| `ZEND CHECK` | Show what a full system end would stop |
+| `ZEND QUIESCE` | Halt all transaction processing (simulated — no actual action) |
 
----
+Authorization failures produce `ZTPF900E AUTHORIZATION FAILURE` and are logged.
 
-### z/TPF Simulated ECBs
+### TPF Credentials
 
-15 Entry Control Blocks (program segments) are loaded in the simulated system. Five are marked privileged — relevant for the ECB enumerator security tool planned in Wave 4.
+| Oper ID | Password | Role | Privilege |
+|---------|----------|------|-----------|
+| `TPFOP01` | `TPF1` | OPER | 1 — read-only |
+| `SYSOP01` | `SYS1` | SYSOP | 2 — stop + manage |
+| `ADMIN01` | `ADMIN` | SYSPROG | 3 — full control |
 
-| ECB | Type | Description | Privileged |
-|-----|------|-------------|-----------|
-| `AARES` | APPL | Airline Reservation Entry | — |
-| `AUDT` | SYSTEM | Audit Trail Logger | — |
-| `AUTH` | APPL | Authorization Handler | Yes |
-| `AVAIL` | APPL | Availability Check Engine | — |
-| `BKNG` | APPL | Booking Engine | — |
-| `CCARD` | APPL | Credit Card Authorization | Yes |
-| `CMGR` | SYSTEM | Connection Manager | Yes |
-| `DBAC` | SYSTEM | Database Access Layer | Yes |
-| `FARES` | APPL | Fare Calculation Module | — |
-| `HOTEL` | APPL | Hotel Reservation Handler | — |
-| `LOGR` | SYSTEM | Transaction Logger | — |
-| `PAYM` | APPL | Payment Processing | Yes |
-| `RPRT` | APPL | Reporting Module (IDLE) | — |
-| `SECU` | SYSTEM | Security Module | Yes |
-| `ADMN` | SYSTEM | Admin Functions | Yes |
+### TPF ECB Table
 
----
+15 simulated entry control blocks:
 
-### z/TPF Configuration
+| ECB | Type | Status | Privileged |
+|-----|------|--------|------------|
+| AARES | APPL | ACTIVE | |
+| AUTH | SYSTEM | ACTIVE | ✓ |
+| AVAIL | APPL | ACTIVE | |
+| BKNG | APPL | ACTIVE | |
+| CCARD | SYSTEM | ACTIVE | ✓ |
+| FARES | APPL | ACTIVE | |
+| HOTEL | APPL | ACTIVE | |
+| LOGR | SYSTEM | ACTIVE | ✓ |
+| PAYM | SYSTEM | ACTIVE | ✓ |
+| SECU | SYSTEM | ACTIVE | ✓ |
+| RSVP | APPL | ACTIVE | |
+| SCHD | APPL | IDLE | |
+| TCKP | APPL | ACTIVE | |
+| UPGD | APPL | IDLE | |
+| WLST | APPL | ACTIVE | |
+
+IPOOL (95%) and XPOOL (97%) are pre-configured above 90% to trigger pool warnings.
+
+### TPF Configuration
 
 | Environment Variable | Default | Description |
 |---------------------|---------|-------------|
 | `MOCK_PORT` | `3274` | TCP port to listen on |
-| `MOCK_SYSID` | `TPFPROD` | System name shown in screen headers |
+| `MOCK_SYSID` | `TPFSYS1` | System name shown in console header |
+| `MOCK_LU` | `TPFLU01` | LU name reported during TN3270E negotiation |
 | `LOG_LEVEL` | `info` | Set to `debug` for full byte-level Telnet logging |
 
 ```bash
-# Example — custom port and system name
-MOCK_PORT=3274 MOCK_SYSID=TPFDEV1 node mock-lpar/mock-tpf.js
+MOCK_PORT=3274 MOCK_SYSID=TPFDEV node mock-lpar/mock-tpf.js
 ```
 
 Startup output:
@@ -505,9 +476,11 @@ Startup output:
 ─────────────────────────────────────────────────────
   WebTerm/3270 Mock z/TPF Daemon
   Listening on  tcp://0.0.0.0:3274
-  System ID     TPFPROD
-  Release       z/TPF 1.1.0
-  Credentials   TPFOP01/TPF1 (OPER) | SYSOP01/SYS1 (SYSOP) | ADMIN01/ADMIN (SYSPROG)
+  System ID     TPFSYS1
+  LU Name       TPFLU01
+  Protocol      TN3270E + classic TN3270 fallback
+  Screens       Logon → z/TPF Operator Console
+  Credentials   TPFOP01/TPF1  SYSOP01/SYS1  ADMIN01/ADMIN
 ─────────────────────────────────────────────────────
 ```
 
@@ -575,32 +548,8 @@ Add the `mock-zvm` service to your `docker-compose.yml` alongside the existing `
 
 The z/VM daemon is reachable inside Docker at `mock-zvm:3271`. No port needs to be exposed externally unless you want to connect to it directly from outside Docker.
 
-Add the z/TPF daemon similarly:
-
-```yaml
-  mock-tpf:
-    build:
-      context: .
-      dockerfile: mock-lpar/Dockerfile.mock-tpf
-    container_name: mock-tpf
-    restart: unless-stopped
-    environment:
-      MOCK_PORT:  "3274"
-      MOCK_SYSID: "TPFPROD"
-      LOG_LEVEL:  "info"
-    networks:
-      - tn3270-net
-    deploy:
-      resources:
-        limits:
-          memory: 64M
-          cpus: "0.25"
-```
-
-The z/TPF daemon is reachable inside Docker at `mock-tpf:3274`.
-
 ```bash
-docker compose build mock-tpf
+docker compose build mock-zvm
 docker compose up -d
 ```
 
@@ -608,7 +557,7 @@ docker compose up -d
 
 ## lpars.txt Entries
 
-Add both mock servers to `lpars.txt` so they appear in the WebTerm/3270 LPAR dropdown:
+Add all three mock servers to `lpars.txt` so they appear in the WebTerm/3270 LPAR dropdown:
 
 ```
 # id,        name,       host,       port,  tls,   type,  model
