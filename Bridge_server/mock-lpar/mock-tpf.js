@@ -1,48 +1,15 @@
-/**
- * mock-lpar/mock-tpf.js
- * WebTerm/3270 — Mock z/TPF Operator Console Daemon
- *
- * Simulates a z/TPF system operator console over real TN3270(E) protocol.
- *
- * Screen flow:
- *   Operator Logon
- *       │  ENTER (valid credentials)
- *       ▼
- *   TPF Console (scrolling output log + command input)
- *       │  ZSHOW S / ZSHOW SYSTEM   → System status
- *       │  ZSHOW E / ZSHOW ENTRY    → Entry point list (ECB enumeration)
- *       │  ZSHOW P / ZSHOW POOLS    → Memory pool status
- *       │  ZSHOW T / ZSHOW TRANS    → Active transactions
- *       │  ZSHOW O / ZSHOW OPER     → Operator list
- *       │  ZSHOW V / ZSHOW VERSION  → z/TPF release info
- *       │  ZTEST ENTRY,xxx          → Probe a specific entry point
- *       │  ZSTOP,xxx                → Stop entry point (SYSOP+ only)
- *       │  ZENTRY,xxx               → Entry point management (SYSOP+ only)
- *       │  ZPROG,xxx                → Program management (SYSOP+ only)
- *       │  ZEND                     → System control (ADMIN only)
- *       │  LOGOFF                   → End session
- *
- * Privilege levels:
- *   OPER   (TPFOP01 / TPF1)   — ZSHOW only
- *   SYSOP  (SYSOP01 / SYS1)   — ZSHOW + ZSTOP + ZENTRY + ZPROG
- *   ADMIN  (ADMIN01 / ADMIN)   — All commands including ZEND
- *
- * Usage: MOCK_PORT=3274 MOCK_SYSID=TPFPROD node mock-tpf.js
- */
-
 'use strict';
 
 const net = require('net');
 
 const PORT    = parseInt(process.env.MOCK_PORT  || '3274', 10);
 const LOG     = (process.env.LOG_LEVEL || 'info') === 'debug';
-const SYSNAME = process.env.MOCK_SYSID || 'TPFPROD';
-const RELEASE = 'z/TPF 1.1.0';
+const LU_NAME = process.env.MOCK_LU    || 'TPFLU01';
+const SYSNAME = process.env.MOCK_SYSID || 'TPFSYS1';
 
-// ── Telnet / TN3270E constants ─────────────────────────────────────────────
-const IAC  = 0xFF, DONT = 0xFE, DO   = 0xFD;
-const WONT = 0xFC, WILL = 0xFB, SB   = 0xFA, SE = 0xF0;
-const EOR  = 0xEF, NOP  = 0xF1;
+// ── Telnet constants ──────────────────────────────────────────────────────
+const IAC  = 0xFF, DONT = 0xFE, DO = 0xFD, WONT = 0xFC, WILL = 0xFB;
+const SB   = 0xFA, SE   = 0xF0, EOR = 0xEF;
 
 const OPT_BINARY  = 0x00;
 const OPT_EOR     = 0x19;
@@ -55,20 +22,18 @@ const TN3E_IS          = 0x04;
 const TN3E_REQUEST     = 0x07;
 const TN3E_SEND        = 0x08;
 
-// ── 3270 stream constants ──────────────────────────────────────────────────
+// ── 3270 datastream constants ─────────────────────────────────────────────
 const CMD_ERASE_WRITE = 0xF5;
 const CMD_WRITE       = 0xF1;
-const ORDER_SF   = 0x1D;
-const ORDER_SFE  = 0x29;
-const ORDER_SA   = 0x28;
-const ORDER_SBA  = 0x11;
-const ORDER_IC   = 0x13;
+const ORDER_SF  = 0x1D;
+const ORDER_SFE = 0x29;
+const ORDER_SA  = 0x28;
+const ORDER_SBA = 0x11;
+const ORDER_IC  = 0x13;
 
-const FA_PROTECTED       = 0x60;
-const FA_PROTECTED_HIGH  = 0xE0;
-const FA_UNPROTECTED     = 0x40;
-const FA_UNPROTECTED_NUM = 0x50;
-const FA_DARK            = 0x6C;  // protected + non-display (for password)
+const FA_PROTECTED      = 0x60;
+const FA_PROTECTED_HIGH = 0xE0;
+const FA_UNPROTECTED    = 0x40;
 
 const COL_BLUE   = 0xF1;
 const COL_RED    = 0xF2;
@@ -84,11 +49,10 @@ const HL_UNDER   = 0xF4;
 const HL_INTENS  = 0xF8;
 
 const AID_ENTER = 0x7D;
-const AID_PF3   = 0xF3;
-const AID_PF12  = 0xC3;
 const AID_CLEAR = 0x6D;
+const AID_PF3   = 0xF3;
 
-// ── EBCDIC tables ─────────────────────────────────────────────────────────
+// ── EBCDIC tables (CP037) ─────────────────────────────────────────────────
 const EBCDIC_TO_ASCII = Buffer.from([
   0x00,0x01,0x02,0x03,0x9C,0x09,0x86,0x7F,0x97,0x8D,0x8E,0x0B,0x0C,0x0D,0x0E,0x0F,
   0x10,0x11,0x12,0x13,0x9D,0x0A,0x08,0x87,0x18,0x19,0x92,0x8F,0x1C,0x1D,0x1E,0x1F,
@@ -136,8 +100,8 @@ function buildScreen(eraseFirst, fields) {
     if (f.fa !== undefined) {
       if (f.color !== undefined || f.highlight !== undefined) {
         const pairs = [[0xC0, f.fa]];
-        if (f.color     !== undefined) pairs.push([0x42, f.color]);
-        if (f.highlight !== undefined) pairs.push([0x41, f.highlight]);
+        if (f.color)     pairs.push([0x42, f.color]);
+        if (f.highlight) pairs.push([0x41, f.highlight]);
         parts.push(ORDER_SFE, pairs.length);
         for (const [t, v] of pairs) parts.push(t, v);
       } else {
@@ -145,625 +109,583 @@ function buildScreen(eraseFirst, fields) {
       }
     }
     if (f.ic) parts.push(ORDER_IC);
-    if (f.saColor     !== undefined) parts.push(ORDER_SA, 0x42, f.saColor);
-    if (f.saHighlight !== undefined) parts.push(ORDER_SA, 0x41, f.saHighlight);
+    if (f.saColor)     parts.push(ORDER_SA, 0x42, f.saColor);
+    if (f.saHighlight) parts.push(ORDER_SA, 0x41, f.saHighlight);
     if (f.text) for (const b of toEbcdic(f.text)) parts.push(b);
-    if (f.saColor !== undefined || f.saHighlight !== undefined) parts.push(ORDER_SA, 0x00, 0x00);
+    if (f.saColor || f.saHighlight) parts.push(ORDER_SA, 0x00, 0x00);
   }
   return Buffer.from(parts);
 }
 
-function wrapEOR(data) {
-  const escaped = [];
-  for (const b of data) { escaped.push(b); if (b === IAC) escaped.push(IAC); }
-  escaped.push(IAC, EOR);
-  return Buffer.from(escaped);
+function wrapEOR(payload) {
+  const out = [];
+  for (const b of payload) { if (b === IAC) out.push(IAC, IAC); else out.push(b); }
+  out.push(IAC, EOR);
+  return Buffer.from(out);
 }
 
-// ── Simulated Entry Control Blocks (ECBs / program segments) ──────────────
+// ── z/TPF system data ─────────────────────────────────────────────────────
+const CREDENTIALS = {
+  TPFOP01: { pass: 'TPF1',  role: 'OPER',    priv: 1 },
+  SYSOP01: { pass: 'SYS1',  role: 'SYSOP',   priv: 2 },
+  ADMIN01: { pass: 'ADMIN', role: 'SYSPROG',  priv: 3 },
+};
+
 const ECB_TABLE = [
-  { name: 'AARES', type: 'APPL',   status: 'ACTIVE', entries: 4,  transactions: 148203, desc: 'Airline Reservation Entry',     priv: false },
-  { name: 'AUDT',  type: 'SYSTEM', status: 'ACTIVE', entries: 1,  transactions: 891442, desc: 'Audit Trail Logger',             priv: false },
-  { name: 'AUTH',  type: 'APPL',   status: 'ACTIVE', entries: 3,  transactions: 291007, desc: 'Authorization Handler',          priv: true  },
-  { name: 'AVAIL', type: 'APPL',   status: 'ACTIVE', entries: 6,  transactions: 504318, desc: 'Availability Check Engine',      priv: false },
-  { name: 'BKNG',  type: 'APPL',   status: 'ACTIVE', entries: 8,  transactions: 338812, desc: 'Booking Engine',                 priv: false },
-  { name: 'CCARD', type: 'APPL',   status: 'ACTIVE', entries: 2,  transactions: 782150, desc: 'Credit Card Authorization',      priv: true  },
-  { name: 'CMGR',  type: 'SYSTEM', status: 'ACTIVE', entries: 1,  transactions: 1024000,desc: 'Connection Manager',             priv: true  },
-  { name: 'DBAC',  type: 'SYSTEM', status: 'ACTIVE', entries: 2,  transactions: 2048901,desc: 'Database Access Layer',          priv: true  },
-  { name: 'FARES', type: 'APPL',   status: 'ACTIVE', entries: 5,  transactions: 612441, desc: 'Fare Calculation Module',        priv: false },
-  { name: 'HOTEL', type: 'APPL',   status: 'ACTIVE', entries: 3,  transactions: 98234,  desc: 'Hotel Reservation Handler',      priv: false },
-  { name: 'LOGR',  type: 'SYSTEM', status: 'ACTIVE', entries: 1,  transactions: 2891003,desc: 'Transaction Logger',             priv: false },
-  { name: 'PAYM',  type: 'APPL',   status: 'ACTIVE', entries: 4,  transactions: 441209, desc: 'Payment Processing',             priv: true  },
-  { name: 'RPRT',  type: 'APPL',   status: 'IDLE',   entries: 2,  transactions: 12004,  desc: 'Reporting Module',               priv: false },
-  { name: 'SECU',  type: 'SYSTEM', status: 'ACTIVE', entries: 3,  transactions: 291007, desc: 'Security Module',                priv: true  },
-  { name: 'ADMN',  type: 'SYSTEM', status: 'ACTIVE', entries: 1,  transactions: 441,    desc: 'Admin Functions',                priv: true  },
+  { name:'AARES', type:'APPL',   status:'ACTIVE',  entries:3,  txn:'1,482,933', priv:false },
+  { name:'AUTH',  type:'SYSTEM', status:'ACTIVE',  entries:1,  txn:'  928,441', priv:true  },
+  { name:'AVAIL', type:'APPL',   status:'ACTIVE',  entries:2,  txn:'  447,021', priv:false },
+  { name:'BKNG',  type:'APPL',   status:'ACTIVE',  entries:5,  txn:'2,118,834', priv:false },
+  { name:'CCARD', type:'SYSTEM', status:'ACTIVE',  entries:2,  txn:'  782,119', priv:true  },
+  { name:'FARES', type:'APPL',   status:'ACTIVE',  entries:4,  txn:'3,042,551', priv:false },
+  { name:'HOTEL', type:'APPL',   status:'ACTIVE',  entries:3,  txn:'  612,280', priv:false },
+  { name:'LOGR',  type:'SYSTEM', status:'ACTIVE',  entries:1,  txn:'5,119,002', priv:true  },
+  { name:'PAYM',  type:'SYSTEM', status:'ACTIVE',  entries:2,  txn:'1,334,867', priv:true  },
+  { name:'SECU',  type:'SYSTEM', status:'ACTIVE',  entries:1,  txn:'  203,441', priv:true  },
+  { name:'RSVP',  type:'APPL',   status:'ACTIVE',  entries:3,  txn:'  881,320', priv:false },
+  { name:'SCHD',  type:'APPL',   status:'IDLE',    entries:2,  txn:'       0',  priv:false },
+  { name:'TCKP',  type:'APPL',   status:'ACTIVE',  entries:4,  txn:'1,029,447', priv:false },
+  { name:'UPGD',  type:'APPL',   status:'IDLE',    entries:1,  txn:'       0',  priv:false },
+  { name:'WLST',  type:'APPL',   status:'ACTIVE',  entries:2,  txn:'  447,992', priv:false },
 ];
 
 const POOL_TABLE = [
-  { name: 'ECBPOOL', size: '512M',  used: '389M',  pct: 76, type: 'ECB Storage',        warn: false },
-  { name: 'FPOOL',   size: '256M',  used: '198M',  pct: 77, type: 'Fixed Storage',       warn: false },
-  { name: 'GPOOL',   size: '128M',  used: '44M',   pct: 34, type: 'General Storage',     warn: false },
-  { name: 'IPOOL',   size: '64M',   used: '61M',   pct: 95, type: 'I/O Buffer Pool',     warn: true  },
-  { name: 'TPOOL',   size: '1024M', used: '712M',  pct: 70, type: 'Transaction Pool',    warn: false },
-  { name: 'XPOOL',   size: '32M',   used: '31M',   pct: 97, type: 'Extended Storage',    warn: true  },
+  { name:'ECBPOOL', addr:'00A00000', size:'128M', used:' 64M', pct:50  },
+  { name:'FPOOL',   addr:'01000000', size:'256M', used:'128M', pct:50  },
+  { name:'GPOOL',   addr:'02000000', size:'512M', used:'320M', pct:62  },
+  { name:'IPOOL',   addr:'04000000', size:'128M', used:'122M', pct:95  },
+  { name:'TPOOL',   addr:'05000000', size:'256M', used:'180M', pct:70  },
+  { name:'XPOOL',   addr:'06000000', size: '64M', used:' 62M', pct:97  },
 ];
 
-// ── Credentials + privilege levels ────────────────────────────────────────
-// PRIV: 1=OPER (view only), 2=SYSOP (stop/manage), 3=ADMIN (all)
-const CREDENTIALS = {
-  'TPFOP01': { password: 'TPF1',  priv: 1, role: 'OPER'    },
-  'SYSOP01': { password: 'SYS1',  priv: 2, role: 'SYSOP'   },
-  'ADMIN01': { password: 'ADMIN', priv: 3, role: 'SYSPROG'  },
-};
+// ── Command dispatch ──────────────────────────────────────────────────────
+function dispatchCommand(raw, priv) {
+  const upper = raw.trim().toUpperCase();
+  const [verb, ...args] = upper.split(/[\s,]+/);
+  const rest = args.join(' ');
 
-// ── Screens ────────────────────────────────────────────────────────────────
-function screenLogon() {
-  const now = new Date();
-  const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '/');
-  const timeStr = now.toLocaleTimeString('en-US', { hour12: false });
-  return buildScreen(true, [
-    { row:0,  col:0,  fa: FA_PROTECTED_HIGH, color: COL_GREEN, highlight: HL_INTENS },
-    { row:0,  col:24, text: `z/TPF OPERATOR CONSOLE LOGON` },
-    { row:2,  col:2,  fa: FA_PROTECTED, color: COL_TURQ },
-    { row:2,  col:2,  text: `System  . . . : ${SYSNAME}       Release: ${RELEASE}` },
-    { row:3,  col:2,  text: `Date/Time . . : ${dateStr}  ${timeStr}` },
-    { row:5,  col:2,  fa: FA_PROTECTED, color: COL_BLUE },
-    { row:5,  col:2,  text: 'Operator ID . :' },
-    { row:5,  col:18, fa: FA_UNPROTECTED, color: COL_GREEN, ic: true },
-    { row:5,  col:18, text: '        ' },
-    { row:6,  col:2,  fa: FA_PROTECTED, color: COL_BLUE },
-    { row:6,  col:2,  text: 'Password  . . :' },
-    { row:6,  col:18, fa: FA_DARK },
-    { row:6,  col:18, text: '        ' },
-    { row:9,  col:2,  fa: FA_PROTECTED, color: COL_TURQ },
-    { row:9,  col:2,  text: 'WARNING: Authorized users only. All sessions are monitored and logged.' },
-    { row:11, col:2,  fa: FA_PROTECTED, color: COL_YELLOW },
-    { row:11, col:2,  text: 'This system is for EDUCATIONAL DEMONSTRATION purposes only.' },
-    { row:12, col:2,  text: 'Not connected to any live production z/TPF system.' },
-    { row:23, col:0,  fa: FA_PROTECTED, color: COL_BLUE },
-    { row:23, col:0,  text: 'ENTER=Logon   PF3=Exit' },
-  ]);
-}
-
-function screenLogonError(operId) {
-  return buildScreen(true, [
-    { row:0,  col:24, fa: FA_PROTECTED_HIGH, color: COL_GREEN, highlight: HL_INTENS },
-    { row:0,  col:24, text: `z/TPF OPERATOR CONSOLE LOGON` },
-    { row:2,  col:2,  fa: FA_PROTECTED_HIGH, color: COL_RED, highlight: HL_INTENS },
-    { row:2,  col:2,  text: 'ZTPF001E OPERATOR AUTHENTICATION FAILURE' },
-    { row:3,  col:2,  fa: FA_PROTECTED, color: COL_RED },
-    { row:3,  col:2,  text: `ZTPF002E OPERATOR ID '${(operId || '').padEnd(8)}' NOT AUTHORIZED OR INVALID PASSWORD` },
-    { row:5,  col:2,  fa: FA_PROTECTED, color: COL_BLUE },
-    { row:5,  col:2,  text: 'Operator ID . :' },
-    { row:5,  col:18, fa: FA_UNPROTECTED, color: COL_GREEN, ic: true },
-    { row:5,  col:18, text: '        ' },
-    { row:6,  col:2,  fa: FA_PROTECTED, color: COL_BLUE },
-    { row:6,  col:2,  text: 'Password  . . :' },
-    { row:6,  col:18, fa: FA_DARK },
-    { row:6,  col:18, text: '        ' },
-    { row:23, col:0,  fa: FA_PROTECTED, color: COL_BLUE },
-    { row:23, col:0,  text: 'ENTER=Retry   PF3=Exit' },
-  ]);
-}
-
-// The main console screen — scrolling log + command input
-function screenConsole(operId, role, outputLog) {
-  const now     = new Date();
-  const timeStr = now.toLocaleTimeString('en-US', { hour12: false });
-  const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '/');
-
-  // Header
-  const fields = [
-    { row:0,  col:0,  fa: FA_PROTECTED_HIGH, color: COL_GREEN, highlight: HL_INTENS },
-    { row:0,  col:1,  text: `z/TPF SYSTEM - ${SYSNAME} - ${dateStr} ${timeStr}   OPER: ${operId.padEnd(8)} [${role}]` },
-    { row:1,  col:0,  fa: FA_PROTECTED, color: COL_TURQ },
-    { row:1,  col:0,  text: '─'.repeat(79) },
-  ];
-
-  // Output log — last 18 lines, rows 2–19
-  const LOG_ROWS = 18;
-  const displayLines = outputLog.slice(-LOG_ROWS);
-  for (let i = 0; i < LOG_ROWS; i++) {
-    const line = displayLines[i] || '';
-    const isErr  = line.match(/^ZTPF\d{3}[EW]/);
-    const isWarn = line.match(/^ZTPF\d{3}W/);
-    const isHead = line.startsWith('──') || line.startsWith('  ') && line.includes('──');
-    fields.push({ row: 2 + i, col: 0, fa: FA_PROTECTED, color: isErr ? (isWarn ? COL_YELLOW : COL_RED) : isHead ? COL_TURQ : COL_WHITE });
-    if (line) fields.push({ row: 2 + i, col: 1, text: line.slice(0, 78) });
+  switch (verb) {
+    case 'ZSHOW':
+      switch (args[0]) {
+        case 'E': return cmdZshowEntry();
+        case 'P': return cmdZshowPools();
+        case 'S': return cmdZshowSystem();
+        case 'T': return cmdZshowTrans();
+        case 'O': return cmdZshowOper();
+        case 'V': return cmdZshowVersion();
+        default:  return [`ZTPF001E ZSHOW ${args[0] || ''} — unknown subcommand. Use E P S T O V`];
+      }
+    case 'ZTEST':
+      if (args[0] === 'ENTRY' && args[1]) return cmdZtestEntry(args[1]);
+      return ['ZTPF002E Syntax: ZTEST ENTRY,<ecbname>'];
+    case 'ZSTOP':
+      if (priv < 2) return authFail(verb, 'SYSOP');
+      return cmdZstop(args.join(','));
+    case 'ZENTRY':
+      if (priv < 2) return authFail(verb, 'SYSOP');
+      return cmdZentry(args[0], args[1]);
+    case 'ZPROG':
+      if (priv < 2) return authFail(verb, 'SYSOP');
+      return cmdZprog(args[0]);
+    case 'ZEND':
+      if (priv < 3) return authFail(verb, 'SYSPROG');
+      return cmdZend(args[0]);
+    case 'HELP': case '?':
+      return cmdHelp(priv);
+    default:
+      return [`ZTPF000E INVALID COMMAND: ${upper}`, `ZTPF000I Type HELP for available commands.`];
   }
-
-  // Separator + command input
-  fields.push(
-    { row:20, col:0,  fa: FA_PROTECTED, color: COL_TURQ },
-    { row:20, col:0,  text: '─'.repeat(79) },
-    { row:21, col:0,  fa: FA_PROTECTED, color: COL_BLUE },
-    { row:21, col:1,  text: 'ENTER TPF COMMAND:' },
-    { row:21, col:20, fa: FA_UNPROTECTED, color: COL_GREEN, ic: true },
-    { row:21, col:20, text: '                                                    ' },
-    { row:23, col:0,  fa: FA_PROTECTED, color: COL_BLUE },
-    { row:23, col:0,  text: 'ENTER=Execute   PF3=Logoff   PF12=Clear Log   LOGOFF=End session' },
-  );
-
-  return buildScreen(true, fields);
 }
 
-// ── Command handlers — return array of output lines ────────────────────────
-function cmdZshowSystem() {
-  const upDays = Math.floor(Math.random() * 60 + 10);
-  const upHrs  = Math.floor(Math.random() * 24);
-  const upMins = Math.floor(Math.random() * 60);
-  const cpu    = (Math.random() * 20 + 5).toFixed(1);
-  const trans  = Math.floor(Math.random() * 500 + 200);
+function authFail(verb, required) {
   return [
-    `ZTPF100I SYSTEM STATUS REPORT`,
-    `ZTPF101I SYSTEM: ${SYSNAME}    RELEASE: ${RELEASE}`,
-    `ZTPF102I STATUS: OPERATIONAL`,
-    `ZTPF103I UPTIME: ${upDays} DAYS ${String(upHrs).padStart(2,'0')}:${String(upMins).padStart(2,'0')}:00`,
-    `ZTPF104I ACTIVE ENTRY POINTS: ${ECB_TABLE.filter(e=>e.status==='ACTIVE').length}`,
-    `ZTPF105I TOTAL TRANSACTIONS/SEC: ${trans}`,
-    `ZTPF106I CPU UTILIZATION: ${cpu}%`,
-    `ZTPF107I OPERATORS LOGGED ON: 3`,
-    `ZTPF108I SYSTEM ALERTS: ${POOL_TABLE.filter(p=>p.warn).length} WARNING(S) ACTIVE`,
+    `ZTPF900E AUTHORIZATION FAILURE — ${verb} REQUIRES ${required} AUTHORITY`,
+    `ZTPF900I THIS ATTEMPT HAS BEEN LOGGED.`,
+  ];
+}
+
+function cmdZshowSystem() {
+  const now = new Date();
+  const ts  = now.toISOString().replace('T',' ').slice(0,19);
+  return [
+    `ZTPF100I SYSTEM STATUS DISPLAY`,
+    `ZTPF100I SYSTEM: ${SYSNAME}   TIME: ${ts}`,
+    `ZTPF101I CPU UTIL: 38%   ONLINE PROCS: 16/16`,
+    `ZTPF102I ACTIVE ECBS: ${ECB_TABLE.filter(e=>e.status==='ACTIVE').length}   IDLE: ${ECB_TABLE.filter(e=>e.status==='IDLE').length}`,
+    `ZTPF103I TRANS/SEC: 4,821   PEAK: 12,440`,
+    `ZTPF104I TOTAL TRANS TODAY: 18,203,451`,
+    `ZTPF105I SYSTEM HEALTH: NORMAL`,
   ];
 }
 
 function cmdZshowEntry() {
   const lines = [
-    `ZTPF200I ENTRY POINT DIRECTORY - ${ECB_TABLE.length} ENTRIES`,
-    `ZTPF201I ${'NAME'.padEnd(8)} ${'TYPE'.padEnd(8)} ${'STATUS'.padEnd(8)} ${'ENTRIES'.padStart(7)} ${'TRANSACTIONS'.padStart(13)}  DESCRIPTION`,
-    `         ${'────'.padEnd(8)} ${'────'.padEnd(8)} ${'──────'.padEnd(8)} ${'───────'.padStart(7)} ${'────────────'.padStart(13)}  ───────────────────────`,
+    `ZTPF200I ECB DIRECTORY — ${ECB_TABLE.length} ENTRIES`,
+    `ZTPF200I ${'NAME    '} TYPE   STATUS   ENT  TRANSACTIONS`,
+    `ZTPF200I ${'--------'} ------  -------  ---  ----------------`,
   ];
   for (const e of ECB_TABLE) {
-    const flag = e.priv ? ' [PRIV]' : '';
-    lines.push(`         ${e.name.padEnd(8)} ${e.type.padEnd(8)} ${e.status.padEnd(8)} ${String(e.entries).padStart(7)} ${String(e.transactions).padStart(13)}  ${e.desc}${flag}`);
+    const priv = e.priv ? ' [PRIV]' : '';
+    lines.push(`ZTPF200I ${e.name.padEnd(8)} ${e.type.padEnd(7)} ${e.status.padEnd(8)} ${String(e.entries).padStart(3)}  ${e.txn.padStart(13)}${priv}`);
   }
-  lines.push(`ZTPF202I END OF ENTRY POINT DIRECTORY`);
+  lines.push(`ZTPF202I END OF ECB DIRECTORY`);
   return lines;
 }
 
 function cmdZshowPools() {
   const lines = [
     `ZTPF300I MEMORY POOL STATUS`,
-    `ZTPF301I ${'POOL'.padEnd(8)} ${'TYPE'.padEnd(22)} ${'SIZE'.padStart(6)} ${'USED'.padStart(6)} ${'PCT'.padStart(4)}  STATUS`,
-    `         ${'────'.padEnd(8)} ${'────'.padEnd(22)} ${'────'.padStart(6)} ${'────'.padStart(6)} ${'───'.padStart(4)}  ──────`,
+    `ZTPF300I ${'POOL    '} ADDRESS   SIZE   USED   PCT`,
+    `ZTPF300I ${'--------'} --------- -----  -----  ---`,
   ];
   for (const p of POOL_TABLE) {
-    const status = p.warn ? `*** WARNING: ${p.pct}% UTILIZED ***` : 'OK';
-    lines.push(`         ${p.name.padEnd(8)} ${p.type.padEnd(22)} ${p.size.padStart(6)} ${p.used.padStart(6)} ${String(p.pct).padStart(3)}%  ${status}`);
+    const warn = p.pct >= 90 ? ' ***' : '';
+    lines.push(`ZTPF300I ${p.name.padEnd(8)} ${p.addr}  ${p.size.padStart(5)}  ${p.used.padStart(5)}  ${String(p.pct).padStart(3)}%${warn}`);
   }
-  const warnPools = POOL_TABLE.filter(p => p.warn);
-  if (warnPools.length > 0) {
-    lines.push(`ZTPF302W ${warnPools.length} POOL(S) ABOVE 90% CAPACITY - IMMEDIATE ATTENTION REQUIRED`);
-  } else {
-    lines.push(`ZTPF302I ALL POOLS WITHIN NORMAL LIMITS`);
-  }
+  lines.push(`ZTPF302I END OF POOL STATUS`);
+  const warn = POOL_TABLE.filter(p=>p.pct>=90);
+  if (warn.length) lines.push(`ZTPF303W ${warn.length} POOL(S) ABOVE 90% CAPACITY — TRANSACTION REJECTION POSSIBLE`);
   return lines;
 }
 
 function cmdZshowTrans() {
-  const now = Date.now();
-  const trans = [
-    { id: `T${Math.floor(Math.random()*900000+100000)}`, entry: 'AARES', lu: 'LU00423', age:  124, aid: 'A1F3' },
-    { id: `T${Math.floor(Math.random()*900000+100000)}`, entry: 'CCARD', lu: 'LU00891', age:   38, aid: 'C2B4' },
-    { id: `T${Math.floor(Math.random()*900000+100000)}`, entry: 'BKNG',  lu: 'LU01204', age:  891, aid: 'B3A1' },
-    { id: `T${Math.floor(Math.random()*900000+100000)}`, entry: 'PAYM',  lu: 'LU00077', age: 2341, aid: 'P1C2' },
-    { id: `T${Math.floor(Math.random()*900000+100000)}`, entry: 'AVAIL', lu: 'LU00334', age:   12, aid: 'A2D5' },
-    { id: `T${Math.floor(Math.random()*900000+100000)}`, entry: 'FARES', lu: 'LU01088', age:  441, aid: 'F1A3' },
+  return [
+    `ZTPF400I TRANSACTION MONITOR`,
+    `ZTPF401I CURRENT TPS   : 4,821`,
+    `ZTPF402I PEAK TPS TODAY: 12,440 AT 09:14:03`,
+    `ZTPF403I TOTAL TODAY   : 18,203,451`,
+    `ZTPF404I QUEUED        : 12`,
+    `ZTPF405I REJECTED      : 0`,
+    `ZTPF406I AVG RESP TIME : 2.4ms`,
   ];
-  const lines = [
-    `ZTPF400I ACTIVE TRANSACTION DISPLAY`,
-    `ZTPF401I ${'TRANS-ID'.padEnd(12)} ${'ENTRY'.padEnd(8)} ${'LU NAME'.padEnd(10)} ${'AGE(ms)'.padStart(8)} ${'AID'.padStart(6)}`,
-    `         ${'────────'.padEnd(12)} ${'─────'.padEnd(8)} ${'───────'.padEnd(10)} ${'───────'.padStart(8)} ${'───'.padStart(6)}`,
-  ];
-  for (const t of trans) {
-    const ageWarn = t.age > 1000;
-    lines.push(`         ${t.id.padEnd(12)} ${t.entry.padEnd(8)} ${t.lu.padEnd(10)} ${String(t.age).padStart(8)} ${t.aid.padStart(6)}${ageWarn ? '  *** LONG RUNNING ***' : ''}`);
-  }
-  lines.push(`ZTPF402I ${trans.length} ACTIVE TRANSACTIONS DISPLAYED`);
-  return lines;
 }
 
 function cmdZshowOper() {
-  const lines = [
-    `ZTPF500I OPERATOR CONSOLE STATUS`,
-    `ZTPF501I ${'OPER-ID'.padEnd(10)} ${'ROLE'.padEnd(10)} ${'LOGON-TIME'.padEnd(12)} ${'TERMINAL'.padEnd(10)} LAST-CMD`,
-    `         ${'───────'.padEnd(10)} ${'────'.padEnd(10)} ${'──────────'.padEnd(12)} ${'────────'.padEnd(10)} ────────`,
-    `         TPFOP01    OPER       09:14:22     TRM001     ZSHOW S`,
-    `         SYSOP01    SYSOP      07:32:01     TRM002     ZSHOW E`,
-    `         ADMIN01    SYSPROG    06:00:00     TRM003     ZEND CHECK`,
-    `ZTPF502I 3 OPERATOR(S) CURRENTLY LOGGED ON`,
+  return [
+    `ZTPF500I ACTIVE OPERATORS`,
+    `ZTPF501I OPERID    ROLE     LOGON-TIME   TERMINAL`,
+    `ZTPF501I --------  -------  -----------  --------`,
+    `ZTPF501I TPFOP01   OPER     08:03:11     CONS001`,
+    `ZTPF501I SYSOP01   SYSOP    07:55:22     CONS002`,
+    `ZTPF502I END OF OPERATOR LIST`,
   ];
-  return lines;
 }
 
 function cmdZshowVersion() {
   return [
-    `ZTPF600I z/TPF VERSION INFORMATION`,
-    `ZTPF601I PRODUCT  : IBM z/Transaction Processing Facility`,
-    `ZTPF602I RELEASE  : ${RELEASE}`,
-    `ZTPF603I BUILD    : PTF-2024-0612-001`,
-    `ZTPF604I PLATFORM : IBM Z (z16 compatible)`,
-    `ZTPF605I PROTOCOL : TN3270E RFC-2355`,
-    `ZTPF606I CONSOLE  : Operator Console Daemon v2.1`,
+    `ZTPF600I ${SYSNAME} — IBM z/TPF V1R1 (SIMULATED)`,
+    `ZTPF601I BUILD  : 2024.365`,
+    `ZTPF602I IPL    : 2024-12-31 00:01:03`,
+    `ZTPF603I UPTIME : 176 DAYS 09:12:44`,
   ];
 }
 
-function cmdZtestEntry(entryName) {
-  if (!entryName) return [`ZTPF700E ZTEST ENTRY - ENTRY NAME REQUIRED`, `ZTPF701I SYNTAX: ZTEST ENTRY,<name>`];
-  const e = ECB_TABLE.find(x => x.name === entryName.toUpperCase());
-  if (!e) {
+function cmdZtestEntry(name) {
+  const ecb = ECB_TABLE.find(e => e.name === name.toUpperCase());
+  if (!ecb) {
+    return [`ZTPF710E ENTRY POINT ${name.toUpperCase()} NOT FOUND IN DIRECTORY`];
+  }
+  const ms   = 1 + Math.floor(Math.random() * 8);
+  const priv = ecb.priv ? ' [HANDLES PRIVILEGED DATA]' : '';
+  return [
+    `ZTPF710I ENTRY POINT TEST: ${ecb.name}`,
+    `ZTPF711I STATUS : ${ecb.status}   TYPE: ${ecb.type}${priv}`,
+    `ZTPF712I RESPONDED IN ${ms}ms`,
+    `ZTPF713I TRANSACTIONS: ${ecb.txn}`,
+  ];
+}
+
+function cmdZstop(arg) {
+  if (arg === 'RPRT') {
     return [
-      `ZTPF700E ZTEST - ENTRY POINT '${entryName.toUpperCase()}' NOT FOUND IN DIRECTORY`,
-      `ZTPF701I USE ZSHOW E TO LIST AVAILABLE ENTRY POINTS`,
+      `ZTPF800I ZSTOP REPORT MODE — NO ACTION TAKEN`,
+      `ZTPF801I ${ECB_TABLE.filter(e=>e.status==='ACTIVE').length} ACTIVE ENTRY POINTS WOULD BE STOPPED`,
     ];
   }
-  const respMs = Math.floor(Math.random() * 40 + 5);
-  return [
-    `ZTPF710I ZTEST ENTRY '${e.name}' - PROBE INITIATED`,
-    `ZTPF711I DESCRIPTION  : ${e.desc}`,
-    `ZTPF712I TYPE         : ${e.type}`,
-    `ZTPF713I STATUS       : ${e.status}`,
-    `ZTPF714I ENTRY POINTS : ${e.entries}`,
-    `ZTPF715I PRIVILEGED   : ${e.priv ? 'YES - REQUIRES AUTH' : 'NO'}`,
-    `ZTPF716I PROBE RESULT : ENTRY POINT RESPONDED IN ${respMs}ms`,
-    `ZTPF717I TRANSACTIONS : ${e.transactions.toLocaleString()} (lifetime)`,
-    e.priv
-      ? `ZTPF718W ENTRY POINT HANDLES PRIVILEGED DATA - MONITOR ACCESS`
-      : `ZTPF718I ENTRY POINT STATUS: HEALTHY`,
-  ];
+  const ecb = ECB_TABLE.find(e=>e.name===arg);
+  if (!ecb) return [`ZTPF800E ENTRY POINT ${arg} NOT FOUND`];
+  return [`ZTPF800I ZSTOP ACCEPTED FOR ${ecb.name} — QUIESCING TRANSACTIONS`];
 }
 
-function cmdZstop(entryName, priv) {
-  if (priv < 2) return [`ZTPF800E ZSTOP - AUTHORIZATION FAILURE`, `ZTPF801E ROLE 'OPER' NOT AUTHORIZED FOR ZSTOP`, `ZTPF802E REQUIRES: SYSOP OR SYSPROG`];
-  if (!entryName) return [`ZTPF800E ZSTOP - ENTRY NAME REQUIRED`, `ZTPF801I SYNTAX: ZSTOP,<name>`];
-  const e = ECB_TABLE.find(x => x.name === entryName.toUpperCase());
-  if (!e) return [`ZTPF800E ZSTOP - ENTRY POINT '${entryName.toUpperCase()}' NOT FOUND`];
-  if (e.type === 'SYSTEM') return [
-    `ZTPF803W ZSTOP - '${e.name}' IS A SYSTEM ENTRY POINT`,
-    `ZTPF804W STOPPING SYSTEM ENTRY POINTS MAY CAUSE SYSTEM INSTABILITY`,
-    `ZTPF805I ZSTOP REJECTED - USE ZEND FOR SYSTEM PROGRAM CONTROL`,
-  ];
-  e.status = 'STOPPED';
-  return [
-    `ZTPF810I ZSTOP - ENTRY POINT '${e.name}' STOP INITIATED`,
-    `ZTPF811I DRAINING IN-FLIGHT TRANSACTIONS...`,
-    `ZTPF812I ENTRY POINT '${e.name}' STATUS: STOPPED`,
-    `ZTPF813W NEW TRANSACTIONS TO '${e.name}' WILL BE REJECTED UNTIL RESTARTED`,
-  ];
+function cmdZentry(name, action) {
+  const ecb = ECB_TABLE.find(e=>e.name===name);
+  if (!ecb) return [`ZTPF810E ENTRY POINT ${name} NOT FOUND`];
+  return [`ZTPF810I ZENTRY ${action||'START'} ACCEPTED FOR ${ecb.name}`];
 }
 
-function cmdZentry(entryName, priv) {
-  if (priv < 2) return [`ZTPF850E ZENTRY - AUTHORIZATION FAILURE`, `ZTPF851E REQUIRES: SYSOP OR SYSPROG`];
-  if (!entryName) return [`ZTPF850E ZENTRY - ENTRY NAME REQUIRED`, `ZTPF851I SYNTAX: ZENTRY,<name>`];
-  const e = ECB_TABLE.find(x => x.name === entryName.toUpperCase());
-  if (!e) return [`ZTPF850E ZENTRY - '${entryName.toUpperCase()}' NOT FOUND`];
-  const addr = (0x0F000000 + Math.floor(Math.random() * 0x00FFFFFF)).toString(16).toUpperCase();
-  return [
-    `ZTPF860I ZENTRY '${e.name}' - ENTRY POINT DETAIL`,
-    `ZTPF861I BASE ADDRESS : 0x${addr}`,
-    `ZTPF862I ENTRY COUNT  : ${e.entries}`,
-    `ZTPF863I LOAD MODULE  : ${e.name}00`,
-    `ZTPF864I AUTH LEVEL   : ${e.priv ? 'PRIVILEGED' : 'STANDARD'}`,
-    `ZTPF865I ACTIVE CONNS : ${Math.floor(Math.random() * 50)}`,
-  ];
+function cmdZprog(name) {
+  return [`ZTPF820I ZPROG LOAD INITIATED FOR ${name||'?'} — LINK-EDIT PENDING`];
 }
 
-function cmdZprog(arg, priv) {
-  if (priv < 2) return [`ZTPF870E ZPROG - AUTHORIZATION FAILURE`, `ZTPF871E REQUIRES: SYSOP OR SYSPROG`];
-  return [
-    `ZTPF880I ZPROG ${arg || ''} - PROGRAM CONTROL`,
-    `ZTPF881I LOADED SEGMENTS: ${ECB_TABLE.length}`,
-    `ZTPF882I ACTIVE        : ${ECB_TABLE.filter(e=>e.status==='ACTIVE').length}`,
-    `ZTPF883I IDLE/STOPPED  : ${ECB_TABLE.filter(e=>e.status!=='ACTIVE').length}`,
-    `ZTPF884I USE ZSHOW E FOR FULL SEGMENT LISTING`,
-  ];
-}
-
-function cmdZend(arg, priv) {
-  if (priv < 3) {
+function cmdZend(qualifier) {
+  if (!qualifier || qualifier === 'CHECK') {
     return [
-      `ZTPF900E ZEND - AUTHORIZATION FAILURE`,
-      `ZTPF901E OPERATOR PRIVILEGE LEVEL INSUFFICIENT`,
-      `ZTPF902E ZEND REQUIRES: SYSPROG AUTHORITY`,
-      `ZTPF903E THIS ATTEMPT HAS BEEN LOGGED`,
+      `ZTPF830I ZEND CHECK — ${qualifier==='CHECK'?'WOULD':'WILL'} QUIESCE ALL ${ECB_TABLE.filter(e=>e.status==='ACTIVE').length} ACTIVE ENTRY POINTS`,
+      `ZTPF830I THIS IS A SIMULATED ENVIRONMENT — NO ACTION TAKEN`,
     ];
   }
-  if (!arg) {
-    return [
-      `ZTPF910I ZEND - SYSTEM CONTROL FACILITY`,
-      `ZTPF911I SUBCOMMANDS: CHECK, STATUS, QUIESCE, RESUME`,
-      `ZTPF912I SYNTAX: ZEND <subcommand>`,
-    ];
-  }
-  switch (arg.toUpperCase()) {
-    case 'CHECK':
-      return [
-        `ZTPF920I ZEND CHECK - SYSTEM INTEGRITY VERIFICATION`,
-        `ZTPF921I CHECKING ENTRY POINT TABLE...    OK`,
-        `ZTPF922I CHECKING POOL INTEGRITY...       ${POOL_TABLE.filter(p=>p.warn).length > 0 ? 'WARNING' : 'OK'}`,
-        `ZTPF923I CHECKING OPERATOR SESSIONS...    OK`,
-        `ZTPF924I CHECKING SECURITY MODULE...      OK`,
-        POOL_TABLE.filter(p=>p.warn).length > 0
-          ? `ZTPF925W ${POOL_TABLE.filter(p=>p.warn).length} POOL WARNING(S) DETECTED`
-          : `ZTPF925I ALL CHECKS PASSED`,
-      ];
-    case 'STATUS':
-      return [
-        `ZTPF930I ZEND STATUS - SYSTEM CONTROL STATE`,
-        `ZTPF931I SYSTEM STATE  : OPERATIONAL`,
-        `ZTPF932I QUIESCE STATE : NOT QUIESCED`,
-        `ZTPF933I DRAIN STATE   : NOT DRAINING`,
-        `ZTPF934I MAINT MODE    : INACTIVE`,
-      ];
-    case 'QUIESCE':
-      return [
-        `ZTPF940W ZEND QUIESCE - INITIATED (EDUCATIONAL SIMULATION ONLY)`,
-        `ZTPF941W IN A LIVE SYSTEM: NEW TRANSACTIONS WOULD BE REJECTED`,
-        `ZTPF942W IN A LIVE SYSTEM: IN-FLIGHT TRANSACTIONS WOULD DRAIN`,
-        `ZTPF943I SIMULATION: NO ACTUAL QUIESCE PERFORMED`,
-      ];
-    default:
-      return [`ZTPF900E ZEND - UNKNOWN SUBCOMMAND: ${arg}`, `ZTPF901I VALID: CHECK STATUS QUIESCE RESUME`];
-  }
-}
-
-function cmdUnknown(cmd) {
   return [
-    `ZTPF999E COMMAND NOT RECOGNIZED: ${cmd}`,
-    `ZTPF999I VALID COMMANDS: ZSHOW, ZTEST, ZSTOP, ZENTRY, ZPROG, ZEND, LOGOFF`,
-    `ZTPF999I FOR HELP: ZSHOW <option>  OPTIONS: S E P T O V`,
+    `ZTPF830W ZEND ${qualifier} — THIS IS A SIMULATED ENVIRONMENT`,
+    `ZTPF830I NO ACTUAL SYSTEM HALT PERFORMED`,
   ];
 }
 
-// ── Parse and dispatch a TPF command ──────────────────────────────────────
-function dispatchCommand(raw, priv) {
-  const input = raw.trim().toUpperCase();
-  if (!input) return [];
-
-  const ts    = new Date().toLocaleTimeString('en-US', { hour12: false });
-  const echo  = [`${ts} ${raw.trim()}`];
-
-  let result;
-  if (input === 'ZSHOW S' || input === 'ZSHOW SYSTEM')         result = cmdZshowSystem();
-  else if (input === 'ZSHOW E' || input === 'ZSHOW ENTRY')     result = cmdZshowEntry();
-  else if (input === 'ZSHOW P' || input === 'ZSHOW POOLS')     result = cmdZshowPools();
-  else if (input === 'ZSHOW T' || input === 'ZSHOW TRANS')     result = cmdZshowTrans();
-  else if (input === 'ZSHOW O' || input === 'ZSHOW OPER')      result = cmdZshowOper();
-  else if (input === 'ZSHOW V' || input === 'ZSHOW VERSION')   result = cmdZshowVersion();
-  else if (input.startsWith('ZTEST ENTRY,'))                   result = cmdZtestEntry(input.slice('ZTEST ENTRY,'.length));
-  else if (input.startsWith('ZSTOP,'))                         result = cmdZstop(input.slice('ZSTOP,'.length), priv);
-  else if (input.startsWith('ZENTRY,'))                        result = cmdZentry(input.slice('ZENTRY,'.length), priv);
-  else if (input.startsWith('ZPROG'))                          result = cmdZprog(input.slice('ZPROG').trim(), priv);
-  else if (input.startsWith('ZEND'))                           result = cmdZend(input.slice('ZEND').trim(), priv);
-  else                                                         result = cmdUnknown(input);
-
-  return [...echo, ...result, ''];
+function cmdHelp(priv) {
+  const lines = [
+    `ZTPF000I z/TPF OPERATOR COMMAND SUMMARY`,
+    `ZTPF000I ZSHOW E         — List ECB directory`,
+    `ZTPF000I ZSHOW P         — Show memory pool status`,
+    `ZTPF000I ZSHOW S         — Show system status`,
+    `ZTPF000I ZSHOW T         — Show transaction monitor`,
+    `ZTPF000I ZSHOW O         — Show active operators`,
+    `ZTPF000I ZSHOW V         — Show system version`,
+    `ZTPF000I ZTEST ENTRY,ecb — Test entry point response`,
+  ];
+  if (priv >= 2) {
+    lines.push(`ZTPF000I ZSTOP,RPRT      — Report stoppable entry points (SYSOP)`);
+    lines.push(`ZTPF000I ZSTOP,ecb       — Stop a specific entry point (SYSOP)`);
+    lines.push(`ZTPF000I ZENTRY ecb      — Manage entry point (SYSOP)`);
+    lines.push(`ZTPF000I ZPROG name      — Load program module (SYSOP)`);
+  }
+  if (priv >= 3) {
+    lines.push(`ZTPF000I ZEND CHECK      — Show what ZEND would stop (SYSPROG)`);
+    lines.push(`ZTPF000I ZEND QUIESCE    — Halt all transactions (SYSPROG)`);
+  }
+  return lines;
 }
 
-// ── TN3270 connection handler ──────────────────────────────────────────────
-let connCount = 0;
+// ── Screen builders ───────────────────────────────────────────────────────
+function screenLogon() {
+  const now = new Date();
+  const ts  = now.toLocaleTimeString('en-US',{hour12:false}) + ' ' +
+              now.toLocaleDateString('en-US');
+  return buildScreen(true, [
+    { row:0,  col:0,  fa: FA_PROTECTED },
+    { row:1,  col:1,  fa: FA_PROTECTED_HIGH, color: COL_GREEN, highlight: HL_INTENS },
+    { row:1,  col:2,  text: `z/TPF OPERATOR CONSOLE - ${SYSNAME}` },
+    { row:2,  col:1,  fa: FA_PROTECTED, color: COL_TURQ },
+    { row:2,  col:2,  text: `IBM Transaction Processing Facility (Simulated)` },
+    { row:4,  col:1,  fa: FA_PROTECTED, color: COL_WHITE },
+    { row:4,  col:2,  text: 'OPER ID  ==>' },
+    { row:4,  col:14, fa: FA_UNPROTECTED },
+    { row:4,  col:15, text: '        ', ic: true },
+    { row:4,  col:23, fa: FA_PROTECTED },
+    { row:6,  col:1,  fa: FA_PROTECTED, color: COL_WHITE },
+    { row:6,  col:2,  text: 'PASSWORD ==>' },
+    { row:6,  col:14, fa: 0x4C },
+    { row:6,  col:15, text: '        ' },
+    { row:6,  col:23, fa: FA_PROTECTED },
+    { row:9,  col:1,  fa: FA_PROTECTED, color: COL_YELLOW },
+    { row:9,  col:2,  text: 'Credentials: TPFOP01/TPF1 (OPER)  SYSOP01/SYS1 (SYSOP)  ADMIN01/ADMIN (SYSPROG)' },
+    { row:21, col:1,  fa: FA_PROTECTED, color: COL_BLUE },
+    { row:21, col:2,  text: `${ts}   PRESS ENTER TO LOGON` },
+  ]);
+}
 
-function handleConnection(socket) {
-  const id = ++connCount;
-  log(`[${id}] Connected from ${socket.remoteAddress}:${socket.remotePort}`);
+function screenLogonError(operId) {
+  return buildScreen(true, [
+    { row:0,  col:0,  fa: FA_PROTECTED },
+    { row:1,  col:1,  fa: FA_PROTECTED_HIGH, color: COL_GREEN, highlight: HL_INTENS },
+    { row:1,  col:2,  text: `z/TPF OPERATOR CONSOLE - ${SYSNAME}` },
+    { row:4,  col:1,  fa: FA_PROTECTED, color: COL_WHITE },
+    { row:4,  col:2,  text: 'OPER ID  ==>' },
+    { row:4,  col:14, fa: FA_UNPROTECTED },
+    { row:4,  col:15, text: '        ', ic: true },
+    { row:4,  col:23, fa: FA_PROTECTED },
+    { row:6,  col:1,  fa: FA_PROTECTED, color: COL_WHITE },
+    { row:6,  col:2,  text: 'PASSWORD ==>' },
+    { row:6,  col:14, fa: 0x4C },
+    { row:6,  col:15, text: '        ' },
+    { row:6,  col:23, fa: FA_PROTECTED },
+    { row:8,  col:1,  fa: FA_PROTECTED, color: COL_RED, highlight: HL_REVERSE },
+    { row:8,  col:2,  text: `ZTPF901E INVALID OPER ID OR PASSWORD: ${operId.toUpperCase()}` },
+    { row:21, col:1,  fa: FA_PROTECTED, color: COL_BLUE },
+    { row:21, col:2,  text: 'ENTER VALID CREDENTIALS AND PRESS ENTER' },
+  ]);
+}
 
-  let recvBuf            = Buffer.alloc(0);
-  let tn3270eMode        = false;
-  let negotiationComplete = false;
-  let currentScreen      = 'logon';
-  let operId             = '';
-  let operPriv           = 0;
-  let operRole           = '';
-  let outputLog          = [];
-  let loginAttempts      = 0;
+function screenConsole(operId, role, outputLog) {
+  const now  = new Date();
+  const ts   = now.toLocaleTimeString('en-US',{hour12:false});
+  const hdr  = `${SYSNAME}   ${ts}   ${operId.toUpperCase()} / ${role}   ENTER TPF COMMAND`;
 
-  // Initial TN3270E negotiation
-  socket.write(Buffer.from([
-    IAC, DO,   OPT_TN3270E,
-    IAC, DO,   OPT_BINARY,
-    IAC, WILL, OPT_BINARY,
-    IAC, DO,   OPT_EOR,
-    IAC, WILL, OPT_EOR,
-  ]));
+  const fields = [
+    { row:0,  col:0,  fa: FA_PROTECTED },
+    { row:0,  col:1,  fa: FA_PROTECTED_HIGH, color: COL_GREEN },
+    { row:0,  col:2,  text: hdr.slice(0,76) },
+    { row:1,  col:0,  fa: FA_PROTECTED, color: COL_TURQ },
+    { row:1,  col:1,  text: `${'─'.repeat(78)}` },
+  ];
 
-  socket.on('data', chunk => { recvBuf = Buffer.concat([recvBuf, chunk]); processBuffer(); });
-  socket.on('end',   () => log(`[${id}] Disconnected`));
-  socket.on('error', err => log(`[${id}] Error: ${err.message}`));
+  // Output log: rows 2–19, 18 lines max
+  const LOG_ROWS = 18;
+  const logLines = outputLog.slice(-LOG_ROWS);
+  for (let i = 0; i < LOG_ROWS; i++) {
+    const line = logLines[i] || '';
+    let color = COL_WHITE;
+    if (/ZTPF[89]\d{2}[EW]/.test(line)) color = COL_RED;
+    else if (/ZTPF[3][0-9]{2}W/.test(line)) color = COL_YELLOW;
+    else if (/ZTPF\d{3}I/.test(line))    color = COL_TURQ;
+    fields.push({ row: 2 + i, col: 0, fa: FA_PROTECTED, color });
+    fields.push({ row: 2 + i, col: 1, text: line.slice(0,78) });
+  }
 
-  function processBuffer() {
-    let i = 0;
-    while (i < recvBuf.length) {
-      if (recvBuf[i] !== IAC) { i++; continue; }
-      const cmd = recvBuf[i + 1];
-      if (cmd === undefined) break;
-      if (cmd === NOP) { i += 2; continue; }
-      if (cmd === EOR) {
-        const record = [];
-        for (let j = 0; j < i; j++) {
-          if (recvBuf[j] === IAC && recvBuf[j+1] === IAC) { record.push(0xFF); j++; }
-          else record.push(recvBuf[j]);
+  // Separator + command input
+  fields.push({ row:20, col:0, fa: FA_PROTECTED, color: COL_BLUE });
+  fields.push({ row:20, col:1, text: `${'─'.repeat(78)}` });
+  fields.push({ row:21, col:0,  fa: FA_PROTECTED, color: COL_YELLOW });
+  fields.push({ row:21, col:1,  text: `${operId.toUpperCase()} ==>` });
+  fields.push({ row:21, col:10, fa: FA_UNPROTECTED });
+  fields.push({ row:21, col:11, text: ' '.repeat(66), ic: true });
+  fields.push({ row:21, col:78, fa: FA_PROTECTED });
+  fields.push({ row:22, col:0,  fa: FA_PROTECTED, color: COL_BLUE });
+  fields.push({ row:22, col:1,  text: `PF3=LOGOFF  HELP=?` });
+
+  return buildScreen(true, fields);
+}
+
+// ── Extract field text from client write ─────────────────────────────────
+function extractInputText(data) {
+  let i = 3; // skip AID (1) + cursor address (2)
+  let fieldAddr = -1;
+  const fields = {};
+  while (i < data.length) {
+    const b = data[i];
+    if (b === ORDER_SBA && i + 2 < data.length) {
+      // Bridge uses raw 12-bit binary addressing (not 6-bit encoded)
+      fieldAddr = (data[i+1] << 8) | data[i+2];
+      if (!(fieldAddr in fields)) fields[fieldAddr] = [];
+      i += 3; continue;
+    }
+    if (b === ORDER_IC) { i++; continue; }
+    if (b >= 0x40 || b === 0x00) {
+      // Accumulate all bytes under the current field's start address
+      if (fieldAddr >= 0) fields[fieldAddr].push(b);
+      i++;
+    } else { i++; }
+  }
+  // Return fields in ascending address order, space-separated:
+  //   logon  → "TPFOP01 TPF1"   (split gives id + password)
+  //   console → "ZSHOW E"        (passed straight to dispatchCommand)
+  const addrs = Object.keys(fields).map(Number).sort((a, b) => a - b);
+  const result = [];
+  for (const a of addrs) {
+    const s = fields[a].map(b => EBCDIC_TO_ASCII[b])
+                       .filter(c => c >= 0x20 && c < 0x7F)
+                       .map(c => String.fromCharCode(c)).join('').trim();
+    if (s.length > 0) result.push(s);
+  }
+  return result.join(' ');
+}
+
+// ── TN3270E negotiation state ─────────────────────────────────────────────
+function createSession(socket) {
+  let tn3270e = false;
+  let negotiated = false;
+  let loggedIn   = false;
+  let operId     = '';
+  let role       = 'OPER';
+  let priv       = 1;
+  let outputLog  = [];
+
+  function send(buf) {
+    try { if (!socket.destroyed) socket.write(buf); } catch {}
+  }
+
+  function sendScreen(screenBuf) {
+    let payload;
+    if (tn3270e) {
+      // TN3270E header: DATA-TYPE=0x00, REQUEST=0x00, RESPONSE=0x00, SEQ=0x0000
+      const hdr = Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00]);
+      payload   = Buffer.concat([hdr, screenBuf]);
+    } else {
+      payload = screenBuf;
+    }
+    send(wrapEOR(payload));
+  }
+
+  function showLogon()        { sendScreen(screenLogon()); }
+  function showLogonError(id) { sendScreen(screenLogonError(id)); }
+  function showConsole()      { sendScreen(screenConsole(operId, role, outputLog)); }
+
+  function addOutput(lines) {
+    for (const l of lines) outputLog.push(l);
+    // Keep at most 200 lines of history
+    if (outputLog.length > 200) outputLog = outputLog.slice(-200);
+  }
+
+  function handleCommand(raw) {
+    if (!raw) return;
+    const lines = dispatchCommand(raw, priv);
+    addOutput(lines);
+    showConsole();
+  }
+
+  // ── Negotiation ──────────────────────────────────────────────────────
+  function startNegotiation() {
+    send(Buffer.from([
+      IAC, DO,   OPT_BINARY,
+      IAC, WILL, OPT_BINARY,
+      IAC, DO,   OPT_EOR,
+      IAC, WILL, OPT_EOR,
+      IAC, DO,   OPT_TN3270E,
+    ]));
+  }
+
+  let buf = Buffer.alloc(0);
+
+  function onData(chunk) {
+    buf = Buffer.concat([buf, chunk]);
+    if (LOG) console.log('←', chunk.toString('hex'));
+    parse();
+  }
+
+  function parse() {
+    while (buf.length > 0) {
+      // IAC sequence
+      if (buf[0] === IAC) {
+        if (buf.length < 2) return;
+        const cmd = buf[1];
+        if (cmd === SB) {
+          const seEnd = buf.indexOf(Buffer.from([IAC, SE]));
+          if (seEnd < 0) return;
+          const sb = buf.slice(2, seEnd);
+          buf = buf.slice(seEnd + 2);
+          handleSB(sb);
+          continue;
         }
-        recvBuf = recvBuf.slice(i + 2);
-        if (record.length > 0) handle3270Record(Buffer.from(record));
-        i = 0; continue;
-      }
-      if ([DO, DONT, WILL, WONT].includes(cmd)) {
-        if (i + 2 >= recvBuf.length) break;
-        handleTelnetCmd(cmd, recvBuf[i + 2]);
-        recvBuf = Buffer.concat([recvBuf.slice(0, i), recvBuf.slice(i + 3)]);
+        if (buf.length < 3) return;
+        const opt = buf[2];
+        buf = buf.slice(3);
+        handleOption(cmd, opt);
         continue;
       }
-      if (cmd === SB) {
-        const seIdx = findSE(i + 2);
-        if (seIdx === -1) break;
-        handleSubneg(recvBuf.slice(i + 2, seIdx));
-        recvBuf = Buffer.concat([recvBuf.slice(0, i), recvBuf.slice(seIdx + 2)]);
-        continue;
-      }
-      i += 2;
+
+      // EOR-terminated 3270 data
+      const eorIdx = findEOR(buf);
+      if (eorIdx < 0) return;
+      const frame = buf.slice(0, eorIdx);
+      buf = buf.slice(eorIdx + 2); // skip IAC EOR
+      handleFrame(frame);
     }
   }
 
-  function findSE(start) {
-    for (let j = start; j < recvBuf.length - 1; j++) {
-      if (recvBuf[j] === IAC && recvBuf[j+1] === SE) return j;
+  function findEOR(b) {
+    for (let i = 0; i < b.length - 1; i++) {
+      if (b[i] === IAC && b[i+1] === EOR) return i;
     }
     return -1;
   }
 
-  function handleTelnetCmd(cmd, opt) {
-    if (opt === OPT_TN3270E) {
-      if (cmd === WILL) {
-        tn3270eMode = true;
-        socket.write(Buffer.from([
-          IAC, SB, OPT_TN3270E, TN3E_DEVICE_TYPE, TN3E_REQUEST,
-          ...Buffer.from('IBM-3278-2'), IAC, SE,
-        ]));
-      } else if (cmd === WONT) {
-        tn3270eMode = false;
-        socket.write(Buffer.from([IAC, SB, OPT_TTYPE, TN3E_SEND, IAC, SE]));
-      }
-      return;
+  function handleOption(cmd, opt) {
+    if (cmd === WILL && opt === OPT_TN3270E) {
+      // Send DEVICE-TYPE REQUEST
+      const devName = toEbcdic('IBM-3278-2-E');
+      const luBuf   = toEbcdic(LU_NAME);
+      send(Buffer.from([
+        IAC, SB, OPT_TN3270E, TN3E_DEVICE_TYPE, TN3E_REQUEST,
+        ...devName, 0x01, ...luBuf, IAC, SE,
+      ]));
     }
-    if (opt === OPT_TTYPE && cmd === WILL) socket.write(Buffer.from([IAC, SB, OPT_TTYPE, TN3E_SEND, IAC, SE]));
-    if (opt === OPT_BINARY && cmd === WILL) socket.write(Buffer.from([IAC, DO, OPT_BINARY]));
-    if (opt === OPT_EOR    && cmd === WILL) socket.write(Buffer.from([IAC, DO, OPT_EOR]));
+    if (cmd === WILL && opt === OPT_BINARY)  send(Buffer.from([IAC, DO,   OPT_BINARY]));
+    if (cmd === DO   && opt === OPT_BINARY)  send(Buffer.from([IAC, WILL, OPT_BINARY]));
+    if (cmd === DO   && opt === OPT_EOR)     send(Buffer.from([IAC, WILL, OPT_EOR]));
+    if (cmd === WILL && opt === OPT_TTYPE)   send(Buffer.from([IAC, DONT, OPT_TTYPE]));
+    if (cmd === WONT && opt === OPT_TN3270E) { /* classic TN3270 fallback */ }
   }
 
-  function handleSubneg(data) {
-    const opt = data[0], func = data[1];
-    if (opt === OPT_TN3270E) {
-      if (func === TN3E_DEVICE_TYPE && data[2] === TN3E_IS) {
-        socket.write(Buffer.from([IAC, SB, OPT_TN3270E, TN3E_FUNCTIONS, TN3E_REQUEST, IAC, SE]));
-      }
-      if (func === TN3E_DEVICE_TYPE && data[2] === TN3E_REQUEST) {
-        socket.write(Buffer.from([IAC, SB, OPT_TN3270E, TN3E_DEVICE_TYPE, TN3E_IS, ...Buffer.from('IBM-3278-2'), IAC, SE]));
-      }
-      if (func === TN3E_FUNCTIONS && (data[2] === TN3E_IS || data[2] === TN3E_REQUEST)) {
-        if (data[2] === TN3E_REQUEST) {
-          socket.write(Buffer.from([IAC, SB, OPT_TN3270E, TN3E_FUNCTIONS, TN3E_IS, ...data.slice(3), IAC, SE]));
-        }
-        if (!negotiationComplete) { negotiationComplete = true; setImmediate(() => sendCurrentScreen()); }
-      }
+  function handleSB(sb) {
+    if (sb[0] !== OPT_TN3270E) return;
+    const type = sb[1];
+
+    if (type === TN3E_DEVICE_TYPE && sb[2] === TN3E_IS) {
+      tn3270e = true;
+      // Client confirmed device type — send FUNCTIONS REQUEST
+      send(Buffer.from([IAC, SB, OPT_TN3270E, TN3E_FUNCTIONS, TN3E_REQUEST, IAC, SE]));
     }
-    if (opt === OPT_TTYPE && func === TN3E_IS) {
-      if (!negotiationComplete) { negotiationComplete = true; setImmediate(() => sendCurrentScreen()); }
+
+    if (type === TN3E_DEVICE_TYPE && sb[2] === TN3E_REQUEST) {
+      // Client requesting device type — respond with IS
+      send(Buffer.from([
+        IAC, SB, OPT_TN3270E, TN3E_DEVICE_TYPE, TN3E_IS,
+        ...toEbcdic('IBM-3278-2'), IAC, SE,
+      ]));
     }
-  }
 
-  function handle3270Record(data) {
-    if (data.length === 0) return;
-    const aid = data[0];
-    debug(`[${id}] ← AID 0x${aid.toString(16).toUpperCase()} screen='${currentScreen}'`);
-
-    let inputText = '';
-    if (data.length > 3) {
-      let j = 3;
-      while (j < data.length) {
-        const b = data[j];
-        if (b === 0x11 && j + 2 < data.length) { inputText += ' '; j += 3; }
-        else if (b >= 0x40 || b === 0x00) { inputText += String.fromCharCode(EBCDIC_TO_ASCII[b] || 0x20); j++; }
-        else j++;
-      }
-      inputText = inputText.trim();
+    if (type === TN3E_FUNCTIONS && sb[2] === TN3E_IS) {
+      // Client reported its capabilities — negotiation complete, send first screen
+      if (!negotiated) { negotiated = true; setImmediate(() => showLogon()); }
     }
-    debug(`[${id}] Input: '${inputText}'`);
 
-    switch (currentScreen) {
-      case 'logon':
-      case 'logonError':
-        if (aid === AID_ENTER) {
-          const parts     = inputText.split(/\s+/).filter(Boolean);
-          const enteredId = (parts[0] || '').toUpperCase().slice(0, 8);
-          const enteredPw = parts[1] || '';
-          const cred      = CREDENTIALS[enteredId];
-          if (cred && enteredPw === cred.password) {
-            loginAttempts = 0;
-            operId   = enteredId;
-            operPriv = cred.priv;
-            operRole = cred.role;
-            log(`[${id}] Logon success: ${operId} [${operRole}]`);
-            const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
-            outputLog = [
-              `ZTPF000I LOGON ACCEPTED - OPERATOR ${operId} [${operRole}]`,
-              `ZTPF001I SESSION STARTED AT ${ts}`,
-              `ZTPF002I SYSTEM: ${SYSNAME}  RELEASE: ${RELEASE}`,
-              ``,
-              `ZTPF003I TYPE ZSHOW S FOR SYSTEM STATUS`,
-              `ZTPF004I TYPE ZSHOW E TO LIST ALL ENTRY POINTS`,
-              ``,
-            ];
-            currentScreen = 'console';
-          } else {
-            loginAttempts++;
-            log(`[${id}] Logon failed for '${enteredId}' — attempt ${loginAttempts}`);
-            currentScreen = 'logonError';
-          }
-          sendCurrentScreen();
-        } else if (aid === AID_PF3) {
-          socket.end();
-        }
-        break;
-
-      case 'console':
-        if (aid === AID_ENTER) {
-          const rawCmd = inputText.replace(/\s+/g, ' ').trim();
-          if (rawCmd.toUpperCase() === 'LOGOFF' || rawCmd.toUpperCase() === 'LOGOFF,HOLD') {
-            log(`[${id}] Operator ${operId} logged off`);
-            socket.end(); return;
-          }
-          if (rawCmd) {
-            const lines = dispatchCommand(rawCmd, operPriv);
-            outputLog.push(...lines);
-            // Keep log bounded to 500 lines
-            if (outputLog.length > 500) outputLog = outputLog.slice(-500);
-            log(`[${id}] CMD: '${rawCmd}'`);
-          }
-          sendCurrentScreen();
-        } else if (aid === AID_PF3) {
-          log(`[${id}] Operator ${operId} logged off (PF3)`);
-          socket.end();
-        } else if (aid === AID_PF12 || aid === AID_CLEAR) {
-          outputLog = [`ZTPF010I CONSOLE LOG CLEARED BY ${operId}`, ``];
-          sendCurrentScreen();
-        }
-        break;
+    if (type === TN3E_FUNCTIONS && sb[2] === TN3E_REQUEST) {
+      // Client requesting functions — echo back and send screen
+      const requested = sb.slice(3);
+      send(Buffer.from([IAC, SB, OPT_TN3270E, TN3E_FUNCTIONS, TN3E_IS, ...requested, IAC, SE]));
+      if (!negotiated) { negotiated = true; setImmediate(() => showLogon()); }
     }
   }
 
-  function sendCurrentScreen() {
-    let ds;
-    switch (currentScreen) {
-      case 'logon':      ds = screenLogon();                            break;
-      case 'logonError': ds = screenLogonError(operId);                 break;
-      case 'console':    ds = screenConsole(operId, operRole, outputLog); break;
-      default:           ds = screenLogon();
+  function handleFrame(frame) {
+    // Client→server data is always raw 3270 — no TN3270E header to strip.
+    const data = frame;
+    // Un-escape IAC IAC
+    const unesc = [];
+    for (let i = 0; i < data.length; i++) {
+      if (data[i] === IAC && data[i+1] === IAC) { unesc.push(IAC); i++; }
+      else unesc.push(data[i]);
     }
-    if (tn3270eMode) ds = Buffer.concat([Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00]), ds]);
-    socket.write(wrapEOR(ds));
-    log(`[${id}] → Screen: ${currentScreen}`);
+    const d = Buffer.from(unesc);
+    if (d.length < 1) return;
+
+    const aid = d[0];
+
+    if (aid === AID_CLEAR) { showConsole(); return; }
+    if (aid === AID_PF3)   { socket.end(); return; }
+
+    if (aid !== AID_ENTER) return;
+
+    if (!loggedIn) {
+      // Parse oper id from field data
+      const entered = extractInputText(d).split(/\s+/);
+      const id   = entered[0]?.toUpperCase() || '';
+      const pass = entered[1] || '';
+      const cred = CREDENTIALS[id];
+      if (cred && cred.pass === pass) {
+        loggedIn = true;
+        operId   = id;
+        role     = cred.role;
+        priv     = cred.priv;
+        addOutput([
+          `ZTPF001I LOGON ACCEPTED — ${id} — ROLE: ${role}   PRIV: ${priv}`,
+          `ZTPF001I ${SYSNAME} READY`,
+        ]);
+        showConsole();
+      } else {
+        showLogonError(id || '?');
+      }
+    } else {
+      const cmd = extractInputText(d);
+      handleCommand(cmd);
+    }
   }
+
+  socket.on('data', onData);
+  socket.on('error', () => {});
+  socket.on('close', () => {});
+  startNegotiation();
 }
 
-function log(msg)   { console.log(`${new Date().toISOString()} [INFO ] ${msg}`); }
-function debug(msg) { if (LOG) console.log(`${new Date().toISOString()} [DEBUG] ${msg}`); }
+// ── Server ────────────────────────────────────────────────────────────────
+const server = net.createServer(socket => createSession(socket));
 
-const server = net.createServer(handleConnection);
 server.listen(PORT, '0.0.0.0', () => {
-  log('─────────────────────────────────────────────────────');
-  log(`  WebTerm/3270 Mock z/TPF Daemon`);
-  log(`  Listening on  tcp://0.0.0.0:${PORT}`);
-  log(`  System ID     ${SYSNAME}`);
-  log(`  Release       ${RELEASE}`);
-  log(`  Credentials   TPFOP01/TPF1 (OPER) | SYSOP01/SYS1 (SYSOP) | ADMIN01/ADMIN (SYSPROG)`);
-  log('─────────────────────────────────────────────────────');
+  console.log('─────────────────────────────────────────────────────');
+  console.log('  WebTerm/3270 Mock z/TPF Daemon');
+  console.log(`  Listening on  tcp://0.0.0.0:${PORT}`);
+  console.log(`  System ID     ${SYSNAME}`);
+  console.log(`  LU Name       ${LU_NAME}`);
+  console.log('  Protocol      TN3270E + classic TN3270 fallback');
+  console.log('  Screens       Logon → z/TPF Operator Console');
+  console.log('  Credentials   TPFOP01/TPF1  SYSOP01/SYS1  ADMIN01/ADMIN');
+  console.log('─────────────────────────────────────────────────────');
 });
-
-server.on('error', err => {
-  if (err.code === 'EADDRINUSE') log(`ERROR: Port ${PORT} already in use`);
-  else log(`ERROR: ${err.message}`);
-  process.exit(1);
-});
-
-process.on('SIGINT',  () => { log('Shutting down...'); server.close(() => process.exit(0)); });
-process.on('SIGTERM', () => { log('Shutting down...'); server.close(() => process.exit(0)); });

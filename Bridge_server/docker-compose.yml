@@ -39,6 +39,8 @@ services:
 
     depends_on:
       - mock-lpar
+      - mock-zvm
+      - mock-tpf
 
     networks:
       - tn3270-net
@@ -73,7 +75,30 @@ services:
         limits:
           memory: 64M
           cpus: "0.25"
-#Mock LPAR  lightweight TN3270 server for testing and demos
+# Mock z/TPF — operator console simulation, port 3274
+  mock-tpf:
+    build:
+      context: .
+      dockerfile: mock-lpar/Dockerfile.mock-tpf
+    container_name: mock-tpf
+    restart: unless-stopped
+
+    environment:
+      MOCK_PORT:  "3274"
+      MOCK_SYSID: "TPFSYS1"
+      MOCK_LU:    "TPFLU01"
+      LOG_LEVEL:  "debug"
+
+    networks:
+      - tn3270-net
+
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+          cpus: "0.25"
+
+# Mock LPAR  lightweight TN3270 server for testing and demos
   mock-lpar:
     build:
       context: .                          # project root COPY paths are relative to here
