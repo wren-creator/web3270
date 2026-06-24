@@ -19,7 +19,8 @@ export function sendKey(aid, fields = []) {
     if (cmdRow) {
       const hasNondisplay = cmdRow.some(c => c && c.nondisplay);
       if (!hasNondisplay) {
-        const cmd = cmdRow.map(c => {
+        const firstInput = cmdRow.findIndex(c => c && !c.protected);
+        const cmd = firstInput === -1 ? '' : cmdRow.slice(firstInput).map(c => {
           if (!c || c.protected) return ' ';
           return (c.char && c.char !== '\x00') ? c.char : ' ';
         }).join('').trimEnd();
