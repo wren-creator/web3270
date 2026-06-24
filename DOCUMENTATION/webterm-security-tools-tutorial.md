@@ -923,6 +923,168 @@ All three Recon tools share a single CSV export via **↓ Export all Recon resul
 
 ---
 
+## Part 2O — In-Transit Encryption Monitor (Wave 12)
+
+Classic TN3270 runs over raw TCP on port 23 — no encryption, no integrity protection. Every keystroke, every screen update, every RACF password and DB2 query crosses the wire in plaintext. TN3270E on port 992 adds TLS, but legacy port-23 connections, misconfigured TLS, or admin oversight leaves sessions exposed. The In-Transit Monitor makes this visible by capturing traffic with TLS state and surfacing plaintext data as "exposed bytes."
+
+---
+
+### Location
+
+Security panel → IN-TRANSIT MONITOR (topmost section, above RECON TOOLS)
+
+---
+
+### Session banner
+
+The banner at the top of the section reflects the active session's TLS state immediately on refresh:
+
+| Banner | Meaning |
+|---|---|
+| Red — ⚠ PLAINTEXT SESSION | TN3270 on port 23 or TLS negotiation failed — all data unencrypted |
+| Green — ✓ ENCRYPTED | TLS negotiated — shows version (TLSv1.2, TLSv1.3) |
+
+The OIA bar TLS field shows the same value: `3270` = plaintext, `TLSv1.3` = encrypted. Both update on connection.
+
+---
+
+### Traffic log
+
+Click **↺ Refresh** to fetch the server-side traffic log. Each entry shows:
+
+| Column | Content |
+|---|---|
+| Time | HH:MM:SS of event |
+| Direction | `client→host` (keystrokes) or `host→client` (screen updates) |
+| AID | Key sent (ENTER, PF3, etc.) or `IND$FILE` for transfers |
+| TLS state | `⚠ PLAIN` (red) or `🔒 TLSv1.x` (green) |
+
+For **plaintext entries**, the captured screen text appears below the row in a red box — the literal data that crossed the wire. This is what `tcpdump` or Wireshark would capture on the same network segment.
+
+---
+
+### IND$FILE transfer logging
+
+File uploads and downloads via IND$FILE are logged as individual events tagged **TRANSFER** in amber. On a plaintext session, the log entry shows the transfer byte count — the entire file content traversed the wire unencrypted. On a TLS session, the entry still appears but shows 🔒 encrypted.
+
+This makes the exposure concrete: "PAYROLL.MASTER.FILE download: 48,320 bytes — PLAIN" is a finding, not a hypothetical.
+
+---
+
+### How TLS state is captured
+
+The bridge server stores the negotiated TLS version when the TCP connection completes (`session.tlsVersion`). Every subsequent `logTraffic()` call tags the entry with that value. Entries logged before TLS negotiation completes (rare) fall back to `PLAIN`. The TLS version comes from Node.js's `tls.TLSSocket.getProtocol()`.
+
+---
+
+### CSV export
+
+Click **↓ Export CSV** to download the full traffic log with columns:
+
+| Column | Values |
+|---|---|
+| `timestamp` | ISO 8601 |
+| `wsId` | WebSocket session ID |
+| `direction` | `client→host` / `host→client` |
+| `aid` | AID key or `IND$FILE` |
+| `tls` | `PLAIN`, `TLSv1.2`, `TLSv1.3` |
+| `plaintext_exposed` | `YES` / `NO` |
+| `screenText` | Captured screen content |
+
+Filter `plaintext_exposed=YES` in a spreadsheet to produce the evidence table for a pentest report.
+
+---
+
+### Teaching scenario
+
+Connect to the same mainframe host twice — once on port 23 (TN3270, no TLS) and once on port 992 (TN3270E, TLS). Switch between sessions. Open the IN-TRANSIT MONITOR and click Refresh after each. Show students the red vs green banner switching, then compare the traffic logs: the port-23 session shows all screen data as exposed bytes; the port-992 session shows 🔒 on every entry. Run an IND$FILE download on each and compare the TRANSFER entries. The point is visceral — the same file, one session safe, one session exposed.
+
+> **Note:** The traffic log is server-side memory (max 1000 entries, FIFO). Click **✕ Clear Log** between test scenarios to keep the view clean.
+
+---
+
+## Part 2N — Encryption At Rest Audit Scanner (Wave 12)
+
+Most z/OS shops have enabled DFSMS at-rest encryption for new datasets but never went back to encrypt older ones. The Encryption Audit Scanner surfaces exactly this gap: it runs `LISTCAT ENT(dsname) ALL` against a list of datasets and looks for the `ENCRYPTION-KEY-LABEL` field that indicates DFSMS encryption is active.
+
+---
+
+### How z/OS at-rest encryption works
+
+z/OS DFSMS encryption uses the IBM ICSF (Integrated Cryptographic Service Facility) subsystem. When a dataset is created with an encryption key label (via the SMS data class or `DFSMS PARMLIB`), all writes are encrypted in hardware before hitting disk. The key label appears in the IDCAMS catalog entry and is visible in `LISTCAT ENT() ALL` output.
+
+If the `ENCRYPTION-KEY-LABEL` field is absent from the catalog entry — the dataset is in plaintext on disk. No key label = no encryption, regardless of what the security policy says.
+
+---
+
+### Location
+
+Security panel → RECON TOOLS → ENCRYPTION AUDIT SCANNER (below Dataset Recon Scanner)
+
+---
+
+### Workflow
+
+**Step 1 — Get a dataset list**
+
+Two options:
+- Run the Dataset Recon Scanner first, then click **⬆ Import Flagged** to pull all sensitivity-flagged dataset names into the audit textarea
+- Paste names manually (one fully qualified dataset name per line)
+
+**Step 2 — Run the audit**
+
+Click **▶ AUDIT**. For each dataset the tool issues:
+```
+LISTCAT ENT(dsname) ALL
+```
+
+The full IDCAMS catalog record is parsed for encryption indicators.
+
+**Step 3 — Read the results**
+
+| Risk | Condition |
+|---|---|
+| CRITICAL | Sensitive name pattern (PASSWORD, KEY, CERT, TOKEN, SSN, CRED) + no encryption |
+| HIGH | Production/system dataset (PROD, PAYROLL, FINANCE, PARMLIB, SYS1.*) + no encryption |
+| MEDIUM | Any unencrypted dataset |
+| INFO | Encrypted — key label shown in KEY LABEL column |
+| ERR | LISTCAT failed — dataset not found or not catalogued |
+
+Results sort CRITICAL → HIGH → MEDIUM → INFO automatically.
+
+---
+
+### What the scanner detects
+
+The parser looks for two patterns in LISTCAT ALL output:
+
+1. `ENCRYPTION-KEY-LABEL - keyname` — present on DFSMS-encrypted datasets; the key label identifies which ICSF key protects the data
+2. `ENCRYPTED YES/NO` — present on some z/OS releases
+
+Absence of both = unencrypted.
+
+---
+
+### Why the import-from-recon workflow matters
+
+The two-stage approach (Dataset Recon → Encryption Audit) mirrors a real attacker's process:
+
+1. Map the data estate with LISTCAT LEVEL() — find every dataset under high-value prefixes
+2. Flag sensitive-named datasets from the results
+3. Audit only the flagged ones for encryption — avoid running LISTCAT ALL on hundreds of datasets
+
+This is also the correct workflow for a compliance audit: prove that datasets matching your data classification policy are encrypted, with evidence.
+
+---
+
+### Teaching scenario
+
+Run Dataset Recon on prefixes PAYROLL, FINANCE, HR. Import the flagged results into the Encryption Audit Scanner. Run the audit. In a typical non-hardened z/OS lab environment, most or all results will show as CRITICAL or HIGH — sensitive names, no encryption. This demonstrates concretely that "we have RACF protecting access" and "the data is encrypted at rest" are two separate questions, and most shops only answer the first one.
+
+> **Note:** Running LISTCAT against datasets you do not own may be logged by RACF SMF records. Always operate under written authorization.
+
+---
+
 ## Part 2L — DB2 Security Tools
 
 Wave 10 adds three DB2-focused tools to the Security panel under a dedicated **DB2 TOOLS** section. All three operate from a TSO READY prompt and require no SPUFI dataset configuration — they issue standard TSO and RACF commands through the live terminal session.
