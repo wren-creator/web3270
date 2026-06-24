@@ -1159,6 +1159,60 @@ const _WALKTHROUGHS = [
     ],
   },
 
+  // ── Transit 1: In-Transit Encryption Monitor ─────────────────────
+  {
+    id:       'transit-encryption',
+    category: 'security',
+    title:    'In-Transit Encryption Monitor',
+    desc:     'See the TLS state of the active session and inspect captured traffic — showing what an on-path attacker sees when TN3270 runs without TLS.',
+    steps: [
+      {
+        title: 'Why TN3270 in-transit exposure matters',
+        body:  'Classic TN3270 runs over raw TCP on port 23. No TLS, no encryption — every keystroke, every screen, every RACF password and DB2 query crosses the wire in plaintext. TN3270E on port 992 adds TLS, but many shops still connect on port 23 for legacy compatibility, or have TLS misconfigured. This tool makes that exposure visible.',
+        highlight: 'transitBanner',
+        autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel and find IN-TRANSIT MONITOR',
+        body:  'Click 🔒 in the OIA bar and enter the security password. The IN-TRANSIT MONITOR section is at the top of the Security panel, above RECON TOOLS. The banner immediately shows whether the active session is encrypted or plaintext.',
+        highlight: 'secBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Read the session banner',
+        body:  'The banner reflects the current active session\'s TLS state. Red banner = PLAINTEXT — the TN3270 session is on port 23 or TLS negotiation was skipped. Green banner = ENCRYPTED — shows the TLS version (TLSv1.2, TLSv1.3). The OIA bar "TLS" field shows the same value: "3270" means plaintext.',
+        highlight: 'transitBanner',
+        autoFn: 'transitRefresh',
+        autoLabel: 'Refresh and show my session state',
+      },
+      {
+        title: 'Fetch the traffic log',
+        body:  'Click ↺ Refresh to load the server-side traffic log. Every key sent and screen received is listed with direction, AID key name, TLS state at capture time, and a plaintext-exposed data preview for unencrypted entries.',
+        highlight: 'transitLog',
+        autoFn: null,
+      },
+      {
+        title: 'Read the traffic entries',
+        body:  'Red left border = plaintext event. Green left border = encrypted. For plaintext entries, the screen data captured at that moment appears below the row in red — this is what an attacker with tcpdump on the same network sees verbatim. Entries marked TRANSFER are IND$FILE upload/download events — file contents traverse the wire in the same plaintext stream.',
+        highlight: 'transitLog',
+        autoFn: null,
+      },
+      {
+        title: 'IND$FILE transfer exposure',
+        body:  'When a file is uploaded or downloaded via IND$FILE on a plaintext session, the transfer appears as a dedicated log entry tagged TRANSFER. The byte count shown is the total file data that crossed the wire unencrypted — the actual file content, not just screen text. On a TLS session, this entry still appears but shows 🔒 encrypted.',
+        highlight: 'transitLog',
+        autoFn: null,
+      },
+      {
+        title: 'Export for evidence',
+        body:  'Click ↓ Export CSV to download the traffic log with a plaintext_exposed column — YES for every event on a plaintext session, NO for encrypted. Import into a spreadsheet and filter plaintext_exposed=YES to produce the evidence list for a pentest finding.',
+        highlight: 'transitLog',
+        autoFn: 'transitExportCsv',
+        autoLabel: 'Export traffic CSV for me',
+      },
+    ],
+  },
+
   // ── Recon 5: Encryption Audit Scanner ────────────────────────────
   {
     id:       'recon-encrypt-audit',

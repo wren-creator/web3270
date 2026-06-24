@@ -923,6 +923,86 @@ All three Recon tools share a single CSV export via **↓ Export all Recon resul
 
 ---
 
+## Part 2O — In-Transit Encryption Monitor (Wave 12)
+
+Classic TN3270 runs over raw TCP on port 23 — no encryption, no integrity protection. Every keystroke, every screen update, every RACF password and DB2 query crosses the wire in plaintext. TN3270E on port 992 adds TLS, but legacy port-23 connections, misconfigured TLS, or admin oversight leaves sessions exposed. The In-Transit Monitor makes this visible by capturing traffic with TLS state and surfacing plaintext data as "exposed bytes."
+
+---
+
+### Location
+
+Security panel → IN-TRANSIT MONITOR (topmost section, above RECON TOOLS)
+
+---
+
+### Session banner
+
+The banner at the top of the section reflects the active session's TLS state immediately on refresh:
+
+| Banner | Meaning |
+|---|---|
+| Red — ⚠ PLAINTEXT SESSION | TN3270 on port 23 or TLS negotiation failed — all data unencrypted |
+| Green — ✓ ENCRYPTED | TLS negotiated — shows version (TLSv1.2, TLSv1.3) |
+
+The OIA bar TLS field shows the same value: `3270` = plaintext, `TLSv1.3` = encrypted. Both update on connection.
+
+---
+
+### Traffic log
+
+Click **↺ Refresh** to fetch the server-side traffic log. Each entry shows:
+
+| Column | Content |
+|---|---|
+| Time | HH:MM:SS of event |
+| Direction | `client→host` (keystrokes) or `host→client` (screen updates) |
+| AID | Key sent (ENTER, PF3, etc.) or `IND$FILE` for transfers |
+| TLS state | `⚠ PLAIN` (red) or `🔒 TLSv1.x` (green) |
+
+For **plaintext entries**, the captured screen text appears below the row in a red box — the literal data that crossed the wire. This is what `tcpdump` or Wireshark would capture on the same network segment.
+
+---
+
+### IND$FILE transfer logging
+
+File uploads and downloads via IND$FILE are logged as individual events tagged **TRANSFER** in amber. On a plaintext session, the log entry shows the transfer byte count — the entire file content traversed the wire unencrypted. On a TLS session, the entry still appears but shows 🔒 encrypted.
+
+This makes the exposure concrete: "PAYROLL.MASTER.FILE download: 48,320 bytes — PLAIN" is a finding, not a hypothetical.
+
+---
+
+### How TLS state is captured
+
+The bridge server stores the negotiated TLS version when the TCP connection completes (`session.tlsVersion`). Every subsequent `logTraffic()` call tags the entry with that value. Entries logged before TLS negotiation completes (rare) fall back to `PLAIN`. The TLS version comes from Node.js's `tls.TLSSocket.getProtocol()`.
+
+---
+
+### CSV export
+
+Click **↓ Export CSV** to download the full traffic log with columns:
+
+| Column | Values |
+|---|---|
+| `timestamp` | ISO 8601 |
+| `wsId` | WebSocket session ID |
+| `direction` | `client→host` / `host→client` |
+| `aid` | AID key or `IND$FILE` |
+| `tls` | `PLAIN`, `TLSv1.2`, `TLSv1.3` |
+| `plaintext_exposed` | `YES` / `NO` |
+| `screenText` | Captured screen content |
+
+Filter `plaintext_exposed=YES` in a spreadsheet to produce the evidence table for a pentest report.
+
+---
+
+### Teaching scenario
+
+Connect to the same mainframe host twice — once on port 23 (TN3270, no TLS) and once on port 992 (TN3270E, TLS). Switch between sessions. Open the IN-TRANSIT MONITOR and click Refresh after each. Show students the red vs green banner switching, then compare the traffic logs: the port-23 session shows all screen data as exposed bytes; the port-992 session shows 🔒 on every entry. Run an IND$FILE download on each and compare the TRANSFER entries. The point is visceral — the same file, one session safe, one session exposed.
+
+> **Note:** The traffic log is server-side memory (max 1000 entries, FIFO). Click **✕ Clear Log** between test scenarios to keep the view clean.
+
+---
+
 ## Part 2N — Encryption At Rest Audit Scanner (Wave 12)
 
 Most z/OS shops have enabled DFSMS at-rest encryption for new datasets but never went back to encrypt older ones. The Encryption Audit Scanner surfaces exactly this gap: it runs `LISTCAT ENT(dsname) ALL` against a list of datasets and looks for the `ENCRYPTION-KEY-LABEL` field that indicates DFSMS encryption is active.
