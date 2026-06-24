@@ -595,21 +595,31 @@ function createSession(socket) {
   function handleSB(sb) {
     if (sb[0] !== OPT_TN3270E) return;
     const type = sb[1];
+
     if (type === TN3E_DEVICE_TYPE && sb[2] === TN3E_IS) {
       tn3270e = true;
-      // Confirm FUNCTIONS IS BIND-IMAGE DATA-STREAM
+      // Client confirmed device type — send FUNCTIONS REQUEST
+      send(Buffer.from([IAC, SB, OPT_TN3270E, TN3E_FUNCTIONS, TN3E_REQUEST, IAC, SE]));
+    }
+
+    if (type === TN3E_DEVICE_TYPE && sb[2] === TN3E_REQUEST) {
+      // Client requesting device type — respond with IS
       send(Buffer.from([
-        IAC, SB, OPT_TN3270E, TN3E_FUNCTIONS, TN3E_IS,
-        0x00, 0x02,
-        IAC, SE,
+        IAC, SB, OPT_TN3270E, TN3E_DEVICE_TYPE, TN3E_IS,
+        ...toEbcdic('IBM-3278-2'), IAC, SE,
       ]));
     }
+
+    if (type === TN3E_FUNCTIONS && sb[2] === TN3E_IS) {
+      // Client reported its capabilities — negotiation complete, send first screen
+      if (!negotiated) { negotiated = true; setImmediate(() => showLogon()); }
+    }
+
     if (type === TN3E_FUNCTIONS && sb[2] === TN3E_REQUEST) {
-      // Client confirmed — we can now send the first screen
-      if (!negotiated) {
-        negotiated = true;
-        showLogon();
-      }
+      // Client requesting functions — echo back and send screen
+      const requested = sb.slice(3);
+      send(Buffer.from([IAC, SB, OPT_TN3270E, TN3E_FUNCTIONS, TN3E_IS, ...requested, IAC, SE]));
+      if (!negotiated) { negotiated = true; setImmediate(() => showLogon()); }
     }
   }
 
