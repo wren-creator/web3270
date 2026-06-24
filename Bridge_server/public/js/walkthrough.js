@@ -951,6 +951,214 @@ const _WALKTHROUGHS = [
     ],
   },
 
+  // ── Recon 1: RACF Settings Analyzer ──────────────────────────────
+  {
+    id:       'recon-racf-settings',
+    category: 'security',
+    title:    'RACF Settings Analyzer',
+    desc:     'Issue SETROPTS LIST from TSO and parse the full RACF configuration — password policy, lockout settings, and security class activation gaps.',
+    steps: [
+      {
+        title: 'What SETROPTS LIST reveals',
+        body:  'SETROPTS LIST is a single TSO command that dumps the entire RACF global configuration: password expiry interval, history count, lockout threshold, minimum/maximum length, which security resource classes are active, and which are in WARNING mode (logging but not enforcing). Most operators overlook this as a reconnaissance vector.',
+        highlight: 'reconSettingsOut',
+        autoFn: null,
+      },
+      {
+        title: 'Navigate to TSO READY',
+        body:  'You must be at a TSO READY prompt before running this tool. If you are in ISPF, exit first — type "=X" from the ISPF primary menu, or "END" repeatedly. The APP field in the OIA bar should show "TSO" in green when you are at the correct prompt.',
+        highlight: 'oiaApp',
+        autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel and find RECON TOOLS',
+        body:  'Click 🔒 in the OIA bar, enter the security password (default: 2970). Scroll to the RECON TOOLS section. The RACF SETTINGS ANALYZER subsection is at the top.',
+        highlight: 'secBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Run the analysis',
+        body:  'Click ▶ ANALYZE. The tool issues SETROPTS LIST and parses the response. Two cards appear: Password Policy (interval, history, lockout, length) and Security Class Status (which key classes are ACTIVE, WARNING, or INACTIVE).',
+        highlight: 'reconSettingsBtn',
+        autoFn: 'startReconSettings',
+        autoLabel: 'Run SETROPTS LIST for me',
+      },
+      {
+        title: 'Read the Password Policy card',
+        body:  'Expiry interval above 90 days = HIGH finding. No lockout (NOREVOKE) = CRITICAL — any brute-force attempt will never trigger a lockout, meaning the RACF probe can run indefinitely without risk. History below 8 = MEDIUM — users can recycle passwords quickly. Minimum length below 8 = MEDIUM.',
+        highlight: 'reconSettingsOut',
+        autoFn: null,
+      },
+      {
+        title: 'Read the Security Class Status card',
+        body:  'Classes marked INACTIVE (red ✗) are not enforced — resources in those classes have no RACF protection. DSNR INACTIVE means any TSO user can connect to DB2. GCICSTRN INACTIVE means all CICS transactions are unprotected. WARNING mode (amber ⚠) means RACF is logging violations but not blocking — active exploitation would succeed and only appear in SMF records.',
+        highlight: 'reconSettingsOut',
+        autoFn: null,
+      },
+      {
+        title: 'Export the findings',
+        body:  'Click "↓ Export all Recon results CSV" at the bottom of RECON TOOLS to capture password policy values and class status for your report. The NOREVOKE flag exports as a CRITICAL severity marker in the CSV.',
+        highlight: 'reconSettingsOut',
+        autoFn: 'reconExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
+  // ── Recon 2: RACF Timing Attack ───────────────────────────────────
+  {
+    id:       'recon-timing',
+    category: 'security',
+    title:    'RACF Userid Timing Attack',
+    desc:     'Measure RACF response times to detect valid userids — many RACF configurations skip the password hash check for invalid userids, creating a measurable timing side-channel.',
+    steps: [
+      {
+        title: 'The timing side-channel',
+        body:  'When RACF receives a logon with an invalid userid, it rejects it immediately without evaluating the password — no hash computation, no profile lookup. Valid userids proceed to password validation, which takes measurably longer. The ms column in the RACF probe results table captures this difference.',
+        highlight: 'probeResultsTable',
+        autoFn: null,
+      },
+      {
+        title: 'Prerequisites',
+        body:  'Navigate to a TSO, z/VM, or CICS logon screen. The RACF probe must be able to detect the subsystem type (the APP field shows LOGON or the screen matches a known layout). Use a long wordlist with a mix of likely-valid (IBMUSER, MAINT, SYS) and random userids to generate a spread of timings.',
+        highlight: 'oiaApp',
+        autoFn: null,
+      },
+      {
+        title: 'Set up the probe wordlist',
+        body:  'In the RACF PROBE section, add your credential pairs. Mix valid-looking userids (IBMUSER,WRONGPASS, MAINT,WRONGPASS, SYS1,WRONGPASS) with random ones (ZZZZTEST,WRONGPASS, AABBCC,WRONGPASS). Use a known-wrong password for all — you are testing userid validity, not cracking passwords.',
+        highlight: 'probeWordlist',
+        autoFn: null,
+      },
+      {
+        title: 'Run the probe and watch the ms column',
+        body:  'Click ▶ START. After attempts complete, look at the ms column. Consistent fast times (<800ms, shown in amber) across all attempts suggest RACF validates userid and password together — no timing leak. Fast times for some userids and slower for others suggests the early-rejection path is active and those fast responses are invalid userids.',
+        highlight: 'probeResultsTable',
+        autoFn: null,
+      },
+      {
+        title: 'Interpret the results',
+        body:  'A timing gap of 300ms or more between fast and slow responses is worth flagging. Repeat the experiment 3–5 times with the same wordlist to rule out network jitter. Consistent fast responses on the same userids across runs = likely timing oracle. Note: this works best on LAN-adjacent systems where round-trip variance is low.',
+        highlight: 'probeResultsTable',
+        autoFn: null,
+      },
+      {
+        title: 'Export with timing data',
+        body:  'Click ↓ Export CSV in the RACF PROBE section. The exported CSV now includes a response_ms column for every attempt, making it easy to sort by timing and spot outliers in a spreadsheet.',
+        highlight: 'probeResultsTable',
+        autoFn: 'probeExportCsv',
+        autoLabel: 'Export timing CSV for me',
+      },
+    ],
+  },
+
+  // ── Recon 3: RACF User/Group Enumerator ───────────────────────────
+  {
+    id:       'recon-enum',
+    category: 'security',
+    title:    'RACF User/Group Enumerator',
+    desc:     'Issue SEARCH CLASS(USER) and SEARCH CLASS(GROUP) from TSO READY to collect all RACF user IDs and group names — the authorization map of the system.',
+    steps: [
+      {
+        title: 'What this reveals',
+        body:  'SEARCH CLASS(USER) returns every user profile defined in RACF — every person, service account, vendor ID, and shared login on the system. SEARCH CLASS(GROUP) returns every group — the authorization hierarchy. Together they give you a complete picture of the identity estate without needing RACF administrator authority.',
+        highlight: 'reconEnumOut',
+        autoFn: null,
+      },
+      {
+        title: 'Navigate to TSO READY',
+        body:  'You must be at a TSO READY prompt. Exit ISPF if needed ("=X"). The APP field in the OIA bar shows TSO in green at the READY prompt.',
+        highlight: 'oiaApp',
+        autoFn: null,
+      },
+      {
+        title: 'Unlock and navigate to RECON TOOLS',
+        body:  'Click 🔒, enter the security password, scroll to RECON TOOLS, and find the RACF USER/GROUP ENUMERATOR subsection.',
+        highlight: 'secBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Run the enumeration',
+        body:  'Click ▶ ENUMERATE. The tool issues SEARCH CLASS(USER) first — this may return hundreds of entries on a large system, paging through ***MORE*** output automatically. Then it runs SEARCH CLASS(GROUP). Both results appear as scrollable lists with counts.',
+        highlight: 'reconEnumStartBtn',
+        autoFn: null,
+      },
+      {
+        title: 'What to look for in users',
+        body:  'Scan for high-value targets: IBMUSER (IBM default superuser), MAINT (maintenance), SYS1, SYSPROG, SYSADM (elevated privilege names), DB2, CICS, MQ (service accounts), and any IDs matching vendor names or contractors. Service accounts often have weak or default passwords and are rarely monitored.',
+        highlight: 'reconEnumOut',
+        autoFn: null,
+      },
+      {
+        title: 'What to look for in groups',
+        body:  'RACF groups reveal the authorization structure: SYS1 typically contains RACF-privileged users, IBMUSER often has SPECIAL authority, and vendor groups (MQADMIN, DB2ADMIN, CICSGRP) show who has elevated application access. Cross-reference group names with the wordlist for the RACF probe to prioritize targets.',
+        highlight: 'reconEnumOut',
+        autoFn: null,
+      },
+      {
+        title: 'Export',
+        body:  'Click "↓ Export all Recon results CSV" at the bottom of RECON TOOLS. The CSV includes every userid and group name — import into a spreadsheet to sort, filter, and build a target list for further probing.',
+        highlight: 'reconEnumOut',
+        autoFn: 'reconExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
+  // ── Recon 4: Dataset Recon Scanner ───────────────────────────────
+  {
+    id:       'recon-dataset',
+    category: 'security',
+    title:    'Dataset Recon Scanner',
+    desc:     'Run LISTCAT LEVEL() across common dataset prefixes to map the data estate and flag sensitive dataset names — credentials, keys, certificates, payroll, parmlib.',
+    steps: [
+      {
+        title: 'What LISTCAT reveals',
+        body:  'LISTCAT is a standard IDCAMS utility that lists datasets in the catalog. Running it with LEVEL(prefix) returns every dataset under that high-level qualifier. Unlike a filesystem, mainframe dataset names are self-documenting — PAYROLL.MASTER.FILE, SYS1.PARMLIB, USER.PRIVATE.KEYS — making sensitive data easy to spot without reading the contents.',
+        highlight: 'reconDatasetOut',
+        autoFn: null,
+      },
+      {
+        title: 'Navigate to TSO READY',
+        body:  'You must be at a TSO READY prompt. The scanner issues LISTCAT as a TSO command — it works at the READY prompt without entering ISPF.',
+        highlight: 'oiaApp',
+        autoFn: null,
+      },
+      {
+        title: 'Unlock and navigate to Dataset Recon',
+        body:  'Click 🔒, enter the security password, scroll to RECON TOOLS, and find the DATASET RECON SCANNER subsection.',
+        highlight: 'secBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Load default prefixes and customize',
+        body:  'Click "Load defaults" to populate the prefix list with SYS1, SYS2, IBMUSER, ADMIN, PROD, PAYROLL, FINANCE, HR, SECURITY. Add site-specific prefixes you know from earlier reconnaissance — LPARs often have prefixes matching the company name or application acronyms.',
+        highlight: 'reconDatasetPrefixes',
+        autoFn: 'datasetLoadDefaults',
+        autoLabel: 'Load defaults for me',
+      },
+      {
+        title: 'Run the scan',
+        body:  'Click ▶ SCAN. The tool runs LISTCAT LEVEL() for each prefix and parses the output. Datasets are listed in the results table; flagged entries (matching sensitive patterns) appear at the top in amber with the matched keyword shown in the FLAG column.',
+        highlight: 'reconDatasetStartBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Interpret flagged datasets',
+        body:  'Flagged entries match patterns like PASSWORD, KEY, CERT, PARMLIB, PAYROLL, SECRET, TOKEN, MASTER, SECURE. Each flag is a dataset to investigate further — can it be browsed in ISPF? Is it protected by a RACF DATASET profile? A dataset named USER.PRIVATE.KEYS with no RACF protection is a critical finding.',
+        highlight: 'reconDatasetOut',
+        autoFn: null,
+      },
+      {
+        title: 'Export and follow up',
+        body:  'Click "↓ Export all Recon results CSV" to capture the full dataset list with flags. Follow up flagged datasets in ISPF: option 2 (Edit) or 1 (View) to check read access. Use the RACF Settings Analyzer to see if DATASET class is active — if not, all datasets are accessible by default.',
+        highlight: 'reconDatasetOut',
+        autoFn: 'reconExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
   // ── DB2 Scenario 1: Subsystem Scanner ────────────────────────────
   {
     id:       'db2-subsystem-scan',
