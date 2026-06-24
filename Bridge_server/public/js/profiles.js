@@ -1,22 +1,17 @@
-'use strict';
+import { state, BRIDGE_URL } from './state.js';
+import { renderLiveScreen, screenToText, updateOIA, showBridgeError } from './rendering.js';
+import { setConnStatus, updateSessionDot, addSessionTab, activateSession, _showDisconnectScreen } from './tabs.js';
 
-// ==================================================================
-//  js/profiles.js — LPAR profiles, connect modal, session management
-//  Extracted from tn3270-client.html
-// ==================================================================
-
-// ======================================================================
-//  MODAL
-// ======================================================================
-function showConnectModal() {
-  editingProfileId = null;
+// ── Connect modal ─────────────────────────────────────────────────────
+export function showConnectModal() {
+  state.editingProfileId = null;
   renderModalProfiles();
   document.getElementById('connectModal').classList.remove('hidden');
 }
-function hideConnectModal() { document.getElementById('connectModal').classList.add('hidden'); }
+export function hideConnectModal() { document.getElementById('connectModal').classList.add('hidden'); }
 document.getElementById('connectModal').addEventListener('click', e => { if (e.target === e.currentTarget) hideConnectModal(); });
 
-function connectManual() {
+export function connectManual() {
   const host    = document.getElementById('connHost').value.trim();
   const port    = parseInt(document.getElementById('connPort').value, 10) || 23;
   const name    = document.getElementById('connName').value.trim() || host;
@@ -29,18 +24,14 @@ function connectManual() {
   openSession({ id: name, host, port, name, luName, type, model, tls, tn3270e, codepage: 37 });
 }
 
-// ======================================================================
-//  LPAR PROFILES
-// ======================================================================
-// LPAR_PROFILES lives in js/state.js
-
-async function loadProfiles() {
+// ── LPAR profiles ─────────────────────────────────────────────────────
+export async function loadProfiles() {
   try {
-    if (window.location.protocol === 'file:') { LPAR_PROFILES = []; }
+    if (window.location.protocol === 'file:') { state.LPAR_PROFILES = []; }
     else {
       const res = await fetch('/api/profiles');
       if (!res.ok) throw new Error('HTTP ' + res.status);
-      LPAR_PROFILES = await res.json();
+      state.LPAR_PROFILES = await res.json();
     }
     renderLparDropdown(); renderSidebarLpars(); renderModalProfiles();
   } catch (err) { console.warn('Could not load profiles:', err.message); }
@@ -49,8 +40,9 @@ async function loadProfiles() {
 function renderLparDropdown() {
   const container = document.getElementById('lparMenuItems');
   if (!container) return;
+  const esc = window.esc ?? (s => String(s));
   container.innerHTML = '';
-  LPAR_PROFILES.forEach(p => {
+  state.LPAR_PROFILES.forEach(p => {
     const item = document.createElement('div');
     item.className = 'lpar-menu-item';
     item.innerHTML = `<div class="lpar-menu-dot"></div><div class="lpar-menu-info"><div class="lpar-menu-name">${esc(p.name||p.id)}</div><div class="lpar-menu-meta">${esc(p.host)} &middot; :${p.port} &middot; ${esc(p.type||'TSO')} &nbsp;<span class="lpar-menu-status-text offline">&#9675; Offline</span></div></div><div class="lpar-menu-connect">Connect</div>`;
@@ -62,8 +54,9 @@ function renderLparDropdown() {
 function renderSidebarLpars() {
   const container = document.getElementById('sidebarLparList');
   if (!container) return;
+  const esc = window.esc ?? (s => String(s));
   container.innerHTML = '';
-  LPAR_PROFILES.forEach(p => {
+  state.LPAR_PROFILES.forEach(p => {
     const item = document.createElement('div'); item.className = 'lpar-item';
     item.innerHTML = `<div class="lpar-dot"></div><div class="lpar-name">${esc(p.name||p.id)}</div><div class="lpar-type">${esc(p.type||'TSO')}</div><button class="lpar-edit-btn" title="Edit">&#x270E;</button><button class="lpar-delete-btn" title="Delete">&#128465;</button>`;
     item.querySelector('.lpar-edit-btn').addEventListener('click', e => { e.stopPropagation(); editProfile(p.id); });
@@ -76,8 +69,9 @@ function renderSidebarLpars() {
 function renderModalProfiles() {
   const container = document.getElementById('modalProfileList');
   if (!container) return;
+  const esc = window.esc ?? (s => String(s));
   container.innerHTML = '';
-  LPAR_PROFILES.forEach(p => {
+  state.LPAR_PROFILES.forEach(p => {
     const item = document.createElement('div'); item.className = 'profile-item';
     item.innerHTML = `<div style="flex:1"><div class="profile-name">${esc(p.name||p.id)}</div><div class="profile-host">${esc(p.host)}:${p.port}${p.tls?' &middot; TLS':''} &middot; ${esc(p.type||'TSO')}</div></div><button class="profile-edit-btn" title="Edit">&#x270E;</button><button class="profile-delete-btn" title="Delete">&#128465;</button><button class="profile-connect-btn">Connect</button>`;
     item.querySelector('.profile-edit-btn').addEventListener('click', e => { e.stopPropagation(); editProfile(p.id); });
@@ -88,9 +82,9 @@ function renderModalProfiles() {
 }
 
 function editProfile(profileId) {
-  const p = LPAR_PROFILES.find(p => p.id === profileId);
+  const p = state.LPAR_PROFILES.find(p => p.id === profileId);
   if (!p) return;
-  showConnectModal(); editingProfileId = profileId;
+  showConnectModal(); state.editingProfileId = profileId;
   document.getElementById('connHost').value  = p.host   || '';
   document.getElementById('connPort').value  = p.port   || 23;
   document.getElementById('connName').value  = p.name   || p.id || '';
@@ -114,7 +108,7 @@ async function deleteProfile(profileId, displayName) {
   } catch (err) { showBridgeError('Could not delete profile: ' + err.message); }
 }
 
-async function saveProfileFromForm() {
+export async function saveProfileFromForm() {
   const host    = document.getElementById('connHost').value.trim();
   const port    = parseInt(document.getElementById('connPort').value, 10) || 23;
   const name    = document.getElementById('connName').value.trim();
@@ -129,16 +123,16 @@ async function saveProfileFromForm() {
   const profile = { id, name, host, port, tls, luName, type, model, tn3270e, codepage: 37 };
   const btn     = document.getElementById('saveProfileBtn');
   try {
-    btn.disabled = true; btn.textContent = 'Saving\u2026';
+    btn.disabled = true; btn.textContent = 'Saving…';
     const res = await fetch('/api/profiles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(profile) });
     if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || 'HTTP ' + res.status); }
     await loadProfiles();
-    btn.textContent = '\u2713 Saved'; btn.style.color = 'var(--accent-green)'; btn.style.borderColor = 'var(--accent-green)';
+    btn.textContent = '✓ Saved'; btn.style.color = 'var(--accent-green)'; btn.style.borderColor = 'var(--accent-green)';
     setTimeout(() => { btn.textContent = 'Save Profile'; btn.style.color = ''; btn.style.borderColor = ''; btn.disabled = false; }, 1500);
   } catch (err) { btn.textContent = 'Save Profile'; btn.disabled = false; showBridgeError('Could not save profile: ' + err.message); }
 }
 
-function toggleLparDropdown() {
+export function toggleLparDropdown() {
   const btn  = document.getElementById('lparDropdownBtn');
   const menu = document.getElementById('lparDropdownMenu');
   const open = menu.classList.toggle('open');
@@ -152,18 +146,18 @@ document.addEventListener('click', e => { if (!document.getElementById('lparDrop
 
 function connectLpar(name) {
   closeLparDropdown();
-  const profile = LPAR_PROFILES.find(p => p.id === name);
+  const profile = state.LPAR_PROFILES.find(p => p.id === name);
   if (!profile) return;
   openSession(profile);
 }
 
-function openSession(profile) {
+export function openSession(profile) {
   hideConnectModal();
-  if (splitMode && sessions.size >= 2) {
+  if (state.splitMode && state.sessions.size >= 2) {
     showBridgeError('Split-screen mode: max 2 sessions allowed.\nClose a session or turn off split mode first.');
     return;
   }
-  const sid  = ++sessionSeq;
+  const sid  = ++state.sessionSeq;
   const name = profile.id || 'Session ' + sid;
   setConnStatus(name, 'connecting');
   let ws;
@@ -179,12 +173,18 @@ function openSession(profile) {
   };
   ws.onmessage = event => { let msg; try { msg = JSON.parse(event.data); } catch { return; } handleBridgeMsg(sid, msg); };
   ws.onerror   = () => { setConnStatus(name, 'error'); showBridgeError('Could not connect to bridge at ' + BRIDGE_URL + '.\n\nMake sure Docker Desktop is running:\n  docker compose ps\n  docker compose logs tn3270-bridge'); };
-  ws.onclose   = () => { if (sessions.has(sid)) { const s = sessions.get(sid); if (s) s.tn3270Connected = false; setConnStatus(name, 'disconnected'); updateSessionDot(sid, 'disconnected'); if (sid === activeSession) _showDisconnectScreen(name, null, sid); else if (splitMode && sid === splitSid) _showDisconnectScreen(name, document.getElementById('terminal-split'), sid); } };
+  ws.onclose   = () => {
+    if (state.sessions.has(sid)) {
+      const s = state.sessions.get(sid); if (s) s.tn3270Connected = false;
+      setConnStatus(name, 'disconnected'); updateSessionDot(sid, 'disconnected');
+      if (sid === state.activeSession) _showDisconnectScreen(name, null, sid);
+      else if (state.splitMode && sid === state.splitSid) _showDisconnectScreen(name, document.getElementById('terminal-split'), sid);
+    }
+  };
   const tabEl = addSessionTab(name, profile.type || 'TSO', sid);
-  sessions.set(sid, { ws, profile, tabEl, name, tn3270Connected: false });
-  // In split mode the second session goes to the right pane; don't steal focus
-  if (splitMode && sessions.size === 2) {
-    splitSid = sid;
+  state.sessions.set(sid, { ws, profile, tabEl, name, tn3270Connected: false });
+  if (state.splitMode && state.sessions.size === 2) {
+    state.splitSid = sid;
     const paneR = document.getElementById('splitPaneRight');
     if (paneR) paneR.style.display = 'flex';
   } else {
@@ -192,8 +192,8 @@ function openSession(profile) {
   }
 }
 
-function handleBridgeMsg(sid, msg) {
-  const session = sessions.get(sid);
+export function handleBridgeMsg(sid, msg) {
+  const session = state.sessions.get(sid);
   if (!session) return;
   switch (msg.type) {
     case 'status':
@@ -205,55 +205,61 @@ function handleBridgeMsg(sid, msg) {
         if (msg.host)  { const e = document.getElementById('oiaSys');   if (e) e.textContent = msg.host; }
         if (msg.tlsVersion !== undefined) {
           session.tlsVersion = msg.tlsVersion;
-          if (sid === activeSession) {
+          if (sid === state.activeSession) {
             const e = document.getElementById('oiaTls');
             if (e) e.textContent = msg.tlsVersion === 'PLAIN' ? '3270' : msg.tlsVersion;
           }
         }
-        if (msg.wsId !== undefined && typeof recorderSetSession === 'function') recorderSetSession(msg.wsId);
+        if (msg.wsId !== undefined) window.recorderSetSession?.(msg.wsId);
       } else if (msg.state === 'disconnected') {
         session.tn3270Connected = false;
         setConnStatus(session.name, 'disconnected'); updateSessionDot(sid, 'disconnected');
         const luE = document.getElementById('oiaLu'); const modelE = document.getElementById('oiaModel'); const appE = document.getElementById('oiaApp');
         if (luE) luE.textContent = '-'; if (modelE) modelE.textContent = '-'; if (appE) { appE.textContent = '—'; appE.style.color = ''; }
-        if (sid === activeSession) { const tlsE = document.getElementById('oiaTls'); if (tlsE) tlsE.textContent = '—'; }
-        if (sid === activeSession) _showDisconnectScreen(session.name, null, sid);
-        else if (splitMode && sid === splitSid) _showDisconnectScreen(session.name, document.getElementById('terminal-split'), sid);
+        if (sid === state.activeSession) { const tlsE = document.getElementById('oiaTls'); if (tlsE) tlsE.textContent = '—'; }
+        if (sid === state.activeSession) _showDisconnectScreen(session.name, null, sid);
+        else if (state.splitMode && sid === state.splitSid) _showDisconnectScreen(session.name, document.getElementById('terminal-split'), sid);
       } else if (msg.state === 'connecting') { setConnStatus(session.name, 'connecting'); }
       break;
     case 'screen':
       if (session) session.lastScreen = msg;
-      if (sid === activeSession) {
-        renderLiveScreen(msg); liveScreenText = screenToText(msg); liveScreen = msg; cursorRow = msg.cursorRow ?? 0; cursorCol = msg.cursorCol ?? 0;
-        probeOnScreen(msg);
-      } else if (splitMode && sid === splitSid) {
+      if (sid === state.activeSession) {
+        renderLiveScreen(msg); state.liveScreenText = screenToText(msg); state.liveScreen = msg;
+        state.cursorRow = msg.cursorRow ?? 0; state.cursorCol = msg.cursorCol ?? 0;
+        window.probeOnScreen?.(msg);
+      } else if (state.splitMode && sid === state.splitSid) {
         const term2 = document.getElementById('terminal-split');
         if (term2) renderLiveScreen(msg, term2);
       }
       break;
     case 'oia':
-      if (sid === activeSession) updateOIA(msg);
+      if (sid === state.activeSession) updateOIA(msg);
       break;
     case 'copilot.provider':
-      { const sub = document.getElementById('copilotSubtitle'); if (sub) sub.textContent = msg.name + ' \u00b7 ' + msg.model; }
+      { const sub = document.getElementById('copilotSubtitle'); if (sub) sub.textContent = msg.name + ' · ' + msg.model; }
       break;
-    case 'copilot.reply':      handleCopilotReply(msg.content); break;
-    case 'copilot.error':      handleCopilotReply('\u26a0 Copilot error: ' + msg.message); break;
-    case 'copilot.models':     aiHandleModelsReply(msg); break;
-    case 'copilot.configured': aiHandleConfigured(msg); break;
+    case 'copilot.reply':      window.handleCopilotReply?.(msg.content); break;
+    case 'copilot.error':      window.handleCopilotReply?.('⚠ Copilot error: ' + msg.message); break;
+    case 'copilot.models':     window.aiHandleModelsReply?.(msg); break;
+    case 'copilot.configured': window.aiHandleConfigured?.(msg); break;
     case 'xfer.data': case 'xfer.ok': case 'xfer.error': case 'xfer.datasets':
-      if (sid === activeSession) handleXferMsg(msg); break;
+      if (sid === state.activeSession) window.handleXferMsg?.(msg); break;
     case 'error': showBridgeError('Bridge error: ' + msg.message); break;
-    case 'sec.mitm.state':    if (sid === activeSession) mitmHandleState(msg);    break;
-    case 'sec.mitm.held':     if (sid === activeSession) mitmHandleHeld(msg);     break;
-    case 'sec.mitm.released': if (sid === activeSession) mitmHandleReleased(msg); break;
-    case 'sec.mitm.dropped':  if (sid === activeSession) mitmHandleDropped(msg);  break;
-    case 'sec.mitm.replayed': if (sid === activeSession) mitmHandleReplayed(msg); break;
-    case 'macro.recording.started':   _showMacroRecIndicator(0); break;
-    case 'macro.recording.step':      _updateMacroRecIndicator(msg.stepCount); break;
-    case 'macro.recording.stopped':   _hideMacroRecIndicator(); loadMacros(); break;
-    case 'macro.recording.cancelled': _hideMacroRecIndicator(); break;
-    case 'sec.fuzz.result': if (sid === activeSession) fuzzOnResult(msg); break;
+    case 'sec.mitm.state':    if (sid === state.activeSession) window.mitmHandleState?.(msg);    break;
+    case 'sec.mitm.held':     if (sid === state.activeSession) window.mitmHandleHeld?.(msg);     break;
+    case 'sec.mitm.released': if (sid === state.activeSession) window.mitmHandleReleased?.(msg); break;
+    case 'sec.mitm.dropped':  if (sid === state.activeSession) window.mitmHandleDropped?.(msg);  break;
+    case 'sec.mitm.replayed': if (sid === state.activeSession) window.mitmHandleReplayed?.(msg); break;
+    case 'macro.recording.started':   window._showMacroRecIndicator?.(0); break;
+    case 'macro.recording.step':      window._updateMacroRecIndicator?.(msg.stepCount); break;
+    case 'macro.recording.stopped':   window._hideMacroRecIndicator?.(); window.loadMacros?.(); break;
+    case 'macro.recording.cancelled': window._hideMacroRecIndicator?.(); break;
+    case 'sec.fuzz.result': if (sid === state.activeSession) window.fuzzOnResult?.(msg); break;
   }
 }
 
+Object.assign(window, {
+  showConnectModal, hideConnectModal, connectManual,
+  loadProfiles, saveProfileFromForm, toggleLparDropdown,
+  openSession, handleBridgeMsg,
+});

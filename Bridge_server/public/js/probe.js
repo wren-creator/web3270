@@ -1,9 +1,5 @@
-'use strict';
-
-// RACF Auto-Probe — Wave 7
-// Detects the current subsystem (TSO, z/VM, CICS) from the live screen,
-// iterates a credential wordlist, and classifies each response as
-// SUCCESS, FAILURE, or LOCKOUT.  Stops immediately on lockout or success.
+import { state } from './state.js';
+import { saveAs } from './utils.js';
 
 const _PROBE_PROFILES = {
   TSO: {
@@ -50,9 +46,7 @@ let _probeAborted  = false;
 let _probeResults  = [];
 let _probeScreenCb = null;
 
-// Called from handleBridgeMsg (profiles.js) every time a 'screen' message
-// arrives for the active session.
-function probeOnScreen(msg) {
+export function probeOnScreen(msg) {
   if (_probeScreenCb) {
     const cb = _probeScreenCb;
     _probeScreenCb = null;
@@ -73,7 +67,7 @@ function _probeText(msg) {
 }
 
 function _probeSend(obj) {
-  const s = sessions.get(activeSession);
+  const s = state.sessions.get(state.activeSession);
   if (!s || s.ws.readyState !== WebSocket.OPEN) throw new Error('No active session');
   s.ws.send(JSON.stringify(obj));
 }
@@ -83,12 +77,11 @@ function _probeSetStatus(msg) {
   if (el) el.textContent = msg;
 }
 
-function probeDetectSubsystem() {
-  const txt = liveScreenText || '';
+export function probeDetectSubsystem() {
+  const txt = state.liveScreenText || '';
   for (const [name, p] of Object.entries(_PROBE_PROFILES)) {
     if (p.detect(txt)) return { name, profile: p };
   }
-  // Fallback: OIA APP field
   const app = (document.getElementById('oiaApp') || {}).textContent || '';
   if (_PROBE_PROFILES[app.trim().toUpperCase()]) {
     const name = app.trim().toUpperCase();
@@ -97,7 +90,7 @@ function probeDetectSubsystem() {
   return null;
 }
 
-function probeLoadDefaults() {
+export function probeLoadDefaults() {
   const det = probeDetectSubsystem();
   const el  = document.getElementById('probeWordlist');
   if (!el) return;
@@ -109,7 +102,7 @@ function probeLoadDefaults() {
   }
 }
 
-async function startProbe() {
+export async function startProbe() {
   if (_probeRunning) return;
 
   const det = probeDetectSubsystem();
@@ -159,10 +152,9 @@ async function startProbe() {
       if (result === 'LOCKOUT') { _probeSetStatus(`🔴 LOCKOUT — ${userid} is locked. Stopped.`); break; }
       if (result === 'SUCCESS') { _probeSetStatus(`✅ SUCCESS — ${userid}`); break; }
 
-      // Wait for logon screen to redisplay before next attempt
       if (i < pairs.length - 1 && !_probeAborted) {
         await new Promise(r => setTimeout(r, delay));
-        try { await _probeWaitScreen(4000); } catch { /* timeout ok — logon may already be showing */ }
+        try { await _probeWaitScreen(4000); } catch { /* timeout ok */ }
       }
 
     } catch (err) {
@@ -183,7 +175,7 @@ async function startProbe() {
   }
 }
 
-function stopProbe() {
+export function stopProbe() {
   _probeAborted  = true;
   _probeRunning  = false;
   _probeScreenCb = null;
@@ -192,7 +184,7 @@ function stopProbe() {
   document.getElementById('probeStopBtn').style.display  = 'none';
 }
 
-function probeExportCsv() {
+export function probeExportCsv() {
   if (!_probeResults.length) return;
   const rows = [
     ['userid', 'password', 'result', 'timestamp'],
@@ -208,6 +200,7 @@ function _probeRenderResults() {
   if (!el) return;
   if (!_probeResults.length) { el.innerHTML = ''; return; }
   const C = { SUCCESS: '#3a9a6a', LOCKOUT: '#e06060', FAILURE: '#555', ERR: '#e0a060' };
+  const esc = window.esc ?? (s => String(s));
   el.innerHTML =
     '<table style="width:100%;border-collapse:collapse;font-size:10px;margin-top:4px">' +
     '<tr style="color:var(--text-muted)"><th style="text-align:left;padding:2px 4px;font-weight:normal">USERID</th>' +
@@ -221,3 +214,5 @@ function _probeRenderResults() {
         `<td style="padding:2px 4px;color:${c};font-weight:700">${esc(r.result)}</td></tr>`;
     }).join('') + '</table>';
 }
+
+Object.assign(window, { probeOnScreen, probeDetectSubsystem, probeLoadDefaults, startProbe, stopProbe, probeExportCsv });

@@ -1,15 +1,6 @@
-'use strict';
+import { state } from './state.js';
+import { saveAs } from './utils.js';
 
-// Protocol Fuzzer — Wave 8
-// Sends mutated 3270 AID records to the host and classifies responses.
-// Four modes: AID Sweep, Field Overflow, Order Injection, SBA Mutation.
-//
-// Each fuzz packet is sent via { type: 'sec.fuzz', label, rawBytes }
-// and the server responds with { type: 'sec.fuzz.result', ... }.
-// Packets are sent one at a time; the next is dispatched only after the
-// result for the current one arrives (or times out).
-
-// ── Known 3270 order bytes ─────────────────────────────────────────
 const FUZZ_ORDERS = [
   { label: 'SF  0x1D — Start Field',          byte: 0x1D },
   { label: 'SFE 0x29 — Start Field Extended', byte: 0x29 },
@@ -24,7 +15,6 @@ const FUZZ_ORDERS = [
   { label: 'NUL 0x00 — Null byte',            byte: 0x00 },
 ];
 
-// SBA mutation addresses (interesting edge cases)
 const FUZZ_SBA_CASES = [
   { label: 'addr 0x0000 — zero',              hi: 0x00, lo: 0x00 },
   { label: 'addr 0x3FFF — max 14-bit',        hi: 0x3F, lo: 0xFF },
@@ -35,14 +25,12 @@ const FUZZ_SBA_CASES = [
   { label: 'addr 0x7E7F — EBCDIC boundary',   hi: 0x7E, lo: 0x7F },
 ];
 
-// ── Fuzzer state ───────────────────────────────────────────────────
 let _fuzzRunning  = false;
 let _fuzzAborted  = false;
 let _fuzzResults  = [];
-let _fuzzResultCb = null;   // resolved by fuzzOnResult when a result arrives
+let _fuzzResultCb = null;
 
-// Called from handleBridgeMsg (profiles.js) on every 'sec.fuzz.result' message
-function fuzzOnResult(msg) {
+export function fuzzOnResult(msg) {
   if (_fuzzResultCb) {
     const cb = _fuzzResultCb;
     _fuzzResultCb = null;
@@ -58,7 +46,7 @@ function _fuzzWaitResult(ms = 5000) {
 }
 
 function _fuzzSend(label, rawBytes, timeoutMs) {
-  const s = sessions.get(activeSession);
+  const s = state.sessions.get(state.activeSession);
   if (!s || s.ws.readyState !== WebSocket.OPEN) throw new Error('No active session');
   s.ws.send(JSON.stringify({ type: 'sec.fuzz', label, rawBytes, timeoutMs }));
 }
@@ -68,16 +56,13 @@ function _fuzzSetStatus(msg) {
   if (el) el.textContent = msg;
 }
 
-// ── Packet builders ────────────────────────────────────────────────
-
 function _fuzzCursorBytes() {
-  const cols = (liveScreen && liveScreen.cols) || 80;
-  const addr = cursorRow * cols + cursorCol;
+  const cols = (state.liveScreen && state.liveScreen.cols) || 80;
+  const addr = state.cursorRow * cols + state.cursorCol;
   return [(addr >> 8) & 0x3F, addr & 0xFF];
 }
 
 function _buildAidSweepPacket(aidByte) {
-  // Minimal AID record: [AID][cursor hi][cursor lo]  (no field data)
   return [aidByte, 0x00, 0x00];
 }
 
@@ -88,7 +73,7 @@ function _buildFieldOverflowPacket(fieldAddr, length, pattern) {
   let payload;
   if (pattern === 'null') payload = new Array(length).fill(0x00);
   else if (pattern === 'ff') payload = new Array(length).fill(0xFF);
-  else payload = Array.from({ length }, (_, i) => 0xC1 + (i % 26)); // EBCDIC A-Z repeat
+  else payload = Array.from({ length }, (_, i) => 0xC1 + (i % 26));
   const [cHi, cLo] = _fuzzCursorBytes();
   return [ENTER, cHi, cLo, SBA, addrHi, addrLo, ...payload];
 }
@@ -98,18 +83,14 @@ function _buildOrderInjectPacket(fieldAddr, orderByte) {
   const addrHi = (fieldAddr >> 8) & 0x3F;
   const addrLo  = fieldAddr & 0xFF;
   const [cHi, cLo] = _fuzzCursorBytes();
-  // Inject the order byte as the first byte of field data, followed by filler
   return [ENTER, cHi, cLo, SBA, addrHi, addrLo, orderByte, 0x40, 0x40, 0x40, 0x40];
 }
 
 function _buildSbaMutationPacket(mutHi, mutLo) {
   const ENTER = 0x7D, SBA = 0x11;
   const [cHi, cLo] = _fuzzCursorBytes();
-  // Send a single field with a mutated SBA address
   return [ENTER, cHi, cLo, SBA, mutHi, mutLo, 0x40];
 }
-
-// ── Mode runners ───────────────────────────────────────────────────
 
 async function _runAidSweep() {
   const startEl   = document.getElementById('fuzzAidStart');
@@ -161,7 +142,6 @@ async function _runOrderInject() {
   const timeout   = parseInt(timeoutEl?.value || '3000', 10) || 3000;
   const delay     = parseInt(delayEl?.value  || '200',  10) || 200;
 
-  // If a specific order is selected, send just that one; otherwise iterate all
   const specific = orderEl?.value !== '' ? parseInt(orderEl.value, 16) : null;
   const toRun    = specific !== null
     ? [{ label: `Order 0x${specific.toString(16).toUpperCase()} in field ${fieldAddr}`, byte: specific }]
@@ -199,9 +179,7 @@ async function _runSbaMutation() {
   }
 }
 
-// ── Main entry points ──────────────────────────────────────────────
-
-async function startFuzz() {
+export async function startFuzz() {
   if (_fuzzRunning) return;
   const mode = (document.getElementById('fuzzMode') || {}).value || 'aidSweep';
 
@@ -237,7 +215,7 @@ async function startFuzz() {
   }
 }
 
-function stopFuzz() {
+export function stopFuzz() {
   _fuzzAborted  = true;
   _fuzzRunning  = false;
   _fuzzResultCb = null;
@@ -246,14 +224,14 @@ function stopFuzz() {
   document.getElementById('fuzzStopBtn').style.display  = 'none';
 }
 
-function fuzzModeChanged() {
+export function fuzzModeChanged() {
   const mode = (document.getElementById('fuzzMode') || {}).value;
   document.querySelectorAll('.fuzz-mode-cfg').forEach(el => el.style.display = 'none');
   const active = document.getElementById('fuzzCfg_' + mode);
   if (active) active.style.display = '';
 }
 
-function fuzzExportCsv() {
+export function fuzzExportCsv() {
   if (!_fuzzResults.length) return;
   const rows = [
     ['#', 'label', 'response', 'raw_hex'],
@@ -272,7 +250,8 @@ function _fuzzRenderResults() {
   if (!el) return;
   if (!_fuzzResults.length) { el.innerHTML = ''; return; }
   const C = { screen: '#3a9a6a', 'no-response': '#777', disconnect: '#e06060', error: '#e0a060' };
-  const rows = _fuzzResults.slice(-50); // show last 50 to keep DOM small
+  const esc = window.esc ?? (s => String(s));
+  const rows = _fuzzResults.slice(-50);
   el.innerHTML =
     '<table style="width:100%;border-collapse:collapse;font-size:10px;margin-top:4px">' +
     '<tr style="color:var(--text-muted)">' +
@@ -289,3 +268,5 @@ function _fuzzRenderResults() {
     }).join('') + '</table>' +
     (_fuzzResults.length > 50 ? `<div style="font-size:9px;color:#555;margin-top:2px">Showing last 50 of ${_fuzzResults.length}</div>` : '');
 }
+
+Object.assign(window, { fuzzOnResult, startFuzz, stopFuzz, fuzzModeChanged, fuzzExportCsv });
