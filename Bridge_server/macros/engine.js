@@ -29,10 +29,8 @@
  * ]
  */
 
-'use strict';
-
-const EventEmitter = require('events');
-const logger       = require('../logger');
+import { EventEmitter } from 'events';
+import logger from '../logger.cjs';
 
 // How long to wait for keyboard unlock before timing out (ms)
 const DEFAULT_UNLOCK_TIMEOUT_MS = 15_000;
@@ -434,4 +432,4 @@ function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-module.exports = MacroEngine;
+export default MacroEngine;

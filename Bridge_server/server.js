@@ -1,23 +1,20 @@
-'use strict';
+import http from 'http';
+import { WebSocketServer } from 'ws';
+import * as Ebcdic from './tn3270/ebcdic.js';
 
-const http      = require('http');
-const WebSocket = require('ws');
-const Ebcdic    = require('./tn3270/ebcdic');
+import config from './config.js';
+import logger from './logger.cjs';
 
-const config    = require('./config');
-const logger    = require('./logger');
+import { createRequestHandler } from './handlers/http.js';
+import { createWsHandler }      from './handlers/ws.js';
 
-const { createRequestHandler } = require('./handlers/http');
-const { createWsHandler }      = require('./handlers/ws');
-
-// Shared session registry — wsId (number) → Tn3270Session
 const sessions = new Map();
 
 const httpServer = http.createServer(
   createRequestHandler({ config, logger, sessions })
 );
 
-const wss = new WebSocket.Server({ server: httpServer });
+const wss = new WebSocketServer({ server: httpServer });
 wss.on('connection', createWsHandler({ config, logger, sessions, Ebcdic }));
 
 httpServer.listen(config.bridge.port, '0.0.0.0', () => {

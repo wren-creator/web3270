@@ -15,13 +15,12 @@
  *   IBM GA23-0059 — 3270 Data Stream Programmer's Reference
  */
 
-'use strict';
-
-const net    = require('net');
-const tls    = require('tls');
-const { EventEmitter } = require('events');
-const Ebcdic = require('./ebcdic');
-const logger = require('../logger');
+import net from 'net';
+import tls from 'tls';
+import { EventEmitter } from 'events';
+import * as Ebcdic from './ebcdic.js';
+import logger from '../logger.cjs';
+import config from '../config.js';
 
 // ── Telnet constants ───────────────────────────────────────────────
 const IAC  = 0xFF;
@@ -203,7 +202,7 @@ class Tn3270Session extends EventEmitter {
     this.socket.on('data', chunk => this._onData(chunk));
     this.socket.on('error', err  => { this.emit('error', err); this._cleanup(); });
     this.socket.on('close', ()   => { this.emit('disconnected', 'tcp close'); this._cleanup(); });
-    this.socket.setTimeout(config().bridge.socketTimeoutMs, () => {
+    this.socket.setTimeout(config.bridge.socketTimeoutMs, () => {
       this.emit('error', new Error('Socket timeout'));
       this._cleanup();
     });
@@ -1595,6 +1594,4 @@ function optName(o) {
   return { [OPT_BINARY]:'BINARY',[OPT_EOR]:'EOR',[OPT_TTYPE]:'TTYPE',[OPT_TN3270E]:'TN3270E' }[o] || `0x${o.toString(16)}`;
 }
 
-function config() { return require('../config'); }
-
-module.exports = Tn3270Session;
+export default Tn3270Session;

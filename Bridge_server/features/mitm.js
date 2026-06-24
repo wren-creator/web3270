@@ -1,17 +1,13 @@
-'use strict';
-
 // MITM intercept state — per-session.
-// When active, outbound AID records are held until the instructor
-// releases (optionally modified), drops, or replays them.
-const _enabled      = new Set();   // wsId → MITM active
-const _held         = new Map();   // wsId → { aid, fields, cursorAddr }
-const _lastReleased = new Map();   // wsId → { aid, fields, cursorAddr } (for replay)
+const _enabled      = new Set();
+const _held         = new Map();
+const _lastReleased = new Map();
 
-function isEnabled(wsId) {
+export function isEnabled(wsId) {
   return _enabled.has(wsId);
 }
 
-function toggle(wsId, ws, send, logger) {
+export function toggle(wsId, ws, send, logger) {
   const wasActive = _enabled.has(wsId);
   if (wasActive) {
     _enabled.delete(wsId);
@@ -24,7 +20,7 @@ function toggle(wsId, ws, send, logger) {
   send(ws, { type: 'sec.mitm.state', active });
 }
 
-function interceptKey(wsId, ws, session, msg, send, logger, logTraffic) {
+export function interceptKey(wsId, ws, session, msg, send, logger) {
   const fields     = session.getModifiedFields();
   const cursorAddr = session.cursorAddr;
   const cols       = session.cols || 80;
@@ -46,7 +42,7 @@ function interceptKey(wsId, ws, session, msg, send, logger, logTraffic) {
   });
 }
 
-function release(wsId, ws, session, msg, send, logger, logTraffic) {
+export function release(wsId, ws, session, msg, send, logger, logTraffic) {
   const held = _held.get(wsId);
   if (!held) return;
   _held.delete(wsId);
@@ -58,7 +54,7 @@ function release(wsId, ws, session, msg, send, logger, logTraffic) {
   send(ws, { type: 'sec.mitm.released', aid: held.aid });
 }
 
-function drop(wsId, ws, send, logger) {
+export function drop(wsId, ws, send, logger) {
   const held = _held.get(wsId);
   if (!held) return;
   _held.delete(wsId);
@@ -66,7 +62,7 @@ function drop(wsId, ws, send, logger) {
   send(ws, { type: 'sec.mitm.dropped', aid: held.aid });
 }
 
-function replay(wsId, ws, session, send, logger, logTraffic) {
+export function replay(wsId, ws, session, send, logger, logTraffic) {
   const last = _lastReleased.get(wsId);
   if (!last) { send(ws, { type: 'sec.mitm.replay-empty' }); return; }
   logger.info(`[ws:${wsId}] MITM: replaying ${last.aid}`);
@@ -75,10 +71,8 @@ function replay(wsId, ws, session, send, logger, logTraffic) {
   send(ws, { type: 'sec.mitm.replayed', aid: last.aid });
 }
 
-function cleanup(wsId) {
+export function cleanup(wsId) {
   _enabled.delete(wsId);
   _held.delete(wsId);
   _lastReleased.delete(wsId);
 }
-
-module.exports = { isEnabled, toggle, interceptKey, release, drop, replay, cleanup };

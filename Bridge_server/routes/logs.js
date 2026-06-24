@@ -1,6 +1,4 @@
-'use strict';
-
-function handle(req, res, { logger }) {
+export function handle(req, res, { logger }) {
   if (req.url === '/api/logs/stream' && req.method === 'GET') {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', 'Access-Control-Allow-Origin': '*' });
     for (const entry of logger.getBuffer()) {
@@ -25,5 +23,3 @@ function handle(req, res, { logger }) {
 
   return false;
 }
-
-module.exports = { handle };
