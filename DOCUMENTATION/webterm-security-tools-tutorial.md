@@ -923,6 +923,88 @@ All three Recon tools share a single CSV export via **↓ Export all Recon resul
 
 ---
 
+## Part 2N — Encryption At Rest Audit Scanner (Wave 12)
+
+Most z/OS shops have enabled DFSMS at-rest encryption for new datasets but never went back to encrypt older ones. The Encryption Audit Scanner surfaces exactly this gap: it runs `LISTCAT ENT(dsname) ALL` against a list of datasets and looks for the `ENCRYPTION-KEY-LABEL` field that indicates DFSMS encryption is active.
+
+---
+
+### How z/OS at-rest encryption works
+
+z/OS DFSMS encryption uses the IBM ICSF (Integrated Cryptographic Service Facility) subsystem. When a dataset is created with an encryption key label (via the SMS data class or `DFSMS PARMLIB`), all writes are encrypted in hardware before hitting disk. The key label appears in the IDCAMS catalog entry and is visible in `LISTCAT ENT() ALL` output.
+
+If the `ENCRYPTION-KEY-LABEL` field is absent from the catalog entry — the dataset is in plaintext on disk. No key label = no encryption, regardless of what the security policy says.
+
+---
+
+### Location
+
+Security panel → RECON TOOLS → ENCRYPTION AUDIT SCANNER (below Dataset Recon Scanner)
+
+---
+
+### Workflow
+
+**Step 1 — Get a dataset list**
+
+Two options:
+- Run the Dataset Recon Scanner first, then click **⬆ Import Flagged** to pull all sensitivity-flagged dataset names into the audit textarea
+- Paste names manually (one fully qualified dataset name per line)
+
+**Step 2 — Run the audit**
+
+Click **▶ AUDIT**. For each dataset the tool issues:
+```
+LISTCAT ENT(dsname) ALL
+```
+
+The full IDCAMS catalog record is parsed for encryption indicators.
+
+**Step 3 — Read the results**
+
+| Risk | Condition |
+|---|---|
+| CRITICAL | Sensitive name pattern (PASSWORD, KEY, CERT, TOKEN, SSN, CRED) + no encryption |
+| HIGH | Production/system dataset (PROD, PAYROLL, FINANCE, PARMLIB, SYS1.*) + no encryption |
+| MEDIUM | Any unencrypted dataset |
+| INFO | Encrypted — key label shown in KEY LABEL column |
+| ERR | LISTCAT failed — dataset not found or not catalogued |
+
+Results sort CRITICAL → HIGH → MEDIUM → INFO automatically.
+
+---
+
+### What the scanner detects
+
+The parser looks for two patterns in LISTCAT ALL output:
+
+1. `ENCRYPTION-KEY-LABEL - keyname` — present on DFSMS-encrypted datasets; the key label identifies which ICSF key protects the data
+2. `ENCRYPTED YES/NO` — present on some z/OS releases
+
+Absence of both = unencrypted.
+
+---
+
+### Why the import-from-recon workflow matters
+
+The two-stage approach (Dataset Recon → Encryption Audit) mirrors a real attacker's process:
+
+1. Map the data estate with LISTCAT LEVEL() — find every dataset under high-value prefixes
+2. Flag sensitive-named datasets from the results
+3. Audit only the flagged ones for encryption — avoid running LISTCAT ALL on hundreds of datasets
+
+This is also the correct workflow for a compliance audit: prove that datasets matching your data classification policy are encrypted, with evidence.
+
+---
+
+### Teaching scenario
+
+Run Dataset Recon on prefixes PAYROLL, FINANCE, HR. Import the flagged results into the Encryption Audit Scanner. Run the audit. In a typical non-hardened z/OS lab environment, most or all results will show as CRITICAL or HIGH — sensitive names, no encryption. This demonstrates concretely that "we have RACF protecting access" and "the data is encrypted at rest" are two separate questions, and most shops only answer the first one.
+
+> **Note:** Running LISTCAT against datasets you do not own may be logged by RACF SMF records. Always operate under written authorization.
+
+---
+
 ## Part 2L — DB2 Security Tools
 
 Wave 10 adds three DB2-focused tools to the Security panel under a dedicated **DB2 TOOLS** section. All three operate from a TSO READY prompt and require no SPUFI dataset configuration — they issue standard TSO and RACF commands through the live terminal session.
