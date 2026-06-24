@@ -1,5 +1,6 @@
 import { state } from './state.js';
 import { esc } from './utils.js';
+import { setConnStatus, clearOiaFields } from './tabs.js';
 
 let _sshHosts = [];
 
@@ -140,8 +141,7 @@ function _sshOpenSession(sid, name, host, port, username, password) {
       term.writeln(`\r\n\x1b[31m[SSH Error] ${msg.message}\x1b[0m`);
       _sshUpdateTabDot(sid, '#c0392b');
       if (state.activeSshSession === sid) {
-        const oiaMode = document.getElementById('oiaMode');
-        if (oiaMode) { oiaMode.textContent = 'SSH ERROR'; oiaMode.className = 'oia-val'; }
+        setConnStatus(session.name, 'error');
       }
     }
   };
@@ -244,6 +244,8 @@ export function sshCloseTab(e, closeBtn) {
     const sshPane  = document.getElementById('sshTerminal');
     if (term3270) term3270.style.display = '';
     if (sshPane)  sshPane.style.display  = 'none';
+    setConnStatus('', 'disconnected');
+    clearOiaFields();
     const remaining = document.querySelector('.session-tab');
     if (remaining) remaining.click();
   }
