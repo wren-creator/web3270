@@ -445,36 +445,37 @@ function screenConsole(operId, role, outputLog) {
 }
 
 // ── Extract field text from client write ─────────────────────────────────
-function extractInputText(data, rows = 24, cols = 80) {
+function extractInputText(data) {
   let i = 3; // skip AID (1) + cursor address (2)
-  let addr = 0;
-  const text = {};
+  let fieldAddr = -1;
+  const fields = {};
   while (i < data.length) {
     const b = data[i];
     if (b === ORDER_SBA && i + 2 < data.length) {
-      // Bridge sends raw 12-bit binary address, NOT 6-bit encoded
-      addr = (data[i+1] << 8) | data[i+2];
+      // Bridge uses raw 12-bit binary addressing (not 6-bit encoded)
+      fieldAddr = (data[i+1] << 8) | data[i+2];
+      if (!(fieldAddr in fields)) fields[fieldAddr] = [];
       i += 3; continue;
     }
     if (b === ORDER_IC) { i++; continue; }
     if (b >= 0x40 || b === 0x00) {
-      if (!(addr in text)) text[addr] = [];
-      text[addr].push(b === 0x40 ? 0x20 : b);
-      addr = (addr + 1) % (rows * cols);
+      // Accumulate all bytes under the current field's start address
+      if (fieldAddr >= 0) fields[fieldAddr].push(b);
       i++;
     } else { i++; }
   }
-  // Return all non-empty fields in ascending address order, space-separated.
-  // This gives "TPFOP01 TPF1" for the logon form and "ZSHOW E" for the console.
-  const addrs = Object.keys(text).map(Number).sort((a, b) => a - b);
-  const fields = [];
+  // Return fields in ascending address order, space-separated:
+  //   logon  → "TPFOP01 TPF1"   (split gives id + password)
+  //   console → "ZSHOW E"        (passed straight to dispatchCommand)
+  const addrs = Object.keys(fields).map(Number).sort((a, b) => a - b);
+  const result = [];
   for (const a of addrs) {
-    const s = text[a].map(b => EBCDIC_TO_ASCII[b])
-                     .filter(c => c >= 0x20 && c < 0x7F)
-                     .map(c => String.fromCharCode(c)).join('').trim();
-    if (s.length > 0) fields.push(s);
+    const s = fields[a].map(b => EBCDIC_TO_ASCII[b])
+                       .filter(c => c >= 0x20 && c < 0x7F)
+                       .map(c => String.fromCharCode(c)).join('').trim();
+    if (s.length > 0) result.push(s);
   }
-  return fields.join(' ');
+  return result.join(' ');
 }
 
 // ── TN3270E negotiation state ─────────────────────────────────────────────
