@@ -3,6 +3,14 @@ import { renderLiveScreen, screenToText } from './rendering.js';
 import { fitScreen } from './geometry.js';
 import { renderCmdHistory } from './keyboard.js';
 
+export function clearOiaFields() {
+  const fields = { oiaSys:'—', oiaLu:'—', oiaModel:'—', oiaTls:'—', oiaApp:'—' };
+  for (const [id, val] of Object.entries(fields)) {
+    const el = document.getElementById(id);
+    if (el) { el.textContent = val; el.style.color = ''; }
+  }
+}
+
 export function setConnStatus(name, connState) {
   const dot  = document.getElementById('mainConnDot');
   const txt  = document.getElementById('connStatusText');
@@ -97,7 +105,7 @@ export function closeSessionTab(e, closeBtn) {
   tab.remove();
   const remaining = [...tabs.querySelectorAll('.session-tab')];
   if (remaining.length) { const next = remaining[Math.max(0, idx-1)]; activateTabEl(next, Number(next.dataset.sid)); }
-  else { state.activeSession = null; document.getElementById('terminal').innerHTML = ''; setConnStatus('', 'disconnected'); }
+  else { state.activeSession = null; document.getElementById('terminal').innerHTML = ''; setConnStatus('', 'disconnected'); clearOiaFields(); }
 }
 
 export function _showDisconnectScreen(sessionName, termEl, sid) {
@@ -217,7 +225,7 @@ export function splitTermClick(e) {
 
 Object.assign(window, {
   addSessionTab, activateTabEl, activateSession, closeSessionTab,
-  _showDisconnectScreen, setConnStatus, updateSessionDot,
+  _showDisconnectScreen, setConnStatus, updateSessionDot, clearOiaFields,
   termClick, splitTermClick, applyDemoMode, toggleDemoMode,
   cycleSession, switchTab, toggleSplitMode,
 });
