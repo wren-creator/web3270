@@ -937,10 +937,16 @@
     <div style="padding:16px;display:flex;flex-direction:column;gap:10px">
       <div>
         <label style="font-size:10px;color:var(--text-muted);display:block;margin-bottom:3px">HOST</label>
-        <select id="sshHostSelect" onchange="sshHostChanged()"
-          style="width:100%;background:#0a0f14;border:1px solid #1e3a5f;border-radius:3px;color:var(--text-main);font-family:inherit;font-size:11px;padding:4px 6px">
-          <option value="">— Select SSH host —</option>
-        </select>
+        <div style="display:flex;gap:4px;align-items:center">
+          <select id="sshHostSelect" onchange="sshHostChanged()"
+            style="flex:1;background:#0a0f14;border:1px solid #1e3a5f;border-radius:3px;color:var(--text-main);font-family:inherit;font-size:11px;padding:4px 6px">
+            <option value="">— Select SSH host —</option>
+          </select>
+          <button onclick="sshEditHost()" title="Edit host"
+            style="background:#0d1a2d;border:1px solid #1e3a5f;border-radius:3px;color:#4a9fd4;font-family:inherit;font-size:11px;padding:3px 7px;cursor:pointer;flex-shrink:0">✎</button>
+          <button onclick="sshDeleteHost()" title="Delete host"
+            style="background:#1a0d0d;border:1px solid #4a1e1e;border-radius:3px;color:#c0392b;font-family:inherit;font-size:11px;padding:3px 7px;cursor:pointer;flex-shrink:0">✕</button>
+        </div>
       </div>
       <div>
         <label style="font-size:10px;color:var(--text-muted);display:block;margin-bottom:3px">USERNAME</label>
@@ -962,8 +968,8 @@
         <button onclick="sshConnect()"
           style="background:#0d2a1a;border:1px solid #1e4a2f;border-radius:3px;color:#3a9a6a;font-family:inherit;font-size:11px;padding:4px 16px;cursor:pointer;font-weight:700">Connect</button>
       </div>
-      <details style="margin-top:4px">
-        <summary style="font-size:10px;color:var(--text-muted);cursor:pointer;user-select:none">+ Add new host to ssh-hosts.txt</summary>
+      <details id="sshAddHostDetails" style="margin-top:4px">
+        <summary style="font-size:10px;color:var(--text-muted);cursor:pointer;user-select:none">+ Add / edit host</summary>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px">
           <input id="sshNewId"   type="text" placeholder="id (no spaces)"  style="background:#0a0f14;border:1px solid #1e3a5f;border-radius:3px;color:var(--text-main);font-family:inherit;font-size:10px;padding:3px 5px">
           <input id="sshNewName" type="text" placeholder="Display name"    style="background:#0a0f14;border:1px solid #1e3a5f;border-radius:3px;color:var(--text-main);font-family:inherit;font-size:10px;padding:3px 5px">

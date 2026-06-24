@@ -160,6 +160,20 @@ function createRequestHandler({ config, logger, sessions }) {
       return;
     }
 
+    if (req.url.startsWith('/api/ssh-hosts/') && req.method === 'DELETE') {
+      const id = decodeURIComponent(req.url.slice('/api/ssh-hosts/'.length).split('?')[0]);
+      try {
+        const sshHostsPath = path.join(__dirname, '..', 'ssh-hosts.txt');
+        let lines = fs.existsSync(sshHostsPath) ? fs.readFileSync(sshHostsPath, 'utf8').split('\n') : [];
+        lines = lines.filter(l => { const t = l.trim(); return !t || t.startsWith('#') || t.split(',')[0].trim() !== id; });
+        fs.writeFileSync(sshHostsPath, lines.join('\n'));
+        config.sshHosts = config.loadSshHostsFile();
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ ok: true }));
+      } catch (err) { res.writeHead(500); res.end(JSON.stringify({ error: err.message })); }
+      return;
+    }
+
     // ── Macros ─────────────────────────────────────────────────────
     if (req.url === '/api/macros' && req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache', 'Access-Control-Allow-Origin': '*' });

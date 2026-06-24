@@ -25,6 +25,14 @@ function _sshRenderHostDropdown() {
 
 export function openSshConnect() {
   sshLoadHosts();
+  const sel = document.getElementById('sshHostSelect');
+  if (sel) sel.value = '';
+  const userEl = document.getElementById('sshUser');
+  if (userEl) userEl.value = '';
+  const passEl = document.getElementById('sshPassword');
+  if (passEl) passEl.value = '';
+  const errEl = document.getElementById('sshConnectErr');
+  if (errEl) errEl.textContent = '';
   const modal = document.getElementById('sshConnectModal');
   if (modal) modal.style.display = 'flex';
   setTimeout(() => document.getElementById('sshPassword')?.focus(), 80);
@@ -282,9 +290,34 @@ export async function sshSaveHost() {
   await sshLoadHosts();
 }
 
+export function sshEditHost() {
+  const sel = document.getElementById('sshHostSelect');
+  const opt = sel?.options[sel.selectedIndex];
+  if (!opt || !opt.value) return;
+  const h = _sshHosts.find(x => x.id === opt.value);
+  if (!h) return;
+  document.getElementById('sshNewId').value   = h.id;
+  document.getElementById('sshNewName').value = h.name;
+  document.getElementById('sshNewHost').value = h.host;
+  document.getElementById('sshNewPort').value = h.port;
+  document.getElementById('sshNewUser').value = h.user || '';
+  const details = document.getElementById('sshAddHostDetails');
+  if (details) details.open = true;
+}
+
+export async function sshDeleteHost() {
+  const sel = document.getElementById('sshHostSelect');
+  const opt = sel?.options[sel.selectedIndex];
+  if (!opt || !opt.value) return;
+  if (!confirm(`Delete "${opt.text.split('(')[0].trim()}"?`)) return;
+  await fetch(`/api/ssh-hosts/${encodeURIComponent(opt.value)}`, { method: 'DELETE' });
+  await sshLoadHosts();
+}
+
 window.addEventListener('resize', sshFitActive);
 
 Object.assign(window, {
   openSshConnect, closeSshConnect, sshHostChanged, sshConnect,
-  sshActivateTab, sshCloseTab, sshFitActive, sshRenderSplitPane, sshClearSplitPane, sshSaveHost,
+  sshActivateTab, sshCloseTab, sshFitActive, sshRenderSplitPane, sshClearSplitPane,
+  sshSaveHost, sshEditHost, sshDeleteHost,
 });
