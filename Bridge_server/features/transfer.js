@@ -1,5 +1,3 @@
-'use strict';
-
 // ── Screen utilities ───────────────────────────────────────────────
 
 function screenToLines(screenData) {
@@ -414,4 +412,4 @@ function createHandlers({ logger, send, Ebcdic }) {
   };
 }
 
-module.exports = { createHandlers, screenToLinesMasked };
+export { createHandlers, screenToLinesMasked };

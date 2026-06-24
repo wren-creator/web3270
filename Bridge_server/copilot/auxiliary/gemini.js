@@ -25,7 +25,7 @@
  *   COPILOT_MAX_TOKENS   — default: 1000
  */
 'use strict';
-const logger = require('../../logger');
+const logger = require('../../logger.cjs');
 const MODEL      = process.env.GEMINI_MODEL     || 'gemini-2.0-flash';
 const MAX_TOKENS = parseInt(process.env.COPILOT_MAX_TOKENS || '1000', 10);
 const BASE_URL   = 'https://generativelanguage.googleapis.com/v1beta';

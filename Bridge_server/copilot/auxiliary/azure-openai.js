@@ -33,7 +33,7 @@
 
 'use strict';
 
-const logger = require('../../logger');
+const logger = require('../../logger.cjs');
 
 const ENDPOINT   = process.env.AZURE_OPENAI_ENDPOINT?.replace(/\/$/, '');
 const DEPLOYMENT = process.env.AZURE_OPENAI_DEPLOYMENT || 'gpt-4o';

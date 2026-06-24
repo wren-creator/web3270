@@ -1,8 +1,6 @@
-'use strict';
+import { recordings } from '../features/recording.js';
 
-const { recordings } = require('../features/recording');
-
-function handle(req, res, { sessions, logger }) {
+export function handle(req, res, { sessions, logger }) {
   if (req.method === 'POST' && req.url.startsWith('/api/recording/start')) {
     const wsId = parseInt(new URL(req.url, 'http://x').searchParams.get('session'), 10);
     if (!sessions.has(wsId)) { res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Session not found' })); return true; }
@@ -37,5 +35,3 @@ function handle(req, res, { sessions, logger }) {
 
   return false;
 }
-
-module.exports = { handle };

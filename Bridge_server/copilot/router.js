@@ -54,7 +54,7 @@
 
 'use strict';
 
-const logger = require('../logger');
+const logger = require('../logger.cjs');
 
 // ── Provider loader map ───────────────────────────────────────────
 // Each entry is a factory function so we can call it fresh for hot-swap

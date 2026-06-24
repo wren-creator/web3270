@@ -1,6 +1,4 @@
-'use strict';
-
-function handle(req, res, { config, logger }) {
+export function handle(req, res, { config, logger }) {
   if (req.method === 'POST' && req.url === '/api/security-unlock') {
     let body = '';
     req.on('data', chunk => { body += chunk; });
@@ -25,5 +23,3 @@ function handle(req, res, { config, logger }) {
 
   return false;
 }
-
-module.exports = { handle };

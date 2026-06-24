@@ -1,6 +1,4 @@
-'use strict';
-
-function handleFuzz(msg, ws, wsId, session, send, logger) {
+export function handleFuzz(msg, ws, wsId, session, send, logger) {
   const fuzzBuf = Buffer.from((msg.rawBytes || []).map(b => b & 0xFF));
   if (!fuzzBuf.length) {
     send(ws, { type: 'sec.fuzz.result', label: msg.label, response: 'error', detail: 'empty payload' });
@@ -45,5 +43,3 @@ function handleFuzz(msg, ws, wsId, session, send, logger) {
     send(ws, { type: 'sec.fuzz.result', label: msg.label, rawBytes: msg.rawBytes, response: 'error', detail: err.message });
   }
 }
-
-module.exports = { handleFuzz };

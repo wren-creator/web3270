@@ -87,4 +87,4 @@ function fromAsciiFixed(str, len, codepage = 37) {
   return fromAscii(padded, codepage);
 }
 
-module.exports = { toAscii, fromAscii, fromAsciiFixed };
+export { toAscii, fromAscii, fromAsciiFixed };
