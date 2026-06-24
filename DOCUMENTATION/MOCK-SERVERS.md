@@ -1,13 +1,14 @@
 # WebTerm/3270 — Mock Server Reference
 
-Two lightweight TN3270 daemons for local development and demos — no mainframe required.
+Three lightweight TN3270 daemons for local development and demos — no mainframe required.
 
 | Daemon | File | Default Port | Simulates |
 |--------|------|-------------|-----------|
 | Mock z/OS LPAR | `mock-lpar/mock-lpar.js` | **3270** | IBM z/OS · TSO/E · ISPF · SDSF |
 | Mock z/VM | `mock-lpar/mock-zvm.js` | **3271** | IBM z/VM · CP · CMS · XEDIT |
+| Mock z/TPF | `mock-lpar/mock-tpf.js` | **3274** | IBM z/TPF · Operator Console · ZSHOW/ZTEST |
 
-Both daemons implement the **full TN3270(E) protocol stack** — real Telnet negotiation, EBCDIC encoding, and proper 3270 datastream — so the bridge and client exercise the complete code path exactly as they would against a real mainframe.
+All three daemons implement the **full TN3270(E) protocol stack** — real Telnet negotiation, EBCDIC encoding, and proper 3270 datastream — so the bridge and client exercise the complete code path exactly as they would against a real mainframe.
 
 ---
 
@@ -22,7 +23,12 @@ Both daemons implement the **full TN3270(E) protocol stack** — real Telnet neg
   - [Screen flow](#zvm-screen-flow)
   - [Commands and keys](#zvm-commands-and-keys)
   - [Configuration](#zvm-configuration)
-- [Running both servers](#running-both-servers)
+- [Mock z/TPF](#mock-ztpf)
+  - [Screen flow](#tpf-screen-flow)
+  - [Commands and privilege levels](#tpf-commands)
+  - [ECB table](#tpf-ecb-table)
+  - [Configuration](#tpf-configuration)
+- [Running all servers](#running-all-servers)
 - [Docker](#docker)
 - [lpars.txt entries](#lparstxt-entries)
 - [Protocol notes](#protocol-notes)
@@ -361,20 +367,143 @@ Startup output:
 
 ---
 
-## Running Both Servers
+## Mock z/TPF
 
-### WSL2 / Node (three terminals)
+Simulates an IBM z/TPF operator console. z/TPF is the Transaction Processing Facility OS used by airlines and credit card networks. The session starts at the operator logon screen and drops into a scrolling command console after login.
+
+### TPF Screen Flow
+
+```
+┌─────────────────────────────┐
+│   z/TPF Operator Logon      │  OPER ID + PASSWORD, press Enter
+└──────────────┬──────────────┘
+               │ ENTER (valid credentials)
+               ▼
+┌─────────────────────────────┐
+│   Operator Console          │  Scrolling 18-line output log
+│   SYSNAME  HH:MM:SS  ROLE  │  Command input at row 21
+│  ──────────────────────     │
+│  [output log lines]        │
+│  [output log lines]        │
+│  ────────────────────────  │
+│  OPERID ==> _              │
+└─────────────────────────────┘
+```
+
+### TPF Commands
+
+Commands are typed at the `OPERID ==>` prompt. Privilege level is set at logon.
+
+**ZSHOW — available to all operators**
+
+| Command | Description |
+|---------|-------------|
+| `ZSHOW E` | List all ECBs (entry control blocks) — name, type, status, transaction count, privilege flag |
+| `ZSHOW P` | Memory pool status — size, used, percent, warnings for pools above 90% |
+| `ZSHOW S` | System status — CPU, active ECBs, transactions/sec |
+| `ZSHOW T` | Transaction monitor — TPS, peak, totals, queue depth |
+| `ZSHOW O` | Active operator list |
+| `ZSHOW V` | System version and uptime |
+| `ZTEST ENTRY,<ecb>` | Test an individual entry point — response time and status |
+| `HELP` or `?` | Show available commands for current privilege level |
+
+**SYSOP commands — require priv ≥ 2**
+
+| Command | Description |
+|---------|-------------|
+| `ZSTOP,RPRT` | Report how many entry points would be stopped (non-destructive) |
+| `ZSTOP,<ecb>` | Quiesce a specific entry point |
+| `ZENTRY <ecb>` | Manage an entry point |
+| `ZPROG <name>` | Load a program module |
+
+**SYSPROG commands — require priv = 3**
+
+| Command | Description |
+|---------|-------------|
+| `ZEND CHECK` | Show what a full system end would stop |
+| `ZEND QUIESCE` | Halt all transaction processing (simulated — no actual action) |
+
+Authorization failures produce `ZTPF900E AUTHORIZATION FAILURE` and are logged.
+
+### TPF Credentials
+
+| Oper ID | Password | Role | Privilege |
+|---------|----------|------|-----------|
+| `TPFOP01` | `TPF1` | OPER | 1 — read-only |
+| `SYSOP01` | `SYS1` | SYSOP | 2 — stop + manage |
+| `ADMIN01` | `ADMIN` | SYSPROG | 3 — full control |
+
+### TPF ECB Table
+
+15 simulated entry control blocks:
+
+| ECB | Type | Status | Privileged |
+|-----|------|--------|------------|
+| AARES | APPL | ACTIVE | |
+| AUTH | SYSTEM | ACTIVE | ✓ |
+| AVAIL | APPL | ACTIVE | |
+| BKNG | APPL | ACTIVE | |
+| CCARD | SYSTEM | ACTIVE | ✓ |
+| FARES | APPL | ACTIVE | |
+| HOTEL | APPL | ACTIVE | |
+| LOGR | SYSTEM | ACTIVE | ✓ |
+| PAYM | SYSTEM | ACTIVE | ✓ |
+| SECU | SYSTEM | ACTIVE | ✓ |
+| RSVP | APPL | ACTIVE | |
+| SCHD | APPL | IDLE | |
+| TCKP | APPL | ACTIVE | |
+| UPGD | APPL | IDLE | |
+| WLST | APPL | ACTIVE | |
+
+IPOOL (95%) and XPOOL (97%) are pre-configured above 90% to trigger pool warnings.
+
+### TPF Configuration
+
+| Environment Variable | Default | Description |
+|---------------------|---------|-------------|
+| `MOCK_PORT` | `3274` | TCP port to listen on |
+| `MOCK_SYSID` | `TPFSYS1` | System name shown in console header |
+| `MOCK_LU` | `TPFLU01` | LU name reported during TN3270E negotiation |
+| `LOG_LEVEL` | `info` | Set to `debug` for full byte-level Telnet logging |
 
 ```bash
-# Terminal 1 — z/OS mock
+MOCK_PORT=3274 MOCK_SYSID=TPFDEV node mock-lpar/mock-tpf.js
+```
+
+Startup output:
+
+```
+─────────────────────────────────────────────────────
+  WebTerm/3270 Mock z/TPF Daemon
+  Listening on  tcp://0.0.0.0:3274
+  System ID     TPFSYS1
+  LU Name       TPFLU01
+  Protocol      TN3270E + classic TN3270 fallback
+  Screens       Logon → z/TPF Operator Console
+  Credentials   TPFOP01/TPF1  SYSOP01/SYS1  ADMIN01/ADMIN
+─────────────────────────────────────────────────────
+```
+
+---
+
+## Running All Servers
+
+### WSL2 / Node (four terminals)
+
+```bash
+# Terminal 1 — z/OS mock (port 3270)
 cd ~/Bridge_server
 node mock-lpar/mock-lpar.js
 
-# Terminal 2 — z/VM mock
+# Terminal 2 — z/VM mock (port 3271)
 cd ~/Bridge_server
 node mock-lpar/mock-zvm.js
 
-# Terminal 3 — bridge
+# Terminal 3 — z/TPF mock (port 3274)
+cd ~/Bridge_server
+node mock-lpar/mock-tpf.js
+
+# Terminal 4 — bridge
 cd ~/Bridge_server
 node server.js
 ```
@@ -385,6 +514,7 @@ node server.js
 cd ~/Bridge_server
 node mock-lpar/mock-lpar.js &
 node mock-lpar/mock-zvm.js  &
+node mock-lpar/mock-tpf.js  &
 node server.js
 ```
 
@@ -427,18 +557,20 @@ docker compose up -d
 
 ## lpars.txt Entries
 
-Add both mock servers to `lpars.txt` so they appear in the WebTerm/3270 LPAR dropdown:
+Add all three mock servers to `lpars.txt` so they appear in the WebTerm/3270 LPAR dropdown:
 
 ```
 # id,        name,       host,       port,  tls,   type,  model
 mock-zos,    MOCK-ZOS,   mock-lpar,  3270,  false, TSO,   3278-2
 mock-zvm,    MOCK-ZVM,   mock-zvm,   3271,  false, VM,    3278-2
+mock-tpf,    MOCK-TPF,   mock-tpf,   3274,  false, TPF,   3278-2
 ```
 
 > For WSL2/Node (not Docker), use `127.0.0.1` as the host instead of the service name:
 > ```
 > mock-zos,  MOCK-ZOS,  127.0.0.1,  3270,  false, TSO,  3278-2
 > mock-zvm,  MOCK-ZVM,  127.0.0.1,  3271,  false, VM,   3278-2
+> mock-tpf,  MOCK-TPF,  127.0.0.1,  3274,  false, TPF,  3278-2
 > ```
 
 ---
