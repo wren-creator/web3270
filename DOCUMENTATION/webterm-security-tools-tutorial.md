@@ -1428,6 +1428,98 @@ After running the SDSF Job Scanner, click "⇦ Import STCs from SDSF" to populat
 
 ---
 
+## Part 2U — LU Name Fixation (Wave 15)
+
+LU Name Fixation tests whether the mainframe honors the LU name a client requests during TN3270E DEVICE-TYPE negotiation. If fixation is accepted, the client controls its own terminal identity in RACF audit logs, SMF records, and VTAM accounting.
+
+---
+
+### Location
+
+Security panel → TN3270E NEGOTIATION ANALYZER → LU fixation row
+
+### How it works
+
+During TN3270E DEVICE-TYPE REQUEST, the client can include a `CONNECT lu-name` field asking for a specific LU. The host responds with DEVICE-TYPE IS — if the IS response includes `CONNECT lu-name` with the same name, fixation was accepted. If the IS response contains a different LU (pool assignment), fixation was rejected.
+
+WebTerm stores `session.luName` (what was requested at connect time) and `session.negotiatedLu` (what the host granted). The `/api/negotiate` route returns both and computes `luFixation`:
+
+| Value | Meaning |
+|---|---|
+| `ACCEPTED` | Host granted exactly the requested LU — client controls terminal identity |
+| `REJECTED` | Host assigned a different (pool) LU — normal, more secure |
+| `NOT_REQUESTED` | No LU was requested — test not applicable |
+| `NO_LU` | LU was requested but host did not include CONNECT in the IS response |
+
+### Risk: ACCEPTED
+
+A MEDIUM finding. Impact:
+- Audit records in SMF Type 30 (TSO) and VTAM accounting show the LU name — an attacker who controls their LU can make sessions appear to come from a different terminal pool
+- Some applications authorize by LU name (e.g., "only LUs in pool PRODLU may run sensitive transactions") — fixation may bypass this if the application does not also verify RACF identity
+- In shared LU pool environments, requesting a pool LU already in use may cause session conflicts or access to another user's application state
+
+### Testing
+
+Connect via the Connect modal with a specific LU in the LU Name field. Refresh the Negotiation Analyzer and read the LU fixation row. Test with: a name you know exists in the pool (`LU00001`), a name that does not exist (`NOTEXIST`), and a name belonging to a privileged terminal pool if known.
+
+### Teaching scenario
+
+In a lab environment with TN3270E, connect without a LU name (REJECTED baseline), then reconnect with a specific LU. Compare the SMF Type 30 records — if fixation was accepted, the LU in SMF changes. Demonstrate that forensic analysis of the session now shows the requested (potentially spoofed) LU rather than a pool-assigned one.
+
+---
+
+## Part 2V — TN3270E Handshake Trace (Wave 15)
+
+The TN3270E Handshake Trace captures and decodes every Telnet sub-option (IAC SB) exchange during TN3270E negotiation — DEVICE-TYPE and FUNCTIONS exchanges — showing the exact bytes and their decoded meaning.
+
+---
+
+### Location
+
+Security panel → TN3270E NEGOTIATION ANALYZER → TN3270E HANDSHAKE TRACE (bottom of session card)
+
+### How it works
+
+In `session.js`, every call to `_sendTn3270eDeviceType()` and every TN3270E sub-option received in `_handleSubneg()` pushes an entry to `session.tn3270eLog`:
+
+```javascript
+{ dir: 'sent' | 'recv', raw: '<hex bytes>', decoded: '<human description>', ts: <epoch ms> }
+```
+
+The `/api/negotiate` route includes this log. The client renders it in order with direction color coding: blue = client sent (→ C), green = server sent (← S).
+
+### Trace entry types
+
+| Entry | Direction | Meaning |
+|---|---|---|
+| `DEVICE-TYPE REQUEST device=IBM-3278-2 CONNECT LU=X` | → C | Client requests a terminal model and optional LU |
+| `DEVICE-TYPE IS device=IBM-3278-2 CONNECT LU=Y` | ← S | Server confirms terminal model and assigned LU |
+| `DEVICE-TYPE REJECT reason=DEVICE-IN-USE` | ← S | Server rejected the request |
+| `FUNCTIONS REQUEST [0x00 0x02]` | → C | Client requests TN3270E functions (bytes are function codes) |
+| `FUNCTIONS IS [0x00 0x02]` | ← S | Server confirms active functions |
+
+### TN3270E Function codes
+
+| Code | Function | Notes |
+|---|---|---|
+| `0x00` | BIND-IMAGE | Server sends VTAM BIND parameters (includes session key info) |
+| `0x02` | DATA-STREAM-CTL | Server controls SNA data stream framing |
+| `0x04` | RESPONSES | Server sends positive/negative acknowledgment of data records |
+| `0x08` | SCS-CTL-CODES | SCS control codes in the data stream |
+| `0x10` | UNBIND | Server can send UNBIND to terminate the session cleanly |
+
+### Teaching scenario
+
+**BIND-IMAGE inspection:** If the server includes BIND-IMAGE (`0x00`) in FUNCTIONS IS, point out that subsequent BIND records will carry session cryptographic parameters. In a passive tap scenario (pre-TLS), the BIND record would reveal the session key negotiation.
+
+**Functions the server adds:** If FUNCTIONS IS contains codes not in the client's FUNCTIONS REQUEST, the server unilaterally extended the session capabilities. This is protocol-conformant but worth noting — the client should be prepared for those data types in the stream.
+
+**No trace visible:** If the trace is empty, TN3270E was not negotiated — the session is using classic TN3270. The OIA APP field will not show a negotiated LU. This typically means `useTn3270e` was disabled at connect time or the host refused TN3270E.
+
+> **Note:** All Tier 5 tools are passive protocol inspectors. They observe the negotiation that already occurred — no additional data is sent to the host.
+
+---
+
 ## Appendix — The .rec.json format
 
 The recording file is plain JSON and human-readable:

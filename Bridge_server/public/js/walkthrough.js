@@ -1445,13 +1445,19 @@ const _WALKTHROUGHS = [
       },
       {
         title: 'Reading the results',
-        body:  'Each session shows: TLS version (TLSv1.3 / TLSv1.2 / PLAIN), cipher suite name, certificate CN and issuer, certificate expiry, whether TN3270E was negotiated, the terminal model (e.g. IBM-3278-2), and the negotiated LU name. The left border color signals the worst finding: red = CRITICAL, amber = HIGH, yellow = MEDIUM, green = OK.',
+        body:  'Each session shows: TLS version, cipher suite, session resumption flag, certificate CN/issuer/expiry, TN3270E status, terminal model, LU requested vs LU granted, LU fixation result, certificate chain depth, and the full TN3270E sub-negotiation trace. The left border color is the worst finding.',
+        highlight: 'negotiateOut',
+        autoFn: null,
+      },
+      {
+        title: 'LU fixation and handshake trace (Wave 15)',
+        body:  'Two new fields: LU FIXATION shows whether the host honored the requested LU name (ACCEPTED = client controls its audit identity — MEDIUM finding) or assigned a pool LU (REJECTED = normal). The TN3270E HANDSHAKE TRACE section shows every DEVICE-TYPE and FUNCTIONS sub-negotiation exchange, color-coded by direction (blue = client sent, green = server sent), with decoded field names.',
         highlight: 'negotiateOut',
         autoFn: null,
       },
       {
         title: 'Common findings',
-        body:  'CRITICAL (red border): session is PLAIN — no TLS at all. HIGH (amber): weak cipher (RC4, DES, NULL, EXPORT) or self-signed certificate. MEDIUM (yellow): TN3270E not negotiated — the session falls back to classic TN3270, which lacks LU pooling and the TN3270E data stream header. Unknown cipher strength. GREEN: strong AES-256 or ChaCha20 cipher, valid certificate, TN3270E active.',
+        body:  'CRITICAL (red): session is PLAIN. HIGH (amber): weak cipher (RC4/DES/3DES/NULL/EXPORT) or self-signed/expired cert. MEDIUM (yellow): TN3270E not negotiated, or LU fixation ACCEPTED (client controls LU identity). INFO (blue): TLS session resumed, or LU fixation rejected. GREEN: strong cipher, valid cert chain, TN3270E active.',
         highlight: 'negotiateOut',
         autoFn: null,
       },
@@ -1461,6 +1467,83 @@ const _WALKTHROUGHS = [
         highlight: 'negotiateStatus',
         autoFn: 'negotiateExportCsv',
         autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
+  // ── Wave 15: LU Name Fixation ─────────────────────────────────────
+  {
+    id:       'lu-fixation',
+    category: 'security',
+    title:    'LU Name Fixation',
+    desc:     'Test whether the host honors the LU name you request during TN3270E negotiation — fixation accepted means you control your terminal\'s audit identity in RACF and SMF logs.',
+    steps: [
+      {
+        title: 'What is an LU and why does it matter for security?',
+        body:  'In TN3270E, the client can request a specific LU (Logical Unit) name during DEVICE-TYPE negotiation. The host either accepts it (assigns exactly that LU) or rejects it (assigns one from its pool). LU names appear in SMF audit records, VTAM logs, and some applications use them for access control. If fixation is accepted, an attacker can request any LU name — including one belonging to another user or a privileged terminal pool.',
+        highlight: 'negotiateOut',
+        autoFn: null,
+      },
+      {
+        title: 'Set a specific LU name at connect time',
+        body:  'Open the Connect modal. In the LU Name field, enter a specific LU you want to test — e.g., a known pool name like LU00001, LPAR01A, or a name you have seen in SDSF or VTAM documentation. Connect to the host.',
+        highlight: 'negotiateOut',
+        autoFn: null,
+      },
+      {
+        title: 'Refresh the analyzer and check LU FIXATION',
+        body:  'After connecting, refresh the Negotiation Analyzer. Look at "LU requested" vs "LU granted" and the "LU fixation" field. ACCEPTED means the host granted exactly the LU name you requested — you control your identity in audit logs. REJECTED means the host ignored your request and assigned a pool LU.',
+        highlight: 'negotiateOut',
+        autoFn: 'negotiateRefresh',
+        autoLabel: 'Refresh for me',
+      },
+      {
+        title: 'ACCEPTED — what it means',
+        body:  'LU fixation ACCEPTED is a MEDIUM finding. It means: (1) you could request a predictable LU name that appears in VTAM resource profiles and may have different RACF access than your normal terminal, (2) audit records in SMF will show the requested LU rather than a pool-assigned one — if you request another user\'s known LU, their audit trail is now polluted. In high-security environments, the host should assign LUs from a pool regardless of what the client requests.',
+        highlight: 'negotiateOut',
+        autoFn: null,
+      },
+      {
+        title: 'Export',
+        body:  'Click ↓ Export CSV — the CSV now includes luRequested, lu (granted), and luFixation columns. Document the finding with the specific LU names tested and whether fixation was accepted.',
+        highlight: 'negotiateOut',
+        autoFn: 'negotiateExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
+  // ── Wave 15: TN3270E Handshake Trace ──────────────────────────────
+  {
+    id:       'tn3270e-handshake-trace',
+    category: 'security',
+    title:    'TN3270E Handshake Trace',
+    desc:     'Capture and decode the full TN3270E DEVICE-TYPE and FUNCTIONS sub-negotiation exchange — reveals exactly what terminal type was agreed, which LU was assigned, and which TN3270E functions are active.',
+    steps: [
+      {
+        title: 'What the handshake reveals',
+        body:  'TN3270E negotiation happens via Telnet sub-option (IAC SB) exchanges before any 3270 data flows. The DEVICE-TYPE REQUEST/IS exchange establishes the terminal model and LU. The FUNCTIONS REQUEST/IS exchange establishes which TN3270E features are active (RESPONSES, BIND-IMAGE, UNBIND, DATA-STREAM-CTL, SYSREQ). This trace shows every byte exchanged — useful for understanding what the host is capable of and what it told your client.',
+        highlight: 'negotiateOut',
+        autoFn: null,
+      },
+      {
+        title: 'Connect and refresh',
+        body:  'Connect to a host with TN3270E enabled. After the session is established, refresh the Negotiation Analyzer. The TN3270E HANDSHAKE TRACE section at the bottom of the session card shows each sub-negotiation exchange in order.',
+        highlight: 'negotiateOut',
+        autoFn: 'negotiateRefresh',
+        autoLabel: 'Refresh for me',
+      },
+      {
+        title: 'Reading the trace',
+        body:  'Each line shows direction (→ C = client sent, ← S = server sent) and the decoded meaning. DEVICE-TYPE REQUEST shows what terminal type and LU name the client requested. DEVICE-TYPE IS shows what the server confirmed (look for CONNECT LU= to see the assigned LU). FUNCTIONS REQUEST/IS shows the negotiated feature set — functions in the IS that were not in the REQUEST mean the server added capabilities the client did not ask for.',
+        highlight: 'negotiateOut',
+        autoFn: null,
+      },
+      {
+        title: 'Security implications of FUNCTIONS',
+        body:  'The FUNCTIONS IS list matters: RESPONSES means the server will send positive/negative acknowledgment of data records — useful for MITM reliability analysis. BIND-IMAGE means the server sends VTAM BIND parameters, which includes session key information. DATA-STREAM-CTL gives the server control over SNA data stream framing. If the server negotiates functions the client did not request, it is extending capabilities unilaterally.',
+        highlight: 'negotiateOut',
+        autoFn: null,
       },
     ],
   },
