@@ -39,6 +39,15 @@ Bridge_server/
 │                                           · GET/POST/DELETE /api/macros (macros.json CRUD)
 │                                           · GET/POST /api/ssh-hosts (ssh-hosts.txt CRUD)
 │                                           · WS first-message type:"ssh.connect" → handleSshConnect()
+├── routes/
+│   ├── traffic.js                        GET /api/traffic, DELETE /api/traffic/csv — traffic log CRUD
+│   ├── logs.js                           GET /api/logs — bridge log tail
+│   ├── profiles.js                       GET/POST/DELETE /api/profiles — lpars.txt CRUD
+│   ├── ssh-hosts.js                      GET/POST /api/ssh-hosts — ssh-hosts.txt CRUD
+│   ├── macros.js                         GET/POST/DELETE /api/macros — macros.json CRUD + library guard (403)
+│   ├── recording.js                      GET/POST /api/recordings — session recording files
+│   ├── security.js                       POST /api/security — security tool server-side helpers
+│   └── negotiate.js                      GET /api/negotiate — TLS cipher, cert chain, LU fixation, TN3270E log per session
 ├── config.js                             Profile loaders: lpars.txt (loadLparFile) + ssh-hosts.txt (loadSshHostsFile)
 ├── logger.js                             Structured logger (LOG_LEVEL env var)
 ├── package.json                          Deps: ws, ssh2 (production); nodemon (dev)
@@ -54,6 +63,7 @@ Bridge_server/
 │   ├── session.js                        Full TN3270(E) protocol implementation
 │   │                                       · Telnet negotiation (DO/WILL/WONT/DONT)
 │   │                                       · TN3270E sub-negotiation + LU binding
+│   │                                       · tn3270eLog[] — decoded trace of every DEVICE-TYPE/FUNCTIONS exchange
 │   │                                       · WSF QueryReply handshake (z/VM)
 │   │                                       · 3270 datastream parser (SF/SBA/IC/RA/EUA/SFE)
 │   │                                       · 14-bit SBA address decode/encode
@@ -156,6 +166,28 @@ Bridge_server/
 │       │                                   · Subsystem Scanner — DSN SYSTEM() wordlist probe, version from banner
 │       │                                   · RACF-DB2 Auth Scan — SEARCH CLASS for DSNR/MDSNPN/MDSNTB/MDSNSP
 │       │                                   · Permission Probe — RLIST DSNR BATCH/DB2CALL/DDF/SPACENAM, PUBLIC flagging
+│       ├── recon.js                      RACF Recon Tools (Wave 11):
+│       │                                   · RACF Settings Analyzer — SETROPTS LIST, password policy + class gap analysis
+│       │                                   · RACF User/Group Enumerator — SEARCH CLASS(USER/GROUP), paginates MORE
+│       │                                   · Dataset Recon Scanner — LISTCAT LEVEL() wordlist, sensitivity flagging
+│       │                                   · Encryption At Rest Audit Scanner — LISTCAT ENT() ALL, DFSMS key label detection
+│       ├── transit.js                    In-Transit Encryption Monitor (Wave 12):
+│       │                                   · Session TLS banner (PLAIN/TLSv1.2/TLSv1.3)
+│       │                                   · Traffic log with per-entry TLS state, plaintext exposed bytes
+│       │                                   · IND$FILE transfer entries tagged with TLS state
+│       ├── syscheck.js                   System Access Checks (Wave 13):
+│       │                                   · APF Library Scanner — LISTAPF + LISTDSD, unprotected = CRITICAL
+│       │                                   · PARMLIB Access Check — ALLOC SHR per member, non-destructive
+│       ├── cics.js                       CICS Transaction Scanner (Wave 13):
+│       │                                   · Probes transaction IDs via DFHAC2001 side-channel
+│       │                                   · ACCESSIBLE / DENIED (exists, blocked) / NOT_FOUND classification
+│       ├── negotiate.js                  TN3270E Negotiation Analyzer (Waves 14–15):
+│       │                                   · Fetches /api/negotiate — cipher, TLS version, cert chain, session reuse
+│       │                                   · LU Name Fixation — compares requested vs granted LU (MEDIUM if ACCEPTED)
+│       │                                   · TN3270E Handshake Trace — decoded DEVICE-TYPE + FUNCTIONS exchanges
+│       ├── sdsf.js                       SDSF & STC Tools (Wave 14):
+│       │                                   · SDSF Job Scanner — passive screen parse, flags system STCs visible from low-priv
+│       │                                   · STC Profile Scanner — RLIST STARTED per STC, ICH10006I = HIGH
 │       ├── walkthrough.js                Guided scenario walkthroughs (security + general), overlay engine
 │       └── main.js                       App init, WebSocket lifecycle, session tab management
 │
