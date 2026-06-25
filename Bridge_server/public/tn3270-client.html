@@ -1305,7 +1305,7 @@
 
 <!-- Walkthrough overlay -->
 <div id="wtOverlay" style="display:none;position:fixed;bottom:56px;right:12px;z-index:7500;width:310px;background:#0a0f14;border:1px solid #1e3a5f;border-radius:6px;box-shadow:0 4px 24px rgba(0,0,0,0.7);flex-direction:column;font-family:'IBM Plex Mono',monospace">
-  <div style="background:#0d1a2a;border-bottom:1px solid #1e3a5f;padding:8px 12px;border-radius:6px 6px 0 0;display:flex;align-items:center;justify-content:space-between">
+  <div id="wtDragHandle" style="background:#0d1a2a;border-bottom:1px solid #1e3a5f;padding:8px 12px;border-radius:6px 6px 0 0;display:flex;align-items:center;justify-content:space-between;cursor:grab;user-select:none">
     <div>
       <div id="wtTitle" style="font-size:11px;font-weight:700;color:var(--accent-amber)"></div>
       <div id="wtProgress" style="font-size:9px;color:var(--text-muted);margin-top:1px"></div>
