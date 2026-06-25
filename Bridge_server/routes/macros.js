@@ -4,8 +4,8 @@ import { fileURLToPath } from 'url';
 import { loadMacroFile } from '../features/macros.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const macroPath = path.join(__dirname, '..', 'macros.json');
 const libDir    = path.join(__dirname, '..', 'macros', 'library');
+const macroPath = path.join(__dirname, '..', 'macros', 'macros.json');
 
 function libraryFilePath(name) {
   const safe = name.replace(/[^a-zA-Z0-9 _\-]/g, '_').trim();

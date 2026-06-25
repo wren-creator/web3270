@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export function loadMacroFile(config) {
-  const macroPath = path.join(__dirname, '..', 'macros.json');
+  const macroPath = path.join(__dirname, '..', 'macros', 'macros.json');
   let macros = [];
   if (fs.existsSync(macroPath)) {
     try { macros = JSON.parse(fs.readFileSync(macroPath, 'utf8')); } catch { macros = []; }
