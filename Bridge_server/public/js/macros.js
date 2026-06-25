@@ -12,7 +12,11 @@ export async function loadMacros() {
 async function saveMacroToServer(macro) {
   if (window.location.protocol === 'file:') return;
   const res = await fetch('/api/macros', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(macro) });
-  if (!res.ok) throw new Error('HTTP ' + res.status);
+  if (!res.ok) {
+    let msg = 'HTTP ' + res.status;
+    try { const b = await res.json(); if (b.error) msg = b.error; } catch {}
+    throw new Error(msg);
+  }
   return (await res.json()).macro;
 }
 
