@@ -205,9 +205,42 @@ export function _hideMacroRecIndicator() {
   if (el) el.style.display = 'none';
 }
 
+// ── Macro prompt UI ────────────────────────────────────────────────
+
+export function _showMacroPrompt(varName, label) {
+  const modal = document.getElementById('macroPromptModal');
+  if (!modal) return;
+  document.getElementById('macroPromptLabel').textContent = label || `Enter value for ${varName}:`;
+  document.getElementById('macroPromptVarName').value = varName;
+  document.getElementById('macroPromptInput').value = '';
+  modal.style.display = 'flex';
+  setTimeout(() => document.getElementById('macroPromptInput').focus(), 50);
+}
+
+export function _submitMacroPrompt() {
+  const modal   = document.getElementById('macroPromptModal');
+  const varName = document.getElementById('macroPromptVarName').value;
+  const value   = document.getElementById('macroPromptInput').value;
+  if (modal) modal.style.display = 'none';
+  const session = state.sessions.get(state.activeSession);
+  if (session && session.ws.readyState === WebSocket.OPEN) {
+    session.ws.send(JSON.stringify({ type: 'macro.prompt.response', var: varName, value }));
+  }
+}
+
+export function _cancelMacroPrompt() {
+  const modal = document.getElementById('macroPromptModal');
+  if (modal) modal.style.display = 'none';
+  const session = state.sessions.get(state.activeSession);
+  if (session && session.ws.readyState === WebSocket.OPEN) {
+    session.ws.send(JSON.stringify({ type: 'macro.stop' }));
+  }
+}
+
 Object.assign(window, {
   loadMacros, renderSidebarMacros, showAddMacroModal, hideAddMacroModal,
   saveMacroFromModal, saveMacro, importMacroFromFile, loadMacroFile,
   startMacroRecord, stopMacroRecord, cancelMacroRecord, saveMacroRecord,
   _showMacroRecIndicator, _updateMacroRecIndicator, _hideMacroRecIndicator,
+  _showMacroPrompt, _submitMacroPrompt, _cancelMacroPrompt,
 });

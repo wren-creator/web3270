@@ -55,6 +55,10 @@ class MacroEngine extends EventEmitter {
     this._currentMacro = null;
     this._stepIdx   = 0;
 
+    // Prompt state — set while engine is waiting for user input
+    this._promptResolve = null;
+    this._vars = {};
+
     // Recording state
     this._recording = false;
     this._recorded  = [];
@@ -163,6 +167,8 @@ class MacroEngine extends EventEmitter {
     this._stopFlag   = false;
     this._currentMacro = macro;
     this._stepIdx    = 0;
+    this._vars       = {};
+    this._promptResolve = null;
 
     const unlockTimeout = opts.unlockTimeoutMs ?? DEFAULT_UNLOCK_TIMEOUT_MS;
 
@@ -235,9 +241,13 @@ class MacroEngine extends EventEmitter {
           await this._waitUnlock(unlockTimeout);
           break;
 
+      case 'prompt':
+        await this._executePrompt(step);
+        break;
+
       case 'type':
-        // Place text into a field without transmitting
-        this.session.typeAt(step.row, step.col, step.text);
+        // Place text into a field without transmitting; {varName} is substituted
+        this.session.typeAt(step.row, step.col, this._substituteVars(step.text));
         break;
 
       case 'cursor':
@@ -409,6 +419,48 @@ class MacroEngine extends EventEmitter {
 
       check();
     });
+  }
+
+  // ── Prompt step ────────────────────────────────────────────────
+
+  /**
+   * Pause execution and ask the user for a value.
+   * { op: 'prompt', var: 'userid', label: 'Enter the userid to unlock:' }
+   * The value is stored in this._vars and substituted via {varName} in type steps.
+   */
+  _executePrompt(step) {
+    if (!step.var) throw new Error('prompt step requires a "var" field');
+    this.emit('promptRequired', step.var, step.label || `Enter value for ${step.var}:`);
+
+    return new Promise((resolve, reject) => {
+      // Poll for stop flag so the user can cancel mid-prompt
+      const checkStop = setInterval(() => {
+        if (this._stopFlag) {
+          clearInterval(checkStop);
+          this._promptResolve = null;
+          reject(new Error('Macro stopped by user'));
+        }
+      }, 100);
+
+      this._promptResolve = (value) => {
+        clearInterval(checkStop);
+        this._promptResolve = null;
+        this._vars[step.var] = value;
+        resolve();
+      };
+    });
+  }
+
+  /** Called by the WS handler when the browser sends macro.prompt.response. */
+  deliverPromptResponse(_varName, value) {
+    if (this._promptResolve) {
+      this._promptResolve(value);
+    }
+  }
+
+  _substituteVars(text) {
+    if (!text || !text.includes('{')) return text;
+    return text.replace(/\{(\w+)\}/g, (_, name) => this._vars[name] ?? '');
   }
 
   _waitForScreenChange(timeoutMs) {

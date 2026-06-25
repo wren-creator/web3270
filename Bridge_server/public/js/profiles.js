@@ -260,6 +260,7 @@ export function handleBridgeMsg(sid, msg) {
     case 'macro.recording.step':      window._updateMacroRecIndicator?.(msg.stepCount); break;
     case 'macro.recording.stopped':   window._hideMacroRecIndicator?.(); window.loadMacros?.(); break;
     case 'macro.recording.cancelled': window._hideMacroRecIndicator?.(); break;
+    case 'macro.prompt':              window._showMacroPrompt?.(msg.var, msg.label); break;
     case 'sec.fuzz.result': if (sid === state.activeSession) window.fuzzOnResult?.(msg); break;
   }
 }

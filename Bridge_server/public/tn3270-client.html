@@ -1216,6 +1216,22 @@
   </div>
 </div>
 
+<!-- Macro prompt modal — shown mid-run when a macro has a { op: "prompt" } step -->
+<div id="macroPromptModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9200;align-items:center;justify-content:center;">
+  <div style="background:#0a1220;border:1px solid #1e3a5f;border-radius:6px;padding:24px 28px;min-width:300px;max-width:380px;font-family:'IBM Plex Mono',monospace;">
+    <div style="color:var(--accent-blue);font-size:13px;margin-bottom:4px;letter-spacing:0.08em">⏸ MACRO INPUT REQUIRED</div>
+    <div id="macroPromptLabel" style="color:var(--text-muted);font-size:11px;margin-bottom:14px;line-height:1.5"></div>
+    <input id="macroPromptInput" type="text" placeholder="Enter value…"
+      style="width:100%;box-sizing:border-box;background:#000;border:1px solid #1e3a5f;border-radius:3px;color:var(--text-primary);font-family:inherit;font-size:12px;padding:6px 8px;outline:none;margin-bottom:14px"
+      onkeydown="if(event.key==='Enter')_submitMacroPrompt();if(event.key==='Escape')_cancelMacroPrompt();" />
+    <input id="macroPromptVarName" type="hidden" />
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button onclick="_cancelMacroPrompt()" style="background:none;border:1px solid #444;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:11px;padding:4px 12px;cursor:pointer">Cancel (stop macro)</button>
+      <button onclick="_submitMacroPrompt()" style="background:#0d1a2d;border:1px solid #1e3a5f;border-radius:3px;color:var(--accent-blue);font-family:inherit;font-size:11px;padding:4px 14px;cursor:pointer;font-weight:700">Continue →</button>
+    </div>
+  </div>
+</div>
+
 <!-- Security unlock modal -->
 <div id="secUnlockOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9000;align-items:center;justify-content:center;">
   <div style="background:#0d1a0d;border:1px solid #2a4a2a;border-radius:6px;padding:24px 28px;min-width:280px;max-width:340px;font-family:'IBM Plex Mono',monospace;">
