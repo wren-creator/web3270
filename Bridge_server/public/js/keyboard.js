@@ -15,36 +15,44 @@ export function sendKey(aid, fields = []) {
   const session = state.sessions.get(state.activeSession);
   if (!session || session.ws.readyState !== WebSocket.OPEN) return;
   if (aid === 'ENTER' && state.liveScreen && state.liveScreen.rows) {
-    const cmdRow = state.liveScreen.rows[state.cursorRow];
+    const rows = state.liveScreen.rows;
+    const cmdRow = rows[state.cursorRow];
     if (cmdRow) {
-      // Walk backward from the cursor to find the FA byte that opens the
-      // field the cursor is in, then capture only that field's text.
+      // Walk backward from cursor — crossing row boundaries — to find the FA byte
+      // that opens the field. In 3270 a field starting at col 0 has its FA byte
+      // at the last column of the previous row, so a single-row scan misses it.
       const FA_PROTECTED = 0x20;
-      let fieldStart = 0;
-      let fieldUnprotected = false;
-      for (let i = state.cursorCol; i >= 0; i--) {
-        if (cmdRow[i] && cmdRow[i].fa !== undefined) {
-          fieldStart = i + 1;
-          fieldUnprotected = !(cmdRow[i].fa & FA_PROTECTED);
-          break;
+      let fieldStart = 0;      // col on cursorRow where field content begins
+      let fieldUnprotected = null; // null = FA not found yet
+      outer: for (let ri = state.cursorRow; ri >= 0; ri--) {
+        const r = rows[ri] || [];
+        const startCol = (ri === state.cursorRow) ? state.cursorCol : r.length - 1;
+        for (let ci = startCol; ci >= 0; ci--) {
+          if (r[ci] && r[ci].fa !== undefined) {
+            fieldUnprotected = !(r[ci].fa & FA_PROTECTED);
+            // Field content on cursorRow starts at col 0 if FA is on a prior row
+            if (ri === state.cursorRow) fieldStart = ci + 1;
+            break outer;
+          }
         }
       }
-      let fieldEnd = cmdRow.length;
-      for (let i = fieldStart; i < cmdRow.length; i++) {
-        if (cmdRow[i] && cmdRow[i].fa !== undefined) { fieldEnd = i; break; }
-      }
-      // Only skip recording if the cursor field itself is nondisplay (password field).
-      // Checking the whole row was too broad — many screens have hidden attr bytes elsewhere.
-      const fieldIsNondisplay = cmdRow.slice(fieldStart, fieldEnd).some(c => c && c.nondisplay);
-      const cmd = (fieldUnprotected && !fieldIsNondisplay)
-        ? cmdRow.slice(fieldStart, fieldEnd).map(c => (c && c.char && c.char !== '\x00') ? c.char : ' ').join('').trimEnd()
-        : '';
-      if (cmd.trim().length > 0) {
-        if (!session.cmdHistory) session.cmdHistory = [];
-        session.cmdHistory.push(cmd);
-        if (session.cmdHistory.length > 100) session.cmdHistory.shift();
-        state.cmdHistoryIndex = -1;
-        renderCmdHistory();
+      if (fieldUnprotected) {
+        let fieldEnd = cmdRow.length;
+        for (let i = fieldStart; i < cmdRow.length; i++) {
+          if (cmdRow[i] && cmdRow[i].fa !== undefined) { fieldEnd = i; break; }
+        }
+        const fieldIsNondisplay = cmdRow.slice(fieldStart, fieldEnd).some(c => c && c.nondisplay);
+        if (!fieldIsNondisplay) {
+          const cmd = cmdRow.slice(fieldStart, fieldEnd)
+            .map(c => (c && c.char && c.char !== '\x00') ? c.char : ' ').join('').trimEnd();
+          if (cmd.trim().length > 0) {
+            if (!session.cmdHistory) session.cmdHistory = [];
+            session.cmdHistory.push(cmd);
+            if (session.cmdHistory.length > 100) session.cmdHistory.shift();
+            state.cmdHistoryIndex = -1;
+            renderCmdHistory();
+          }
+        }
       }
     }
   }
