@@ -137,11 +137,9 @@ export function updateOIA(oia) {
 }
 
 export function showBridgeError(msg) {
-  const term  = document.getElementById('terminal');
   const toast = document.createElement('div');
-  toast.style.cssText = "position:absolute;top:8px;left:50%;transform:translateX(-50%);background:#1a0a0a;border:1px solid var(--t-red);border-radius:4px;padding:8px 16px;font-size:11px;color:var(--t-red);z-index:50;font-family:'IBM Plex Mono',monospace;white-space:pre;max-width:90%;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,0.6)";
+  toast.style.cssText = "position:fixed;top:16px;left:50%;transform:translateX(-50%);background:#1a0a0a;border:1px solid var(--t-red);border-radius:4px;padding:10px 18px;font-size:11px;color:var(--t-red);z-index:99999;font-family:'IBM Plex Mono',monospace;white-space:pre-wrap;max-width:80vw;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,0.8)";
   toast.textContent = msg;
-  term.style.position = 'relative';
-  term.appendChild(toast);
+  document.body.appendChild(toast);
   setTimeout(() => toast.remove(), 8000);
 }
