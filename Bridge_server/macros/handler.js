@@ -110,6 +110,11 @@ class MacroHandler {
           this.engine.cancelRecording();
           break;
 
+        case 'macro.prompt.response':
+          if (msg.var === undefined) return this._error('macro.prompt.response requires "var"');
+          this.engine.deliverPromptResponse(msg.var, msg.value ?? '');
+          break;
+
         case 'macro.save':
           if (!msg.macro) return this._error('macro.save requires "macro" object');
           if (msg.macro.source === 'security') return this._error('Security macros are read-only');
@@ -178,6 +183,9 @@ class MacroHandler {
 
     e.on('paused',   () => this._send({ type: 'macro.paused' }));
     e.on('resumed',  () => this._send({ type: 'macro.resumed' }));
+
+    e.on('promptRequired', (varName, label) =>
+      this._send({ type: 'macro.prompt', var: varName, label }));
 
     e.on('recordingStarted',  ()    => this._send({ type: 'macro.recording.started' }));
     e.on('recordingCancelled',()    => this._send({ type: 'macro.recording.cancelled' }));
