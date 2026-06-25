@@ -92,14 +92,22 @@ export async function saveMacroFromModal() {
   const nameEl = document.getElementById('macroName'); const descEl = document.getElementById('macroDesc');
   const jsonEl = document.getElementById('macroJson'); const idEl   = document.getElementById('editingMacroId');
   const name = nameEl.value.trim();
-  if (!name) { nameEl.focus(); nameEl.style.borderColor = 'var(--t-red)'; return; }
+  if (!name) { nameEl.focus(); nameEl.style.borderColor = 'var(--t-red)'; showBridgeError('Macro name is required'); return; }
   nameEl.style.borderColor = '';
   let macroObj = { name, description:descEl.value.trim(), steps:[] };
   if (idEl.value) macroObj.id = idEl.value;
   const raw = jsonEl.value.trim();
   if (raw) {
-    try { const p = JSON.parse(raw); if (Array.isArray(p)) macroObj.steps = p; else macroObj = { ...p, name, description:descEl.value.trim()||p.description||'', id:macroObj.id }; }
-    catch { jsonEl.style.borderColor = 'var(--t-red)'; return; }
+    try {
+      const p = JSON.parse(raw);
+      if (Array.isArray(p)) macroObj.steps = p;
+      else macroObj = { ...p, name, description:descEl.value.trim()||p.description||'', id:macroObj.id };
+    } catch (e) {
+      jsonEl.style.borderColor = 'var(--t-red)';
+      jsonEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      showBridgeError('Invalid macro JSON — check syntax: ' + e.message);
+      return;
+    }
   }
   jsonEl.style.borderColor = '';
   try {
