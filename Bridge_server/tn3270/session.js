@@ -50,6 +50,38 @@ const TN3E_REJECT       = 0x06;
 const TN3E_REQUEST      = 0x07;
 const TN3E_SEND         = 0x08;
 
+// TN3270E negotiation log helpers
+const TN3E_FUNC_NAMES = {
+  0x00: 'ASSOCIATE', 0x01: 'CONNECT',     0x02: 'DEVICE-TYPE',
+  0x03: 'FUNCTIONS', 0x04: 'IS',          0x05: 'REASON',
+  0x06: 'REJECT',    0x07: 'REQUEST',     0x08: 'SEND',
+};
+const TN3E_REASON_NAMES = {
+  0x00: 'CONN-PARTNER', 0x01: 'DEVICE-IN-USE', 0x02: 'INV-ASSOCIATE',
+  0x03: 'INV-NAME',     0x04: 'INV-DEVICE-TYPE',0x05: 'TYPE-NAME-ERROR',
+  0x06: 'UNKNOWN-ERROR',0x07: 'UNSUPPORTED-REQ',
+};
+function _decodeTn3270eSubneg(data) {
+  const func    = TN3E_FUNC_NAMES[data[1]] || `0x${(data[1]||0).toString(16)}`;
+  const subFunc = TN3E_FUNC_NAMES[data[2]] || `0x${(data[2]||0).toString(16)}`;
+  const payload = data.slice(3);
+  const connIdx = payload.indexOf(TN3E_CONNECT);
+  const deviceType = connIdx !== -1 ? payload.slice(0, connIdx).toString('ascii') : payload.toString('ascii').replace(/[^\x20-\x7e]/g, '');
+  const lu = connIdx !== -1 ? payload.slice(connIdx + 1).toString('ascii').replace(/[^\x20-\x7e]/g, '') : null;
+
+  if (data[1] === TN3E_DEVICE_TYPE) {
+    if (data[2] === TN3E_REQUEST) return `DEVICE-TYPE REQUEST device=${deviceType}${lu ? ` CONNECT LU=${lu}` : ''}`;
+    if (data[2] === TN3E_IS)      return `DEVICE-TYPE IS device=${deviceType}${lu ? ` CONNECT LU=${lu}` : ''}`;
+    if (data[2] === TN3E_REJECT)  return `DEVICE-TYPE REJECT reason=${TN3E_REASON_NAMES[data[3]] || data[3]}`;
+  }
+  if (data[1] === TN3E_FUNCTIONS) {
+    const fns = [];
+    for (let i = 2; i < data.length; i++) fns.push(`0x${data[i].toString(16).padStart(2,'0')}`);
+    return `FUNCTIONS ${subFunc} [${fns.join(' ')}]`;
+  }
+  return `${func} ${subFunc} ${payload.toString('hex')}`;
+}
+
 // 3270 AID bytes
 const AIDS = {
   NONE:   0x60,
@@ -161,6 +193,7 @@ class Tn3270Session extends EventEmitter {
     this.tn3270eEnabled   = false;
     this.negotiatedLu     = null;
     this.recvBuf          = Buffer.alloc(0);
+    this.tn3270eLog       = [];  // TN3270E sub-negotiation trace: { dir, func, decoded, raw }
 
     // Negotiation flags
     this._willSend  = false;  // we've sent WILL TN3270E
@@ -588,6 +621,8 @@ class Tn3270Session extends EventEmitter {
       parts.push(TN3E_CONNECT, ...Buffer.from(this.luName));
     }
     parts.push(IAC, SE);
+    const payload = Buffer.from(parts).slice(3, -2); // strip IAC SB prefix and IAC SE suffix
+    this.tn3270eLog.push({ dir: 'sent', raw: payload.toString('hex'), decoded: _decodeTn3270eSubneg(payload), ts: Date.now() });
     this._send(Buffer.from(parts));
   }
 
@@ -605,6 +640,7 @@ class Tn3270Session extends EventEmitter {
 
   // Handle TN3270E (RFC 2355)
   if (opt === OPT_TN3270E) {
+    this.tn3270eLog.push({ dir: 'recv', raw: data.toString('hex'), decoded: _decodeTn3270eSubneg(data), ts: Date.now() });
     const func = data[1];
 
     if (func === TN3E_DEVICE_TYPE && data[2] === TN3E_REQUEST) {
@@ -627,6 +663,8 @@ class Tn3270Session extends EventEmitter {
         logger.info(`[ws:${this.wsId}] TN3270E active, LU=${this.negotiatedLu}`);
         this.emit('lu', this.negotiatedLu);
       }
+      const fnReq = Buffer.from([TN3E_FUNCTIONS, TN3E_REQUEST, 0x00, 0x02]);
+      this.tn3270eLog.push({ dir: 'sent', raw: fnReq.toString('hex'), decoded: _decodeTn3270eSubneg(fnReq), ts: Date.now() });
       this._send(Buffer.from([IAC, SB, OPT_TN3270E, TN3E_FUNCTIONS, TN3E_REQUEST, 0x00, 0x02, IAC, SE]));
       return;
     } 
