@@ -5,11 +5,25 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export function loadMacroFile(config) {
-  const macroPath = path.join(__dirname, '..', 'macros', 'macros.json');
-  let macros = [];
-  if (fs.existsSync(macroPath)) {
-    try { macros = JSON.parse(fs.readFileSync(macroPath, 'utf8')); } catch { macros = []; }
+  // shipped.json — default macros tracked in git, never overwritten by saves
+  const shippedPath = path.join(__dirname, '..', 'macros', 'shipped.json');
+  let shipped = [];
+  if (fs.existsSync(shippedPath)) {
+    try { shipped = JSON.parse(fs.readFileSync(shippedPath, 'utf8')); } catch { shipped = []; }
   }
+
+  // macros.json — user-created macros, gitignored, survives git pulls
+  const macroPath = path.join(__dirname, '..', 'macros', 'macros.json');
+  let userMacros = [];
+  if (fs.existsSync(macroPath)) {
+    try { userMacros = JSON.parse(fs.readFileSync(macroPath, 'utf8')); } catch { userMacros = []; }
+  }
+
+  // Merge: user macros override shipped macros with the same id or name
+  const userIds   = new Set(userMacros.map(m => m.id).filter(Boolean));
+  const userNames = new Set(userMacros.map(m => m.name).filter(Boolean));
+  const filteredShipped = shipped.filter(m => !userIds.has(m.id) && !userNames.has(m.name));
+  let macros = [...filteredShipped, ...userMacros];
 
   const libDir = path.join(__dirname, '..', 'macros', 'library');
   if (fs.existsSync(libDir)) {
