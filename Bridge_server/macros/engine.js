@@ -234,12 +234,14 @@ class MacroEngine extends EventEmitter {
   async _executeStep(step, unlockTimeout) {
     switch (step.op) {
 
-	case 'aid':
-          // Send an AID key — collect modified fields from session buffer
-          this.session.sendAid(step.aid, step.fields || this.session.getModifiedFields());
-          // Always wait for keyboard unlock after transmitting
+	case 'aid': {
+          // Send an AID key — substitute {vars} in field data before sending
+          const fields = (step.fields || this.session.getModifiedFields())
+            .map(f => ({ ...f, data: this._substituteVars(f.data ?? '') }));
+          this.session.sendAid(step.aid, fields);
           await this._waitUnlock(unlockTimeout);
           break;
+        }
 
       case 'prompt':
         await this._executePrompt(step);
