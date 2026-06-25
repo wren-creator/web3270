@@ -5,6 +5,12 @@ import { loadMacroFile } from '../features/macros.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const macroPath = path.join(__dirname, '..', 'macros.json');
+const libDir    = path.join(__dirname, '..', 'macros', 'library');
+
+function libraryFilePath(name) {
+  const safe = name.replace(/[^a-zA-Z0-9 _\-]/g, '_').trim();
+  return path.join(libDir, `${safe}.macro.json`);
+}
 
 export function handle(req, res, { config, logger }) {
   if (req.url === '/api/macros' && req.method === 'GET') {
@@ -50,7 +56,19 @@ export function handle(req, res, { config, logger }) {
         const isSec = allMacros.find(m => (m.id === macroId || m.name === macroId) && m.source === 'security');
         if (isSec) { res.writeHead(403, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Security macros are read-only' })); return true; }
         const isLib = allMacros.find(m => (m.id === macroId || m.name === macroId) && m.source === 'library');
-        if (isLib) { res.writeHead(403, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Library macros are read-only — remove the file from macros/library/ to delete' })); return true; }
+        if (isLib) {
+          const libFile = libraryFilePath(isLib.name);
+          if (fs.existsSync(libFile)) {
+            fs.unlinkSync(libFile);
+            logger.info(`[api] Library macro "${isLib.name}" deleted`);
+            res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+            res.end(JSON.stringify({ ok: true }));
+          } else {
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Macro file not found on disk' }));
+          }
+          return true;
+        }
         res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Macro not found' })); return true;
       }
       mainMacros.splice(idx, 1);

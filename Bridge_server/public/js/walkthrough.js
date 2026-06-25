@@ -1877,7 +1877,13 @@ function openWalkthrough(id) {
   const scenario = _WALKTHROUGHS.find(s => s.id === id);
   if (!scenario) return;
   _wt = { id, stepIdx: 0 };
-  document.getElementById('wtOverlay').style.display = 'flex';
+  const el = document.getElementById('wtOverlay');
+  // Reset to default anchor so drag position doesn't persist across sessions
+  el.style.top    = '';
+  el.style.left   = '';
+  el.style.bottom = '56px';
+  el.style.right  = '12px';
+  el.style.display = 'flex';
   _wtRender();
 }
 
@@ -2040,3 +2046,50 @@ Object.assign(window, {
   wtAutoStep, openWalkthroughPicker, closeWalkthroughPicker,
   renderWalkthroughList, wtStartSelected,
 });
+
+// ── Draggable walkthrough popup ────────────────────────────────────
+(function () {
+  let _dragging = false;
+  let _ox = 0, _oy = 0;
+
+  function _startDrag(e) {
+    if (e.button !== 0) return;
+    const el = document.getElementById('wtOverlay');
+    if (!el) return;
+    // Convert bottom/right anchor to top/left so we can drag freely
+    const rect = el.getBoundingClientRect();
+    el.style.top    = rect.top  + 'px';
+    el.style.left   = rect.left + 'px';
+    el.style.bottom = '';
+    el.style.right  = '';
+    _ox = e.clientX - rect.left;
+    _oy = e.clientY - rect.top;
+    _dragging = true;
+    e.preventDefault();
+    document.getElementById('wtDragHandle').style.cursor = 'grabbing';
+  }
+
+  function _onDrag(e) {
+    if (!_dragging) return;
+    const el = document.getElementById('wtOverlay');
+    if (!el) return;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const w  = el.offsetWidth,   h  = el.offsetHeight;
+    el.style.left = Math.max(0, Math.min(e.clientX - _ox, vw - w)) + 'px';
+    el.style.top  = Math.max(0, Math.min(e.clientY - _oy, vh - h)) + 'px';
+  }
+
+  function _stopDrag() {
+    if (!_dragging) return;
+    _dragging = false;
+    const handle = document.getElementById('wtDragHandle');
+    if (handle) handle.style.cursor = 'grab';
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const handle = document.getElementById('wtDragHandle');
+    if (handle) handle.addEventListener('mousedown', _startDrag);
+    document.addEventListener('mousemove', _onDrag);
+    document.addEventListener('mouseup',   _stopDrag);
+  });
+})();
