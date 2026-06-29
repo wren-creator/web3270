@@ -1,3 +1,6 @@
+# Local configuration — never commit
+.env
+
 # User macros — local data, never commit
 macros/local/
 

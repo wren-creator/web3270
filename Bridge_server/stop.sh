@@ -42,8 +42,10 @@ if [ -n "$ERRORED" ]; then
   FOUND=1
 fi
 
-# Containers holding our ports (3270, 3271, 3274, 8081) that aren't ours
-for PORT in 3270 3271 3274 8081; do
+# Containers holding our ports (3270, 3271, 3274, bridge port) that aren't ours
+BRIDGE_PORT=$(grep '^BRIDGE_HOST_PORT=' .env 2>/dev/null | cut -d= -f2 | tr -d '[:space:]')
+BRIDGE_PORT=${BRIDGE_PORT:-8081}
+for PORT in 3270 3271 3274 "$BRIDGE_PORT"; do
   HOLDER=$(docker ps --format '{{.ID}}\t{{.Names}}\t{{.Ports}}' | \
     grep ":${PORT}->" | grep -v -E 'mock-lpar|mock-zvm|mock-tpf|tn3270-bridge' || true)
   if [ -n "$HOLDER" ]; then

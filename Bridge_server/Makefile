@@ -1,4 +1,7 @@
-.PHONY: up down restart logs build _migrate-macros
+.PHONY: up down restart logs build setup _migrate-macros
+
+setup:
+	@sh setup.sh
 
 # Move any macros from the old macros/macros.json path to macros/local/
 # before Docker starts. Runs as a no-op once migration is done.
@@ -10,6 +13,11 @@ _migrate-macros:
 	fi
 
 up: _migrate-macros
+	@if [ ! -f .env ]; then \
+		echo "No .env found — run './setup.sh' to configure ports, or copy .env.example to .env."; \
+		echo "Starting with defaults (bridge on port 8081)..."; \
+		echo ""; \
+	fi
 	docker compose up $(ARGS)
 
 down:
