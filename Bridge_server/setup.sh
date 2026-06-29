@@ -6,26 +6,16 @@ echo ""
 echo "WebTerm/3270 Bridge — Setup"
 echo "==========================="
 echo ""
-
-# Read existing value with grep — never source .env (avoids executing arbitrary lines)
-CURRENT_PORT=8081
-if [ -f .env ]; then
-  STORED=$(grep '^BRIDGE_HOST_PORT=' .env 2>/dev/null | cut -d= -f2 | tr -d '[:space:]')
-  [ -n "$STORED" ] && CURRENT_PORT="$STORED"
-  echo "Existing configuration found — press Enter to keep current values."
-  echo ""
-fi
-
-printf "Bridge UI port (what you type in the browser) [%s]: " "$CURRENT_PORT"
+printf "Bridge UI port (what you type in the browser) [8081]: "
 read -r INPUT_PORT
-BRIDGE_HOST_PORT="${INPUT_PORT:-$CURRENT_PORT}"
+BRIDGE_HOST_PORT="${INPUT_PORT:-8081}"
 
 # Validate: must be a number in range
 case "$BRIDGE_HOST_PORT" in
-  ''|*[!0-9]*) echo "Invalid — using $CURRENT_PORT."; BRIDGE_HOST_PORT=$CURRENT_PORT ;;
+  ''|*[!0-9]*) echo "Invalid — using 8081."; BRIDGE_HOST_PORT=8081 ;;
 esac
 if [ "$BRIDGE_HOST_PORT" -lt 1 ] || [ "$BRIDGE_HOST_PORT" -gt 65535 ] 2>/dev/null; then
-  echo "Port out of range — using $CURRENT_PORT."; BRIDGE_HOST_PORT=$CURRENT_PORT
+  echo "Port out of range — using 8081."; BRIDGE_HOST_PORT=8081
 fi
 
 cat > .env << EOF
