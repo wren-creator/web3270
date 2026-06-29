@@ -16,8 +16,8 @@ services:
         source: ./lpars.txt
         target: /app/lpars.txt
       - type: bind
-        source: ./macros/macros.json
-        target: /app/macros/macros.json
+        source: ./macros/local
+        target: /app/macros/local
 
     environment:
       BRIDGE_PORT: "8081"

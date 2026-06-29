@@ -1,5 +1,6 @@
 # User macros — local data, never commit
-macros/macros.json
+macros/local/
 
-# Stale root-level artifact from pre-macros/ era
+# Stale root-level artifacts
 macros.json
+macros/macros.json

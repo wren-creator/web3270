@@ -12,8 +12,9 @@ export function loadMacroFile(config) {
     try { shipped = JSON.parse(fs.readFileSync(shippedPath, 'utf8')); } catch { shipped = []; }
   }
 
-  // macros.json — user-created macros, gitignored, survives git pulls
-  const macroPath = path.join(__dirname, '..', 'macros', 'macros.json');
+  // macros/local/macros.json — user-created macros, gitignored, survives git pulls
+  const macroPath = path.join(__dirname, '..', 'macros', 'local', 'macros.json');
+
   let userMacros = [];
   if (fs.existsSync(macroPath)) {
     try { userMacros = JSON.parse(fs.readFileSync(macroPath, 'utf8')); } catch { userMacros = []; }
