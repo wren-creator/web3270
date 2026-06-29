@@ -9,7 +9,7 @@ services:
     restart: unless-stopped
 
     ports:
-      - "8081:8081"
+      - "${BRIDGE_HOST_PORT:-8081}:8081"
     
     volumes:
       - type: bind
