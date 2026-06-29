@@ -15,8 +15,8 @@ services:
       - type: bind
         source: ./lpars.txt
         target: /app/lpars.txt
-      - type: bind
-        source: ./macros/local
+      - type: volume
+        source: macros_data
         target: /app/macros/local
 
     environment:
@@ -124,3 +124,6 @@ services:
 networks:
   tn3270-net:
     driver: bridge
+
+volumes:
+  macros_data:

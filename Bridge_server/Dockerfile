@@ -10,14 +10,17 @@ RUN npm ci --omit=dev
 FROM node:20-alpine AS runtime
 WORKDIR /app
 
-# su-exec: minimal privilege-drop utility for Alpine
-# Non-root user that the server process runs as
-RUN apk add --no-cache su-exec && \
-    addgroup -S tn3270 && adduser -S tn3270 -G tn3270
+RUN addgroup -S tn3270 && adduser -S tn3270 -G tn3270
 
 # Copy deps from stage 1, then app source
 COPY --from=deps /app/node_modules ./node_modules
 COPY --chown=tn3270:tn3270 . .
+
+# Create macros/local with correct ownership so the named volume
+# inherits tn3270 permissions on first init
+RUN mkdir -p /app/macros/local && chown tn3270:tn3270 /app/macros/local
+
+USER tn3270
 
 # ── Port the WebSocket bridge listens on (browser → bridge)
 # The bridge → mainframe connections go OUT on whatever port
@@ -34,6 +37,4 @@ ENV NODE_ENV=production \
     BRIDGE_PORT=8081 \
     LOG_LEVEL=info
 
-# Entrypoint runs as root to fix bind-mount ownership, then drops to tn3270
-ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["node", "server.js"]
