@@ -26,7 +26,7 @@ export function handle(req, res, { config, logger }) {
         const p = JSON.parse(body);
         if (!p.id || !p.host) { res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'id and host are required' })); return; }
         let lines = fs.existsSync(lparsPath) ? fs.readFileSync(lparsPath, 'utf8').split('\n') : ['# id, name, host/IP, port, tls, type, model'];
-        const newLine = [p.id, p.name || p.id.toUpperCase(), p.host, p.port || 23, p.tls ? 'true' : 'false', p.type || 'TSO', p.model || '3278-2'].join(', ');
+        const newLine = [p.id, p.name || p.id.toUpperCase(), p.host, p.port || 23, p.tls ? 'true' : 'false', p.type || 'TSO', p.model || '3278-2', p.tn3270e !== false ? 'true' : 'false'].join(', ');
         const idx = lines.findIndex(l => { const t = l.trim(); return t && !t.startsWith('#') && t.split(',')[0].trim() === p.id; });
         if (idx >= 0) lines[idx] = newLine; else lines.push(newLine);
         fs.writeFileSync(lparsPath, lines.join('\n'));
