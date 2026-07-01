@@ -148,6 +148,7 @@ body {
 .lpar-delete-btn { display:none;padding:0 5px;background:transparent;border:1px solid var(--border);border-radius:2px;color:var(--text-muted);font-size:11px;cursor:pointer;line-height:16px;font-family:'IBM Plex Mono',monospace;transition:all 0.1s;flex-shrink:0; }
 .lpar-item:hover .lpar-delete-btn { display:inline-block; }
 .lpar-delete-btn:hover { color:var(--t-red);border-color:var(--t-red); }
+.lpar-builtin-badge { font-size:8px;padding:1px 4px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:2px;color:var(--text-muted);font-family:'IBM Plex Mono',monospace;letter-spacing:0.03em;vertical-align:middle;margin-left:3px; }
 .macro-item { display:flex;align-items:center;gap:8px;padding:5px 12px;font-size:11px;cursor:pointer;color:var(--text-dim);transition:background 0.1s; }
 .macro-item:hover { background:var(--bg-elevated);color:var(--accent-amber); }
 .macro-edit-btn,.macro-delete-btn { display:none;padding:0 5px;background:transparent;border:1px solid var(--border);border-radius:2px;font-size:10px;cursor:pointer;line-height:16px;font-family:'IBM Plex Mono',monospace;transition:all 0.1s;flex-shrink:0;color:var(--text-muted); }

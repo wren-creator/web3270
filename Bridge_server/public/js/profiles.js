@@ -43,9 +43,10 @@ function renderLparDropdown() {
   const esc = window.esc ?? (s => String(s));
   container.innerHTML = '';
   state.LPAR_PROFILES.forEach(p => {
+    const badge = p.source === 'shipped' ? ' <span class="lpar-builtin-badge">built-in</span>' : '';
     const item = document.createElement('div');
     item.className = 'lpar-menu-item';
-    item.innerHTML = `<div class="lpar-menu-dot"></div><div class="lpar-menu-info"><div class="lpar-menu-name">${esc(p.name||p.id)}</div><div class="lpar-menu-meta">${esc(p.host)} &middot; :${p.port} &middot; ${esc(p.type||'TSO')} &nbsp;<span class="lpar-menu-status-text offline">&#9675; Offline</span></div></div><div class="lpar-menu-connect">Connect</div>`;
+    item.innerHTML = `<div class="lpar-menu-dot"></div><div class="lpar-menu-info"><div class="lpar-menu-name">${esc(p.name||p.id)}${badge}</div><div class="lpar-menu-meta">${esc(p.host)} &middot; :${p.port} &middot; ${esc(p.type||'TSO')} &nbsp;<span class="lpar-menu-status-text offline">&#9675; Offline</span></div></div><div class="lpar-menu-connect">Connect</div>`;
     item.addEventListener('click', () => connectLpar(p.id));
     container.appendChild(item);
   });
@@ -57,10 +58,13 @@ function renderSidebarLpars() {
   const esc = window.esc ?? (s => String(s));
   container.innerHTML = '';
   state.LPAR_PROFILES.forEach(p => {
+    const shipped = p.source === 'shipped';
+    const badge = shipped ? ' <span class="lpar-builtin-badge">built-in</span>' : '';
+    const deleteBtnHtml = shipped ? '' : '<button class="lpar-delete-btn" title="Delete">&#128465;</button>';
     const item = document.createElement('div'); item.className = 'lpar-item';
-    item.innerHTML = `<div class="lpar-dot"></div><div class="lpar-name">${esc(p.name||p.id)}</div><div class="lpar-type">${esc(p.type||'TSO')}</div><button class="lpar-edit-btn" title="Edit">&#x270E;</button><button class="lpar-delete-btn" title="Delete">&#128465;</button>`;
+    item.innerHTML = `<div class="lpar-dot"></div><div class="lpar-name">${esc(p.name||p.id)}${badge}</div><div class="lpar-type">${esc(p.type||'TSO')}</div><button class="lpar-edit-btn" title="Edit">&#x270E;</button>${deleteBtnHtml}`;
     item.querySelector('.lpar-edit-btn').addEventListener('click', e => { e.stopPropagation(); editProfile(p.id); });
-    item.querySelector('.lpar-delete-btn').addEventListener('click', e => { e.stopPropagation(); deleteProfile(p.id, p.name||p.id); });
+    if (!shipped) item.querySelector('.lpar-delete-btn').addEventListener('click', e => { e.stopPropagation(); deleteProfile(p.id, p.name||p.id); });
     item.addEventListener('click', () => connectLpar(p.id));
     container.appendChild(item);
   });
@@ -72,10 +76,13 @@ function renderModalProfiles() {
   const esc = window.esc ?? (s => String(s));
   container.innerHTML = '';
   state.LPAR_PROFILES.forEach(p => {
+    const shipped = p.source === 'shipped';
+    const badge = shipped ? ' <span class="lpar-builtin-badge">built-in</span>' : '';
+    const deleteBtnHtml = shipped ? '' : '<button class="profile-delete-btn" title="Delete">&#128465;</button>';
     const item = document.createElement('div'); item.className = 'profile-item';
-    item.innerHTML = `<div style="flex:1"><div class="profile-name">${esc(p.name||p.id)}</div><div class="profile-host">${esc(p.host)}:${p.port}${p.tls?' &middot; TLS':''} &middot; ${esc(p.type||'TSO')}</div></div><button class="profile-edit-btn" title="Edit">&#x270E;</button><button class="profile-delete-btn" title="Delete">&#128465;</button><button class="profile-connect-btn">Connect</button>`;
+    item.innerHTML = `<div style="flex:1"><div class="profile-name">${esc(p.name||p.id)}${badge}</div><div class="profile-host">${esc(p.host)}:${p.port}${p.tls?' &middot; TLS':''} &middot; ${esc(p.type||'TSO')}</div></div><button class="profile-edit-btn" title="Edit">&#x270E;</button>${deleteBtnHtml}<button class="profile-connect-btn">Connect</button>`;
     item.querySelector('.profile-edit-btn').addEventListener('click', e => { e.stopPropagation(); editProfile(p.id); });
-    item.querySelector('.profile-delete-btn').addEventListener('click', e => { e.stopPropagation(); deleteProfile(p.id, p.name||p.id); });
+    if (!shipped) item.querySelector('.profile-delete-btn').addEventListener('click', e => { e.stopPropagation(); deleteProfile(p.id, p.name||p.id); });
     item.querySelector('.profile-connect-btn').addEventListener('click', () => { connectLpar(p.id); hideConnectModal(); });
     container.appendChild(item);
   });

@@ -3,7 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const lparsPath = path.join(__dirname, '..', 'lpars.txt');
+const userLparsPath = path.join(__dirname, '..', 'lpars.txt');
 
 export function handle(req, res, { config, logger }) {
   if (req.url === '/api/profiles' && req.method === 'GET') {
@@ -11,7 +11,9 @@ export function handle(req, res, { config, logger }) {
       id: p.id, name: p.name, host: p.host, port: p.port,
       tls: p.tls ?? false, luName: p.luName ?? null,
       type: p.type ?? 'TSO', model: p.model ?? config.defaults.model,
-      codepage: p.codepage ?? config.defaults.codepage, tn3270e: p.tn3270e ?? true,
+      codepage: p.codepage ?? config.defaults.codepage,
+      tn3270e: p.tn3270e ?? true,
+      source: p.source ?? 'user',
     }));
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify(profiles));
@@ -25,11 +27,11 @@ export function handle(req, res, { config, logger }) {
       try {
         const p = JSON.parse(body);
         if (!p.id || !p.host) { res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'id and host are required' })); return; }
-        let lines = fs.existsSync(lparsPath) ? fs.readFileSync(lparsPath, 'utf8').split('\n') : ['# id, name, host/IP, port, tls, type, model'];
+        let lines = fs.existsSync(userLparsPath) ? fs.readFileSync(userLparsPath, 'utf8').split('\n') : ['# id, name, host/IP, port, tls, type, model, tn3270e'];
         const newLine = [p.id, p.name || p.id.toUpperCase(), p.host, p.port || 23, p.tls ? 'true' : 'false', p.type || 'TSO', p.model || '3278-2', p.tn3270e !== false ? 'true' : 'false'].join(', ');
         const idx = lines.findIndex(l => { const t = l.trim(); return t && !t.startsWith('#') && t.split(',')[0].trim() === p.id; });
         if (idx >= 0) lines[idx] = newLine; else lines.push(newLine);
-        fs.writeFileSync(lparsPath, lines.join('\n'));
+        fs.writeFileSync(userLparsPath, lines.join('\n'));
         config.profiles = config.loadLparFile();
         logger.info(`[api] Profile "${p.id}" saved to lpars.txt`);
         res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
@@ -46,12 +48,20 @@ export function handle(req, res, { config, logger }) {
   if (req.method === 'DELETE' && req.url.startsWith('/api/profiles/')) {
     const profileId = decodeURIComponent(req.url.slice('/api/profiles/'.length));
     try {
-      if (!fs.existsSync(lparsPath)) { res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'lpars.txt not found' })); return true; }
-      let lines = fs.readFileSync(lparsPath, 'utf8').split('\n');
+      // Block deletion of shipped entries
+      const profile = config.profiles.find(p => p.id === profileId);
+      if (profile?.source === 'shipped') {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Built-in profiles cannot be deleted' }));
+        return true;
+      }
+
+      if (!fs.existsSync(userLparsPath)) { res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'lpars.txt not found' })); return true; }
+      let lines = fs.readFileSync(userLparsPath, 'utf8').split('\n');
       const idx = lines.findIndex(l => { const t = l.trim(); return t && !t.startsWith('#') && t.split(',')[0].trim() === profileId; });
       if (idx < 0) { res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: `Profile "${profileId}" not found` })); return true; }
       lines.splice(idx, 1);
-      fs.writeFileSync(lparsPath, lines.join('\n'));
+      fs.writeFileSync(userLparsPath, lines.join('\n'));
       config.profiles = config.loadLparFile();
       logger.info(`[api] Profile "${profileId}" deleted from lpars.txt`);
       res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });

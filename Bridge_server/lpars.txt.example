@@ -1,9 +1,16 @@
-# WebTerm/3270 Bridge — LPAR profiles
-# Copy this file to lpars.txt and fill in your mainframe connections.
+# WebTerm/3270 Bridge — user LPAR profiles
+# Copy this file to lpars.txt and add your private mainframe connections.
+#
+# Two-file system:
+#   lpars.shipped.txt  Tracked in git — built-in demo connections (mock-zos, mock-zvm, mock-tpf).
+#                      Read-only in the UI. Anyone who clones the repo gets these automatically.
+#   lpars.txt          Gitignored — YOUR private connections. Never committed. This file.
+#
+# Entries in lpars.txt with the same id as a shipped entry take precedence (override it).
 #
 # Columns: id, name, host/IP, port, tls, type, model, tn3270e
 #
-#   id       Unique identifier (no spaces)
+#   id       Unique identifier (no spaces). Also used as the id for UI overrides.
 #   name     Display name shown in the UI
 #   host/IP  Hostname or IP address of the mainframe
 #   port     TN3270 port — typically 23 (telnet) or 992 (TLS)
@@ -15,10 +22,10 @@
 #
 # ── Examples ──────────────────────────────────────────────────────────────
 #
-# id,          name,         host/IP,          port,  tls,   type,  model,   tn3270e
-  prod,        PROD,         mainframe.example.com, 23, false, TSO,   3278-2
-  prod-tls,    PROD (TLS),   mainframe.example.com, 992, true, TSO,   3278-2
-  cics,        CICS PROD,    mainframe.example.com, 23, false, CICS,  3278-2
-  jes,         JES2 SPOOL,   mainframe.example.com, 23, false, JES2,  3278-5
-  zvm,         z/VM,         zvm.example.com,  23,    false, ZVM,   3278-2
-  legacy,      LEGACY SYS,   old.example.com,  23,    false, TSO,   3278-2,  false
+# id,          name,           host/IP,                 port,  tls,   type,  model,   tn3270e
+  prod,        PROD,           mainframe.example.com,   23,    false, TSO,   3278-2
+  prod-tls,    PROD (TLS),     mainframe.example.com,   992,   true,  TSO,   3278-2
+  cics,        CICS PROD,      mainframe.example.com,   23,    false, CICS,  3278-2
+  jes,         JES2 SPOOL,     mainframe.example.com,   23,    false, JES2,  3278-5
+  zvm,         z/VM,           zvm.example.com,         23,    false, ZVM,   3278-2
+  legacy,      LEGACY SYS,     old.example.com,         23,    false, TSO,   3278-2,  false
