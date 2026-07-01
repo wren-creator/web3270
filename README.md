@@ -53,18 +53,25 @@ server.js  (HTTP + WebSocket on the same port)
 ```bash
 cd Bridge_server
 
-# 1 · Make sure these files exist as files (not directories) before first run
-touch lpars.txt macros.json
-echo '# id, name, host/IP, port, tls, type, model' > lpars.txt
-echo '[]' > macros.json
-chmod 666 lpars.txt macros.json
+# 1 · First run — configure port and start
+./start.sh          # Mac / Linux / WSL
+# start.ps1         # Windows PowerShell
 
-# 2 · Build and start
-docker compose build
-docker compose up -d
-
-# 3 · Open in browser
+# 2 · Open in browser
 #   http://localhost:8081
+```
+
+`start.sh` handles everything on first run: prompts for the port (default 8081), seeds `lpars.txt` if it doesn't exist, migrates any existing macros, then builds and starts the containers.
+
+```bash
+# Subsequent runs — starts immediately, no prompts
+./start.sh
+
+# Reconfigure port
+./start.sh --setup
+
+# Stop
+./stop.sh
 ```
 
 Click **⊕ Connect to LPAR**, select or add an LPAR, and connect.
@@ -89,13 +96,20 @@ Open `http://localhost:8081` in your browser.
 
 ## LPAR Configuration
 
-LPARs are defined in `lpars.txt` (one per line, `#` for comments). They can also be added, edited, and deleted from the UI — changes are written back to `lpars.txt` immediately without a restart.
+Two files control LPAR profiles — they are merged at startup, user entries take precedence:
+
+| File | Tracked in git | Purpose |
+|---|---|---|
+| `lpars.shipped.txt` | ✅ Yes | Built-in demo connections (MOCK-ZOS, MOCK-ZVM, MOCK-TPF). Ships with the repo. |
+| `lpars.txt` | ❌ No (gitignored) | Your private mainframe connections. Never committed. |
+
+LPARs can also be added, edited, and deleted from the UI — changes are written to `lpars.txt` immediately without a restart. Built-in entries from `lpars.shipped.txt` appear with a **built-in** badge in the UI and cannot be deleted (they're not your data).
 
 ```
-# id, name, host/IP, port, tls, type, model
-prod01,  PROD01,   10.80.1.1,   992, true,  TSO, 3278-2
-dev01,   DEV01,    10.80.1.2,   23,  false, TSO, 3278-2
-zvm01,   ZVM01,    10.80.1.3,   23,  false, VM,  3278-2
+# id, name, host/IP, port, tls, type, model, tn3270e
+prod01,  PROD01,   10.80.1.1,   992, true,  TSO, 3278-2, true
+dev01,   DEV01,    10.80.1.2,   23,  false, TSO, 3278-2, true
+zvm01,   ZVM01,    10.80.1.3,   23,  false, ZVM, 3278-2, true
 ```
 
 Port guide:
@@ -106,7 +120,7 @@ Port guide:
 | Dev/test LPAR, internal network | 23 | ❌ no |
 | SSH tunnel / localhost relay | any | ❌ no |
 
-**type** field: `TSO` (z/OS) or `VM` (z/VM). The client uses this to set TN3270E defaults and to route file transfers correctly.
+**tn3270e** — set `false` only if your mainframe does not support TN3270E extended protocol negotiation. Default is `true`. See `lpars.txt.example` for full column documentation.
 
 ---
 
@@ -116,15 +130,21 @@ Port guide:
 Bridge_server/
 │
 ├── server.js                  ← HTTP + WebSocket server; REST API (/api/profiles, /api/macros)
-├── config.js                  ← Runtime config: reads lpars.txt + env vars
+├── config.js                  ← Runtime config: merges lpars.shipped.txt + lpars.txt + env vars
 ├── logger.js                  ← Structured logger (LOG_LEVEL env var)
 ├── package.json               ← Runtime dep: ws. Dev dep: nodemon.
-├── lpars.txt                  ← LPAR connection profiles (bind-mounted in Docker)
-├── macros.json                ← Saved macros (bind-mounted in Docker)
+├── lpars.shipped.txt          ← Built-in demo LPAR profiles (tracked in git)
+├── lpars.txt                  ← Your private LPAR profiles (gitignored, never committed)
+├── lpars.txt.example          ← Full column documentation and examples
 ├── Dockerfile
 ├── docker-compose.yml
-├── start.sh / start.ps1       ← Convenience start scripts
-├── .env.example               ← Copy to .env and configure
+├── start.sh / start.ps1       ← Start bridge (prompts for port on first run)
+├── stop.sh                    ← Graceful shutdown + stale container cleanup
+├── setup.sh                   ← Port configuration only (re-run anytime)
+├── collect-logs.sh            ← Mac/Linux/WSL: collect and sanitize diagnostic logs
+├── collect-logs.ps1           ← Windows: collect and sanitize diagnostic logs
+├── .env                       ← Port config written by setup.sh (gitignored)
+├── .env.example               ← Template showing available variables
 │
 ├── tn3270/
 │   ├── session.js             ← Full TN3270(E) protocol engine
@@ -289,20 +309,6 @@ docker compose exec tn3270-bridge sh
 **Container starts then immediately exits**
 → `docker compose logs` to see the error. Usually a bad environment variable or missing file.
 
-**`macros.json` or `lpars.txt` is a directory inside the container**
-→ Docker created them as directories before the bind mount was configured. Fix:
-```bash
-docker compose down
-rm -rf macros.json lpars.txt
-echo '[]' > macros.json
-echo '# id, name, host, port, tls, type, model' > lpars.txt
-chmod 666 macros.json lpars.txt
-docker compose up -d
-```
-
-**`EACCES` writing to `macros.json`**
-→ `chmod 666 macros.json` on the host file.
-
 **`EADDRINUSE: address already in use :8081`**
 → Something else is on port 8081. Change `BRIDGE_PORT` in `docker-compose.yml` and update `BRIDGE_URL` in `public/js/state.js` to match.
 
@@ -324,6 +330,31 @@ If that fails but works from WSL2 or PowerShell, switch to the WSL2/Node option.
 
 **VPN users — WSL2 vs Docker**
 → WSL2 shares the Windows network stack, so VPN routing works natively. Use `node server.js` inside WSL2 if Docker can't reach your mainframe.
+
+---
+
+## Collecting diagnostic logs
+
+If something goes wrong and you need help diagnosing it, run the log collector from the `Bridge_server/` directory:
+
+```bash
+# Mac / Linux / WSL
+./collect-logs.sh
+
+# Windows (PowerShell)
+.\collect-logs.ps1
+```
+
+The script collects Docker container logs and system info, then **automatically scrubs** all sensitive data before packaging:
+
+- Known hosts and IPs from your `lpars.txt` → replaced with `[HOST-1]`, `[HOST-2]`, etc.
+- All IPv4 / IPv6 addresses → `[REDACTED-IP]`
+- Macro field data values (which may contain userids) → `[REDACTED]`
+- Any token following `userid`, `user:`, or `logon` → `[REDACTED-USER]`
+
+Output is a `webterm-diag-TIMESTAMP.zip` safe to share. A local `redaction-map-TIMESTAMP.txt` stays on your machine so you can cross-reference placeholders — **do not send this file**.
+
+Send the zip via Slack DM at **britleydev.slack.com** or email **britleyhoff@gmail.com**.
 
 ---
 
