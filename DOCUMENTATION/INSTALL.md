@@ -624,22 +624,31 @@ If everyone has direct IP to the LPAR controller (port 339) from their Windows d
 
 ## Getting help
 
-If the bridge connects but the mainframe rejects the session, the most useful diagnostic is to enable debug logging:
+If the bridge connects but the mainframe rejects the session, use the built-in log collector to capture and sanitize diagnostic information.
 
-**WSL2:**
+Run from the `Bridge_server/` directory:
 
 ```bash
-LOG_LEVEL=debug node server.js 2>&1 | tee bridge-debug.log
+# Mac / Linux / WSL2
+./collect-logs.sh
+
+# Windows (PowerShell)
+.\collect-logs.ps1
 ```
 
-**Docker:**
+The script collects Docker container logs and system info, then automatically scrubs all sensitive data — real hostnames, IP addresses, macro field values, and userids are replaced with placeholders before packaging. The output is a `webterm-diag-TIMESTAMP.zip` that is safe to share.
 
-```powershell
-# Edit docker-compose.yml: set LOG_LEVEL: "debug"
-docker compose up -d --force-recreate
-docker compose logs -f
+A local `redaction-map-TIMESTAMP.txt` stays on your machine so you can cross-reference the placeholders. Do not send this file.
+
+Send the zip via:
+- **Slack DM** → britleydev.slack.com (@britley)
+- **Email** → britleyhoff@gmail.com
+
+For deeper TN3270 protocol debugging, you can also enable hex dump logging:
+
+```yaml
+# docker-compose.yml — under tn3270-bridge environment:
+TN3270_HEXDUMP: "1"
 ```
 
-The debug log will show the full Telnet negotiation byte-by-byte, which makes it straightforward to identify whether the issue is TN3270E negotiation, LU assignment, or EBCDIC code page mismatch.
-
-Share the log output with your mainframe team or open an issue in the project repository.
+Then `docker compose up -d` (no rebuild needed). This logs every raw TN3270 byte — useful for identifying negotiation or EBCDIC issues, but very noisy in normal use.
