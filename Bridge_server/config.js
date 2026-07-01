@@ -25,20 +25,16 @@ function loadSshHostsFile() {
     });
 }
 
-// ── Load LPAR profiles from lpars.txt ─────────────────────────────
-function loadLparFile() {
-  const filePath = path.join(__dirname, 'lpars.txt');
-  if (!fs.existsSync(filePath)) {
-    console.warn('[config] lpars.txt not found — no profiles loaded');
-    return [];
-  }
-
+// ── Parse a single lpars file into profile objects ────────────────
+function parseLparFile(filePath, source) {
+  if (!fs.existsSync(filePath)) return [];
   return fs.readFileSync(filePath, 'utf8')
     .split('\n')
-    .filter(line => line && !line.startsWith('#'))
+    .filter(line => line.trim() && !line.trim().startsWith('#'))
     .map(line => {
       const parts = line.split(',').map(s => s.trim());
       const [id, name, host, port, tls, type, model] = parts;
+      if (!id) return null;
       return {
         id,
         name: name || id.toUpperCase(),
@@ -49,8 +45,30 @@ function loadLparFile() {
         model: model || process.env.DEFAULT_MODEL || '3278-2',
         codepage: 37,
         tn3270e: parts[7] !== undefined ? parts[7] === 'true' : true,
+        source,
       };
-    });
+    })
+    .filter(Boolean);
+}
+
+// ── Load LPAR profiles — merges shipped defaults + user file ──────
+// lpars.shipped.txt: tracked in git, built-in demo connections
+// lpars.txt:         gitignored, user's private connections
+// User entries with the same id override shipped entries.
+function loadLparFile() {
+  const shippedPath = path.join(__dirname, 'lpars.shipped.txt');
+  const userPath    = path.join(__dirname, 'lpars.txt');
+
+  const shipped = parseLparFile(shippedPath, 'shipped');
+  const user    = parseLparFile(userPath,    'user');
+
+  if (shipped.length === 0 && user.length === 0) {
+    console.warn('[config] No LPAR profiles found in lpars.shipped.txt or lpars.txt');
+  }
+
+  // User entries override shipped entries with the same id
+  const userIds = new Set(user.map(p => p.id));
+  return [...shipped.filter(p => !userIds.has(p.id)), ...user];
 }
 
 export default {

@@ -1,0 +1,16 @@
+# WebTerm/3270 Bridge — shipped default profiles
+# These entries are built-in and loaded automatically for everyone.
+# They appear in the UI as read-only "built-in" connections.
+#
+# DO NOT put real hostnames, IPs, or credentials here — this file is
+# tracked in git and visible to anyone who clones the repo.
+# Put your private connections in lpars.txt (gitignored).
+#
+# If you add an entry to lpars.txt with the same id as one here,
+# your entry takes precedence and the built-in is hidden.
+#
+# Columns: id, name, host/IP, port, tls, type, model, tn3270e
+#
+mock-zos,  MOCK-ZOS,  mock-lpar,  3270,  false,  TSO,  3278-2,  true
+mock-zvm,  MOCK-ZVM,  mock-zvm,   3271,  false,  ZVM,  3278-2,  true
+mock-tpf,  MOCK-TPF,  mock-tpf,   3274,  false,  TPF,  3278-2,  true
