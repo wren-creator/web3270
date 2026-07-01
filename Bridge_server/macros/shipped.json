@@ -142,45 +142,5 @@
       }
     ],
     "id": "mq6u5eobquxq"
-  },
-  {
-    "name": "test",
-    "description": "test",
-    "steps": [
-      {
-        "op": "aid",
-        "aid": "ENTER",
-        "fields": [
-          {
-            "addr": 5412,
-            "data": "vmlink ctsifcc1 5555"
-          }
-        ]
-      },
-      {
-        "op": "wait",
-        "condition": "unlock"
-      },
-      {
-        "op": "prompt",
-        "var": "userid",
-        "label": "Enter the userid to resume:"
-      },
-      {
-        "op": "aid",
-        "aid": "ENTER",
-        "fields": [
-          {
-            "addr": 5412,
-            "data": "racrst {userid}"
-          }
-        ]
-      },
-      {
-        "op": "wait",
-        "condition": "unlock"
-      }
-    ],
-    "id": "mqto4agvza6s"
   }
 ]
