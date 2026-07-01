@@ -1,5 +1,6 @@
 # Local configuration — never commit
 .env
+node_modules/
 
 # User macros — local data, never commit
 macros/local/
