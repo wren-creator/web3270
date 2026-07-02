@@ -272,22 +272,28 @@ If this fails, the issue is network routing — not the bridge. Check Windows Fi
 
 ---
 
-# Option B — Docker Desktop
+# Option B — Docker Desktop or Podman
 
-Docker Desktop packages the bridge in a container image that any team member can run identically on their own Windows machine without installing Node.js.
+The bridge runs in a container image that any team member can run identically without installing Node.js. The scripts support both Docker and Podman — Docker is used if running, Podman is the automatic fallback.
 
-## Step 1 · Install Docker Desktop
+## Step 1 · Install a container runtime
 
-1. Download Docker Desktop from **https://www.docker.com/products/docker-desktop/**
+**Docker Desktop (most common):**
+1. Download from **https://www.docker.com/products/docker-desktop/**
 2. Run the installer. When asked, select **"Use WSL 2 instead of Hyper-V"** (recommended).
 3. Reboot when prompted.
 4. Open Docker Desktop from the Start menu. Wait for the whale icon in the system tray to show **"Docker Desktop is running"**.
 
-Verify the installation in PowerShell:
+**Podman (alternative — no daemon, rootless by default):**
+1. Download from **https://podman.io/docs/installation**
+2. Install `podman-compose` alongside it: `pip3 install podman-compose`
+
+Verify your installation in PowerShell:
 
 ```powershell
-docker --version
-docker compose version
+docker --version        # if using Docker
+podman --version        # if using Podman
+docker compose version  # or: podman compose version
 ```
 
 Both commands should return version numbers without errors.
@@ -636,7 +642,7 @@ Run from the `Bridge_server/` directory:
 .\collect-logs.ps1
 ```
 
-The script collects Docker container logs and system info, then automatically scrubs all sensitive data — real hostnames, IP addresses, macro field values, and userids are replaced with placeholders before packaging. The output is a `webterm-diag-TIMESTAMP.zip` that is safe to share.
+The script auto-detects Docker or Podman, collects container logs and system info, then automatically scrubs all sensitive data — real hostnames, IP addresses, macro field values, and userids are replaced with placeholders before packaging. The output is a `webterm-diag-TIMESTAMP.zip` that is safe to share.
 
 A local `redaction-map-TIMESTAMP.txt` stays on your machine so you can cross-reference the placeholders. Do not send this file.
 
