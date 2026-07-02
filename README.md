@@ -46,9 +46,9 @@ server.js  (HTTP + WebSocket on the same port)
 
 ---
 
-## Quick Start (Docker — recommended)
+## Quick Start (Docker or Podman — recommended)
 
-> **Prerequisites:** Docker Desktop installed and running. Network access to your LPAR on port 23 or 992.
+> **Prerequisites:** Docker Desktop **or** Podman installed and running. Network access to your LPAR on port 23 or 992.
 
 ```bash
 cd Bridge_server
@@ -62,6 +62,8 @@ cd Bridge_server
 ```
 
 `start.sh` handles everything on first run: prompts for the port (default 8081), seeds `lpars.txt` if it doesn't exist, migrates any existing macros, then builds and starts the containers.
+
+The scripts auto-detect the container runtime — Docker is used if running, Podman is the fallback. Compose detection covers `docker compose` (plugin), `podman compose`, `podman-compose`, and `docker-compose` (legacy standalone).
 
 ```bash
 # Subsequent runs — starts immediately, no prompts
