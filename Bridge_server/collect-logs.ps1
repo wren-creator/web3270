@@ -15,9 +15,8 @@ $Runtime = $null
 $Compose = $null
 
 if (Get-Command docker -ErrorAction SilentlyContinue) {
-  try { docker info 2>&1 | Out-Null; $Runtime = "docker" } catch {}
-}
-if (-not $Runtime -and (Get-Command podman -ErrorAction SilentlyContinue)) {
+  $Runtime = "docker"
+} elseif (Get-Command podman -ErrorAction SilentlyContinue) {
   $Runtime = "podman"
 }
 if (-not $Runtime) {

@@ -5,7 +5,7 @@
 # Reconfigure:  ./start.sh --setup
 
 # ── Detect container runtime (Docker or Podman) ───────────────────────────
-if command -v docker &>/dev/null && docker info &>/dev/null 2>&1; then
+if command -v docker &>/dev/null; then
   RUNTIME=docker
 elif command -v podman &>/dev/null; then
   RUNTIME=podman
