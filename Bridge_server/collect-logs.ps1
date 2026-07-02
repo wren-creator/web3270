@@ -6,14 +6,32 @@
 
 $ErrorActionPreference = "Stop"
 
+function Info  { param($msg) Write-Host "[diag]  $msg" -ForegroundColor Cyan   }
+function Ok    { param($msg) Write-Host "[ok]    $msg" -ForegroundColor Green  }
+function Warn  { param($msg) Write-Host "[warn]  $msg" -ForegroundColor Yellow }
+
+# ── Detect container runtime (Docker or Podman) ───────────────────────────
+$Runtime = $null
+$Compose = $null
+
+if (Get-Command docker -ErrorAction SilentlyContinue) {
+  try { docker info 2>&1 | Out-Null; $Runtime = "docker" } catch {}
+}
+if (-not $Runtime -and (Get-Command podman -ErrorAction SilentlyContinue)) {
+  $Runtime = "podman"
+}
+if (-not $Runtime) {
+  Write-Error "Neither docker nor podman found. Install Docker Desktop or Podman."; exit 1
+}
+
+try { & $Runtime compose version 2>&1 | Out-Null; $Compose = "$Runtime compose" } catch {}
+if (-not $Compose -and (Get-Command podman-compose -ErrorAction SilentlyContinue)) { $Compose = "podman-compose" }
+if (-not $Compose -and (Get-Command docker-compose -ErrorAction SilentlyContinue)) { $Compose = "docker-compose" }
+
 $Timestamp  = Get-Date -Format "yyyyMMdd-HHmmss"
 $WorkDir    = "webterm-diag-$Timestamp"
 $ZipFile    = "webterm-diag-$Timestamp.zip"
 $MapFile    = "redaction-map-$Timestamp.txt"
-
-function Info  { param($msg) Write-Host "[diag]  $msg" -ForegroundColor Cyan   }
-function Ok    { param($msg) Write-Host "[ok]    $msg" -ForegroundColor Green  }
-function Warn  { param($msg) Write-Host "[warn]  $msg" -ForegroundColor Yellow }
 
 Write-Host ""
 Write-Host "WebTerm/3270 Bridge -- Diagnostic Log Collector" -ForegroundColor Cyan
@@ -24,14 +42,18 @@ New-Item -ItemType Directory -Path $WorkDir -Force | Out-Null
 
 # ── 1. System info ────────────────────────────────────────────────────────
 Info "Collecting system info..."
+Info "Collecting system info...  (runtime: $Runtime)"
 $SysInfo = @()
 $SysInfo += "Collected: $(Get-Date)"
 $SysInfo += "OS:        $([System.Runtime.InteropServices.RuntimeInformation]::OSDescription)"
-try   { $SysInfo += "Docker:    $(docker --version 2>&1)" }   catch { $SysInfo += "Docker:    not found" }
-try   { $SysInfo += "Compose:   $(docker compose version 2>&1)" } catch { $SysInfo += "Compose:   not found" }
-$SysInfo += ""
-$SysInfo += "=== docker compose ps ==="
-try   { $SysInfo += (docker compose ps 2>&1) } catch { $SysInfo += "(compose not running)" }
+$SysInfo += "Runtime:   $Runtime"
+try   { $SysInfo += "Version:   $(& $Runtime --version 2>&1)" }  catch { $SysInfo += "Version:   not found" }
+if ($Compose) {
+  try { $SysInfo += "Compose:   $(Invoke-Expression "$Compose version" 2>&1)" } catch { $SysInfo += "Compose:   not found" }
+  $SysInfo += ""
+  $SysInfo += "=== compose ps ==="
+  try { $SysInfo += (Invoke-Expression "$Compose ps" 2>&1) } catch { $SysInfo += "(compose not running)" }
+}
 $SysInfo | Set-Content "$WorkDir\system-info.txt" -Encoding UTF8
 Ok "system-info.txt"
 
@@ -39,9 +61,9 @@ Ok "system-info.txt"
 Info "Collecting container logs..."
 $Containers = @("tn3270-bridge", "mock-lpar", "mock-zvm", "mock-tpf")
 foreach ($C in $Containers) {
-  $Exists = docker inspect $C 2>&1
+  & $Runtime inspect $C 2>&1 | Out-Null
   if ($LASTEXITCODE -eq 0) {
-    docker logs $C --timestamps 2>&1 | Set-Content "$WorkDir\$C.log" -Encoding UTF8
+    & $Runtime logs $C --timestamps 2>&1 | Set-Content "$WorkDir\$C.log" -Encoding UTF8
     Ok "$C.log"
   } else {
     Warn "$C not running -- skipping"
