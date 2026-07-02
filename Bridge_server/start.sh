@@ -4,6 +4,27 @@
 # Subsequent runs: starts immediately using saved config.
 # Reconfigure:  ./start.sh --setup
 
+# ── Detect container runtime (Docker or Podman) ───────────────────────────
+if command -v docker &>/dev/null && docker info &>/dev/null 2>&1; then
+  RUNTIME=docker
+elif command -v podman &>/dev/null; then
+  RUNTIME=podman
+else
+  echo "Error: neither docker nor podman found. Install Docker Desktop or Podman." >&2
+  exit 1
+fi
+
+if $RUNTIME compose version &>/dev/null 2>&1; then
+  COMPOSE="$RUNTIME compose"
+elif command -v podman-compose &>/dev/null; then
+  COMPOSE="podman-compose"
+elif command -v docker-compose &>/dev/null; then
+  COMPOSE="docker-compose"
+else
+  echo "Error: no compose tool found. Install docker compose or podman-compose." >&2
+  exit 1
+fi
+
 # ── Port configuration ─────────────────────────────────────────────────────
 if [ "$1" = "--setup" ] || [ ! -f .env ]; then
   sh setup.sh
@@ -23,10 +44,10 @@ fi
 PORT=$(grep '^BRIDGE_HOST_PORT=' .env 2>/dev/null | cut -d= -f2 | tr -d '[:space:]')
 PORT=${PORT:-8081}
 
-docker compose down
-docker compose up -d --build
+$COMPOSE down
+$COMPOSE up -d --build
 
 echo ""
-echo "Bridge started → http://localhost:${PORT}"
+echo "Bridge started → http://localhost:${PORT}  (runtime: $RUNTIME)"
 echo "To stop: ./stop.sh"
 echo ""

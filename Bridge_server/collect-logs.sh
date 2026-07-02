@@ -10,6 +10,25 @@ info() { echo -e "${CYAN}[diag]${RESET}  $*"; }
 ok()   { echo -e "${GREEN}[ok]${RESET}    $*"; }
 warn() { echo -e "${YELLOW}[warn]${RESET}  $*"; }
 
+# ── Detect container runtime (Docker or Podman) ───────────────────────────
+if command -v docker &>/dev/null && docker info &>/dev/null 2>&1; then
+  RUNTIME=docker
+elif command -v podman &>/dev/null; then
+  RUNTIME=podman
+else
+  echo "Error: neither docker nor podman found." >&2; exit 1
+fi
+
+if $RUNTIME compose version &>/dev/null 2>&1; then
+  COMPOSE="$RUNTIME compose"
+elif command -v podman-compose &>/dev/null; then
+  COMPOSE="podman-compose"
+elif command -v docker-compose &>/dev/null; then
+  COMPOSE="docker-compose"
+else
+  COMPOSE=""
+fi
+
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 WORKDIR="webterm-diag-${TIMESTAMP}"
 ZIPFILE="webterm-diag-${TIMESTAMP}.zip"
@@ -22,26 +41,26 @@ echo ""
 mkdir -p "$WORKDIR"
 
 # ── 1. System info ────────────────────────────────────────────────────────
-info "Collecting system info…"
+info "Collecting system info…  (runtime: $RUNTIME)"
 {
   echo "Collected: $(date)"
   echo "OS:        $(uname -a)"
-  echo "Docker:    $(docker --version 2>/dev/null || echo 'not found')"
-  echo "Compose:   $(docker compose version 2>/dev/null || echo 'not found')"
+  echo "Runtime:   $($RUNTIME --version 2>/dev/null || echo 'not found')"
+  echo "Compose:   $(${COMPOSE:-echo} version 2>/dev/null || echo 'not found')"
   echo ""
-  echo "=== docker compose ps ==="
-  docker compose ps 2>/dev/null || echo "(compose not running)"
+  echo "=== compose ps ==="
+  ${COMPOSE:-echo "(no compose tool)"} ps 2>/dev/null || echo "(compose not running)"
   echo ""
-  echo "=== docker images ==="
-  docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}" 2>/dev/null | grep -E 'REPO|bridge|mock' || true
+  echo "=== images ==="
+  $RUNTIME images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}" 2>/dev/null | grep -E 'REPO|bridge|mock' || true
 } > "$WORKDIR/system-info.txt"
 ok "system-info.txt"
 
 # ── 2. Collect container logs ─────────────────────────────────────────────
 info "Collecting container logs…"
 for CONTAINER in tn3270-bridge mock-lpar mock-zvm mock-tpf; do
-  if docker inspect "$CONTAINER" &>/dev/null; then
-    docker logs "$CONTAINER" --timestamps 2>&1 > "$WORKDIR/${CONTAINER}.log" || true
+  if $RUNTIME inspect "$CONTAINER" &>/dev/null; then
+    $RUNTIME logs "$CONTAINER" --timestamps 2>&1 > "$WORKDIR/${CONTAINER}.log" || true
     ok "${CONTAINER}.log"
   else
     warn "$CONTAINER not running — skipping"
