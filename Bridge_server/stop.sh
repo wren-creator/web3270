@@ -6,7 +6,7 @@ set -euo pipefail
 RED='\033[0;31m'; YELLOW='\033[1;33m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; RESET='\033[0m'
 
 # ── Detect container runtime (Docker or Podman) ───────────────────────────
-if command -v docker &>/dev/null && docker info &>/dev/null 2>&1; then
+if command -v docker &>/dev/null; then
   RUNTIME=docker
 elif command -v podman &>/dev/null; then
   RUNTIME=podman
