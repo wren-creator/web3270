@@ -567,6 +567,7 @@ class Tn3270Session extends EventEmitter {
       if (cmd === DO) {
         if (!this.useTn3270e) {
           logger.info(`[ws:${this.wsId}] TN3270E disabled — sending WONT TN3270E`);
+          this._tn3270eWontSent = true;
           this._send(Buffer.from([IAC, WONT, OPT_TN3270E]));
           this._initClassicTn3270();
         } else {
@@ -576,7 +577,12 @@ class Tn3270Session extends EventEmitter {
           this._sendTn3270eDeviceType();
         }
       } else if (cmd === DONT) {
-        this._send(Buffer.from([IAC, WONT, OPT_TN3270E]));
+        // The host replies DONT to acknowledge our WONT. Only reply once —
+        // otherwise host-DONT / client-WONT bounce back and forth forever.
+        if (!this._tn3270eWontSent) {
+          this._tn3270eWontSent = true;
+          this._send(Buffer.from([IAC, WONT, OPT_TN3270E]));
+        }
         this._initClassicTn3270();
       }
       return;
