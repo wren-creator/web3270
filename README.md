@@ -336,6 +336,12 @@ If that fails but works from WSL2 or PowerShell, switch to the WSL2/Node option.
 **VPN users — WSL2 vs Docker**
 → WSL2 shares the Windows network stack, so VPN routing works natively. Use `node server.js` inside WSL2 if Docker can't reach your mainframe.
 
+**Login screen goes blank on the first keystroke**
+→ Confirm GIBSON's dedicated TN3270 listener (port 3270) is actually running — check its logs for `IST001I TN3270 LISTENER ACTIVE ON PORT 3270`. Older GIBSON builds disabled this listener by default; update to a GIBSON build where it's on by default, or start it with `--with-tn3270`.
+
+**Logs flooded with repeating `Telnet DONT TN3270E` / `Falling back to classic TN3270` lines**
+→ A telnet negotiation ping-pong between the bridge and older GIBSON builds — both sides kept re-acknowledging the same `WONT`/`DONT` for TN3270E forever. Fixed in `tn3270/session.js` (bridge) and `tn3270_server.py` (GIBSON) — rebuild the bridge (`docker compose build --no-cache && docker compose up -d`) and update GIBSON to `main`.
+
 ---
 
 ## Collecting diagnostic logs
