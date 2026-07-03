@@ -572,6 +572,10 @@ gibson, GIBSON, gibson-mainframe, 3270, false, TSO, 3278-2
 
 **If you start the bridge before GIBSON:** The bridge will start fine but connections to `gibson-mainframe` will fail until GIBSON is up. Just start GIBSON and retry the connection.
 
+**Login screen goes blank as soon as you type, or the screen never renders:** Make sure GIBSON's dedicated TN3270 listener (port 3270) is actually running — check the GIBSON container/process logs for `IST001I TN3270 LISTENER ACTIVE ON PORT 3270`. Older GIBSON builds disabled this listener by default; update GIBSON to a version where it starts automatically, or pass `--with-tn3270` explicitly when starting it.
+
+**Logs flooded with repeating `Telnet DONT TN3270E` / `Falling back to classic TN3270` lines:** This was a telnet negotiation ping-pong bug between the bridge and older GIBSON builds — both sides kept re-acknowledging the same `WONT`/`DONT` exchange for the TN3270E option forever. Fixed in both `tn3270/session.js` (bridge) and `tn3270_server.py` (GIBSON); update both to the latest `main` if you see this.
+
 ---
 
 ## Docker Troubleshooting
