@@ -302,6 +302,9 @@ docker compose exec tn3270-bridge sh
 
 ### Common errors
 
+**`./start.sh` says "daemon is not running or the socket is not reachable"**
+→ Docker Desktop (or Podman) isn't running. Start Docker Desktop and wait for it to finish initialising, then run `./start.sh` again. The script detects the condition cleanly and will not produce socket error spam.
+
 **`docker: command not found`**
 → Docker Desktop isn't installed or PATH isn't configured. Restart your terminal after installing.
 
