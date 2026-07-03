@@ -40,6 +40,19 @@ if [ -f macros/macros.json ] && [ ! -f macros/local/macros.json ]; then
   echo "Migrated macros to new location."
 fi
 
+# ── Pre-flight: confirm daemon is reachable ────────────────────────────────
+if ! $RUNTIME info &>/dev/null 2>&1; then
+  echo ""
+  echo "Error: $RUNTIME is installed but the daemon is not running."
+  if [ "$RUNTIME" = "docker" ]; then
+    echo "Open Docker Desktop and wait for it to finish starting, then try again."
+  else
+    echo "Start the Podman machine:  podman machine start"
+  fi
+  echo ""
+  exit 1
+fi
+
 # ── Start ──────────────────────────────────────────────────────────────────
 PORT=$(grep '^BRIDGE_HOST_PORT=' .env 2>/dev/null | cut -d= -f2 | tr -d '[:space:]')
 PORT=${PORT:-8081}
