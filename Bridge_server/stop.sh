@@ -45,6 +45,14 @@ echo ""
 info "Scanning for erroneous containers…"
 FOUND=0
 
+# Skip scan entirely if daemon is not reachable
+if ! $RUNTIME info &>/dev/null 2>&1; then
+  ok "Daemon not running — nothing to scan."
+  FOUND=-1
+fi
+
+if [ "$FOUND" -eq -1 ]; then true; else
+
 # Exited/dead containers from this project
 ERRORED=$($RUNTIME ps -a --filter "status=exited" --filter "status=dead" \
   --format '{{.ID}}\t{{.Names}}\t{{.Status}}' | \
@@ -110,21 +118,25 @@ fi
 
 [ "$FOUND" -eq 0 ] && ok "No erroneous containers found."
 
-# ── 3. Orphaned tn3270-net attachments ────────────────────────────────────
-echo ""
-info "Checking tn3270-net for orphaned attachments…"
-NET_CONTAINERS=$($RUNTIME network inspect tn3270-net \
-  --format '{{range .Containers}}{{.Name}} {{end}}' 2>/dev/null || true)
+fi # end daemon-reachable block
 
-if [ -n "$NET_CONTAINERS" ]; then
-  warn "Containers still attached to tn3270-net: $NET_CONTAINERS"
-  for c in $NET_CONTAINERS; do
-    $RUNTIME network disconnect -f tn3270-net "$c" 2>/dev/null || true
-    warn "  Disconnected: $c"
-  done
-  ok "Network cleared."
-else
-  ok "tn3270-net is clean."
+# ── 3. Orphaned tn3270-net attachments ────────────────────────────────────
+if [ "$FOUND" -ne -1 ]; then
+  echo ""
+  info "Checking tn3270-net for orphaned attachments…"
+  NET_CONTAINERS=$($RUNTIME network inspect tn3270-net \
+    --format '{{range .Containers}}{{.Name}} {{end}}' 2>/dev/null || true)
+
+  if [ -n "$NET_CONTAINERS" ]; then
+    warn "Containers still attached to tn3270-net: $NET_CONTAINERS"
+    for c in $NET_CONTAINERS; do
+      $RUNTIME network disconnect -f tn3270-net "$c" 2>/dev/null || true
+      warn "  Disconnected: $c"
+    done
+    ok "Network cleared."
+  else
+    ok "tn3270-net is clean."
+  fi
 fi
 
 echo ""
