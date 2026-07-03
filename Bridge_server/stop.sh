@@ -32,19 +32,6 @@ bad()   { echo -e "${RED}[fail]${RESET}  $*"; }
 echo ""
 info "Stopping web3270 services…  (runtime: $RUNTIME)"
 
-# ── Pre-flight: confirm daemon is reachable ────────────────────────────────
-if ! $RUNTIME info &>/dev/null 2>&1; then
-  if [ "$RUNTIME" = "docker" ]; then
-    info "Docker Desktop is not running — nothing to stop."
-  else
-    info "Podman daemon is not running — nothing to stop."
-  fi
-  echo ""
-  ok "All done."
-  echo ""
-  exit 0
-fi
-
 # ── 1. Graceful compose down ────────────────────────────────────────────────
 if $COMPOSE ps -q 2>/dev/null | grep -q .; then
   $COMPOSE down --remove-orphans
@@ -58,17 +45,9 @@ echo ""
 info "Scanning for erroneous containers…"
 FOUND=0
 
-# Skip scan entirely if daemon is not reachable
-if ! $RUNTIME info &>/dev/null 2>&1; then
-  ok "Daemon not running — nothing to scan."
-  FOUND=-1
-fi
-
-if [ "$FOUND" -eq -1 ]; then true; else
-
 # Exited/dead containers from this project
 ERRORED=$($RUNTIME ps -a --filter "status=exited" --filter "status=dead" \
-  --format '{{.ID}}\t{{.Names}}\t{{.Status}}' | \
+  --format '{{.ID}}\t{{.Names}}\t{{.Status}}' 2>/dev/null | \
   grep -E 'mock-lpar|mock-zvm|mock-tpf|tn3270-bridge' || true)
 
 if [ -n "$ERRORED" ]; then
@@ -86,7 +65,7 @@ fi
 BRIDGE_PORT=$(grep '^BRIDGE_HOST_PORT=' .env 2>/dev/null | cut -d= -f2 | tr -d '[:space:]')
 BRIDGE_PORT=${BRIDGE_PORT:-8081}
 for PORT in 3270 3271 3274 "$BRIDGE_PORT"; do
-  HOLDER=$($RUNTIME ps --format '{{.ID}}\t{{.Names}}\t{{.Ports}}' | \
+  HOLDER=$($RUNTIME ps --format '{{.ID}}\t{{.Names}}\t{{.Ports}}' 2>/dev/null | \
     grep ":${PORT}->" | grep -v -E 'mock-lpar|mock-zvm|mock-tpf|tn3270-bridge' || true)
   if [ -n "$HOLDER" ]; then
     warn "Port $PORT held by unexpected container:"
@@ -101,7 +80,7 @@ done
 
 # Dangling / unnamed containers created from our images
 DANGLING=$($RUNTIME ps -a --filter "status=created" \
-  --format '{{.ID}}\t{{.Names}}\t{{.Image}}' | \
+  --format '{{.ID}}\t{{.Names}}\t{{.Image}}' 2>/dev/null | \
   grep -E 'bridge_server|mock' || true)
 
 if [ -n "$DANGLING" ]; then
@@ -116,7 +95,7 @@ fi
 
 # Restarting containers (crash-looping)
 LOOPING=$($RUNTIME ps --filter "status=restarting" \
-  --format '{{.ID}}\t{{.Names}}\t{{.Status}}' | \
+  --format '{{.ID}}\t{{.Names}}\t{{.Status}}' 2>/dev/null | \
   grep -E 'mock-lpar|mock-zvm|mock-tpf|tn3270-bridge' || true)
 
 if [ -n "$LOOPING" ]; then
@@ -131,25 +110,21 @@ fi
 
 [ "$FOUND" -eq 0 ] && ok "No erroneous containers found."
 
-fi # end daemon-reachable block
-
 # ── 3. Orphaned tn3270-net attachments ────────────────────────────────────
-if [ "$FOUND" -ne -1 ]; then
-  echo ""
-  info "Checking tn3270-net for orphaned attachments…"
-  NET_CONTAINERS=$($RUNTIME network inspect tn3270-net \
-    --format '{{range .Containers}}{{.Name}} {{end}}' 2>/dev/null || true)
+echo ""
+info "Checking tn3270-net for orphaned attachments…"
+NET_CONTAINERS=$($RUNTIME network inspect tn3270-net \
+  --format '{{range .Containers}}{{.Name}} {{end}}' 2>/dev/null || true)
 
-  if [ -n "$NET_CONTAINERS" ]; then
-    warn "Containers still attached to tn3270-net: $NET_CONTAINERS"
-    for c in $NET_CONTAINERS; do
-      $RUNTIME network disconnect -f tn3270-net "$c" 2>/dev/null || true
-      warn "  Disconnected: $c"
-    done
-    ok "Network cleared."
-  else
-    ok "tn3270-net is clean."
-  fi
+if [ -n "$NET_CONTAINERS" ]; then
+  warn "Containers still attached to tn3270-net: $NET_CONTAINERS"
+  for c in $NET_CONTAINERS; do
+    $RUNTIME network disconnect -f tn3270-net "$c" 2>/dev/null || true
+    warn "  Disconnected: $c"
+  done
+  ok "Network cleared."
+else
+  ok "tn3270-net is clean."
 fi
 
 echo ""
