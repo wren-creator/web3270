@@ -69,10 +69,14 @@ export function sendType(row, col, text) {
   const session = state.sessions.get(state.activeSession);
   if (!session || session.ws.readyState !== WebSocket.OPEN) return;
   if (state.liveScreen && state.liveScreen.rows) {
+    const cols = state.liveScreen.cols || 80;
+    const numRows = state.liveScreen.rows?.length || 24;
     const r = state.liveScreen.rows[state.cursorRow];
-    if (r && r[state.cursorCol]) { r[state.cursorCol].char = text; r[state.cursorCol].modified = true; }
+    if (r && r[state.cursorCol] && r[state.cursorCol].fa === undefined) {
+      r[state.cursorCol].char = text; r[state.cursorCol].modified = true;
+    }
     state.cursorCol++;
-    if (state.cursorCol >= (state.liveScreen.cols || 80)) { state.cursorCol = 0; state.cursorRow++; }
+    if (state.cursorCol >= cols) { state.cursorCol = 0; state.cursorRow = (state.cursorRow + 1) % numRows; }
     state.liveScreen.cursorRow = state.cursorRow; state.liveScreen.cursorCol = state.cursorCol;
     renderLiveScreen(state.liveScreen);
   }
