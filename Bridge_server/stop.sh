@@ -32,6 +32,19 @@ bad()   { echo -e "${RED}[fail]${RESET}  $*"; }
 echo ""
 info "Stopping web3270 services…  (runtime: $RUNTIME)"
 
+# ── Pre-flight: confirm daemon is reachable ────────────────────────────────
+if ! $RUNTIME info &>/dev/null 2>&1; then
+  if [ "$RUNTIME" = "docker" ]; then
+    info "Docker Desktop is not running — nothing to stop."
+  else
+    info "Podman daemon is not running — nothing to stop."
+  fi
+  echo ""
+  ok "All done."
+  echo ""
+  exit 0
+fi
+
 # ── 1. Graceful compose down ────────────────────────────────────────────────
 if $COMPOSE ps -q 2>/dev/null | grep -q .; then
   $COMPOSE down --remove-orphans
