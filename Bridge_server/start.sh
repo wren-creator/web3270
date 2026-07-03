@@ -45,9 +45,14 @@ PORT=$(grep '^BRIDGE_HOST_PORT=' .env 2>/dev/null | cut -d= -f2 | tr -d '[:space
 PORT=${PORT:-8081}
 
 $COMPOSE down
-$COMPOSE up -d --build
-
-echo ""
-echo "Bridge started → http://localhost:${PORT}  (runtime: $RUNTIME)"
-echo "To stop: ./stop.sh"
-echo ""
+if $COMPOSE up -d --build; then
+  echo ""
+  echo "Bridge started → http://localhost:${PORT}  (runtime: $RUNTIME)"
+  echo "To stop: ./stop.sh"
+  echo ""
+else
+  echo ""
+  echo "Error: Failed to start containers. Is Docker Desktop / Podman running?"
+  echo ""
+  exit 1
+fi
