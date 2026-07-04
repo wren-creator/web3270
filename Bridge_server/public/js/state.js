@@ -2,7 +2,12 @@
 // Single mutable state object shared across all modules.
 // Import { state } and read/write state.x — no globals needed.
 
-export const BRIDGE_URL = 'ws://localhost:8081';
+// The bridge serves this page and the WebSocket from the same host:port,
+// so derive it from the page location instead of hardcoding a port that
+// drifts out of sync with BRIDGE_HOST_PORT in .env.
+export const BRIDGE_URL = window.location.protocol === 'file:'
+  ? 'ws://localhost:8081'
+  : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`;
 
 export const AI_CTX_LABELS = {
   anthropic: '200K ctx',
