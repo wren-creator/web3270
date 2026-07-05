@@ -457,6 +457,7 @@ class Tn3270Session extends EventEmitter {
   // ── Incoming data handling ─────────────────────────────────────
 
   _onData(chunk) {
+    this.emit('raw', { dir: 'recv', data: chunk });
     this.recvBuf = Buffer.concat([this.recvBuf, chunk]);
     this._processBuffer();
   }
@@ -1320,6 +1321,7 @@ class Tn3270Session extends EventEmitter {
 
   _send(buf) {
     if (this.socket && !this._destroyed) {
+      this.emit('raw', { dir: 'sent', data: buf });
       this.socket.write(buf);
     }
   }

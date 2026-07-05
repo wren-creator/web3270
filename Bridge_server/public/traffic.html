@@ -185,6 +185,7 @@ tbody tr.expanded { background: rgba(255,255,255,0.03); }
 
   <button class="btn" onclick="loadData()" title="Refresh from server">↺ Refresh</button>
   <button class="btn primary" onclick="downloadCsv()" title="Download traffic log as CSV">↓ CSV</button>
+  <button class="btn primary" onclick="downloadPcap()" title="Download raw session bytes as a Wireshark-readable PCAP">↓ PCAP</button>
   <button class="btn" onclick="clearLog()" title="Clear traffic log on the server">✕ Clear</button>
   <div class="sep"></div>
   <button class="btn window-ctrl" id="btnFs" onclick="toggleFullscreen()">⊡</button>
@@ -326,6 +327,26 @@ function downloadCsv() {
     }
     const a = document.createElement('a');
     a.href = '/api/traffic/csv'; a.download = finalName;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  });
+}
+
+function downloadPcap() {
+  const ts   = new Date().toISOString().slice(0,19).replace(/[:.]/g,'-');
+  const name = `traffic-log-${ts}.pcap`;
+  promptSaveAs(name, async finalName => {
+    if (window.showSaveFilePicker) {
+      try {
+        const handle   = await showSaveFilePicker({ suggestedName: finalName, types: [{ description: 'PCAP', accept: { 'application/vnd.tcpdump.pcap': ['.pcap'] } }] });
+        const r        = await fetch('/api/traffic/pcap');
+        const writable = await handle.createWritable();
+        await writable.write(await r.blob());
+        await writable.close();
+        return;
+      } catch (e) { if (e.name === 'AbortError') return; }
+    }
+    const a = document.createElement('a');
+    a.href = '/api/traffic/pcap'; a.download = finalName;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
   });
 }

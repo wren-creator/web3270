@@ -7,6 +7,7 @@ import CopilotHandler from '../copilot/copilot-handler.js';
 
 import send from '../utils/send.js';
 import { logTraffic } from '../features/traffic.js';
+import { captureRaw } from '../features/pcap.js';
 import { recordings } from '../features/recording.js';
 import { handleSshConnect } from '../features/ssh.js';
 import { handleFuzz } from '../features/fuzz.js';
@@ -102,6 +103,8 @@ export function createWsHandler({ config, logger, sessions, Ebcdic }) {
           rec.events.push({ t: Date.now() - rec.start, dir: 'host→client', type: 'screen', data: screenData });
         }
       });
+
+      session.on('raw', ({ dir, data }) => captureRaw(wsId, host, port, dir, data));
 
       session.on('oia',          oiaData => { send(ws, { type: 'oia', ...oiaData }); });
       session.on('lu',           lu      => { send(ws, { type: 'status', state: 'lu', lu }); });
