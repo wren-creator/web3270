@@ -51,8 +51,9 @@ const TN3E_REQUEST     = 0x07;
 const TN3E_SEND        = 0x08;
 
 // ── 3270 datastream constants ─────────────────────────────────────
-const CMD_ERASE_WRITE = 0xF5;
-const CMD_WRITE       = 0xF1;
+const CMD_ERASE_WRITE     = 0xF5;
+const CMD_ERASE_WRITE_ALT = 0x7E;
+const CMD_WRITE           = 0xF1;
 const ORDER_SF  = 0x1D;
 const ORDER_SBA = 0x11;
 const ORDER_IC  = 0x13;   // Insert Cursor
@@ -105,6 +106,28 @@ function toEbcdic(str) {
   return buf;
 }
 
+// Screen dims by negotiated device type — mirrors tn3270/session.js's MODEL_DIMS
+const MODEL_DIMS = {
+  '3278-2':   { rows: 24, cols: 80  },
+  '3278-3':   { rows: 32, cols: 80  },
+  '3278-4':   { rows: 43, cols: 80  },
+  '3278-5':   { rows: 27, cols: 132 },
+  '3178':     { rows: 24, cols: 80  },
+  '3279-2':   { rows: 24, cols: 80  },
+  '3279-2-E': { rows: 24, cols: 80  },
+  '3279-3':   { rows: 32, cols: 80  },
+  '3279-3-E': { rows: 32, cols: 80  },
+  '3279-4':   { rows: 43, cols: 132 },
+  '3279-4-E': { rows: 43, cols: 132 },
+  '3279-5':   { rows: 27, cols: 132 },
+  '3279-5-E': { rows: 27, cols: 132 },
+};
+
+// Set from the connection's negotiated device type just before each screen is
+// built — buildScreen/sba run synchronously off that, so this is safe despite
+// being module-level shared state.
+let mockCols = 80;
+
 function encodeAddr(addr) {
   const hi = (addr >> 6) & 0x3F;
   const lo =  addr       & 0x3F;
@@ -113,11 +136,16 @@ function encodeAddr(addr) {
 }
 
 function sba(row, col) {
-  return [ORDER_SBA, ...encodeAddr(row * 80 + col)];
+  return [ORDER_SBA, ...encodeAddr(row * mockCols + col)];
 }
 
 function buildScreen(eraseFirst, fields) {
-  const parts = [eraseFirst ? CMD_ERASE_WRITE : CMD_WRITE, 0xC3];
+  // Per the 3270 datastream spec, plain Erase Write selects the DEFAULT
+  // 24×80 screen; only Erase Write Alternate activates the model's wider
+  // geometry. So when addressing a non-80-col screen we must send EWA,
+  // or a conforming client (x3270, our bridge) will decode at stride 80.
+  const eraseCmd = mockCols !== 80 ? CMD_ERASE_WRITE_ALT : CMD_ERASE_WRITE;
+  const parts = [eraseFirst ? eraseCmd : CMD_WRITE, 0xC3];
   for (const f of fields) {
     parts.push(...sba(f.row, f.col));
     if (f.fa !== undefined) parts.push(ORDER_SF, f.fa);
@@ -436,6 +464,7 @@ function handleConnection(socket) {
   let buf         = Buffer.alloc(0);
   let tn3270eMode = false;
   let negotiated  = false;
+  let cols        = 80;
 
   // Telnet option tracking
   let binaryUs = false, binaryThem = false;
@@ -542,6 +571,7 @@ function handleConnection(socket) {
   }
 
   function sendScreen() {
+   mockCols = cols;
    let ds;
    switch (currentScreen) {
     case 'logon': ds = screenLogon(); break;
@@ -573,21 +603,41 @@ function handleConnection(socket) {
 
     //if (subCmd === TN3E_SEND && payload[2] === TN3E_DEVICE_TYPE) {
     if (subCmd === TN3E_DEVICE_TYPE && payload[2] === TN3E_REQUEST) {
-      // Client wants to negotiate device type — respond with IBM-3278-2-E
+      // Client wants to negotiate device type — accept whatever model it
+      // asked for by echoing it back, and adopt that model's screen width.
+      // Replying with a different type than requested desyncs clients
+      // (like x3270) that honor the server's IS.
+      const reqStr = payload.slice(3).toString('ascii');
+      const match  = reqStr.match(/IBM-(3278|3279)-(\d)(-E)?/);
+      let accepted = 'IBM-3278-2-E';
+      if (match) {
+        const model = `${match[1]}-${match[2]}${match[3] || ''}`;
+        const dims  = MODEL_DIMS[model];
+        if (dims) { accepted = `IBM-${model}`; cols = dims.cols; }
+      }
       const response = Buffer.from([
         IAC, SB, OPT_TN3270E,
         TN3E_DEVICE_TYPE, TN3E_IS,
-        ...Buffer.from('IBM-3278-2-E'),
+        ...Buffer.from(accepted),
         0x01, // CONNECT
         ...Buffer.from(LU_NAME),
         IAC, SE,
       ]);
       socket.write(response);
+      debug(`[${id}] → TN3270E DEVICE-TYPE IS ${accepted} (cols=${cols})`);
       return;
     }
 
     if (subCmd === TN3E_DEVICE_TYPE && payload[2] === TN3E_IS) {
-      // Client acknowledged device type
+      // Client acknowledged device type — pick up the real model it asked for
+      // so screen addressing (sba) matches the width the client will render at.
+      const deviceStr = payload.slice(3).toString('ascii');
+      const match = deviceStr.match(/IBM-(3278|3279)-(\d)(-E)?/);
+      if (match) {
+        const model = `${match[1]}-${match[2]}${match[3] || ''}`;
+        const dims  = MODEL_DIMS[model];
+        if (dims) { cols = dims.cols; debug(`[${id}] Client device-type ${model} → cols=${cols}`); }
+      }
       // Now send FUNCTIONS REQUEST
       socket.write(Buffer.from([
         IAC, SB, OPT_TN3270E,
@@ -628,6 +678,12 @@ function handleConnection(socket) {
     if (payload[1] === 0x00) {
       const ttypeStr = payload.slice(2).toString('ascii');
       debug(`[${id}] TTYPE IS: ${ttypeStr}`);
+      const match = ttypeStr.match(/IBM-(3278|3279)-(\d)(-E)?/);
+      if (match) {
+        const model = `${match[1]}-${match[2]}${match[3] || ''}`;
+        const dims  = MODEL_DIMS[model];
+        if (dims) { cols = dims.cols; debug(`[${id}] Client TTYPE ${model} → cols=${cols}`); }
+      }
       negotiated = true;
       sendScreen();
     }

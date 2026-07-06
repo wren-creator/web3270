@@ -65,3 +65,9 @@ export function measureCellWidth() {
 }
 
 document.fonts.ready.then(() => { measureCellWidth(); fitScreen(); });
+
+let resizeTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { measureCellWidth(); fitScreen(); }, 100);
+});
