@@ -537,17 +537,35 @@ class Tn3270Session extends EventEmitter {
   _applyModel(model) {
   this.model = model;
 
+  // Every 3270 terminal has TWO geometries: the default (implicit partition)
+  // is always 24×80; the alternate is the model's advertised size. The host
+  // picks which is active per write: Erase Write → default, Erase Write
+  // Alternate → alternate. We start in default until the host says otherwise.
   const dims = modelDimensions(model);
-  this.rows = dims.rows;
-  this.cols = dims.cols;
+  this.altRows = dims.rows;
+  this.altCols = dims.cols;
+  this.defRows = 24;
+  this.defCols = 80;
+
+  this.rows = this.defRows;
+  this.cols = this.defCols;
 
   this.buffer = newBuffer(this.rows, this.cols);
   this.cursorAddr = 0;
 
   logger.info(
-    `[ws:${this.wsId}] Model applied: ${model} (${this.rows}x${this.cols})`
+    `[ws:${this.wsId}] Model applied: ${model} (default ${this.defRows}x${this.defCols}, alternate ${this.altRows}x${this.altCols})`
   );
 }
+
+  _setActiveGeometry(rows, cols) {
+    if (rows === this.rows && cols === this.cols) return;
+    this.rows = rows;
+    this.cols = cols;
+    this.buffer = newBuffer(rows, cols);
+    this.cursorAddr = 0;
+    logger.info(`[ws:${this.wsId}] Screen geometry → ${rows}x${cols}`);
+  }
 
   // ── Telnet option negotiation ──────────────────────────────────
 
@@ -750,6 +768,15 @@ class Tn3270Session extends EventEmitter {
       const erase = (cmd === 0x05 || cmd === 0xF5 || cmd === 0x0D || cmd === 0x7E);
       const isAlt  = (cmd === 0x0D || cmd === 0x7E);
       if (isAlt) this._pendingAnomalies.push({ code: 'EWA', severity: 'info', msg: 'Erase Write Alternate — host switched to alternate screen dimensions' });
+      // Erase commands select the active geometry: EW → default 24×80,
+      // EWA → the model's alternate size. All buffer addresses in the
+      // datastream that follows are relative to that geometry's width.
+      if (erase) {
+        this._setActiveGeometry(
+          isAlt ? this.altRows : this.defRows,
+          isAlt ? this.altCols : this.defCols
+        );
+      }
       this._processWriteCommand(bytes.slice(1), erase);
     } else if (cmd === 0x0F || cmd === 0x6F) {
       // Erase All Unprotected: CCW=0x0F  SNA=0x6F
@@ -965,8 +992,10 @@ class Tn3270Session extends EventEmitter {
    * Color, Highlighting, ReplyModes, DDM, RPQNames, ImplicitPartition.
    */
   _sendQueryReply() {
-    const cols = this.cols;
-    const rows = this.rows;
+    // Advertise the terminal's full capability (alternate size), not the
+    // currently active geometry — hosts use this to decide whether to EWA.
+    const cols = this.altCols;
+    const rows = this.altRows;
     const u16  = n => [(n >> 8) & 0xFF, n & 0xFF];
 
     // Each SF is built as a body array; we prepend a 2-byte length covering
