@@ -126,7 +126,8 @@ export async function saveProfileFromForm() {
   const tn3270e = document.getElementById('connTn3270e').classList.contains('on');
   if (!host) { document.getElementById('connHost').focus(); return; }
   if (!name) { document.getElementById('connName').focus(); return; }
-  const id      = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+  const id      = state.editingProfileId || name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+  if (!id) { document.getElementById('connName').focus(); return; }
   const profile = { id, name, host, port, tls, luName, type, model, tn3270e, codepage: 37 };
   const btn     = document.getElementById('saveProfileBtn');
   try {
