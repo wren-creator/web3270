@@ -348,6 +348,7 @@ class Tn5250Session extends EventEmitter {
   // layer (RFC 854 + RFC 885) is shared between TN3270E and TN5250.
 
   _onData(chunk) {
+    this.emit('raw', { dir: 'recv', data: chunk });
     this.recvBuf = Buffer.concat([this.recvBuf, chunk]);
     this._processBuffer();
   }
@@ -756,6 +757,7 @@ class Tn5250Session extends EventEmitter {
 
   _send(buf) {
     if (!this.socket || this.socket.destroyed) return;
+    this.emit('raw', { dir: 'sent', data: buf });
     this.socket.write(buf);
   }
 
