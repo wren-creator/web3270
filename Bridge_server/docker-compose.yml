@@ -41,6 +41,7 @@ services:
       - mock-lpar
       - mock-zvm
       - mock-tpf
+      - mock-as400
 
     networks:
       - tn3270-net
@@ -111,6 +112,28 @@ services:
       MOCK_SYSID: "DEMOSYS"
       MOCK_LU:    "MOCKLU01"
       LOG_LEVEL:  "debug"
+
+    networks:
+      - tn3270-net
+
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+          cpus: "0.25"
+
+# Mock AS/400 (TN5250) — signon + main menu simulation, port 3272
+  mock-as400:
+    build:
+      context: .
+      dockerfile: mock-lpar/Dockerfile.mock-as400
+    container_name: mock-as400
+    restart: unless-stopped
+
+    environment:
+      MOCK_AS400_PORT:  "3272"
+      MOCK_AS400_SYSID: "AS400MOCK"
+      LOG_LEVEL:        "debug"
 
     networks:
       - tn3270-net

@@ -9,8 +9,10 @@
 # If you add an entry to lpars.txt with the same id as one here,
 # your entry takes precedence and the built-in is hidden.
 #
-# Columns: id, name, host/IP, port, tls, type, model, tn3270e
+# Columns: id, name, host/IP, port, tls, type, model, tn3270e, protocol
+# protocol (optional, trailing): '3270' (default when omitted) or '5250'
 #
-mock-zos,  MOCK-ZOS,  mock-lpar,  3270,  false,  TSO,  3278-2,  true
-mock-zvm,  MOCK-ZVM,  mock-zvm,   3271,  false,  ZVM,  3278-2,  true
-mock-tpf,  MOCK-TPF,  mock-tpf,   3274,  false,  TPF,  3278-2,  true
+mock-zos,    MOCK-ZOS,    mock-lpar,   3270,  false,  TSO,    3278-2,  true
+mock-zvm,    MOCK-ZVM,    mock-zvm,    3271,  false,  ZVM,    3278-2,  true
+mock-tpf,    MOCK-TPF,    mock-tpf,    3274,  false,  TPF,    3278-2,  true
+mock-as400,  MOCK-AS400,  mock-as400,  3272,  false,  AS400,  3179-2,  true,  5250

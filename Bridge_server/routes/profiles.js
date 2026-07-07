@@ -11,6 +11,7 @@ export function handle(req, res, { config, logger }) {
       id: p.id, name: p.name, host: p.host, port: p.port,
       tls: p.tls ?? false, luName: p.luName ?? null,
       type: p.type ?? 'TSO', model: p.model ?? config.defaults.model,
+      protocol: p.protocol ?? '3270',
       codepage: p.codepage ?? config.defaults.codepage,
       tn3270e: p.tn3270e ?? true,
       source: p.source ?? 'user',
@@ -27,8 +28,15 @@ export function handle(req, res, { config, logger }) {
       try {
         const p = JSON.parse(body);
         if (!p.id || !p.host) { res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'id and host are required' })); return; }
-        let lines = fs.existsSync(userLparsPath) ? fs.readFileSync(userLparsPath, 'utf8').split('\n') : ['# id, name, host/IP, port, tls, type, model, tn3270e'];
-        const newLine = [p.id, p.name || p.id.toUpperCase(), p.host, p.port || 23, p.tls ? 'true' : 'false', p.type || 'TSO', p.model || '3278-2', p.tn3270e !== false ? 'true' : 'false'].join(', ');
+        const existing = config.profiles.find(existingP => existingP.id === p.id);
+        if (existing?.source === 'shipped') {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Built-in profiles cannot be edited' }));
+          return;
+        }
+        let lines = fs.existsSync(userLparsPath) ? fs.readFileSync(userLparsPath, 'utf8').split('\n') : ['# id, name, host/IP, port, tls, type, model, tn3270e, protocol'];
+        const protocol = (p.protocol || '3270').toLowerCase();
+        const newLine = [p.id, p.name || p.id.toUpperCase(), p.host, p.port || 23, p.tls ? 'true' : 'false', p.type || 'TSO', p.model || (protocol === '5250' ? '3179-2' : '3278-2'), p.tn3270e !== false ? 'true' : 'false', protocol].join(', ');
         const idx = lines.findIndex(l => { const t = l.trim(); return t && !t.startsWith('#') && t.split(',')[0].trim() === p.id; });
         if (idx >= 0) lines[idx] = newLine; else lines.push(newLine);
         fs.writeFileSync(userLparsPath, lines.join('\n'));

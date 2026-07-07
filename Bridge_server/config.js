@@ -35,6 +35,10 @@ function parseLparFile(filePath, source) {
       const parts = line.split(',').map(s => s.trim());
       const [id, name, host, port, tls, type, model] = parts;
       if (!id) return null;
+      // protocol is appended as an optional trailing field so existing
+      // lpars.txt/lpars.shipped.txt lines (3270-only) keep working
+      // unchanged — absent means '3270'.
+      const protocol = (parts[8] || '3270').toLowerCase();
       return {
         id,
         name: name || id.toUpperCase(),
@@ -42,7 +46,8 @@ function parseLparFile(filePath, source) {
         port: parseInt(port || '23', 10),
         tls: (tls || 'false') === 'true',
         type: (type || 'TSO').toUpperCase(),
-        model: model || process.env.DEFAULT_MODEL || '3278-2',
+        protocol,
+        model: model || process.env.DEFAULT_MODEL || (protocol === '5250' ? '3179-2' : '3278-2'),
         codepage: 37,
         tn3270e: parts[7] !== undefined ? parts[7] === 'true' : true,
         source,
