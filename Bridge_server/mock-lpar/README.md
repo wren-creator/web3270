@@ -155,3 +155,43 @@ The mock LPAR implements:
 - Input field content extraction from client data records
 - IAC byte escaping in both directions
 - Graceful disconnect on PF3 from Logon or option X from ISPF
+
+---
+
+## Mock AS/400 daemon (TN5250)
+
+`mock-as400.js` is the same idea as the mock LPAR above, but speaks
+**TN5250** (IBM i / AS/400) instead of TN3270 — it's what the bridge's
+`tn5250/session.js` engine talks to for local development, since a real
+AS/400 host isn't something you can spin up on a laptop.
+
+```
+SIGNON screen
+      │  type a userid + ENTER
+      ▼
+MAIN MENU
+      │  90 + ENTER → back to SIGNON (sign off)
+```
+
+It's wired into `docker-compose.yml` as the `mock-as400` service (port
+3272 inside the Docker network, not published to the host — same as
+`mock-zvm`/`mock-tpf`) and registered as a built-in profile in
+`../lpars.shipped.txt` (id `mock-as400`, protocol `5250`).
+
+Config env vars: `MOCK_AS400_PORT` (default `3272`), `MOCK_AS400_SYSID`
+(default `AS400MOCK`), `LOG_LEVEL`.
+
+Implements: RFC 4777 negotiation (NEW-ENVIRON + TERMINAL-TYPE), the
+10-byte GDS record header wrapping every record, Clear Unit / Clear
+Unit Alternate for default-vs-wide screen geometry, and Write-to-Display
+orders SBA/SF/IC. Byte-level values are verified against the
+open-source [tn5250](https://github.com/hlandau/tn5250) project's
+`lib5250`, not reconstructed from memory — see the header comment in
+`../tn5250/session.js` for the specific files referenced.
+
+> **Note on the rest of this README:** the sections above (env vars like
+> `PROD01_HOST`, `public/tn3270-client.html`) predate the current
+> `lpars.txt`/`lpars.shipped.txt`-based profile system and the
+> `mock-zvm`/`mock-tpf` siblings, and are out of date. Worth a full pass
+> at some point — flagging rather than rewriting it as part of this
+> change.
