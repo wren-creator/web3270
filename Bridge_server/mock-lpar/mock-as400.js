@@ -1,9 +1,14 @@
 /**
  * mock-lpar/mock-as400.js
  * ─────────────────────────────────────────────────────────────────
- * Lightweight TN5250 server simulating an IBM i (AS/400) SIGNON screen
- * and a minimal main menu, for local development/testing of the
- * bridge's TN5250 engine (tn5250/session.js) without a real IBM i host.
+ * Lightweight TN5250 server simulating an IBM i (AS/400) SIGNON screen,
+ * a main menu with a few sub-menus, and a DSPMSG-style message queue,
+ * for local development/testing of the bridge's TN5250 engine
+ * (tn5250/session.js) without a real IBM i host.
+ *
+ * The menu tree lives in the MENUS table below — add an entry there to
+ * add a new menu; options without a `goto`/`action` automatically land
+ * on a generic "not implemented" stub screen rather than dead-ending.
  *
  * Byte-level protocol values (GDS record header, ESC commands, WTD
  * orders, field attribute bytes, AID codes) are the same ones verified
@@ -120,6 +125,36 @@ function wrapEsc(cmd, body) {
   return Buffer.concat([Buffer.from([ESC, cmd]), body]);
 }
 
+// Parse a client's field-data response into per-SBA text runs, so field
+// values can be matched by (row, col) instead of blindly concatenating
+// every character in the response (which merges User + Password into one
+// blob and can't tell one input field from another).
+function parseFieldRuns(fieldData) {
+  const runs = [];
+  let i = 0;
+  let cur = null;
+  while (i < fieldData.length) {
+    if (fieldData[i] === ORDER_SBA) {
+      if (cur) runs.push(cur);
+      cur = { row: fieldData[i + 1] - 1, col: fieldData[i + 2] - 1, text: '' };
+      i += 3;
+      continue;
+    }
+    if (cur) {
+      const ch = EBCDIC_TO_ASCII[fieldData[i]];
+      cur.text += (ch >= 0x20 && ch < 0x7F) ? String.fromCharCode(ch) : ' ';
+    }
+    i++;
+  }
+  if (cur) runs.push(cur);
+  return runs;
+}
+
+function fieldAt(runs, row) {
+  const run = runs.find(r => r.row === row);
+  return run ? run.text.trim() : '';
+}
+
 function screenSignon() {
   const now = new Date();
   const dateStr = now.toLocaleDateString('en-US');
@@ -149,25 +184,147 @@ function screenSignon() {
   return Buffer.concat([clearUnit, wtd, readCmd]);
 }
 
-function screenMainMenu(user) {
-  const clearUnit = Buffer.from([ESC, CMD_CLEAR_UNIT]);
-  const wtd = wrapEsc(CMD_WRITE_TO_DISPLAY, buildScreen(80, [
-    { row: 0,  col: 27, text: 'MAIN MENU', input: false },
-    { row: 0,  col: 65, text: 'MOCKMENU', input: false },
-    { row: 2,  col: 2,  text: `System:   ${SYSNAME}`, input: false },
-    { row: 4,  col: 2,  text: 'Select one of the following:', input: false },
-    { row: 6,  col: 5,  text: '1. User tasks', input: false },
-    { row: 7,  col: 5,  text: '2. Office tasks', input: false },
-    { row: 8,  col: 5,  text: '3. General system tasks', input: false },
-    { row: 9,  col: 5,  text: '4. Files, libraries, and folders', input: false },
-    { row: 10, col: 5,  text: '90. Sign off', input: false },
-    { row: 20, col: 2,  text: `Signed on as: ${user || 'UNKNOWN'}`, input: false },
-    { row: 22, col: 2,  text: 'Selection or command', input: false },
-    { row: 22, col: 25, text: '', input: true, length: 40 },
-  ], { row: 22, col: 25 }));
-  const readCmd = Buffer.from([ESC, CMD_READ_INPUT_FIELDS]);
+// ── Menu tree ─────────────────────────────────────────────────────
+// Data-driven so adding a menu or option is just adding data, not a new
+// render function. Each option either:
+//   goto:     <menu id>   — jump to another menu in this table
+//   action:   'messages'  — jump to the Display Messages screen
+//   (neither)              — jump to a generic "not implemented" stub
+// '90' (sign off) is handled universally, not listed per menu, matching
+// real AS/400 menus where it's always available.
+const MENUS = {
+  MAIN: {
+    title: 'MAIN MENU',
+    options: [
+      { num: '1', label: 'User tasks',                    goto: 'USER' },
+      { num: '2', label: 'Office tasks',                   goto: 'OFFICE' },
+      { num: '3', label: 'General system tasks',           goto: 'SYSTEM' },
+      { num: '4', label: 'Files, libraries, and folders' },
+      { num: '9', label: 'Display messages',                action: 'messages' },
+    ],
+  },
+  USER: {
+    title: 'USER TASKS',
+    parent: 'MAIN',
+    options: [
+      { num: '1', label: 'Send messages' },
+      { num: '2', label: 'Display messages',                action: 'messages' },
+      { num: '3', label: 'Work with spooled files' },
+      { num: '4', label: 'Work with batch jobs' },
+    ],
+  },
+  OFFICE: {
+    title: 'OFFICE TASKS',
+    parent: 'MAIN',
+    options: [
+      { num: '1', label: 'Work with calendar' },
+      { num: '2', label: 'Send/receive documents' },
+      { num: '3', label: 'Work with mail' },
+    ],
+  },
+  SYSTEM: {
+    title: 'GENERAL SYSTEM TASKS',
+    parent: 'MAIN',
+    options: [
+      { num: '1', label: 'Work with active jobs' },
+      { num: '2', label: 'Work with printers' },
+      { num: '3', label: 'Display system status' },
+      { num: '4', label: 'Work with subsystems' },
+    ],
+  },
+};
 
+const AID_F3  = 0x33;
+const AID_F12 = 0x3C;
+
+function screenMenu(menuId, ctx) {
+  const menu = MENUS[menuId];
+  const fields = [
+    { row: 0, col: Math.max(0, 40 - Math.floor(menu.title.length / 2)), text: menu.title, input: false },
+    { row: 0, col: 65, text: 'MOCKMENU', input: false },
+    { row: 2, col: 2, text: `System:   ${SYSNAME}`, input: false },
+    { row: 4, col: 2, text: 'Select one of the following:', input: false },
+  ];
+  menu.options.forEach((opt, idx) => {
+    fields.push({ row: 6 + idx, col: 5, text: `${opt.num}. ${opt.label}`, input: false });
+  });
+  fields.push({ row: 6 + menu.options.length, col: 5, text: '90. Sign off', input: false });
+
+  if (menu.parent) {
+    fields.push({ row: 16, col: 2, text: 'F3=Exit   F12=Cancel', input: false });
+  }
+  fields.push({ row: 18, col: 2, text: `Signed on as: ${ctx.user || 'UNKNOWN'}`, input: false });
+  if (ctx.unreadCount > 0) {
+    fields.push({
+      row: 19, col: 2,
+      text: `*** You have ${ctx.unreadCount} new message${ctx.unreadCount === 1 ? '' : 's'} — option 9 to view ***`,
+      input: false, attr: ATTR_RED,
+    });
+  }
+  if (ctx.message) {
+    fields.push({ row: 20, col: 2, text: ctx.message, input: false, attr: ATTR_RED });
+  }
+  fields.push({ row: 22, col: 2, text: 'Selection or command', input: false });
+  fields.push({ row: 22, col: 25, text: '', input: true, length: 40 });
+
+  const clearUnit = Buffer.from([ESC, CMD_CLEAR_UNIT]);
+  const wtd = wrapEsc(CMD_WRITE_TO_DISPLAY, buildScreen(80, fields, { row: 22, col: 25 }));
+  const readCmd = Buffer.from([ESC, CMD_READ_INPUT_FIELDS]);
   return Buffer.concat([clearUnit, wtd, readCmd]);
+}
+
+function screenMessages(ctx) {
+  const fields = [
+    { row: 0, col: 30, text: 'Display Messages', input: false },
+    { row: 1, col: 2,  text: `Queue: ${(ctx.user || 'QSYSOPR')}`, input: false },
+    { row: 1, col: 40, text: `System: ${SYSNAME}`, input: false },
+  ];
+  ctx.messages.forEach((m, idx) => {
+    const row = 3 + idx;
+    if (row > 19) return; // don't overflow the screen — a real DSPMSG pages
+    fields.push({
+      row, col: 2,
+      text: `${m.date} ${m.time}  ${m.from.padEnd(10, ' ')} ${m.text}`.slice(0, 78),
+      input: false,
+    });
+  });
+  if (ctx.messages.length === 0) {
+    fields.push({ row: 3, col: 2, text: '(No messages)', input: false });
+  }
+  fields.push({ row: 22, col: 2, text: 'Press Enter to continue', input: false });
+  fields.push({ row: 23, col: 2, text: 'F3=Exit   F12=Cancel', input: false });
+  fields.push({ row: 22, col: 44, text: '', input: true, length: 1 });
+
+  const clearUnit = Buffer.from([ESC, CMD_CLEAR_UNIT]);
+  const wtd = wrapEsc(CMD_WRITE_TO_DISPLAY, buildScreen(80, fields, { row: 22, col: 44 }));
+  const readCmd = Buffer.from([ESC, CMD_READ_INPUT_FIELDS]);
+  return Buffer.concat([clearUnit, wtd, readCmd]);
+}
+
+function screenStub(label, ctx) {
+  const fields = [
+    { row: 0, col: Math.max(0, 40 - Math.floor(label.length / 2)), text: label, input: false },
+    { row: 2, col: 2, text: `User:     ${ctx.user || 'UNKNOWN'}`, input: false },
+    { row: 4, col: 2, text: 'This function is not implemented in the mock — extend', input: false },
+    { row: 5, col: 2, text: 'mock-as400.js (MENUS table) to add real content here.', input: false },
+    { row: 22, col: 2, text: 'Press Enter to return', input: false },
+    { row: 23, col: 2, text: 'F3=Exit   F12=Cancel', input: false },
+    { row: 22, col: 44, text: '', input: true, length: 1 },
+  ];
+  const clearUnit = Buffer.from([ESC, CMD_CLEAR_UNIT]);
+  const wtd = wrapEsc(CMD_WRITE_TO_DISPLAY, buildScreen(80, fields, { row: 22, col: 44 }));
+  const readCmd = Buffer.from([ESC, CMD_READ_INPUT_FIELDS]);
+  return Buffer.concat([clearUnit, wtd, readCmd]);
+}
+
+function seedMessages(user) {
+  const now = new Date();
+  const date = now.toLocaleDateString('en-US');
+  const time = now.toLocaleTimeString('en-US', { hour12: false });
+  return [
+    { from: 'QSYSOPR', date, time, text: `Welcome to ${SYSNAME}, ${user}.` },
+    { from: 'QSYSOPR', date, time, text: 'System backup scheduled for 23:00 tonight.' },
+  ];
 }
 
 // ── Connection handling ───────────────────────────────────────────
@@ -180,8 +337,13 @@ function handleConnection(socket) {
   let recvBuf = Buffer.alloc(0);
   let currentRecord = null;
   let negotiated = { ttype: false, newenv: false, binary: false, eor: false };
-  let screen = 'signon';
+  let screen = 'signon';   // 'signon' | a MENUS key | 'MESSAGES' | 'STUB'
   let user = null;
+  let menuMessage = '';
+  let messages = [];
+  let unreadCount = 0;
+  let returnTo = 'MAIN';   // menu to go back to from MESSAGES/STUB
+  let stubLabel = '';      // which option led to the current STUB screen
 
   socket.on('data', chunk => { recvBuf = Buffer.concat([recvBuf, chunk]); processBuffer(); });
   socket.on('end',   () => log(`[${id}] Disconnected`));
@@ -288,7 +450,19 @@ function handleConnection(socket) {
   }
 
   function sendScreen() {
-    const ds = screen === 'menu' ? screenMainMenu(user) : screenSignon();
+    let ds;
+    if (screen === 'signon') {
+      ds = screenSignon();
+    } else if (screen === 'MESSAGES') {
+      ds = screenMessages({ user, messages });
+    } else if (screen === 'STUB') {
+      ds = screenStub(stubLabel, { user });
+    } else if (MENUS[screen]) {
+      ds = screenMenu(screen, { user, unreadCount, message: menuMessage });
+    } else {
+      screen = 'MAIN';
+      ds = screenMenu(screen, { user, unreadCount, message: '' });
+    }
     sendRecord(ds, OPCODE_PUT_GET);
     log(`[${id}] -> Screen: ${screen}`);
   }
@@ -319,25 +493,63 @@ function handleConnection(socket) {
     if (body.length < 3) return;
     const aid = body[2];
     const fieldData = body.slice(3);
+    const runs = parseFieldRuns(fieldData);
 
-    // Extract the USER field's typed content (first SBA + text run) —
-    // enough to personalize the main menu without a full field parser.
-    let typed = '';
-    for (let k = 0; k < fieldData.length; k++) {
-      if (fieldData[k] === ORDER_SBA) { k += 2; continue; }
-      const ch = EBCDIC_TO_ASCII[fieldData[k]];
-      if (ch >= 0x20 && ch < 0x7F) typed += String.fromCharCode(ch);
-    }
-    typed = typed.trim();
+    debug(`[${id}] <- AID=0x${aid.toString(16)} screen=${screen} runs=${JSON.stringify(runs)}`);
 
-    debug(`[${id}] <- AID=0x${aid.toString(16)} typed="${typed}"`);
+    if (screen === 'signon') {
+      // Field rows match screenSignon()'s layout: User at row 7, Password
+      // at row 8 (unused by this mock beyond being present — no real
+      // credential check, same as before).
+      const typedUser = fieldAt(runs, 7);
+      if (typedUser) {
+        user = typedUser.toUpperCase();
+        messages = seedMessages(user);
+        unreadCount = messages.length;
+        returnTo = 'MAIN';
+        screen = 'MAIN';
+        menuMessage = '';
+      }
+      // Blank Enter on signon just redraws it — a real AS/400 would show
+      // "User missing", which isn't worth modeling for this mock.
+    } else if (screen === 'MESSAGES') {
+      // Viewing the messages marks them read, like real DSPMSG.
+      unreadCount = 0;
+      screen = returnTo;
+      menuMessage = '';
+    } else if (screen === 'STUB') {
+      screen = returnTo;
+      menuMessage = '';
+    } else if (MENUS[screen]) {
+      const menu = MENUS[screen];
+      const sel = fieldAt(runs, 22);
 
-    if (screen === 'signon' && typed) {
-      user = typed.toUpperCase();
-      screen = 'menu';
-    } else if (screen === 'menu') {
-      screen = 'signon';
-      user = null;
+      if ((aid === AID_F3 || aid === AID_F12) && menu.parent) {
+        screen = menu.parent;
+        menuMessage = '';
+      } else if (sel === '') {
+        // bare Enter — redraw the menu as-is
+      } else if (sel === '90') {
+        screen = 'signon';
+        user = null;
+        messages = [];
+        unreadCount = 0;
+      } else {
+        const opt = menu.options.find(o => o.num === sel);
+        if (!opt) {
+          menuMessage = `Selection ${sel} is not valid.`;
+        } else if (opt.action === 'messages') {
+          returnTo = screen;
+          screen = 'MESSAGES';
+        } else if (opt.goto) {
+          screen = opt.goto;
+          menuMessage = '';
+        } else {
+          returnTo = screen;
+          stubLabel = opt.label.toUpperCase();
+          screen = 'STUB';
+        }
+      }
     }
     sendScreen();
   }
