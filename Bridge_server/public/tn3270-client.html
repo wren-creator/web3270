@@ -1157,23 +1157,27 @@
       </div>
       <div class="form-row">
         <div class="form-group">
-          <div class="form-label">Session Type</div>
-          <select id="connType"><option>TSO</option><option>CICS</option><option>JES2</option><option>ZVM</option><option>Other</option></select>
+          <div class="form-label">Protocol</div>
+          <select id="connProtocol" onchange="onConnProtocolChange()">
+            <option value="3270" selected>TN3270 (z/OS, z/VM, TPF...)</option>
+            <option value="5250">TN5250 (AS/400, IBM i)</option>
+          </select>
         </div>
         <div class="form-group">
+          <div class="form-label">Session Type</div>
+          <select id="connType"><option>TSO</option><option>CICS</option><option>JES2</option><option>ZVM</option><option>AS400</option><option>Other</option></select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
           <div class="form-label">Terminal Model</div>
-          <select id="connModel">
-            <option value="3278-2">3278-2 (80&times;24)</option>
-            <option value="3278-3">3278-3 (80&times;32)</option>
-            <option value="3278-4" selected>3278-4 (80&times;43)</option>
-            <option value="3278-5">3278-5 (132&times;27)</option>
-          </select>
+          <select id="connModel"></select>
         </div>
       </div>
       <div class="setting-row" style="margin-top:8px">
         <label style="font-size:11px;color:var(--text-dim)">TLS / SSL</label>
         <div class="toggle" id="connTls" onclick="this.classList.toggle('on')"></div>
-        <label style="font-size:11px;color:var(--text-dim)">TN3270E</label>
+        <label style="font-size:11px;color:var(--text-dim)" id="connTn3270eLabel">TN3270E</label>
         <div class="toggle on" id="connTn3270e" onclick="this.classList.toggle('on')"></div>
       </div>
     </div>

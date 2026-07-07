@@ -3,25 +3,63 @@ import { renderLiveScreen, screenToText, updateOIA, showBridgeError } from './re
 import { setConnStatus, updateSessionDot, addSessionTab, activateSession, _showDisconnectScreen } from './tabs.js';
 
 // ── Connect modal ─────────────────────────────────────────────────────
+
+// Curated per-protocol model lists — mirrors the distinct screen
+// geometries each protocol actually supports (see tn3270/session.js and
+// tn5250/session.js's modelDimensions tables).
+const MODEL_OPTIONS = {
+  '3270': [
+    { value: '3278-2', label: '3278-2 (80×24)' },
+    { value: '3278-3', label: '3278-3 (80×32)' },
+    { value: '3278-4', label: '3278-4 (80×43)', selected: true },
+    { value: '3278-5', label: '3278-5 (132×27)' },
+  ],
+  '5250': [
+    { value: '3179-2',  label: '3179-2 (80×24)', selected: true },
+    { value: '3477-FC', label: '3477-FC (132×27)' },
+    { value: '5291-1',  label: '5291-1 (80×24)' },
+    { value: '5292-2',  label: '5292-2 (132×27)' },
+  ],
+};
+
+// Rebuilds the Terminal Model list for the selected protocol and hides
+// TN3270E (meaningless for TN5250). Called on protocol change, and on
+// modal open / edit so the form starts in a consistent state.
+export function onConnProtocolChange() {
+  const protocol = document.getElementById('connProtocol').value;
+  const modelEl  = document.getElementById('connModel');
+  const opts     = MODEL_OPTIONS[protocol] || MODEL_OPTIONS['3270'];
+  modelEl.innerHTML = opts.map(o => `<option value="${o.value}"${o.selected ? ' selected' : ''}>${o.label}</option>`).join('');
+
+  const showTn3270e   = protocol !== '5250';
+  const tn3270eLabel  = document.getElementById('connTn3270eLabel');
+  const tn3270eToggle = document.getElementById('connTn3270e');
+  if (tn3270eLabel)  tn3270eLabel.style.display  = showTn3270e ? '' : 'none';
+  if (tn3270eToggle) tn3270eToggle.style.display = showTn3270e ? '' : 'none';
+}
+
 export function showConnectModal() {
   state.editingProfileId = null;
   renderModalProfiles();
+  document.getElementById('connProtocol').value = '3270';
+  onConnProtocolChange();
   document.getElementById('connectModal').classList.remove('hidden');
 }
 export function hideConnectModal() { document.getElementById('connectModal').classList.add('hidden'); }
 document.getElementById('connectModal').addEventListener('click', e => { if (e.target === e.currentTarget) hideConnectModal(); });
 
 export function connectManual() {
-  const host    = document.getElementById('connHost').value.trim();
-  const port    = parseInt(document.getElementById('connPort').value, 10) || 23;
-  const name    = document.getElementById('connName').value.trim() || host;
-  const luName  = document.getElementById('connLu').value.trim() || null;
-  const type    = document.getElementById('connType').value;
-  const model   = document.getElementById('connModel').value;
-  const tls     = document.getElementById('connTls').classList.contains('on');
-  const tn3270e = document.getElementById('connTn3270e').classList.contains('on');
+  const host     = document.getElementById('connHost').value.trim();
+  const port     = parseInt(document.getElementById('connPort').value, 10) || 23;
+  const name     = document.getElementById('connName').value.trim() || host;
+  const luName   = document.getElementById('connLu').value.trim() || null;
+  const type     = document.getElementById('connType').value;
+  const protocol = document.getElementById('connProtocol').value;
+  const model    = document.getElementById('connModel').value;
+  const tls      = document.getElementById('connTls').classList.contains('on');
+  const tn3270e  = document.getElementById('connTn3270e').classList.contains('on');
   if (!host) { document.getElementById('connHost').focus(); return; }
-  openSession({ id: name, host, port, name, luName, type, model, tls, tn3270e, codepage: 37 });
+  openSession({ id: name, host, port, name, luName, type, protocol, model, tls, tn3270e, codepage: 37 });
 }
 
 // ── LPAR profiles ─────────────────────────────────────────────────────
@@ -98,6 +136,8 @@ function editProfile(profileId) {
   document.getElementById('connPort').value  = p.port   || 23;
   document.getElementById('connName').value  = p.name   || p.id || '';
   document.getElementById('connLu').value    = p.luName || '';
+  document.getElementById('connProtocol').value = p.protocol || '3270';
+  onConnProtocolChange(); // rebuild the Model list for this protocol first
   const typeEl  = document.getElementById('connType');
   const modelEl = document.getElementById('connModel');
   if (typeEl  && p.type)  typeEl.value  = p.type;
@@ -118,19 +158,20 @@ async function deleteProfile(profileId, displayName) {
 }
 
 export async function saveProfileFromForm() {
-  const host    = document.getElementById('connHost').value.trim();
-  const port    = parseInt(document.getElementById('connPort').value, 10) || 23;
-  const name    = document.getElementById('connName').value.trim();
-  const luName  = document.getElementById('connLu').value.trim() || null;
-  const type    = document.getElementById('connType').value;
-  const model   = document.getElementById('connModel').value;
-  const tls     = document.getElementById('connTls').classList.contains('on');
-  const tn3270e = document.getElementById('connTn3270e').classList.contains('on');
+  const host     = document.getElementById('connHost').value.trim();
+  const port     = parseInt(document.getElementById('connPort').value, 10) || 23;
+  const name     = document.getElementById('connName').value.trim();
+  const luName   = document.getElementById('connLu').value.trim() || null;
+  const type     = document.getElementById('connType').value;
+  const protocol = document.getElementById('connProtocol').value;
+  const model    = document.getElementById('connModel').value;
+  const tls      = document.getElementById('connTls').classList.contains('on');
+  const tn3270e  = document.getElementById('connTn3270e').classList.contains('on');
   if (!host) { document.getElementById('connHost').focus(); return; }
   if (!name) { document.getElementById('connName').focus(); return; }
   const id      = state.editingProfileId || name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
   if (!id) { document.getElementById('connName').focus(); return; }
-  const profile = { id, name, host, port, tls, luName, type, model, tn3270e, codepage: 37 };
+  const profile = { id, name, host, port, tls, luName, type, protocol, model, tn3270e, codepage: 37 };
   const btn     = document.getElementById('saveProfileBtn');
   try {
     btn.disabled = true; btn.textContent = 'Saving…';
@@ -278,7 +319,7 @@ export function handleBridgeMsg(sid, msg) {
 }
 
 Object.assign(window, {
-  showConnectModal, hideConnectModal, connectManual,
+  showConnectModal, hideConnectModal, connectManual, onConnProtocolChange,
   loadProfiles, saveProfileFromForm, toggleLparDropdown,
   openSession, handleBridgeMsg,
 });
