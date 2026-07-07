@@ -60,10 +60,11 @@ function renderSidebarLpars() {
   state.LPAR_PROFILES.forEach(p => {
     const shipped = p.source === 'shipped';
     const badge = shipped ? ' <span class="lpar-builtin-badge">built-in</span>' : '';
+    const editBtnHtml = shipped ? '' : '<button class="lpar-edit-btn" title="Edit">&#x270E;</button>';
     const deleteBtnHtml = shipped ? '' : '<button class="lpar-delete-btn" title="Delete">&#128465;</button>';
     const item = document.createElement('div'); item.className = 'lpar-item';
-    item.innerHTML = `<div class="lpar-dot"></div><div class="lpar-name">${esc(p.name||p.id)}${badge}</div><div class="lpar-type">${esc(p.type||'TSO')}</div><button class="lpar-edit-btn" title="Edit">&#x270E;</button>${deleteBtnHtml}`;
-    item.querySelector('.lpar-edit-btn').addEventListener('click', e => { e.stopPropagation(); editProfile(p.id); });
+    item.innerHTML = `<div class="lpar-dot"></div><div class="lpar-name">${esc(p.name||p.id)}${badge}</div><div class="lpar-type">${esc(p.type||'TSO')}</div>${editBtnHtml}${deleteBtnHtml}`;
+    if (!shipped) item.querySelector('.lpar-edit-btn').addEventListener('click', e => { e.stopPropagation(); editProfile(p.id); });
     if (!shipped) item.querySelector('.lpar-delete-btn').addEventListener('click', e => { e.stopPropagation(); deleteProfile(p.id, p.name||p.id); });
     item.addEventListener('click', () => connectLpar(p.id));
     container.appendChild(item);
@@ -78,10 +79,11 @@ function renderModalProfiles() {
   state.LPAR_PROFILES.forEach(p => {
     const shipped = p.source === 'shipped';
     const badge = shipped ? ' <span class="lpar-builtin-badge">built-in</span>' : '';
+    const editBtnHtml = shipped ? '' : '<button class="profile-edit-btn" title="Edit">&#x270E;</button>';
     const deleteBtnHtml = shipped ? '' : '<button class="profile-delete-btn" title="Delete">&#128465;</button>';
     const item = document.createElement('div'); item.className = 'profile-item';
-    item.innerHTML = `<div style="flex:1"><div class="profile-name">${esc(p.name||p.id)}${badge}</div><div class="profile-host">${esc(p.host)}:${p.port}${p.tls?' &middot; TLS':''} &middot; ${esc(p.type||'TSO')}</div></div><button class="profile-edit-btn" title="Edit">&#x270E;</button>${deleteBtnHtml}<button class="profile-connect-btn">Connect</button>`;
-    item.querySelector('.profile-edit-btn').addEventListener('click', e => { e.stopPropagation(); editProfile(p.id); });
+    item.innerHTML = `<div style="flex:1"><div class="profile-name">${esc(p.name||p.id)}${badge}</div><div class="profile-host">${esc(p.host)}:${p.port}${p.tls?' &middot; TLS':''} &middot; ${esc(p.type||'TSO')}</div></div>${editBtnHtml}${deleteBtnHtml}<button class="profile-connect-btn">Connect</button>`;
+    if (!shipped) item.querySelector('.profile-edit-btn').addEventListener('click', e => { e.stopPropagation(); editProfile(p.id); });
     if (!shipped) item.querySelector('.profile-delete-btn').addEventListener('click', e => { e.stopPropagation(); deleteProfile(p.id, p.name||p.id); });
     item.querySelector('.profile-connect-btn').addEventListener('click', () => { connectLpar(p.id); hideConnectModal(); });
     container.appendChild(item);
@@ -175,7 +177,9 @@ export function openSession(profile) {
     ws.send(JSON.stringify({
       type: 'connect', host: profile.host, port: profile.port,
       tls: profile.tls ?? false, luName: profile.luName ?? null,
-      model: profile.model ?? '3278-5', codepage: profile.codepage ?? 37,
+      protocol: profile.protocol ?? '3270',
+      model: profile.model ?? (profile.protocol === '5250' ? '3179-2' : '3278-5'),
+      codepage: profile.codepage ?? 37,
       tn3270e: profile.tn3270e ?? (profile.type !== 'ZVM'),
     }));
   };
