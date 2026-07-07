@@ -169,9 +169,35 @@ AS/400 host isn't something you can spin up on a laptop.
 SIGNON screen
       │  type a userid + ENTER
       ▼
-MAIN MENU
+MAIN MENU  ──── command line: type a CL command (see below)
+      │  3 → General system tasks → 5/6/7 → the security panels
       │  90 + ENTER → back to SIGNON (sign off)
 ```
+
+### Security surface (for building tools against)
+
+Like the mock z/OS host exposes RACF gaps, the mock IBM i ships a
+**deliberately weak security posture** so tools built against it have real
+findings to surface. The "Selection or command" line is a small CL
+interpreter; these verbs render live panels (weak/privileged values are
+shown in red), reachable by command **or** via *General system tasks*
+(MAIN option 3) options 5/6/7:
+
+| Command | Panel | What a tool would flag |
+|---------|-------|------------------------|
+| `WRKSYSVAL` / `DSPSYSVAL SYSVAL(x)` | System values | `QSECURITY 30`, `QMAXSIGN *NOMAX`, `QPWDEXPITV *NOMAX`, `QAUDCTL *NONE`, weak `QPWD*` |
+| `WRKUSRPRF` / `DSPUSRPRF USRPRF(x)` | User profiles | `QSECOFR` with all 8 special authorities + **default password**, over-privileged `APPADMIN` (`*ALLOBJ`), `LMTCPB *NO` |
+| `WRKOBJ` / `DSPOBJAUT OBJ(lib/obj)` | Object authority | `PAYROLL/EMPMAST` at `*PUBLIC *ALL`, libraries at `*PUBLIC *CHANGE` |
+
+On the "Work with" panels, type `5` in the **Opt** column next to a row and
+press Enter to drill into its detail panel; `F3`/`F12` steps back out. An
+unrecognized command returns a realistic `CPD0030`/`CPF…` message.
+
+The posture is data-driven — the `SYSVALS`, `USRPRFS`, and `OBJECTS` tables
+near the top of `mock-as400.js` are the single source of truth. Harden a
+value (or add a profile/object/system value) by editing its entry there;
+nothing else needs to change. The `weak`/privileged flags drive the red
+highlighting automatically.
 
 It's wired into `docker-compose.yml` as the `mock-as400` service (port
 3272 inside the Docker network, not published to the host — same as
@@ -183,8 +209,9 @@ Config env vars: `MOCK_AS400_PORT` (default `3272`), `MOCK_AS400_SYSID`
 
 Implements: RFC 4777 negotiation (NEW-ENVIRON + TERMINAL-TYPE), the
 10-byte GDS record header wrapping every record, Clear Unit / Clear
-Unit Alternate for default-vs-wide screen geometry, and Write-to-Display
-orders SBA/SF/IC. Byte-level values are verified against the
+Unit Alternate for default-vs-wide screen geometry, Write-to-Display
+orders SBA/SF/IC, and the CL command interpreter + security panels
+described above. Byte-level values are verified against the
 open-source [tn5250](https://github.com/hlandau/tn5250) project's
 `lib5250`, not reconstructed from memory — see the header comment in
 `../tn5250/session.js` for the specific files referenced.
