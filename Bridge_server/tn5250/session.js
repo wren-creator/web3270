@@ -298,7 +298,7 @@ class Tn5250Session extends EventEmitter {
       if (!cell) continue;
       if (cell.fa !== undefined) {
         if (current && current.mdt && current.data.length > 0) fields.push(current);
-        current = { addr: a + 1, data: '', mdt: !!(cell.ffw & FFW_MODIFIED), protected: !!(cell.ffw & FFW_BYPASS) };
+        current = { addr: a + 1, data: '', mdt: !!(cell.ffw & FFW_MODIFIED), protected: !cell.hasFfw || !!(cell.ffw & FFW_BYPASS) };
       } else if (current && !current.protected) {
         if (cell.modified) current.mdt = true;
         if (cell.char) current.data += Ebcdic.toAscii(Buffer.from([cell.char]), this.codepage);
@@ -651,7 +651,10 @@ class Tn5250Session extends EventEmitter {
     }
 
     if (this.buffer[this._writeAddr] === undefined) this._writeAddr = 0;
-    this.buffer[this._writeAddr] = { char: 0x00, fa: attr, ffw, modified: false };
+    // hasFfw distinguishes "no FFW at all" (output-only, always protected)
+    // from "FFW present with no bits set" (a genuine, if unusual, input
+    // field) — ffw alone can't tell those apart since both are 0x0000.
+    this.buffer[this._writeAddr] = { char: 0x00, fa: attr, ffw, hasFfw, modified: false };
     this._writeAddr = Math.min(this._writeAddr + 1, this.rows * this.cols - 1);
 
     // `length` is the field's data length; the actual field content
@@ -711,7 +714,7 @@ class Tn5250Session extends EventEmitter {
         current = {
           startAddr: a,
           fa: cell.fa,
-          protected: !!(cell.ffw & FFW_BYPASS),
+          protected: !cell.hasFfw || !!(cell.ffw & FFW_BYPASS),
           numeric: !!(cell.ffw & (FFW_NUM_ONLY | FFW_DIGIT_ONLY | FFW_SIGNED_NUM)),
           modified: !!(cell.ffw & FFW_MODIFIED),
           nondisplay: cell.fa === ATTR.NONDISPLAY,
