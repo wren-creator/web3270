@@ -1,0 +1,17 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Only copy what the mock AS/400 daemon needs — no bridge deps required
+COPY mock-lpar/mock-as400.js ./mock-lpar/mock-as400.js
+
+RUN addgroup -S mockas400 && adduser -S mockas400 -G mockas400
+USER mockas400
+
+EXPOSE 3272
+
+ENV MOCK_AS400_PORT=3272 \
+    MOCK_AS400_SYSID=AS400MOCK \
+    LOG_LEVEL=info
+
+CMD ["node", "mock-lpar/mock-as400.js"]

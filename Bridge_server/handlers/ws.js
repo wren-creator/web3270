@@ -1,6 +1,7 @@
 import { WebSocket } from 'ws';
 import fs from 'fs';
 import Tn3270Session from '../tn3270/session.js';
+import Tn5250Session from '../tn5250/session.js';
 import MacroHandler from '../macros/handler.js';
 import { MacroStore } from '../macros/store.js';
 import CopilotHandler from '../copilot/copilot-handler.js';
@@ -55,24 +56,36 @@ export function createWsHandler({ config, logger, sessions, Ebcdic }) {
       const { host, luName = null } = params;
       const port      = parseInt(params.port, 10) || 339;
       const useTls    = params.tls ?? (port === 992);
-      const model     = params.model    || config.defaults.model;
       const codepage  = params.codepage || config.defaults.codepage;
-      const useTn3270e = params.tn3270e ?? true;
+      const protocol  = (params.protocol || '3270').toLowerCase();
 
       if (!host) {
         send(ws, { type: 'error', message: 'Missing required field: host' });
         ws.close(); return;
       }
 
-      logger.info(`[ws:${wsId}] Connecting → ${host}:${port} tls=${useTls} tn3270e=${useTn3270e} lu=${luName||'any'} model=${model}`);
       send(ws, { type: 'status', state: 'connecting', host, port });
 
-      // ── Create TN3270 session ────────────────────────────────────
-      const session = new Tn3270Session({
-        wsId, host, port, useTls, luName, model, codepage,
-        useTn3270e,
-        tlsOptions: buildTlsOptions(params, config),
-      });
+      // ── Create session (protocol-specific engine, shared event API) ──
+      let session;
+      if (protocol === '5250') {
+        const model = params.model || '3179-2';
+        logger.info(`[ws:${wsId}] Connecting (TN5250) → ${host}:${port} tls=${useTls} devname=${luName||'any'} model=${model}`);
+        session = new Tn5250Session({
+          wsId, host, port, useTls, luName, model, codepage,
+          user: params.user,
+          tlsOptions: buildTlsOptions(params, config),
+        });
+      } else {
+        const model = params.model || config.defaults.model;
+        const useTn3270e = params.tn3270e ?? true;
+        logger.info(`[ws:${wsId}] Connecting (TN3270) → ${host}:${port} tls=${useTls} tn3270e=${useTn3270e} lu=${luName||'any'} model=${model}`);
+        session = new Tn3270Session({
+          wsId, host, port, useTls, luName, model, codepage,
+          useTn3270e,
+          tlsOptions: buildTlsOptions(params, config),
+        });
+      }
 
       sessions.set(wsId, session);
 
@@ -83,7 +96,7 @@ export function createWsHandler({ config, logger, sessions, Ebcdic }) {
       session.on('connected', ({ tlsVersion } = {}) => {
         logger.info(`[ws:${wsId}] TCP connected to ${host}:${port}`);
         session.tlsVersion = tlsVersion || 'PLAIN';
-        send(ws, { type: 'status', state: 'connected', host, port, lu: session.negotiatedLu, model, tlsVersion, wsId });
+        send(ws, { type: 'status', state: 'connected', host, port, lu: session.negotiatedLu, model: session.model, tlsVersion, wsId });
       });
 
       session.on('screen', screenData => {
