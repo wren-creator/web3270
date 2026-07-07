@@ -1,0 +1,6 @@
+#/bin/bash
+
+for img in bridge_server-*; do
+  docker tag "$img:latest" "images.pkgrepo.bcbssc.com/web3270/$img:latest"
+  docker push "images.pkgrepo.bcbssc.com/web3270/$img:latest"
+done
