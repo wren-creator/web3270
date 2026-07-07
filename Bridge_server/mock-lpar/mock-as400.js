@@ -230,9 +230,159 @@ const MENUS = {
       { num: '2', label: 'Work with printers' },
       { num: '3', label: 'Display system status' },
       { num: '4', label: 'Work with subsystems' },
+      { num: '5', label: 'Work with system values',         run: 'WRKSYSVAL' },
+      { num: '6', label: 'Work with user profiles',         run: 'WRKUSRPRF' },
+      { num: '7', label: 'Work with objects (public auth)', run: 'WRKOBJ' },
     ],
   },
 };
+
+// ── Seeded security posture (deliberately weak, for tooling) ────────
+// This is the IBM i analog of the mock z/OS host's exposed RACF gaps:
+// a realistic *insecure* baseline so security tools built against the
+// mock have genuine findings to surface. `weak`/privileged flags drive
+// the red highlighting on the panels below. Harden a value by editing
+// its entry here — nothing else needs to change.
+
+// System values a real security review would pull (DSPSYSVAL/WRKSYSVAL).
+const SYSVALS = {
+  QSECURITY:  { value: '30',      text: 'System security level',              weak: true,
+                note: 'Level 30 enforces password + resource security but NOT object ownership integrity; level 40 or 50 is recommended.' },
+  QMAXSIGN:   { value: '*NOMAX',  text: 'Maximum sign-on attempts allowed',   weak: true,
+                note: 'Unlimited sign-on attempts let an attacker brute-force passwords with no lockout. Set a finite limit (e.g. 3).' },
+  QMAXSGNACN: { value: '1',       text: 'Action when sign-on attempts reached', weak: true,
+                note: 'Action 1 disables only the device, not the profile, so a guessed profile stays enabled. Use 3 (disable both).' },
+  QPWDEXPITV: { value: '*NOMAX',  text: 'Password expiration interval',       weak: true,
+                note: 'Passwords never expire — compromised credentials stay valid indefinitely.' },
+  QPWDMINLEN: { value: '1',       text: 'Minimum password length',            weak: true,
+                note: 'One-character passwords are permitted.' },
+  QPWDRQDDIF: { value: '0',       text: 'Duplicate password control',         weak: true,
+                note: '0 = users may reuse any previous password immediately.' },
+  QPWDLVL:    { value: '0',       text: 'Password level',                     weak: true,
+                note: 'Level 0 caps passwords at 10 chars and stores weak NetServer hashes.' },
+  QINACTITV:  { value: '*NONE',   text: 'Inactive job time-out',              weak: true,
+                note: 'Idle sessions are never disconnected — an unattended terminal stays signed on.' },
+  QLMTSECOFR: { value: '0',       text: 'Limit security officer device access', weak: true,
+                note: '0 = *ALLOBJ/*SERVICE users can sign on at ANY device, not just controlled ones.' },
+  QALWOBJRST: { value: '*ALL',    text: 'Allow object restore option',        weak: true,
+                note: '*ALL permits restoring security-sensitive and state programs — a supply-chain/restore attack vector.' },
+  QCRTAUT:    { value: '*CHANGE', text: 'Default public authority for new objects', weak: true,
+                note: 'New objects default to *PUBLIC *CHANGE — over-permissive out of the box.' },
+  QRETSVRSEC: { value: '1',       text: 'Retain server security data',        weak: true,
+                note: '1 = decryptable passwords are retained on the system for server functions.' },
+  QAUDCTL:    { value: '*NONE',   text: 'Auditing control',                   weak: true,
+                note: 'Security auditing is OFF — no audit journal of privileged actions.' },
+  QDSPSGNINF: { value: '1',       text: 'Sign-on information display',        weak: false,
+                note: 'Users are shown last sign-on info — a good setting.' },
+};
+const SYSVAL_KEYS = Object.keys(SYSVALS);
+
+// User profiles (DSPUSRPRF/WRKUSRPRF) with special authorities.
+const USRPRFS = [
+  { name: 'QSECOFR',  text: 'Security officer',              status: '*ENABLED',  group: '*NONE',
+    specialAuth: ['*ALLOBJ','*SECADM','*SAVSYS','*JOBCTL','*SERVICE','*SPLCTL','*AUDIT','*IOSYSCFG'],
+    lmtcpb: '*NO',  pwdExpiry: '*NOMAX',  pwdDefault: true,  lastSignon: '07/06/26 08:14:22' },
+  { name: 'QPGMR',    text: 'Programmer',                    status: '*ENABLED',  group: '*NONE',
+    specialAuth: ['*JOBCTL','*SPLCTL','*SAVSYS'],
+    lmtcpb: '*NO',  pwdExpiry: '*NOMAX',  pwdDefault: false, lastSignon: '07/05/26 17:02:10' },
+  { name: 'APPADMIN', text: 'Application service account',   status: '*ENABLED',  group: '*NONE',
+    specialAuth: ['*ALLOBJ','*JOBCTL'],
+    lmtcpb: '*NO',  pwdExpiry: '*NOMAX',  pwdDefault: false, lastSignon: '07/07/26 02:00:05' },
+  { name: 'JSMITH',   text: 'John Smith - Accounting',       status: '*ENABLED',  group: 'GRPACCT',
+    specialAuth: [],
+    lmtcpb: '*YES', pwdExpiry: '*SYSVAL', pwdDefault: false, lastSignon: '07/06/26 09:30:44' },
+  { name: 'QSYSOPR',  text: 'System operator',               status: '*ENABLED',  group: '*NONE',
+    specialAuth: ['*JOBCTL','*SAVSYS'],
+    lmtcpb: '*NO',  pwdExpiry: '*SYSVAL', pwdDefault: false, lastSignon: '07/06/26 06:00:00' },
+  { name: 'QUSER',    text: 'Default user profile',          status: '*ENABLED',  group: '*NONE',
+    specialAuth: [],
+    lmtcpb: '*NO',  pwdExpiry: '*SYSVAL', pwdDefault: false, lastSignon: '*NONE' },
+  { name: 'QSRV',     text: 'Service representative',        status: '*DISABLED', group: '*NONE',
+    specialAuth: ['*ALLOBJ','*SERVICE'],
+    lmtcpb: '*NO',  pwdExpiry: '*NOMAX',  pwdDefault: true,  lastSignon: '*NONE' },
+];
+
+// Objects and their *PUBLIC / private authorities (DSPOBJAUT/WRKOBJ).
+const OBJECTS = [
+  { name: 'EMPMAST', lib: 'PAYROLL', type: '*FILE',   owner: 'APPADMIN', publicAuth: '*ALL',     authList: '*NONE',
+    priv: [ { user: 'APPADMIN', auth: '*ALL' }, { user: '*PUBLIC', auth: '*ALL' }, { user: 'JSMITH', auth: '*CHANGE' } ] },
+  { name: 'PAYROLL', lib: 'QSYS',    type: '*LIB',    owner: 'APPADMIN', publicAuth: '*CHANGE',  authList: '*NONE',
+    priv: [ { user: 'APPADMIN', auth: '*ALL' }, { user: '*PUBLIC', auth: '*CHANGE' } ] },
+  { name: 'QGPL',    lib: 'QSYS',    type: '*LIB',    owner: 'QSYS',     publicAuth: '*CHANGE',  authList: '*NONE',
+    priv: [ { user: '*PUBLIC', auth: '*CHANGE' } ] },
+  { name: 'USRPRF',  lib: 'QSYS',    type: '*USRPRF', owner: 'QSECOFR',  publicAuth: '*EXCLUDE', authList: '*NONE',
+    priv: [ { user: '*PUBLIC', auth: '*EXCLUDE' } ] },
+  { name: 'CONFIG',  lib: 'APPLIB',  type: '*FILE',   owner: 'APPADMIN', publicAuth: '*USE',     authList: 'SECAUTL',
+    priv: [ { user: '*PUBLIC', auth: '*USE' }, { user: 'GRPACCT', auth: '*CHANGE' } ] },
+  { name: 'QCMD',    lib: 'QSYS',    type: '*CMD',    owner: 'QSYS',     publicAuth: '*USE',     authList: '*NONE',
+    priv: [ { user: '*PUBLIC', auth: '*USE' } ] },
+];
+
+// ── CL command interpreter ─────────────────────────────────────────
+// Parses a command typed on any "Selection or command" / panel command
+// line into a navigation result the connection state machine applies.
+// Recognizes the security-relevant DSP*/WRK* verbs the mock models;
+// anything else yields a realistic CPF/CPD "not found" message.
+function parseParams(str) {
+  const params = {};
+  const re = /(\w+)\(([^)]*)\)/g;
+  let m;
+  while ((m = re.exec(str)) !== null) params[m[1].toUpperCase()] = m[2].trim().toUpperCase();
+  return params;
+}
+
+function runCommand(raw) {
+  const cmd = raw.trim().toUpperCase();
+  if (!cmd) return { type: 'none' };
+  const verb = cmd.split(/[\s(]/)[0];
+  const params = parseParams(cmd);
+
+  switch (verb) {
+    case 'WRKSYSVAL': return { type: 'screen', screen: 'SYSVAL_LIST' };
+    case 'DSPSYSVAL': {
+      const name = params.SYSVAL;
+      if (!name)            return { type: 'error', message: 'CPD0043 - Keyword SYSVAL required for DSPSYSVAL.' };
+      if (!SYSVALS[name])   return { type: 'error', message: `CPF1053 - System value ${name} not found.` };
+      return { type: 'detail', screen: 'SYSVAL_DETAIL', target: name };
+    }
+    case 'WRKUSRPRF': return { type: 'screen', screen: 'USRPRF_LIST' };
+    case 'DSPUSRPRF': {
+      const name = params.USRPRF;
+      if (!name)                                  return { type: 'error', message: 'CPD0043 - Keyword USRPRF required for DSPUSRPRF.' };
+      if (!USRPRFS.find(p => p.name === name))    return { type: 'error', message: `CPF2204 - User profile ${name} not found.` };
+      return { type: 'detail', screen: 'USRPRF_DETAIL', target: name };
+    }
+    case 'WRKOBJ': return { type: 'screen', screen: 'OBJ_LIST' };
+    case 'DSPOBJAUT': {
+      const obj = params.OBJ; // LIB/NAME or NAME
+      if (!obj) return { type: 'error', message: 'CPD0043 - Keyword OBJ required for DSPOBJAUT.' };
+      const [lib, name] = obj.includes('/') ? obj.split('/') : ['*LIBL', obj];
+      const idx = OBJECTS.findIndex(o => o.name === name && (lib === '*LIBL' || o.lib === lib));
+      if (idx === -1) return { type: 'error', message: `CPF9801 - Object ${obj} not found.` };
+      return { type: 'detail', screen: 'OBJ_DETAIL', target: idx };
+    }
+    case 'DSPMSG':  return { type: 'messages' };
+    case 'SIGNOFF': return { type: 'signoff' };
+    default:
+      return { type: 'error', message: `CPD0030 - Command ${verb} not found in library *LIBL.` };
+  }
+}
+
+// On a "Work with" panel, find the first list row whose Opt input is
+// non-blank and map it back to an index into that panel's data array.
+function pickOption(runs, startRow, count) {
+  for (const r of runs) {
+    if (r.row >= startRow && r.row < startRow + count && r.text.trim()) {
+      return { index: r.row - startRow, opt: r.text.trim() };
+    }
+  }
+  return null;
+}
+
+// Shared panel geometry: list rows begin at LIST_START_ROW (one per
+// line), the panel command line sits at LIST_CMD_ROW.
+const LIST_START_ROW = 6;
+const LIST_CMD_ROW   = 21;
 
 const AID_F3  = 0x33;
 const AID_F12 = 0x3C;
@@ -317,6 +467,166 @@ function screenStub(label, ctx) {
   return Buffer.concat([clearUnit, wtd, readCmd]);
 }
 
+// ── Security panels (WRKSYSVAL/WRKUSRPRF/WRKOBJ + their DSP details) ──
+// Red = a weak/privileged value a security tool should flag; green = OK.
+function authAttr(weak) { return weak ? ATTR_RED : ATTR_GREEN; }
+
+function wrapPanel(fields, cursor) {
+  const clearUnit = Buffer.from([ESC, CMD_CLEAR_UNIT]);
+  const wtd = wrapEsc(CMD_WRITE_TO_DISPLAY, buildScreen(80, fields, cursor));
+  const readCmd = Buffer.from([ESC, CMD_READ_INPUT_FIELDS]);
+  return Buffer.concat([clearUnit, wtd, readCmd]);
+}
+
+// Command line + F-key footer shared by every "Work with" list panel.
+function listTrailer(fields, message) {
+  if (message) fields.push({ row: 20, col: 2, text: message, input: false, attr: ATTR_RED });
+  fields.push({ row: LIST_CMD_ROW, col: 2,  text: 'Command', input: false });
+  fields.push({ row: LIST_CMD_ROW, col: 10, text: '===>',    input: false });
+  fields.push({ row: LIST_CMD_ROW, col: 15, text: '', input: true, length: 50 });
+  fields.push({ row: 23, col: 2, text: 'F3=Exit   F12=Cancel', input: false });
+}
+
+function screenSysvalList(ctx) {
+  const fields = [
+    { row: 0, col: 26, text: 'Work with System Values', input: false },
+    { row: 0, col: 68, text: SYSNAME, input: false },
+    { row: 2, col: 2,  text: 'Type options, press Enter.', input: false },
+    { row: 3, col: 4,  text: '5=Display', input: false },
+    { row: 5, col: 2,  text: 'Opt  System Value    Current value', input: false },
+  ];
+  SYSVAL_KEYS.forEach((name, idx) => {
+    const sv = SYSVALS[name];
+    const row = LIST_START_ROW + idx;
+    fields.push({ row, col: 2,  text: '', input: true, length: 2 });
+    fields.push({ row, col: 6,  text: name.padEnd(13, ' '), input: false });
+    fields.push({ row, col: 20, text: sv.value, input: false, attr: authAttr(sv.weak) });
+  });
+  listTrailer(fields, ctx.message);
+  return wrapPanel(fields, { row: LIST_START_ROW, col: 2 });
+}
+
+function screenSysvalDetail(name) {
+  const sv = SYSVALS[name] || { value: '', text: '', weak: false, note: '' };
+  const fields = [
+    { row: 0, col: 28, text: 'Display System Value', input: false },
+    { row: 2, col: 2,  text: `System value . . . . . . . :   ${name}`, input: false },
+    { row: 3, col: 2,  text: `Description  . . . . . . . :   ${sv.text}`, input: false },
+    { row: 6, col: 2,  text: 'Current value  . . . . . . :', input: false },
+    { row: 6, col: 33, text: sv.value, input: false, attr: authAttr(sv.weak) },
+  ];
+  if (sv.note) {
+    const words = sv.note.split(' ');
+    let line = '', r = 9;
+    for (const w of words) {
+      if ((line + ' ' + w).trim().length > 72) { fields.push({ row: r++, col: 4, text: line.trim(), input: false }); line = ''; }
+      line += ' ' + w;
+    }
+    if (line.trim()) fields.push({ row: r, col: 4, text: line.trim(), input: false });
+  }
+  fields.push({ row: 22, col: 2,  text: 'Press Enter to continue', input: false });
+  fields.push({ row: 23, col: 2,  text: 'F3=Exit   F12=Cancel', input: false });
+  fields.push({ row: 22, col: 44, text: '', input: true, length: 1 });
+  return wrapPanel(fields, { row: 22, col: 44 });
+}
+
+function screenUsrprfList(ctx) {
+  const fields = [
+    { row: 0, col: 28, text: 'Work with User Profiles', input: false },
+    { row: 0, col: 68, text: SYSNAME, input: false },
+    { row: 2, col: 2,  text: 'Type options, press Enter.', input: false },
+    { row: 3, col: 4,  text: '5=Display', input: false },
+    { row: 5, col: 2,  text: 'Opt  Profile     Text                      Special authority', input: false },
+  ];
+  USRPRFS.forEach((p, idx) => {
+    const row = LIST_START_ROW + idx;
+    const priv = p.specialAuth.includes('*ALLOBJ') || p.specialAuth.includes('*SECADM');
+    let sa = p.specialAuth.length ? p.specialAuth.join(' ') : '*NONE';
+    if (sa.length > 30) sa = sa.slice(0, 27) + '...';
+    fields.push({ row, col: 2,  text: '', input: true, length: 2 });
+    fields.push({ row, col: 6,  text: p.name.padEnd(11, ' '), input: false });
+    fields.push({ row, col: 17, text: p.text.slice(0, 24).padEnd(24, ' '), input: false });
+    fields.push({ row, col: 42, text: sa, input: false, attr: authAttr(priv) });
+  });
+  listTrailer(fields, ctx.message);
+  return wrapPanel(fields, { row: LIST_START_ROW, col: 2 });
+}
+
+function screenUsrprfDetail(name) {
+  const p = USRPRFS.find(u => u.name === name);
+  if (!p) return screenStub(`USER ${name} NOT FOUND`, { user: name });
+  const fields = [
+    { row: 0,  col: 26, text: 'Display User Profile - Basic', input: false },
+    { row: 2,  col: 2,  text: `User profile . . . . . . . . . :   ${p.name}`, input: false },
+    { row: 3,  col: 2,  text: `Text . . . . . . . . . . . . . :   ${p.text}`, input: false },
+    { row: 4,  col: 2,  text: `Status . . . . . . . . . . . . :   ${p.status}`, input: false, attr: p.status === '*DISABLED' ? ATTR_RED : ATTR_WHITE },
+    { row: 5,  col: 2,  text: `Group profile  . . . . . . . . :   ${p.group}`, input: false },
+    { row: 6,  col: 2,  text: `Limit capabilities . . . . . . :   ${p.lmtcpb}`, input: false, attr: p.lmtcpb === '*NO' ? ATTR_RED : ATTR_WHITE },
+    { row: 7,  col: 2,  text: `Password expiration interval . :   ${p.pwdExpiry}`, input: false, attr: p.pwdExpiry === '*NOMAX' ? ATTR_RED : ATTR_WHITE },
+    { row: 8,  col: 2,  text: `Last sign-on . . . . . . . . . :   ${p.lastSignon}`, input: false },
+    { row: 10, col: 2,  text: 'Special authority  . . . . . . :', input: false },
+  ];
+  const sa = p.specialAuth.length ? p.specialAuth : ['*NONE'];
+  sa.forEach((a, i) => {
+    const priv = a === '*ALLOBJ' || a === '*SECADM' || a === '*SERVICE';
+    fields.push({ row: 11 + i, col: 36, text: a, input: false, attr: priv ? ATTR_RED : ATTR_GREEN });
+  });
+  if (p.pwdDefault) {
+    fields.push({ row: 20, col: 2, text: '*** WARNING: password matches profile name (default) ***', input: false, attr: ATTR_RED });
+  }
+  fields.push({ row: 22, col: 2,  text: 'Press Enter to continue', input: false });
+  fields.push({ row: 23, col: 2,  text: 'F3=Exit   F12=Cancel', input: false });
+  fields.push({ row: 22, col: 44, text: '', input: true, length: 1 });
+  return wrapPanel(fields, { row: 22, col: 44 });
+}
+
+function screenObjList(ctx) {
+  const fields = [
+    { row: 0, col: 30, text: 'Work with Objects', input: false },
+    { row: 0, col: 68, text: SYSNAME, input: false },
+    { row: 2, col: 2,  text: 'Type options, press Enter.', input: false },
+    { row: 3, col: 4,  text: '5=Display authority', input: false },
+    { row: 5, col: 2,  text: 'Opt  Object     Library    Type       Owner      *PUBLIC', input: false },
+  ];
+  OBJECTS.forEach((o, idx) => {
+    const row = LIST_START_ROW + idx;
+    const weak = o.publicAuth === '*ALL' || o.publicAuth === '*CHANGE';
+    fields.push({ row, col: 2,  text: '', input: true, length: 2 });
+    fields.push({ row, col: 6,  text: o.name.padEnd(10, ' '), input: false });
+    fields.push({ row, col: 17, text: o.lib.padEnd(10, ' '), input: false });
+    fields.push({ row, col: 28, text: o.type.padEnd(10, ' '), input: false });
+    fields.push({ row, col: 39, text: o.owner.padEnd(10, ' '), input: false });
+    fields.push({ row, col: 50, text: o.publicAuth, input: false, attr: authAttr(weak) });
+  });
+  listTrailer(fields, ctx.message);
+  return wrapPanel(fields, { row: LIST_START_ROW, col: 2 });
+}
+
+function screenObjDetail(idx) {
+  const o = OBJECTS[idx];
+  if (!o) return screenStub('OBJECT NOT FOUND', { user: '' });
+  const weak = o.publicAuth === '*ALL' || o.publicAuth === '*CHANGE';
+  const fields = [
+    { row: 0, col: 28, text: 'Display Object Authority', input: false },
+    { row: 2, col: 2,  text: `Object . . . . . . :   ${o.lib}/${o.name}`, input: false },
+    { row: 2, col: 48, text: `Type . :   ${o.type}`, input: false },
+    { row: 3, col: 2,  text: `Owner  . . . . . . :   ${o.owner}`, input: false },
+    { row: 4, col: 2,  text: `Authorization list :   ${o.authList}`, input: false },
+    { row: 5, col: 2,  text: '*PUBLIC authority  :', input: false },
+    { row: 5, col: 24, text: o.publicAuth, input: false, attr: authAttr(weak) },
+    { row: 7, col: 2,  text: 'User          Authority', input: false },
+  ];
+  o.priv.forEach((a, i) => {
+    const w = a.user === '*PUBLIC' && (a.auth === '*ALL' || a.auth === '*CHANGE');
+    fields.push({ row: 8 + i, col: 2,  text: a.user.padEnd(12, ' '), input: false });
+    fields.push({ row: 8 + i, col: 16, text: a.auth, input: false, attr: w ? ATTR_RED : ATTR_GREEN });
+  });
+  fields.push({ row: 22, col: 2,  text: 'Press Enter to continue', input: false });
+  fields.push({ row: 23, col: 2,  text: 'F3=Exit   F12=Cancel', input: false });
+  fields.push({ row: 22, col: 44, text: '', input: true, length: 1 });
+  return wrapPanel(fields, { row: 22, col: 44 });
+}
+
 function seedMessages(user) {
   const now = new Date();
   const date = now.toLocaleDateString('en-US');
@@ -344,6 +654,23 @@ function handleConnection(socket) {
   let unreadCount = 0;
   let returnTo = 'MAIN';   // menu to go back to from MESSAGES/STUB
   let stubLabel = '';      // which option led to the current STUB screen
+  let cmdTarget = null;    // detail target: sysval name / profile name / object index
+  let navStack = [];       // back-navigation stack for the WRK/DSP security panels
+
+  // Navigate one level deeper (remember where we came from), back up one
+  // level, or apply a parsed CL command's navigation result.
+  function goTo(next, target = null) { navStack.push(screen); screen = next; cmdTarget = target; menuMessage = ''; }
+  function goBack() { screen = navStack.pop() || 'MAIN'; menuMessage = ''; }
+  function applyCommand(res) {
+    switch (res.type) {
+      case 'screen':   goTo(res.screen); break;
+      case 'detail':   goTo(res.screen, res.target); break;
+      case 'messages': returnTo = screen; screen = 'MESSAGES'; break;
+      case 'signoff':  screen = 'signon'; user = null; messages = []; unreadCount = 0; navStack = []; break;
+      case 'error':    menuMessage = res.message; break;
+      case 'none':     break;
+    }
+  }
 
   socket.on('data', chunk => { recvBuf = Buffer.concat([recvBuf, chunk]); processBuffer(); });
   socket.on('end',   () => log(`[${id}] Disconnected`));
@@ -457,6 +784,18 @@ function handleConnection(socket) {
       ds = screenMessages({ user, messages });
     } else if (screen === 'STUB') {
       ds = screenStub(stubLabel, { user });
+    } else if (screen === 'SYSVAL_LIST') {
+      ds = screenSysvalList({ message: menuMessage });
+    } else if (screen === 'SYSVAL_DETAIL') {
+      ds = screenSysvalDetail(cmdTarget);
+    } else if (screen === 'USRPRF_LIST') {
+      ds = screenUsrprfList({ message: menuMessage });
+    } else if (screen === 'USRPRF_DETAIL') {
+      ds = screenUsrprfDetail(cmdTarget);
+    } else if (screen === 'OBJ_LIST') {
+      ds = screenObjList({ message: menuMessage });
+    } else if (screen === 'OBJ_DETAIL') {
+      ds = screenObjDetail(cmdTarget);
     } else if (MENUS[screen]) {
       ds = screenMenu(screen, { user, unreadCount, message: menuMessage });
     } else {
@@ -520,6 +859,28 @@ function handleConnection(socket) {
     } else if (screen === 'STUB') {
       screen = returnTo;
       menuMessage = '';
+    } else if (screen === 'SYSVAL_LIST' || screen === 'USRPRF_LIST' || screen === 'OBJ_LIST') {
+      const cmdLine = fieldAt(runs, LIST_CMD_ROW);
+      if (aid === AID_F3 || aid === AID_F12) {
+        goBack();
+      } else if (cmdLine) {
+        applyCommand(runCommand(cmdLine));
+      } else {
+        const count = screen === 'SYSVAL_LIST' ? SYSVAL_KEYS.length
+                    : screen === 'USRPRF_LIST' ? USRPRFS.length
+                    : OBJECTS.length;
+        const pick = pickOption(runs, LIST_START_ROW, count);
+        if (pick) {
+          // Any non-blank option acts as 5=Display in the mock.
+          if (screen === 'SYSVAL_LIST')      goTo('SYSVAL_DETAIL', SYSVAL_KEYS[pick.index]);
+          else if (screen === 'USRPRF_LIST') goTo('USRPRF_DETAIL', USRPRFS[pick.index].name);
+          else                               goTo('OBJ_DETAIL', pick.index);
+        }
+        // bare Enter with no option typed → redraw as-is
+      }
+    } else if (screen === 'SYSVAL_DETAIL' || screen === 'USRPRF_DETAIL' || screen === 'OBJ_DETAIL') {
+      // Enter, F3, or F12 all return to the panel we came from.
+      goBack();
     } else if (MENUS[screen]) {
       const menu = MENUS[screen];
       const sel = fieldAt(runs, 22);
@@ -534,13 +895,16 @@ function handleConnection(socket) {
         user = null;
         messages = [];
         unreadCount = 0;
-      } else {
+        navStack = [];
+      } else if (/^\d+$/.test(sel)) {
         const opt = menu.options.find(o => o.num === sel);
         if (!opt) {
           menuMessage = `Selection ${sel} is not valid.`;
         } else if (opt.action === 'messages') {
           returnTo = screen;
           screen = 'MESSAGES';
+        } else if (opt.run) {
+          applyCommand(runCommand(opt.run));
         } else if (opt.goto) {
           screen = opt.goto;
           menuMessage = '';
@@ -549,6 +913,9 @@ function handleConnection(socket) {
           stubLabel = opt.label.toUpperCase();
           screen = 'STUB';
         }
+      } else {
+        // Non-numeric input on the command line — run it as a CL command.
+        applyCommand(runCommand(sel));
       }
     }
     sendScreen();
