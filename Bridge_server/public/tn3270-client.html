@@ -1013,7 +1013,7 @@
           <!-- Object / *PUBLIC Authority Scanner -->
           <div style="margin-top:10px;padding-top:8px;border-top:1px solid #1a1a1a">
             <div style="font-size:10px;color:var(--text-muted);font-weight:600;letter-spacing:.06em;margin-bottom:4px">OBJECT / *PUBLIC AUTHORITY SCANNER</div>
-            <div class="sec-panel-hint" style="margin-bottom:6px">WRKOBJ lists objects with their *PUBLIC authority. *PUBLIC *ALL (CRITICAL) or *CHANGE (HIGH) on sensitive objects (PAYROLL, EMPMAST, CONFIG) means any user can read or alter protected data.</div>
+            <div class="sec-panel-hint" style="margin-bottom:6px">WRKOBJ lists objects, then DSPOBJAUT reads each one's *PUBLIC authority and private grants. *PUBLIC *ALL (CRITICAL) or *CHANGE (HIGH) on sensitive objects (PAYROLL, EMPMAST, CONFIG) means any user can read or alter protected data; a risky private grant (named user with *ALL/*CHANGE) raises a sensitive object to MEDIUM.</div>
             <button id="as400ObjBtn" class="sec-inject-btn" onclick="startAs400ObjScan()" style="background:#1a2a1a">▶ SCAN OBJECT AUTHORITY</button>
             <div id="as400ObjStatus" style="font-size:10px;color:var(--text-muted);margin-top:4px;min-height:14px"></div>
             <div id="as400ObjOut" style="max-height:220px;overflow-y:auto;margin-top:4px"></div>

@@ -1991,14 +1991,14 @@ const _WALKTHROUGHS = [
       },
       {
         title: 'Run the scan',
-        body:  'Click ▶ SCAN OBJECT AUTHORITY. The tool issues WRKOBJ and reads each object’s owner and *PUBLIC authority from the one list screen, then returns to the menu. Read-only — it issues no line commands against the objects.',
+        body:  'Click ▶ SCAN OBJECT AUTHORITY. The tool issues WRKOBJ to list the objects, then returns to the menu and issues DSPOBJAUT for each object to read its *PUBLIC authority and the private authority list (individual user grants). The status line shows progress; it is fully read-only.',
         highlight: 'as400ObjBtn',
         autoFn: 'startAs400ObjScan',
         autoLabel: 'Run it for me',
       },
       {
         title: 'Read the findings',
-        body:  '*PUBLIC authority sets the floor of access for every user without a specific grant. CRITICAL — *PUBLIC *ALL (any user can delete/manage the object). HIGH — *PUBLIC *CHANGE (any user can read and modify data). LOW — *PUBLIC *USE (read/execute). OK — *PUBLIC *EXCLUDE. The severity is raised when the object is sensitive (PAYROLL, EMPMAST, CONFIG, USRPRF).',
+        body:  '*PUBLIC authority sets the floor of access for every user without a specific grant. CRITICAL — *PUBLIC *ALL (any user can delete/manage). HIGH — *PUBLIC *CHANGE. LOW — *PUBLIC *USE. OK — *PUBLIC *EXCLUDE. MEDIUM — a sensitive object that looks OK/LOW by *PUBLIC but has a risky private grant (a named user with *ALL/*CHANGE). The DETAIL column names those private grants, e.g. "private: JSMITH=*CHANGE". Severity is raised for sensitive objects (PAYROLL, EMPMAST, CONFIG, USRPRF).',
         highlight: 'as400ObjOut',
         autoFn: null,
       },

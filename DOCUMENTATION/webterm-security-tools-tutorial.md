@@ -1599,7 +1599,7 @@ Run the enumerator against the mock. `QSECOFR` is CRITICAL on three counts at on
 
 ## Part 3C — Object / *PUBLIC Authority Scanner
 
-Lists objects with `WRKOBJ` and flags over-permissive `*PUBLIC` authority, raising severity for sensitive objects. Single-screen, no drill-down.
+Enumerates objects with `WRKOBJ`, then reads each one's full authority with `DSPOBJAUT` to flag over-permissive `*PUBLIC` authority **and** risky private grants, raising severity for sensitive objects.
 
 ### Location
 
@@ -1607,24 +1607,23 @@ Security panel → IBM i SECURITY (AS/400) → OBJECT / *PUBLIC AUTHORITY SCANNE
 
 ### How it works
 
-The tool types `WRKOBJ`, parses the list (Object/Library/Type/Owner and the `*PUBLIC` column), and classifies each object with `evaluateObject`. `*PUBLIC` authority is the floor of access for any user without a specific grant, so it is the single most important column for spotting exposure.
+The tool types `WRKOBJ` to collect the object list (Object/Library), then — like the user-profile enumerator — returns to the menu and issues a `DSPOBJAUT OBJ(lib/name)` for each object. From each detail screen it reads the `*PUBLIC authority` and the **private authority list** (the individual user grants), and classifies the object with `evaluateObjectDetail`. `*PUBLIC` is the floor of access for any user without a specific grant; the private list then shows exactly *who* has been granted more.
 
 ### Risk levels
 
-| Rating | `*PUBLIC` authority |
+| Rating | Condition |
 |---|---|
-| CRITICAL | `*ALL` — any user can read, change, **and** delete/manage the object |
-| HIGH | `*CHANGE` — any user can read and modify the data |
-| LOW | `*USE` — any user can read/execute |
-| OK | `*EXCLUDE` — no default access |
+| CRITICAL | `*PUBLIC *ALL` — any user can read, change, **and** delete/manage the object |
+| HIGH | `*PUBLIC *CHANGE` — any user can read and modify the data |
+| MEDIUM | a sensitive object that is otherwise OK/LOW but has a risky **private** grant (a non-`*PUBLIC` user with `*ALL`/`*CHANGE`) |
+| LOW | `*PUBLIC *USE` — any user can read/execute |
+| OK | `*PUBLIC *EXCLUDE` — no default access, no risky private grants |
 
-Severity is amplified (finding note "sensitive object") when the object name or library matches a sensitive pattern (`PAYROLL`, `EMPMAST`, `CONFIG`, `USRPRF`).
+Severity is amplified (finding note "sensitive object") when the object name or library matches a sensitive pattern (`PAYROLL`, `EMPMAST`, `CONFIG`, `USRPRF`). The finding also lists risky private grants, e.g. `private: JSMITH=*CHANGE`.
 
 ### Teaching scenario
 
-Run the scanner against the mock. `PAYROLL/EMPMAST` at `*PUBLIC *ALL` is the headline CRITICAL — any authenticated user can read or delete the payroll master file. Contrast it with `QSYS/USRPRF` at `*PUBLIC *EXCLUDE` (OK) to show what correct object protection looks like. Use the `*CHANGE` findings on `PAYROLL` and `QGPL` to make the point that `*PUBLIC` is inherited by every user without an explicit private authority — so a single over-permissive library quietly widens access to everything created in it.
-
-> **Note:** A future enhancement is a `DSPOBJAUT` drill-down to enumerate the *private* authority list per object (individual user grants), complementing the `*PUBLIC` view.
+Run the scanner against the mock. `PAYROLL/EMPMAST` at `*PUBLIC *ALL` is the headline CRITICAL — any authenticated user can read or delete the payroll master file — and the drill-down additionally surfaces `private: APPADMIN=*ALL, JSMITH=*CHANGE`, naming exactly who else has standing access. The instructive contrast is `APPLIB/CONFIG`: its `*PUBLIC *USE` looks benign (LOW) from the list alone, but the `DSPOBJAUT` drill-down finds a private `GRPACCT=*CHANGE` grant on a sensitive object and escalates it to MEDIUM — a finding the single-screen `*PUBLIC` view would have missed entirely. This is the whole point of the drill-down: `*PUBLIC` is only half the picture.
 
 ---
 

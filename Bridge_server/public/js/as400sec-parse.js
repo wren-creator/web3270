@@ -113,6 +113,38 @@ export function evaluateObject(o) {
   return { risk, finding: findings.join(', ') };
 }
 
+// Private authority grants from a DSPOBJAUT detail screen. The grant list is
+// under a "User        Authority" header — user at cols 2–13, authority col 16.
+export function parseObjectGrants(lines) {
+  const hdr = lines.findIndex(l => /\bUser\b/.test(l) && /\bAuthority\b/.test(l));
+  if (hdr === -1) return [];
+  const grants = [];
+  for (let r = hdr + 1; r < lines.length; r++) {
+    const line = lines[r] || '';
+    const user = line.slice(2, 14).trim();
+    if (!user) { if (grants.length) break; else continue; }
+    if (!/^\*?[A-Z][A-Z0-9$#@]*$/.test(user)) break;   // stop at "Press Enter" / "F3=Exit"
+    const auth = (line.slice(16).trim().split(/\s+/)[0]) || '';
+    grants.push({ user, auth });
+  }
+  return grants;
+}
+
+// Richer object evaluation using the DSPOBJAUT detail: starts from the *PUBLIC
+// rating, then flags over-permissive private grants (a non-*PUBLIC user with
+// *ALL/*CHANGE), escalating a sensitive object from OK/LOW to MEDIUM.
+export function evaluateObjectDetail({ name, lib, publicAuth, grants = [] }) {
+  const base = evaluateObject({ name, lib, publicAuth });
+  let risk = base.risk;
+  const findings = base.finding ? [base.finding] : [];
+  const risky = grants.filter(g => g.user !== '*PUBLIC' && (g.auth === '*ALL' || g.auth === '*CHANGE'));
+  if (risky.length) {
+    findings.push('private: ' + risky.map(g => `${g.user}=${g.auth}`).join(', '));
+    if (_SENSITIVE.test(`${lib}/${name}`) && (risk === 'OK' || risk === 'LOW')) risk = 'MEDIUM';
+  }
+  return { risk, finding: findings.join(' · ') || 'No significant exposure' };
+}
+
 // Pure risk evaluation.
 export function evaluateProfile({ status, lmtCpb, auths, defaultPwd }) {
   const privileged = auths.includes('*ALLOBJ') || auths.includes('*SECADM');
