@@ -1520,6 +1520,114 @@ The `/api/negotiate` route includes this log. The client renders it in order wit
 
 ---
 
+## Part 3 — IBM i (AS/400) Security Tools
+
+The tools in Parts 1–2 target z/OS over TN3270. Part 3 covers the first tools that target **IBM i (AS/400) over TN5250**. They audit the three foundations of IBM i security — system values, user profiles with their special authorities, and object *PUBLIC authority — against the seeded weak posture in the mock IBM i host (`mock-lpar/mock-as400.js`).
+
+All three live in the **IBM i SECURITY (AS/400)** section of the Security panel and share one implementation: `public/js/as400sec.js` (a push-driven screen state machine) plus `public/js/as400sec-parse.js` (pure, browser-free parsing and risk classification). They are read-only — every finding comes from a `WRK*`/`DSP*` display command; nothing is changed on the host.
+
+---
+
+### How the IBM i tools drive the terminal
+
+IBM i tools differ from the z/OS tools in a few protocol-level ways worth understanding before reading the individual tools:
+
+- **Screen text comes from `msg.rows`** (an array of cell rows), not a scrolling line log — each tool renders the emitted screen to text and parses fixed columns.
+- **Commands are issued from a menu command line.** The tool fills the first unprotected input field (the "Selection or command" line on any menu) with a CL command and presses Enter. The bridge sends the field content back to the host via `session.getModifiedFields()`.
+- **Detail (`DSP*`) screens have no command line.** On an IBM i display panel, Enter/F3/F12 all navigate *back*. So a tool that needs per-item detail (the user-profile enumerator) collects the item list first, returns to the menu with F3, and issues each `DSP*` from there — it never chains one detail screen into the next.
+- **`session.fillField` echoes a screen.** To avoid acting on its own typed-command echo, the state machine only ever reacts to the specific screen it is `expecting` next.
+
+**Prerequisite for all three:** connect to a TN5250 target, sign on, and stop at any menu showing a "Selection or command" line.
+
+---
+
+## Part 3A — System Value Security Analyzer
+
+Reads the security-relevant system values with `WRKSYSVAL` and rates each against a recommended value. Everything is on the single Work-with-System-Values list screen, so no drill-down is needed.
+
+### Location
+
+Security panel → IBM i SECURITY (AS/400) → SYSTEM VALUE SECURITY ANALYZER
+
+### How it works
+
+The tool types `WRKSYSVAL` on the menu command line and presses Enter. It parses the list screen (system-value name at columns 6–18, current value from column 20) and classifies each value with a rule table in `as400sec-parse.js` (`evaluateSysval`). It then F3s back to the menu.
+
+### Risk levels
+
+| Rating | System values |
+|---|---|
+| HIGH | `QSECURITY` < 40, `QMAXSIGN`(*NOMAX), `QLMTSECOFR`(0), `QALWOBJRST`(*ALL), `QCRTAUT`(*CHANGE/*ALL), `QAUDCTL`(*NONE) |
+| MEDIUM | weak `QPWD*` rules (`QPWDEXPITV`, `QPWDMINLEN`, `QPWDRQDDIF`, `QPWDLVL`), `QINACTITV`(*NONE), `QMAXSGNACN`(1), `QRETSVRSEC`(1) |
+| OK | hardened settings such as `QDSPSGNINF`(1) |
+
+The DETAIL column carries the recommended value (e.g. "Use QSECURITY 40 or 50", "Enable security auditing").
+
+### Teaching scenario
+
+Run the analyzer against the mock and note that `QSECURITY 30` is HIGH — level 30 enforces password and resource security but not object-ownership integrity. Contrast the several MEDIUM `QPWD*` findings: individually minor, together they describe a system where a 1-character password that never expires and can be reused immediately is permitted. `QAUDCTL(*NONE)` (HIGH) is the one to lead with in a report — with auditing off, none of the other weaknesses leave a forensic trail.
+
+---
+
+## Part 3B — User Profile & Special-Authority Enumerator
+
+Enumerates user profiles with `WRKUSRPRF`, then reads each one with `DSPUSRPRF` to surface privileged accounts, default passwords, and weak limit-capability settings.
+
+### Location
+
+Security panel → IBM i SECURITY (AS/400) → USER PROFILE & SPECIAL-AUTHORITY ENUMERATOR
+
+### How it works
+
+This is the one IBM i tool that needs per-item detail: the list truncates long special-authority lists and does not show the default-password warning. So it runs in two phases — `WRKUSRPRF` to collect the profile names, then, from the menu command line, a `DSPUSRPRF USRPRF(name)` for each profile. From each detail screen it reads `Status`, `Limit capabilities`, the stacked special-authority list, and the "password matches profile name (default)" warning, classifies the profile (`evaluateProfile`), and Enter-returns to the menu for the next one.
+
+### Risk levels
+
+| Rating | Condition |
+|---|---|
+| CRITICAL | `*ALLOBJ` or `*SECADM` (superuser), or a default password (password = profile name) |
+| HIGH | high-risk authority (`*SERVICE`, `*SPLCTL`), or `LMTCPB(*NO)` on a privileged profile |
+| OK | no special authority of concern |
+
+A privileged profile that is currently `*DISABLED` is still reported (with a "(currently *DISABLED)" note) — dormant, but a latent escalation path if re-enabled.
+
+### Teaching scenario
+
+Run the enumerator against the mock. `QSECOFR` is CRITICAL on three counts at once — all eight special authorities, a default password, and `LMTCPB(*NO)`. The instructive one is `APPADMIN`: an ordinary-looking "application service account" that quietly holds `*ALLOBJ`. Service and batch accounts accumulating `*ALLOBJ` "to make things work" is one of the most common real-world IBM i findings. Then look at `QSRV` — privileged *and* carrying a default password, but `*DISABLED`; explain why a disabled-but-privileged profile still belongs in the report.
+
+---
+
+## Part 3C — Object / *PUBLIC Authority Scanner
+
+Lists objects with `WRKOBJ` and flags over-permissive `*PUBLIC` authority, raising severity for sensitive objects. Single-screen, no drill-down.
+
+### Location
+
+Security panel → IBM i SECURITY (AS/400) → OBJECT / *PUBLIC AUTHORITY SCANNER
+
+### How it works
+
+The tool types `WRKOBJ`, parses the list (Object/Library/Type/Owner and the `*PUBLIC` column), and classifies each object with `evaluateObject`. `*PUBLIC` authority is the floor of access for any user without a specific grant, so it is the single most important column for spotting exposure.
+
+### Risk levels
+
+| Rating | `*PUBLIC` authority |
+|---|---|
+| CRITICAL | `*ALL` — any user can read, change, **and** delete/manage the object |
+| HIGH | `*CHANGE` — any user can read and modify the data |
+| LOW | `*USE` — any user can read/execute |
+| OK | `*EXCLUDE` — no default access |
+
+Severity is amplified (finding note "sensitive object") when the object name or library matches a sensitive pattern (`PAYROLL`, `EMPMAST`, `CONFIG`, `USRPRF`).
+
+### Teaching scenario
+
+Run the scanner against the mock. `PAYROLL/EMPMAST` at `*PUBLIC *ALL` is the headline CRITICAL — any authenticated user can read or delete the payroll master file. Contrast it with `QSYS/USRPRF` at `*PUBLIC *EXCLUDE` (OK) to show what correct object protection looks like. Use the `*CHANGE` findings on `PAYROLL` and `QGPL` to make the point that `*PUBLIC` is inherited by every user without an explicit private authority — so a single over-permissive library quietly widens access to everything created in it.
+
+> **Note:** A future enhancement is a `DSPOBJAUT` drill-down to enumerate the *private* authority list per object (individual user grants), complementing the `*PUBLIC` view.
+
+---
+
 ## Appendix — The .rec.json format
 
 The recording file is plain JSON and human-readable:
