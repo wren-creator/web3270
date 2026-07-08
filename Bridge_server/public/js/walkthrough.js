@@ -1868,6 +1868,150 @@ const _WALKTHROUGHS = [
     ],
   },
 
+  // ── IBM i (AS/400) System Value Security Analyzer ─────────────────
+  {
+    id:       'as400-sysval-analyzer',
+    category: 'security',
+    title:    'IBM i: System Value Security Analyzer',
+    desc:     'Reads the security system values of an IBM i (AS/400) target with WRKSYSVAL and flags weak settings against recommended values.',
+    steps: [
+      {
+        title: 'Prerequisites',
+        body:  'Connect to a TN5250 (IBM i / AS/400) target and sign on. Stop at any menu that shows a "Selection or command" line — the tool types WRKSYSVAL there. This tool is for IBM i only; it does nothing on a TN3270 (z/OS) session.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click the 🔒 button in the OIA status bar at the bottom of the terminal and enter the security password (default: 2970) to reveal the Security tab and its tools.',
+        highlight: 'secBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Find the IBM i SECURITY section',
+        body:  'Scroll to the IBM i SECURITY (AS/400) section of the Security panel. The System Value Security Analyzer is the first tool in it.',
+        highlight: 'as400SysvalBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Run the analyzer',
+        body:  'Click ▶ ANALYZE SYSTEM VALUES. The tool issues WRKSYSVAL, reads the current value of each security system value from the single list screen, then returns to the menu. No values are changed — it is read-only.',
+        highlight: 'as400SysvalBtn',
+        autoFn: 'startAs400SysvalScan',
+        autoLabel: 'Run it for me',
+      },
+      {
+        title: 'Read the findings',
+        body:  'Each system value is rated. HIGH — QSECURITY below 40, QMAXSIGN(*NOMAX), QLMTSECOFR(0), QALWOBJRST(*ALL), QCRTAUT(*CHANGE/*ALL), QAUDCTL(*NONE). MEDIUM — weak QPWD* password rules, QINACTITV(*NONE). OK — hardened settings such as QDSPSGNINF(1). The DETAIL column gives the recommended value.',
+        highlight: 'as400SysvalOut',
+        autoFn: null,
+      },
+      {
+        title: 'Export the audit',
+        body:  'Click ↓ Export IBM i Audit CSV to download the findings from all three IBM i tools you have run this session (system values, user profiles, objects), each row tagged with its tool and a timestamp.',
+        highlight: 'as400SysvalOut',
+        autoFn: 'as400ExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
+  // ── IBM i (AS/400) User Profile & Special-Authority Enumerator ────
+  {
+    id:       'as400-usrprf-enum',
+    category: 'security',
+    title:    'IBM i: User Profile & Special-Authority Enumerator',
+    desc:     'Enumerates IBM i user profiles with WRKUSRPRF, then reads each with DSPUSRPRF to flag privileged accounts, default passwords, and weak limit-capability settings.',
+    steps: [
+      {
+        title: 'Prerequisites',
+        body:  'Connect to a TN5250 (IBM i / AS/400) target, sign on, and stop at a menu with a "Selection or command" line. The tool needs the command line to issue WRKUSRPRF and each DSPUSRPRF.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click the 🔒 button in the OIA status bar and enter the security password (default: 2970) to reveal the Security tab.',
+        highlight: 'secBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Find the enumerator',
+        body:  'Scroll to the IBM i SECURITY (AS/400) section and locate the User Profile & Special-Authority Enumerator.',
+        highlight: 'as400UsrprfBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Run the enumerator',
+        body:  'Click ▶ ENUMERATE PROFILES. The tool issues WRKUSRPRF to collect every profile name, then returns to the menu and issues DSPUSRPRF for each profile in turn, reading its status, limit capabilities, special authorities, and whether the password matches the profile name. The status line shows progress; it is fully read-only.',
+        highlight: 'as400UsrprfBtn',
+        autoFn: 'startAs400UserScan',
+        autoLabel: 'Run it for me',
+      },
+      {
+        title: 'Read the findings',
+        body:  'Profiles are ranked by risk. CRITICAL — *ALLOBJ/*SECADM (superuser) or a default password (password = profile name). HIGH — high-risk authorities like *SERVICE/*SPLCTL, or LMTCPB(*NO) on a privileged profile. The finding note also flags a privileged profile that is currently *DISABLED — dormant but still a latent escalation path if re-enabled.',
+        highlight: 'as400UsrprfOut',
+        autoFn: null,
+      },
+      {
+        title: 'Export the audit',
+        body:  'Click ↓ Export IBM i Audit CSV to save the results (combined with any other IBM i tool output from this session) for your report.',
+        highlight: 'as400UsrprfOut',
+        autoFn: 'as400ExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
+  // ── IBM i (AS/400) Object / *PUBLIC Authority Scanner ─────────────
+  {
+    id:       'as400-object-scanner',
+    category: 'security',
+    title:    'IBM i: Object / *PUBLIC Authority Scanner',
+    desc:     'Lists IBM i objects with WRKOBJ and flags over-permissive *PUBLIC authority, amplifying the severity for sensitive objects.',
+    steps: [
+      {
+        title: 'Prerequisites',
+        body:  'Connect to a TN5250 (IBM i / AS/400) target, sign on, and stop at a menu with a "Selection or command" line. The tool types WRKOBJ there.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click the 🔒 button in the OIA status bar and enter the security password (default: 2970).',
+        highlight: 'secBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Find the scanner',
+        body:  'Scroll to the IBM i SECURITY (AS/400) section and locate the Object / *PUBLIC Authority Scanner.',
+        highlight: 'as400ObjBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Run the scan',
+        body:  'Click ▶ SCAN OBJECT AUTHORITY. The tool issues WRKOBJ and reads each object’s owner and *PUBLIC authority from the one list screen, then returns to the menu. Read-only — it issues no line commands against the objects.',
+        highlight: 'as400ObjBtn',
+        autoFn: 'startAs400ObjScan',
+        autoLabel: 'Run it for me',
+      },
+      {
+        title: 'Read the findings',
+        body:  '*PUBLIC authority sets the floor of access for every user without a specific grant. CRITICAL — *PUBLIC *ALL (any user can delete/manage the object). HIGH — *PUBLIC *CHANGE (any user can read and modify data). LOW — *PUBLIC *USE (read/execute). OK — *PUBLIC *EXCLUDE. The severity is raised when the object is sensitive (PAYROLL, EMPMAST, CONFIG, USRPRF).',
+        highlight: 'as400ObjOut',
+        autoFn: null,
+      },
+      {
+        title: 'Export the audit',
+        body:  'Click ↓ Export IBM i Audit CSV to save the object findings alongside your system-value and user-profile results from this session.',
+        highlight: 'as400ObjOut',
+        autoFn: 'as400ExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
 ];
 
 // ── Engine state ───────────────────────────────────────────────────
