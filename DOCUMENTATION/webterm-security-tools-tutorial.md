@@ -1627,6 +1627,115 @@ Run the scanner against the mock. `PAYROLL/EMPMAST` at `*PUBLIC *ALL` is the hea
 
 ---
 
+## Part 4 — IBM i (AS/400) Security Tools, Wave 2
+
+Part 3 covered the IBM i core trio (system values, user profiles, object authority). Wave 2 adds four tools that target the extended surfaces of the mock IBM i host: network attributes, job descriptions, authorization lists, and active jobs. They live in the same **IBM i SECURITY (AS/400)** panel section and share the `as400sec.js` state machine — three are single-screen, one (authorization lists) drills like the object scanner. Same prerequisite as Part 3: connect over TN5250, sign on, and stop at a menu with a "Selection or command" line.
+
+---
+
+## Part 4A — Network Attributes Analyzer
+
+Reads the network attributes with `DSPNETA` (one display screen) and flags inbound-request settings that enable remote execution.
+
+### Location
+
+Security panel → IBM i SECURITY (AS/400) → NETWORK ATTRIBUTES ANALYZER
+
+### Risk levels
+
+| Rating | Attribute |
+|---|---|
+| HIGH | `JOBACN(*FILE)` — auto-runs inbound job streams (remote command execution); `DDMACC(*ALL)` — any remote system can issue DDM/DRDA (remote SQL/commands) |
+| MEDIUM | `PCSACC(*REGFAC)` — broad Client Access host-server functions; `ALWANYNET(*ANYNET)` — APPC-over-TCP tunnelling |
+| OK/INFO | `SYSNAME`, `LCLLOCNAME`, `ALRSTS` and other non-exposing attributes |
+
+### Teaching scenario
+
+`JOBACN(*FILE)` is the headline: an attacker who can place a job stream in an inbound queue (via DDM, FTP, or a network server) gets it **run automatically** — remote code execution without a shell. Pair it with `DDMACC(*ALL)` and the point lands: the box accepts remote DDM/DRDA from anyone *and* auto-runs what arrives. Recommend `JOBACN(*REJECT)` / `*SEARCH` and a DDM exit program.
+
+---
+
+## Part 4B — Job Description Privesc Scanner
+
+Uses `WRKUSRPRF`-style single-screen parsing of `WRKJOBD` to find the classic IBM i privilege-escalation path: a job description that names a fixed `USER()` and is usable by `*PUBLIC`.
+
+### Location
+
+Security panel → IBM i SECURITY (AS/400) → JOB DESCRIPTION PRIVESC SCANNER
+
+### How it works
+
+`WRKJOBD` lists each JOBD with its `User` and `*PUBLIC` authority — enough to classify without a drill-down. A JOBD with `USER(*RQD)` runs under the submitter's own profile (safe). A JOBD that names a real profile **and** is usable by `*PUBLIC` means any user can `SBMJOB JOB(x) JOBD(that)` and have the job run under the named profile's authority.
+
+### Risk levels
+
+| Rating | Condition |
+|---|---|
+| CRITICAL | usable-by-`*PUBLIC` JOBD naming the security officer (`QSECOFR`) |
+| HIGH | usable-by-`*PUBLIC` JOBD naming any other real profile (e.g. an `*ALLOBJ` service account) |
+| OK | `USER(*RQD)`, or `*PUBLIC *EXCLUDE` even if a user is named |
+
+### Teaching scenario
+
+`APPJOBD` names `USER(QSECOFR)` at `*PUBLIC *USE` → CRITICAL: any user runs code as the security officer. `WEBJOBD` names `APPADMIN` (an `*ALLOBJ` account) at `*PUBLIC *CHANGE` → HIGH. Contrast `OPSJOBD` (names `QSYSOPR` but `*PUBLIC *EXCLUDE`) → OK: the named user is harmless if `*PUBLIC` can't use the JOBD. This is a favourite real-world finding because JOBDs are widely readable and rarely reviewed.
+
+---
+
+## Part 4C — Authorization List Scanner
+
+Enumerates authorization lists with `WRKAUTL`, then drills each with `DSPAUTL` (like the object scanner) to flag over-permissive `*PUBLIC` authority and show the objects it cascades to.
+
+### Location
+
+Security panel → IBM i SECURITY (AS/400) → AUTHORIZATION LIST SCANNER
+
+### How it works
+
+An authorization list is a named grouping of object authorities; every object attached to it inherits its `*PUBLIC` setting. So a single over-permissive authlist quietly widens access to many objects at once. `WRKAUTL` gives the names; `DSPAUTL AUTL(x)` gives the `*PUBLIC authority` and the secured-object list.
+
+### Risk levels
+
+| Rating | `*PUBLIC` authority |
+|---|---|
+| CRITICAL | `*ALL` |
+| HIGH | `*CHANGE` |
+| LOW | `*USE` |
+| OK | `*EXCLUDE` |
+
+For a flagged list the finding names the secured objects it exposes.
+
+### Teaching scenario
+
+`PAYAUTL` at `*PUBLIC *CHANGE` is HIGH, and the drill-down shows it secures `PAYROLL/EMPMAST` and `QSYS/PAYROLL` — so the single authlist misconfiguration exposes the whole payroll estate at once. Contrast `SECAUTL` at `*PUBLIC *EXCLUDE` (OK). The lesson: audit authorization lists *before* individual objects — one authlist can be the root cause of many object-level findings.
+
+---
+
+## Part 4D — Active Job Scanner
+
+Uses `WRKACTJOB` to flag jobs running under a privileged profile and network host servers. It cross-references the User Profile Enumerator's results, so running that tool first sharpens this one.
+
+### Location
+
+Security panel → IBM i SECURITY (AS/400) → ACTIVE JOB SCANNER
+
+### How it works
+
+`WRKACTJOB` lists active jobs with their user, subsystem, and function. The scanner flags a job when its user is privileged — either a built-in set (`QSECOFR`, `QSECADM`, `QSRV`) **or** any profile the User Profile Enumerator rated CRITICAL/HIGH earlier in the session (so an `*ALLOBJ` service account discovered there is recognised here). It also flags well-known network host-server jobs (`QZDASOINIT`, `QRWTSRVR`, …) as a remote attack surface.
+
+### Risk levels
+
+| Rating | Condition |
+|---|---|
+| HIGH | job runs under a privileged profile |
+| MEDIUM | network host server (remote attack surface) |
+| OK | ordinary interactive/batch job |
+
+### Teaching scenario
+
+Run the User Profile Enumerator first (it rates `APPADMIN` CRITICAL for `*ALLOBJ`), then the Active Job Scanner: `NIGHTLYRUN` under `APPADMIN` is flagged HIGH *because* of that cross-reference — demonstrating how chaining tools builds a picture no single tool sees. `MAINTJOB` under `QSECOFR` is HIGH from the built-in set, and `QZDASOINIT` (the DB host server under `QUSER`) is MEDIUM — a reminder that the ODBC/JDBC host server is a network-reachable entry point worth hardening.
+
+---
+
 ## Appendix — The .rec.json format
 
 The recording file is plain JSON and human-readable:
