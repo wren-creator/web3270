@@ -159,6 +159,8 @@ uss-prod,  z/OS USS,     10.0.0.5,     22, sshuser
 
 Passwords are never stored — you enter them each time you connect. You can also add hosts live from the SSH connect modal without restarting the bridge.
 
+**Docker note:** `ssh-hosts.txt` and `lpars.txt` are bind-mounted into the container, which runs as the non-root `tn3270` user. For the "Add / edit host" and LPAR edit forms to persist their changes, these files must be writable by that user. `start.sh` handles this automatically (`chmod 666`). If you run `docker compose up` directly instead of `start.sh` and hit `EACCES: permission denied, open '/app/ssh-hosts.txt'`, run `chmod 666 ssh-hosts.txt lpars.txt` on the host. These files contain no secrets — only hostnames, ports, and usernames.
+
 ---
 
 ## Step 6 · Run the bridge
