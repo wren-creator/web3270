@@ -15,6 +15,9 @@ services:
       - type: bind
         source: ./lpars.txt
         target: /app/lpars.txt
+      - type: bind
+        source: ./ssh-hosts.txt
+        target: /app/ssh-hosts.txt
       - type: volume
         source: macros_data
         target: /app/macros/local
