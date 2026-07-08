@@ -1019,6 +1019,42 @@
             <div id="as400ObjOut" style="max-height:220px;overflow-y:auto;margin-top:4px"></div>
           </div>
 
+          <!-- Network Attributes Analyzer -->
+          <div style="margin-top:10px;padding-top:8px;border-top:1px solid #1a1a1a">
+            <div style="font-size:10px;color:var(--text-muted);font-weight:600;letter-spacing:.06em;margin-bottom:4px">NETWORK ATTRIBUTES ANALYZER</div>
+            <div class="sec-panel-hint" style="margin-bottom:6px">DSPNETA reads the network attributes and flags remote-access exposure: JOBACN(*FILE) auto-runs inbound job streams (RCE), DDMACC(*ALL) opens DDM/DRDA, PCSACC / ALWANYNET widen the client/APPC surface.</div>
+            <button id="as400NetattrBtn" class="sec-inject-btn" onclick="startAs400NetattrScan()" style="background:#1a2a1a">▶ ANALYZE NETWORK ATTRS</button>
+            <div id="as400NetattrStatus" style="font-size:10px;color:var(--text-muted);margin-top:4px;min-height:14px"></div>
+            <div id="as400NetattrOut" style="max-height:220px;overflow-y:auto;margin-top:4px"></div>
+          </div>
+
+          <!-- Job Description Privilege-Escalation Scanner -->
+          <div style="margin-top:10px;padding-top:8px;border-top:1px solid #1a1a1a">
+            <div style="font-size:10px;color:var(--text-muted);font-weight:600;letter-spacing:.06em;margin-bottom:4px">JOB DESCRIPTION PRIVESC SCANNER</div>
+            <div class="sec-panel-hint" style="margin-bottom:6px">WRKJOBD flags job descriptions that name a fixed USER() and are usable by *PUBLIC — any user can SBMJOB with that JOBD and run code as that user. CRITICAL when the user is the security officer.</div>
+            <button id="as400JobdBtn" class="sec-inject-btn" onclick="startAs400JobdScan()" style="background:#1a2a1a">▶ SCAN JOB DESCRIPTIONS</button>
+            <div id="as400JobdStatus" style="font-size:10px;color:var(--text-muted);margin-top:4px;min-height:14px"></div>
+            <div id="as400JobdOut" style="max-height:220px;overflow-y:auto;margin-top:4px"></div>
+          </div>
+
+          <!-- Authorization List Scanner -->
+          <div style="margin-top:10px;padding-top:8px;border-top:1px solid #1a1a1a">
+            <div style="font-size:10px;color:var(--text-muted);font-weight:600;letter-spacing:.06em;margin-bottom:4px">AUTHORIZATION LIST SCANNER</div>
+            <div class="sec-panel-hint" style="margin-bottom:6px">WRKAUTL then DSPAUTL per list. An over-permissive *PUBLIC on an authorization list (*ALL/*CHANGE) cascades to every object it secures — the scan lists those objects.</div>
+            <button id="as400AutlBtn" class="sec-inject-btn" onclick="startAs400AutlScan()" style="background:#1a2a1a">▶ SCAN AUTH LISTS</button>
+            <div id="as400AutlStatus" style="font-size:10px;color:var(--text-muted);margin-top:4px;min-height:14px"></div>
+            <div id="as400AutlOut" style="max-height:220px;overflow-y:auto;margin-top:4px"></div>
+          </div>
+
+          <!-- Active Job Scanner -->
+          <div style="margin-top:10px;padding-top:8px;border-top:1px solid #1a1a1a">
+            <div style="font-size:10px;color:var(--text-muted);font-weight:600;letter-spacing:.06em;margin-bottom:4px">ACTIVE JOB SCANNER</div>
+            <div class="sec-panel-hint" style="margin-bottom:6px">WRKACTJOB flags jobs running under a privileged profile and network host servers (a remote attack surface). Run the User Profile Enumerator first — this scan cross-references the profiles it rated CRITICAL/HIGH.</div>
+            <button id="as400ActjobBtn" class="sec-inject-btn" onclick="startAs400ActjobScan()" style="background:#1a2a1a">▶ SCAN ACTIVE JOBS</button>
+            <div id="as400ActjobStatus" style="font-size:10px;color:var(--text-muted);margin-top:4px;min-height:14px"></div>
+            <div id="as400ActjobOut" style="max-height:220px;overflow-y:auto;margin-top:4px"></div>
+          </div>
+
           <div style="margin-top:8px;padding-top:6px;border-top:1px solid #111">
             <button onclick="as400ExportCsv()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ Export IBM i Audit CSV</button>
           </div>

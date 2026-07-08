@@ -2012,6 +2012,162 @@ const _WALKTHROUGHS = [
     ],
   },
 
+  // ── IBM i (AS/400) Network Attributes Analyzer ───────────────────
+  {
+    id:       'as400-netattr-analyzer',
+    category: 'security',
+    title:    'IBM i: Network Attributes Analyzer',
+    desc:     'Reads the IBM i network attributes with DSPNETA and flags inbound-request settings that enable remote job/command execution.',
+    steps: [
+      {
+        title: 'Prerequisites',
+        body:  'Connect to a TN5250 (IBM i / AS/400) target, sign on, and stop at a menu with a "Selection or command" line. The tool types DSPNETA there.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click 🔒 in the OIA status bar and enter the security password (default: 2970) to reveal the Security tab.',
+        highlight: 'secBtn', autoFn: null,
+      },
+      {
+        title: 'Run the analyzer',
+        body:  'Scroll to the IBM i SECURITY (AS/400) section and click ▶ ANALYZE NETWORK ATTRS. The tool issues DSPNETA, reads the network attributes from the one display screen, then returns to the menu. Read-only.',
+        highlight: 'as400NetattrBtn',
+        autoFn: 'startAs400NetattrScan',
+        autoLabel: 'Run it for me',
+      },
+      {
+        title: 'Read the findings',
+        body:  'HIGH — JOBACN(*FILE) auto-runs inbound job streams (remote command execution) and DDMACC(*ALL) opens DDM/DRDA to any remote system. MEDIUM — PCSACC and ALWANYNET widen the Client Access / APPC-over-TCP surface. The DETAIL column carries the recommended value.',
+        highlight: 'as400NetattrOut', autoFn: null,
+      },
+      {
+        title: 'Export the audit',
+        body:  'Click ↓ Export IBM i Audit CSV to save the findings (combined with any other IBM i tool output this session).',
+        highlight: 'as400NetattrOut',
+        autoFn: 'as400ExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
+  // ── IBM i (AS/400) Job Description Privesc Scanner ────────────────
+  {
+    id:       'as400-jobd-privesc',
+    category: 'security',
+    title:    'IBM i: Job Description Privesc Scanner',
+    desc:     'Uses WRKJOBD to find job descriptions that name a fixed USER() and are usable by *PUBLIC — a SBMJOB privilege-escalation path.',
+    steps: [
+      {
+        title: 'Prerequisites',
+        body:  'Connect to a TN5250 (IBM i / AS/400) target, sign on, and stop at a menu with a "Selection or command" line.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click 🔒 in the OIA status bar and enter the security password (default: 2970).',
+        highlight: 'secBtn', autoFn: null,
+      },
+      {
+        title: 'Run the scan',
+        body:  'Scroll to the IBM i SECURITY (AS/400) section and click ▶ SCAN JOB DESCRIPTIONS. The tool issues WRKJOBD and reads each job description’s USER() and *PUBLIC authority. Read-only.',
+        highlight: 'as400JobdBtn',
+        autoFn: 'startAs400JobdScan',
+        autoLabel: 'Run it for me',
+      },
+      {
+        title: 'Read the findings',
+        body:  'A JOBD with USER(*RQD) is safe — the submitter’s own profile is used. The finding is a JOBD naming a real profile that *PUBLIC can use: any user can SBMJOB with it and run code as that user. CRITICAL when the user is the security officer (QSECOFR); HIGH otherwise (e.g. an *ALLOBJ service account). A JOBD at *PUBLIC *EXCLUDE is OK even if it names a user.',
+        highlight: 'as400JobdOut', autoFn: null,
+      },
+      {
+        title: 'Export the audit',
+        body:  'Click ↓ Export IBM i Audit CSV to save the findings.',
+        highlight: 'as400JobdOut',
+        autoFn: 'as400ExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
+  // ── IBM i (AS/400) Authorization List Scanner ─────────────────────
+  {
+    id:       'as400-authlist-scanner',
+    category: 'security',
+    title:    'IBM i: Authorization List Scanner',
+    desc:     'Enumerates authorization lists with WRKAUTL, then DSPAUTL each to flag over-permissive *PUBLIC authority that cascades to every secured object.',
+    steps: [
+      {
+        title: 'Prerequisites',
+        body:  'Connect to a TN5250 (IBM i / AS/400) target, sign on, and stop at a menu with a "Selection or command" line.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click 🔒 in the OIA status bar and enter the security password (default: 2970).',
+        highlight: 'secBtn', autoFn: null,
+      },
+      {
+        title: 'Run the scan',
+        body:  'Scroll to the IBM i SECURITY (AS/400) section and click ▶ SCAN AUTH LISTS. The tool issues WRKAUTL to list the authorization lists, then returns to the menu and issues DSPAUTL for each to read its *PUBLIC authority and the objects it secures. Read-only.',
+        highlight: 'as400AutlBtn',
+        autoFn: 'startAs400AutlScan',
+        autoLabel: 'Run it for me',
+      },
+      {
+        title: 'Read the findings',
+        body:  'An authorization list sets authority for every object attached to it, so an over-permissive *PUBLIC cascades widely. CRITICAL — *PUBLIC *ALL. HIGH — *PUBLIC *CHANGE. LOW — *PUBLIC *USE. OK — *PUBLIC *EXCLUDE. For a flagged list the finding names the secured objects it exposes (e.g. "cascades to PAYROLL/EMPMAST").',
+        highlight: 'as400AutlOut', autoFn: null,
+      },
+      {
+        title: 'Export the audit',
+        body:  'Click ↓ Export IBM i Audit CSV to save the findings.',
+        highlight: 'as400AutlOut',
+        autoFn: 'as400ExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
+  // ── IBM i (AS/400) Active Job Scanner ─────────────────────────────
+  {
+    id:       'as400-actjob-scanner',
+    category: 'security',
+    title:    'IBM i: Active Job Scanner',
+    desc:     'Uses WRKACTJOB to flag jobs running under a privileged profile and network host servers, cross-referencing the User Profile Enumerator’s results.',
+    steps: [
+      {
+        title: 'Prerequisites',
+        body:  'Connect to a TN5250 (IBM i / AS/400) target, sign on, and stop at a menu with a "Selection or command" line. For the sharpest results, run the User Profile Enumerator first — this scan reuses the profiles it rated CRITICAL/HIGH.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click 🔒 in the OIA status bar and enter the security password (default: 2970).',
+        highlight: 'secBtn', autoFn: null,
+      },
+      {
+        title: 'Run the scan',
+        body:  'Scroll to the IBM i SECURITY (AS/400) section and click ▶ SCAN ACTIVE JOBS. The tool issues WRKACTJOB and reads each job’s user, subsystem, and function. Read-only.',
+        highlight: 'as400ActjobBtn',
+        autoFn: 'startAs400ActjobScan',
+        autoLabel: 'Run it for me',
+      },
+      {
+        title: 'Read the findings',
+        body:  'HIGH — a job running under a privileged profile (a built-in set like QSECOFR, plus any profile the User Profile Enumerator rated CRITICAL/HIGH this session, e.g. an *ALLOBJ service account’s batch job). MEDIUM — a network host server such as QZDASOINIT (the DB host server) or QRWTSRVR, which is a remote attack surface. Everything else is OK.',
+        highlight: 'as400ActjobOut', autoFn: null,
+      },
+      {
+        title: 'Export the audit',
+        body:  'Click ↓ Export IBM i Audit CSV to save the findings for your report.',
+        highlight: 'as400ActjobOut',
+        autoFn: 'as400ExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
 ];
 
 // ── Engine state ───────────────────────────────────────────────────

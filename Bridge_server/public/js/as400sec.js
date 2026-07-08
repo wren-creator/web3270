@@ -27,6 +27,8 @@ import { saveAs } from './utils.js';
 import {
   parseProfileNames, parseLabelValue, parseSpecialAuths, evaluateProfile,
   parseSysvals, evaluateSysval, parseObjects, parseObjectGrants, evaluateObjectDetail,
+  parseNetattrs, evaluateNetattr, parseJobds, evaluateJobd,
+  parseAutls, parseAutlSecured, evaluateAutl, parseActjobs, evaluateActjob,
 } from './as400sec-parse.js';
 
 // ── Screen / transport helpers ─────────────────────────────────────────────
@@ -102,10 +104,51 @@ const TOOLS = {
       },
     },
   },
+
+  // ── Wave 2 ────────────────────────────────────────────────────────────────
+  NETATTR: {
+    cmd: 'DSPNETA', title: 'Display Network Attributes', ids: 'Netattr',
+    single: lines => parseNetattrs(lines).map(a => {
+      const { risk, rec } = evaluateNetattr(a.name, a.value);
+      return { name: a.name, value: a.value, risk, detail: rec };
+    }),
+  },
+  JOBD: {
+    cmd: 'WRKJOBD', title: 'Work with Job Descriptions', ids: 'Jobd',
+    single: lines => parseJobds(lines).map(j => {
+      const { risk, finding } = evaluateJobd(j);
+      return { name: `${j.lib}/${j.name}`, value: `${j.user} / ${j.publicAuth}`, risk, detail: finding };
+    }),
+  },
+  AUTL: {
+    cmd: 'WRKAUTL', title: 'Work with Authorization Lists', ids: 'Autl',
+    drill: {
+      collect: lines => parseAutls(lines).map(a => ({ key: a.name, cmd: `DSPAUTL AUTL(${a.name})` })),
+      detailTitle: 'Display Authorization List',
+      parse: (lines, text, item) => {
+        const publicAuth = parseLabelValue(lines, '*PUBLIC authority');
+        const secured    = parseAutlSecured(lines);
+        const { risk, finding } = evaluateAutl({ publicAuth, secured });
+        return { name: item.key, value: publicAuth, risk, detail: finding };
+      },
+    },
+  },
+  ACTJOB: {
+    cmd: 'WRKACTJOB', title: 'Work with Active Jobs', ids: 'Actjob',
+    // Cross-references profiles the User-Profile Enumerator already rated
+    // CRITICAL/HIGH, so running that scan first sharpens this one.
+    single: lines => {
+      const priv = new Set(RESULTS.USRPRF.filter(r => r.risk === 'CRITICAL' || r.risk === 'HIGH').map(r => r.name));
+      return parseActjobs(lines).map(j => {
+        const { risk, finding } = evaluateActjob(j, priv);
+        return { name: j.job, value: j.user, risk, detail: `${j.sbs} · ${j.func} · ${finding}` };
+      });
+    },
+  },
 };
 
-// Persisted results per tool (so all three tables/CSV survive across scans).
-const RESULTS = { USRPRF: [], SYSVAL: [], OBJ: [] };
+// Persisted results per tool (so all tables/CSV survive across scans).
+const RESULTS = { USRPRF: [], SYSVAL: [], OBJ: [], NETATTR: [], JOBD: [], AUTL: [], ACTJOB: [] };
 
 // ── State machine ───────────────────────────────────────────────────────────
 let as400 = { running: false, tool: null, expecting: null, items: [], idx: 0 };
@@ -189,9 +232,13 @@ const RISK_ORDER = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3, INFO: 4, OK: 5 };
 
 // Column headers per tool for the first two data columns (risk/detail are shared).
 const COLS = {
-  USRPRF: ['PROFILE', 'AUTHORITIES'],
-  SYSVAL: ['SYSTEM VALUE', 'CURRENT'],
-  OBJ:    ['OBJECT', '*PUBLIC'],
+  USRPRF:  ['PROFILE', 'AUTHORITIES'],
+  SYSVAL:  ['SYSTEM VALUE', 'CURRENT'],
+  OBJ:     ['OBJECT', '*PUBLIC'],
+  NETATTR: ['ATTRIBUTE', 'VALUE'],
+  JOBD:    ['JOB DESC', 'USER / *PUBLIC'],
+  AUTL:    ['AUTH LIST', '*PUBLIC'],
+  ACTJOB:  ['JOB', 'USER'],
 };
 
 function _render(tool) {
@@ -231,22 +278,32 @@ function _start(tool) {
   _pressEnter();
 }
 
-export function startAs400UserScan()   { _start('USRPRF'); }
-export function startAs400SysvalScan() { _start('SYSVAL'); }
-export function startAs400ObjScan()    { _start('OBJ'); }
+export function startAs400UserScan()    { _start('USRPRF'); }
+export function startAs400SysvalScan()  { _start('SYSVAL'); }
+export function startAs400ObjScan()     { _start('OBJ'); }
+export function startAs400NetattrScan() { _start('NETATTR'); }
+export function startAs400JobdScan()    { _start('JOBD'); }
+export function startAs400AutlScan()    { _start('AUTL'); }
+export function startAs400ActjobScan()  { _start('ACTJOB'); }
 
 export function as400ExportCsv() {
   const ts = new Date().toISOString();
   const rows = [['tool', 'item', 'value', 'risk', 'detail', 'timestamp']];
   const add = (tool, label) => RESULTS[tool].forEach(r => rows.push([label, r.name, r.value, r.risk, r.detail, ts]));
-  add('SYSVAL', 'sysval-analyzer');
-  add('USRPRF', 'usrprf-enum');
-  add('OBJ',    'object-scanner');
+  add('SYSVAL',  'sysval-analyzer');
+  add('USRPRF',  'usrprf-enum');
+  add('OBJ',     'object-scanner');
+  add('NETATTR', 'netattr-analyzer');
+  add('JOBD',    'jobd-privesc');
+  add('AUTL',    'authlist-scanner');
+  add('ACTJOB',  'actjob-scanner');
   if (rows.length === 1) return;
   const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
   saveAs(new Blob([csv], { type: 'text/csv' }), `as400-audit-${ts.slice(0, 19).replace(/:/g, '-')}.csv`);
 }
 
 Object.assign(window, {
-  as400OnScreen, startAs400UserScan, startAs400SysvalScan, startAs400ObjScan, as400ExportCsv,
+  as400OnScreen, as400ExportCsv,
+  startAs400UserScan, startAs400SysvalScan, startAs400ObjScan,
+  startAs400NetattrScan, startAs400JobdScan, startAs400AutlScan, startAs400ActjobScan,
 });

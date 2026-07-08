@@ -10,7 +10,7 @@ export const LIST_START_ROW = 6;
 export function parseProfileNames(lines) {
   const names = [];
   for (let r = LIST_START_ROW; r < lines.length; r++) {
-    const name = (lines[r] || '').slice(6, 16).trim();
+    const name = (lines[r] || '').slice(6, 17).trim();
     if (!name || name === 'Profile') continue;
     if (!/^[A-Z][A-Z0-9$#@]*$/.test(name)) continue;
     if (!names.includes(name)) names.push(name);
@@ -47,7 +47,7 @@ export function parseSysvals(lines) {
   const out = [];
   for (let r = LIST_START_ROW; r < lines.length; r++) {
     const line = lines[r] || '';
-    const name = line.slice(6, 19).trim();
+    const name = line.slice(6, 20).trim();
     if (!/^Q[A-Z0-9]+$/.test(name)) continue;
     const value = (line.slice(20).trim().split(/\s+/)[0]) || '';
     if (!value) continue;
@@ -86,15 +86,15 @@ export function parseObjects(lines) {
   const out = [];
   for (let r = LIST_START_ROW; r < lines.length; r++) {
     const line = lines[r] || '';
-    const name = line.slice(6, 16).trim();
+    const name = line.slice(6, 17).trim();
     if (!/^[A-Z][A-Z0-9$#@]*$/.test(name)) continue;
     const publicAuth = (line.slice(50).trim().split(/\s+/)[0]) || '';
     if (!publicAuth) continue;
     out.push({
       name,
-      lib:   line.slice(17, 27).trim(),
-      type:  line.slice(28, 38).trim(),
-      owner: line.slice(39, 49).trim(),
+      lib:   line.slice(17, 28).trim(),
+      type:  line.slice(28, 39).trim(),
+      owner: line.slice(39, 50).trim(),
       publicAuth,
     });
   }
@@ -121,7 +121,7 @@ export function parseObjectGrants(lines) {
   const grants = [];
   for (let r = hdr + 1; r < lines.length; r++) {
     const line = lines[r] || '';
-    const user = line.slice(2, 14).trim();
+    const user = line.slice(2, 15).trim();
     if (!user) { if (grants.length) break; else continue; }
     if (!/^\*?[A-Z][A-Z0-9$#@]*$/.test(user)) break;   // stop at "Press Enter" / "F3=Exit"
     const auth = (line.slice(16).trim().split(/\s+/)[0]) || '';
@@ -163,4 +163,118 @@ export function evaluateProfile({ status, lmtCpb, auths, defaultPwd }) {
   if (status === '*DISABLED' && findings.length) findings.push('(currently *DISABLED)');
 
   return { risk, finding: findings.join(', ') || 'No significant exposure' };
+}
+
+// ── Wave 2: Network attributes (DSPNETA) ────────────────────────────────────
+// Detail screen lines look like "JOBACN     . . . . . :     *FILE". All-caps
+// names with a colon; the title/footer lines don't match.
+export function parseNetattrs(lines) {
+  const out = [];
+  for (const line of lines) {
+    const m = line.match(/^\s+([A-Z][A-Z0-9]+)\b.*?:\s*(\S+)/);
+    if (m) out.push({ name: m[1], value: m[2] });
+  }
+  return out;
+}
+const NETA_RULES = {
+  JOBACN:    { risk: 'HIGH',   test: v => v === '*FILE',   rec: '*FILE auto-runs inbound job streams (RCE) — use *REJECT or *SEARCH' },
+  DDMACC:    { risk: 'HIGH',   test: v => v === '*ALL',    rec: '*ALL allows any remote DDM/DRDA request — gate with a DDM exit program' },
+  PCSACC:    { risk: 'MEDIUM', test: v => v === '*REGFAC', rec: 'Restrict Client Access host-server functions with registered exit programs' },
+  ALWANYNET: { risk: 'MEDIUM', test: v => v === '*ANYNET', rec: '*ANYNET permits APPC-over-TCP tunnelling — use *NONE unless required' },
+};
+export function evaluateNetattr(name, value) {
+  const R = NETA_RULES[name];
+  if (!R) return { risk: 'INFO', rec: '' };
+  return R.test(value) ? { risk: R.risk, rec: R.rec } : { risk: 'OK', rec: '' };
+}
+
+// ── Wave 2: Job descriptions (WRKJOBD list) ─────────────────────────────────
+// Columns: Job Desc 6–15, Library 17–26, User 28–38, *PUBLIC 40+.
+export function parseJobds(lines) {
+  const out = [];
+  for (let r = LIST_START_ROW; r < lines.length; r++) {
+    const line = lines[r] || '';
+    const name = line.slice(6, 17).trim();
+    if (!/^[A-Z][A-Z0-9$#@]*$/.test(name)) continue;
+    const publicAuth = (line.slice(40).trim().split(/\s+/)[0]) || '';
+    if (!publicAuth) continue;
+    out.push({ name, lib: line.slice(17, 28).trim(), user: line.slice(28, 40).trim(), publicAuth });
+  }
+  return out;
+}
+// A JOBD naming a fixed USER() that *PUBLIC can use lets any user SBMJOB and
+// run code as that user — CRITICAL when the user is the security officer.
+export function evaluateJobd({ user, publicAuth }) {
+  const runsAs = user !== '*RQD' && user !== '*SYSVAL';
+  const usable = ['*USE', '*CHANGE', '*ALL'].includes(publicAuth);
+  if (!runsAs || !usable) {
+    return { risk: 'OK', finding: runsAs ? `runs as ${user}, *PUBLIC ${publicAuth}` : 'no fixed USER' };
+  }
+  const risk = /^QSEC/.test(user) ? 'CRITICAL' : 'HIGH';
+  return { risk, finding: `*PUBLIC ${publicAuth} can SBMJOB to run as ${user}` };
+}
+
+// ── Wave 2: Authorization lists (WRKAUTL list + DSPAUTL detail) ──────────────
+// List columns: Auth List 6–16, Owner 17–26, *PUBLIC 28–37.
+export function parseAutls(lines) {
+  const out = [];
+  for (let r = LIST_START_ROW; r < lines.length; r++) {
+    const line = lines[r] || '';
+    const name = line.slice(6, 18).trim();
+    if (!/^[A-Z][A-Z0-9$#@]*$/.test(name)) continue;
+    const publicAuth = line.slice(28, 39).trim();
+    if (!publicAuth) continue;
+    out.push({ name, owner: line.slice(17, 28).trim(), publicAuth });
+  }
+  return out;
+}
+// Objects an authorization list secures, from the DSPAUTL detail ("Secured
+// objects:" followed by LIB/OBJ lines).
+export function parseAutlSecured(lines) {
+  const idx = lines.findIndex(l => l.includes('Secured objects:'));
+  if (idx === -1) return [];
+  const objs = [];
+  for (let r = idx + 1; r < lines.length; r++) {
+    const t = (lines[r] || '').trim();
+    if (!t) { if (objs.length) break; else continue; }
+    if (!/^[A-Z][A-Z0-9$#@]*\/[A-Z]/.test(t)) break;
+    objs.push(t.split(/\s+/)[0]);
+  }
+  return objs;
+}
+export function evaluateAutl({ publicAuth, secured = [] }) {
+  const f = [];
+  let risk = 'OK';
+  if (publicAuth === '*ALL')          { risk = 'CRITICAL'; f.push('*PUBLIC *ALL'); }
+  else if (publicAuth === '*CHANGE')  { risk = 'HIGH';     f.push('*PUBLIC *CHANGE'); }
+  else if (publicAuth === '*USE')     { risk = 'LOW';      f.push('*PUBLIC *USE'); }
+  else                                { f.push(`*PUBLIC ${publicAuth}`); }
+  if ((risk === 'CRITICAL' || risk === 'HIGH') && secured.length) f.push(`cascades to ${secured.join(', ')}`);
+  return { risk, finding: f.join(' · ') };
+}
+
+// ── Wave 2: Active jobs (WRKACTJOB list) ────────────────────────────────────
+// Columns: Job 6–15, Subsystem 17–26, User 28–38, Type 40–44, Function 46–58.
+export function parseActjobs(lines) {
+  const out = [];
+  for (let r = LIST_START_ROW; r < lines.length; r++) {
+    const line = lines[r] || '';
+    const job = line.slice(6, 17).trim();
+    if (!/^[A-Z][A-Z0-9$#@]*$/.test(job)) continue;
+    const user = line.slice(28, 40).trim();
+    if (!user) continue;
+    out.push({ job, sbs: line.slice(17, 28).trim(), user, type: line.slice(40, 46).trim(), func: line.slice(46, 60).trim() });
+  }
+  return out;
+}
+// Flag jobs running under a privileged profile. `privUsers` is the set of
+// profiles the User-Profile Enumerator already rated CRITICAL/HIGH (so running
+// that scan first makes this one sharper); a small built-in set is the fallback.
+const _KNOWN_PRIV = new Set(['QSECOFR', 'QSECADM', 'QSRV']);
+export function evaluateActjob(job, privUsers = new Set()) {
+  const priv = privUsers.has(job.user) || _KNOWN_PRIV.has(job.user);
+  const server = /QZDASO|QRWTSRVR|QZRCSRVS|QZSOSIGN|QZHQSSRV/.test(`${job.func} ${job.job}`);
+  if (priv)   return { risk: 'HIGH',   finding: `runs under privileged profile ${job.user}` };
+  if (server) return { risk: 'MEDIUM', finding: `network host server (${job.user}) — remote attack surface` };
+  return { risk: 'OK', finding: `${job.type || 'job'}` };
 }
