@@ -36,6 +36,12 @@ fi
 [ ! -f lpars.txt ] && echo '# id, name, host/IP, port, tls, type, model' > lpars.txt
 [ ! -f ssh-hosts.txt ] && cp ssh-hosts.txt.example ssh-hosts.txt
 
+# The container runs as the non-root 'tn3270' user, but these files are owned
+# by the host user. Make them world-writable so the bridge can persist edits
+# (add/edit host + LPAR profiles) into the bind mounts. They contain no
+# secrets — just hostnames, ports, and usernames.
+chmod 666 lpars.txt ssh-hosts.txt 2>/dev/null || true
+
 # ── Migrate macros from old location if needed ────────────────────────────
 mkdir -p macros/local
 if [ -f macros/macros.json ] && [ ! -f macros/local/macros.json ]; then
