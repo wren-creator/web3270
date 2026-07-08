@@ -183,21 +183,36 @@ interpreter; these verbs render live panels (weak/privileged values are
 shown in red), reachable by command **or** via *General system tasks*
 (MAIN option 3) options 5/6/7:
 
+**Wave 1 — core trio** (reachable by command **or** via *General system
+tasks*, MAIN option 3, options 5/6/7):
+
 | Command | Panel | What a tool would flag |
 |---------|-------|------------------------|
 | `WRKSYSVAL` / `DSPSYSVAL SYSVAL(x)` | System values | `QSECURITY 30`, `QMAXSIGN *NOMAX`, `QPWDEXPITV *NOMAX`, `QAUDCTL *NONE`, weak `QPWD*` |
 | `WRKUSRPRF` / `DSPUSRPRF USRPRF(x)` | User profiles | `QSECOFR` with all 8 special authorities + **default password**, over-privileged `APPADMIN` (`*ALLOBJ`), `LMTCPB *NO` |
 | `WRKOBJ` / `DSPOBJAUT OBJ(lib/obj)` | Object authority | `PAYROLL/EMPMAST` at `*PUBLIC *ALL`, libraries at `*PUBLIC *CHANGE` |
 
+**Wave 2 — extended surfaces** (options 1 and 4 of *General system tasks* run
+`WRKACTJOB` / `WRKSBS`; the rest are command-line reachable):
+
+| Command | Panel | What a tool would flag |
+|---------|-------|------------------------|
+| `DSPNETA` | Network attributes | `JOBACN(*FILE)` (auto-run inbound jobs = RCE), `DDMACC(*ALL)`, `PCSACC(*REGFAC)`, `ALWANYNET(*ANYNET)` |
+| `WRKJOBD` / `DSPJOBD JOBD(x)` | Job descriptions | A JOBD naming `USER(QSECOFR)` (or `USER(APPADMIN)`) usable by `*PUBLIC` — SBMJOB privilege escalation |
+| `WRKAUTL` / `DSPAUTL AUTL(x)` | Authorization lists | `PAYAUTL` at `*PUBLIC *CHANGE`, cascading to every secured object (`PAYROLL/EMPMAST`, …) |
+| `WRKACTJOB` | Active jobs | Jobs running under privileged profiles (`QSECOFR` maintenance job, `APPADMIN` batch), the `QZDASOINIT` DB host server |
+| `WRKSBS` | Subsystems | Active subsystems (context for the active-job view) |
+
 On the "Work with" panels, type `5` in the **Opt** column next to a row and
 press Enter to drill into its detail panel; `F3`/`F12` steps back out. An
 unrecognized command returns a realistic `CPD0030`/`CPF…` message.
 
-The posture is data-driven — the `SYSVALS`, `USRPRFS`, and `OBJECTS` tables
-near the top of `mock-as400.js` are the single source of truth. Harden a
-value (or add a profile/object/system value) by editing its entry there;
-nothing else needs to change. The `weak`/privileged flags drive the red
-highlighting automatically.
+The posture is data-driven — the `SYSVALS`, `USRPRFS`, `OBJECTS`, `NETA`,
+`JOBDS`, `AUTLS`, `ACTJOBS`, and `SBS` tables near the top of `mock-as400.js`
+are the single source of truth. Harden a value (or add a profile/object/etc.)
+by editing its entry there; nothing else needs to change. The `weak`/
+privileged flags drive the red highlighting automatically, and adding a new
+"Work with" panel is one `LIST_META` entry plus a screen builder.
 
 It's wired into `docker-compose.yml` as the `mock-as400` service (port
 3272 inside the Docker network, not published to the host — same as
