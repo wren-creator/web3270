@@ -117,12 +117,16 @@ export function cmdHistoryRecall(idx) {
   }
   const row = state.liveScreen.rows[targetRow];
   if (!row) return;
-  for (let i = 0; i < cols; i++) {
-    if (!row[i]) row[i] = {};
-    row[i].char = i < cmd.length ? cmd[i] : ' ';
-    row[i].modified = true;
+  // Write the command starting at the field, clearing from there to end of
+  // line — cells before targetCol (field attribute / prompt) are left alone.
+  // Mirrors the server-side fillField so the local pre-echo matches.
+  for (let c = targetCol; c < cols; c++) {
+    if (!row[c]) row[c] = {};
+    const i = c - targetCol;
+    row[c].char = i < cmd.length ? cmd[i] : ' ';
+    row[c].modified = true;
   }
-  state.cursorRow = targetRow; state.cursorCol = cmd.length;
+  state.cursorRow = targetRow; state.cursorCol = targetCol + cmd.length;
   state.liveScreen.cursorRow = state.cursorRow; state.liveScreen.cursorCol = state.cursorCol;
   renderLiveScreen(state.liveScreen);
   if (session.ws.readyState === WebSocket.OPEN)
