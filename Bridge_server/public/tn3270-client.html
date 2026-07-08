@@ -296,6 +296,7 @@
           <option value="openai">OpenAI GPT</option>
           <option value="gemini">Google Gemini</option>
           <option value="ollama">Ollama (local)</option>
+          <option value="lmstudio">LM Studio (local)</option>
           <option value="github">GitHub Models</option>
         </select>
       </div>
@@ -385,6 +386,25 @@
           <div class="ai-probe-result" id="aiOllamaProbeResult"></div>
         </div>
         <div style="font-size:10px;color:var(--text-muted)">No API key needed &mdash; runs locally.</div>
+      </div>
+      <!-- LM Studio -->
+      <div id="aiFields-lmstudio" class="ai-provider-fields" style="display:none">
+        <div class="setting-group">
+          <div class="setting-label">LM Studio Base URL</div>
+          <input type="text" id="aiLMStudioUrl" value="http://localhost:1234" placeholder="http://localhost:1234" onblur="aiCfgKeyBlur('lmstudio')" style="width:100%">
+        </div>
+        <div class="setting-group">
+          <div class="setting-label">Model <span id="aiModelLoading-lmstudio" style="color:var(--accent-amber);display:none;font-size:9px">&#x27F3; loading&hellip;</span></div>
+          <select id="aiModel-lmstudio" onchange="aiCfgSave()" style="width:100%">
+            <option value="">(load models)</option>
+          </select>
+          <div style="display:flex;gap:6px;margin-top:6px">
+            <button class="btn-sm" onclick="aiLoadModels('lmstudio')" style="flex:1">Load models</button>
+            <button class="btn-sm" onclick="aiLMStudioProbe()" style="flex:1">Test</button>
+          </div>
+          <div class="ai-probe-result" id="aiLMStudioProbeResult"></div>
+        </div>
+        <div style="font-size:10px;color:var(--text-muted)">No API key needed &mdash; runs locally via LM Studio's OpenAI-compatible server (Developer tab &rarr; Start Server).</div>
       </div>
       <!-- GitHub -->
       <div id="aiFields-github" class="ai-provider-fields" style="display:none">

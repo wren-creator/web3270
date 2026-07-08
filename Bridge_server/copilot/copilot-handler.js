@@ -26,9 +26,10 @@
  *     systemPrompt: '...', messages: [{role, content}] }
  *
  *   { type: 'copilot.listModels',
- *     provider: 'ollama' | 'openai' | 'gemini' | 'anthropic' | 'github',
- *     apiKey: '...',         // optional — for cloud providers
- *     ollamaUrl: '...' }     // optional — for Ollama
+ *     provider: 'ollama' | 'lmstudio' | 'openai' | 'gemini' | 'anthropic' | 'github',
+ *     apiKey: '...',           // optional — for cloud providers
+ *     ollamaUrl: '...',        // optional — for Ollama
+ *     lmstudioUrl: '...' }     // optional — for LM Studio
  *
  *   { type: 'copilot.configure',
  *     provider: 'ollama',
@@ -141,7 +142,7 @@ async function handleListModels(msg, ws, wsId) {
 
 // ── copilot.configure ─────────────────────────────────────────────
 async function handleConfigure(msg, ws, wsId) {
-  const { provider: name, model, apiKey, ollamaUrl } = msg;
+  const { provider: name, model, apiKey, ollamaUrl, lmstudioUrl } = msg;
 
   if (!name) {
     send(ws, { type: 'copilot.error', message: 'copilot.configure: provider name required' });
@@ -151,7 +152,7 @@ async function handleConfigure(msg, ws, wsId) {
   logger.info(`[ws:${wsId}] copilot.configure → provider=${name} model=${model || '(default)'}`);
 
   try {
-    const newProvider = router.setProvider(name, { model, apiKey, ollamaUrl });
+    const newProvider = router.setProvider(name, { model, apiKey, ollamaUrl, lmstudioUrl });
     send(ws, {
       type:  'copilot.configured',
       name:  newProvider.name,
@@ -183,6 +184,7 @@ function loadProviderModule(name) {
   const relPaths = {
     anthropic: './default/anthropic-default',
     ollama:    './auxiliary/ollama',
+    lmstudio:  './auxiliary/lmstudio',
     openai:    './auxiliary/openai',
     gemini:    './auxiliary/gemini',
     github:    './auxiliary/github-models',
@@ -220,6 +222,10 @@ function applyTempCredentials(provider, msg) {
     saved.OLLAMA_HOST = process.env.OLLAMA_HOST;
     process.env.OLLAMA_HOST = msg.ollamaUrl;
   }
+  if (msg.lmstudioUrl) {
+    saved.LMSTUDIO_HOST = process.env.LMSTUDIO_HOST;
+    process.env.LMSTUDIO_HOST = msg.lmstudioUrl;
+  }
   return saved;
 }
 
@@ -237,7 +243,8 @@ const STATIC_MODELS = {
   gemini: ['gemini-1.5-pro', 'gemini-1.5-flash-latest', 'gemini-2.0-flash'],
   github: ['claude-opus-4-5', 'claude-sonnet-4-5', 'gpt-4o', 'gpt-4o-mini'],
   azure:  ['gpt-4o', 'gpt-4-turbo'],
-  ollama: [],  // always dynamic
+  ollama: [],    // always dynamic
+  lmstudio: [],  // always dynamic
 };
 
 function send(ws, obj) {
