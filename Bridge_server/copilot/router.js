@@ -23,6 +23,7 @@
  *     copilot/auxiliary/github-models.js     ← COPILOT_PROVIDER=github
  *     copilot/auxiliary/azure-openai.js      ← COPILOT_PROVIDER=azure
  *     copilot/auxiliary/ollama.js            ← COPILOT_PROVIDER=ollama
+ *     copilot/auxiliary/lmstudio.js          ← COPILOT_PROVIDER=lmstudio
  *     copilot/auxiliary/openai.js            ← COPILOT_PROVIDER=openai
  *     copilot/auxiliary/gemini.js            ← COPILOT_PROVIDER=gemini
  *
@@ -32,6 +33,7 @@
  *   COPILOT_PROVIDER=github      ← GitHub Models / Claude Opus
  *   COPILOT_PROVIDER=azure       ← Azure OpenAI (corporate Azure tenant)
  *   COPILOT_PROVIDER=ollama      ← local Ollama (fully on-premises)
+ *   COPILOT_PROVIDER=lmstudio    ← local LM Studio (fully on-premises)
  *   COPILOT_PROVIDER=openai      ← direct OpenAI API
  *   COPILOT_PROVIDER=gemini      ← Google Gemini API
  *
@@ -67,6 +69,7 @@ const PROVIDER_LOADERS = {
   github:    () => require('./auxiliary/github-models'),
   azure:     () => require('./auxiliary/azure-openai'),
   ollama:    () => require('./auxiliary/ollama'),
+  lmstudio:  () => require('./auxiliary/lmstudio'),
   openai:    () => require('./auxiliary/openai'),
   gemini:    () => require('./auxiliary/gemini'),
 };
@@ -113,9 +116,11 @@ function setProvider(name, overrides = {}) {
     if (key === 'github')    process.env.GITHUB_TOKEN         = overrides.apiKey;
     if (key === 'azure')     process.env.AZURE_OPENAI_KEY     = overrides.apiKey;
   }
-  if (overrides.ollamaUrl)  process.env.OLLAMA_HOST           = overrides.ollamaUrl;
+  if (overrides.ollamaUrl)   process.env.OLLAMA_HOST           = overrides.ollamaUrl;
+  if (overrides.lmstudioUrl) process.env.LMSTUDIO_HOST         = overrides.lmstudioUrl;
   if (overrides.model) {
     if (key === 'ollama')    process.env.OLLAMA_MODEL          = overrides.model;
+    if (key === 'lmstudio')  process.env.LMSTUDIO_MODEL        = overrides.model;
     if (key === 'github')    process.env.GITHUB_MODEL          = overrides.model;
     if (key === 'azure')     process.env.AZURE_OPENAI_DEPLOYMENT = overrides.model;
     if (key === 'openai')    process.env.OPENAI_MODEL           = overrides.model;
@@ -127,6 +132,7 @@ function setProvider(name, overrides = {}) {
   const modulePaths = {
     anthropic: './default/anthropic-default',
     ollama:    './auxiliary/ollama',
+    lmstudio:  './auxiliary/lmstudio',
     openai:    './auxiliary/openai',
     gemini:    './auxiliary/gemini',
     github:    './auxiliary/github-models',

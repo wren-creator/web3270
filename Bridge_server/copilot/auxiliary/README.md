@@ -9,7 +9,8 @@ Switch provider with one line in `.env` then restart the bridge:
 ```bash
 COPILOT_PROVIDER=github      # GitHub Models — Claude Opus via existing Copilot licence
 COPILOT_PROVIDER=azure       # Azure OpenAI — stays in corporate Azure tenant
-COPILOT_PROVIDER=ollama      # Local Ollama  — fully on-premises, no external calls
+COPILOT_PROVIDER=ollama      # Local Ollama   — fully on-premises, no external calls
+COPILOT_PROVIDER=lmstudio    # Local LM Studio — fully on-premises, no external calls
 ```
 
 ---
@@ -75,6 +76,28 @@ Minimum 8 GB RAM. GPU optional but significantly faster.
 
 ---
 
+## lmstudio.js  ←  Fully on-premises, no external calls
+
+For orgs that standardise on [LM Studio](https://lmstudio.ai) instead of Ollama.
+LM Studio ships an OpenAI-compatible server, so no API key is needed.
+
+```bash
+# 1. Install LM Studio and download a model from its in-app catalog
+#    (e.g. Qwen2.5-Coder, Llama-3.1, Mistral)
+# 2. Developer tab → Start Server  (defaults to http://localhost:1234)
+# 3. Verify:  curl http://localhost:1234/v1/models
+
+# .env
+COPILOT_PROVIDER=lmstudio
+LMSTUDIO_MODEL=qwen2.5-coder-7b-instruct   # the loaded model's id
+LMSTUDIO_HOST=http://localhost:1234        # optional, this is the default
+```
+
+`LMSTUDIO_MODEL` is optional — if omitted, LM Studio uses whichever model is
+currently loaded. Minimum 8 GB RAM; GPU optional but significantly faster.
+
+---
+
 ## Troubleshooting
 
 | Error | Fix |
@@ -85,3 +108,5 @@ Minimum 8 GB RAM. GPU optional but significantly faster.
 | Azure 401 | API key wrong — check Azure Portal → Keys and Endpoint |
 | Ollama refused | Run `ollama serve` in WSL2 or `docker compose up ollama -d` |
 | Ollama model missing | Run `ollama pull llama3.1` first |
+| LM Studio refused | Open LM Studio → Developer tab → Start Server |
+| LM Studio 404 on model | `LMSTUDIO_MODEL` id must match one from `/v1/models`, or leave it unset |

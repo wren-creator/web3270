@@ -14,6 +14,7 @@ export const AI_CTX_LABELS = {
   openai:    '128K ctx',
   gemini:    '1M ctx',
   ollama:    'local',
+  lmstudio:  'local',
   github:    '200K ctx',
 };
 export const AI_CHIP_COLORS = {
@@ -21,6 +22,7 @@ export const AI_CHIP_COLORS = {
   openai:    '#1D9E75',
   gemini:    '#378ADD',
   ollama:    '#888780',
+  lmstudio:  '#6E56CF',
   github:    '#5f5e5a',
 };
 export const AI_PROVIDER_LABELS = {
@@ -28,6 +30,7 @@ export const AI_PROVIDER_LABELS = {
   openai:    'OpenAI GPT',
   gemini:    'Google Gemini',
   ollama:    'Ollama (local)',
+  lmstudio:  'LM Studio (local)',
   github:    'GitHub Models',
 };
 

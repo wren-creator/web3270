@@ -12,6 +12,10 @@ export function aiCfgInit() {
   if (ollamaUrl) document.getElementById('aiOllamaUrl').value = ollamaUrl;
   const ollamaModel = sessionStorage.getItem('wt_ai_model_ollama');
   if (ollamaModel) document.getElementById('aiModel-ollama').dataset.savedModel = ollamaModel;
+  const lmstudioUrl = sessionStorage.getItem('wt_ai_lmstudio_url');
+  if (lmstudioUrl) document.getElementById('aiLMStudioUrl').value = lmstudioUrl;
+  const lmstudioModel = sessionStorage.getItem('wt_ai_model_lmstudio');
+  if (lmstudioModel) document.getElementById('aiModel-lmstudio').dataset.savedModel = lmstudioModel;
   aiCfgSetProvider(saved, false);
 }
 
@@ -31,12 +35,12 @@ export function aiCfgSetProvider(p, autoLoad = true) {
   const sub = document.getElementById('copilotSubtitle');
   if (sub) sub.textContent = (AI_PROVIDER_LABELS[p] || p) + ' · screen-aware';
   aiCfgResetStatus();
-  if (autoLoad && (p === 'ollama' || p === 'openai' || p === 'gemini' || p === 'anthropic' || p === 'github')) aiLoadModels(p);
+  if (autoLoad && (p === 'ollama' || p === 'lmstudio' || p === 'openai' || p === 'gemini' || p === 'anthropic' || p === 'github')) aiLoadModels(p);
 }
 
 export function aiCfgKeyBlur(provider) {
   aiCfgSave();
-  if (provider === 'openai' || provider === 'gemini' || provider === 'ollama') aiLoadModels(provider);
+  if (provider === 'openai' || provider === 'gemini' || provider === 'ollama' || provider === 'lmstudio') aiLoadModels(provider);
 }
 
 function aiCfgSave() {
@@ -49,19 +53,25 @@ function aiCfgSave() {
   if (ollamaModel) sessionStorage.setItem('wt_ai_model_ollama', ollamaModel.value);
   const ollamaUrl = document.getElementById('aiOllamaUrl');
   if (ollamaUrl) sessionStorage.setItem('wt_ai_ollama_url', ollamaUrl.value);
+  const lmstudioModel = document.getElementById('aiModel-lmstudio');
+  if (lmstudioModel) sessionStorage.setItem('wt_ai_model_lmstudio', lmstudioModel.value);
+  const lmstudioUrl = document.getElementById('aiLMStudioUrl');
+  if (lmstudioUrl) sessionStorage.setItem('wt_ai_lmstudio_url', lmstudioUrl.value);
 }
 
 export async function aiCfgApply() {
   aiCfgSave();
   aiCfgShowStatus('Applying…', 'grey');
-  const model     = aiGetSelectedModel();
-  const apiKey    = aiGetKey();
-  const ollamaUrl = document.getElementById('aiOllamaUrl')?.value?.trim();
-  const session   = state.sessions.get(state.activeSession);
+  const model      = aiGetSelectedModel();
+  const apiKey     = aiGetKey();
+  const ollamaUrl  = document.getElementById('aiOllamaUrl')?.value?.trim();
+  const lmstudioUrl = document.getElementById('aiLMStudioUrl')?.value?.trim();
+  const session    = state.sessions.get(state.activeSession);
   if (session?.ws?.readyState === WebSocket.OPEN) {
     const msg = { type: 'copilot.configure', provider: state.aiProvider, model };
-    if (apiKey)    msg.apiKey    = apiKey;
-    if (ollamaUrl) msg.ollamaUrl = ollamaUrl;
+    if (apiKey)      msg.apiKey      = apiKey;
+    if (ollamaUrl)   msg.ollamaUrl   = ollamaUrl;
+    if (lmstudioUrl) msg.lmstudioUrl = lmstudioUrl;
     session.ws.send(JSON.stringify(msg));
   } else {
     aiCfgShowStatus('Saved (connect to LPAR to apply bridge-side)', 'amber');
@@ -96,19 +106,22 @@ export async function aiLoadModels(provider) {
     if (loadingEl) loadingEl.style.display = 'none';
     return;
   }
-  const key       = aiGetKeyFor(provider);
-  const ollamaUrl = document.getElementById('aiOllamaUrl')?.value?.trim();
-  const session   = state.sessions.get(state.activeSession);
+  const key        = aiGetKeyFor(provider);
+  const ollamaUrl  = document.getElementById('aiOllamaUrl')?.value?.trim();
+  const lmstudioUrl = document.getElementById('aiLMStudioUrl')?.value?.trim();
+  const session    = state.sessions.get(state.activeSession);
   if (session?.ws?.readyState === WebSocket.OPEN) {
     const msg = { type: 'copilot.listModels', provider };
-    if (key)       msg.apiKey    = key;
-    if (ollamaUrl) msg.ollamaUrl = ollamaUrl;
+    if (key)         msg.apiKey      = key;
+    if (ollamaUrl)   msg.ollamaUrl   = ollamaUrl;
+    if (lmstudioUrl) msg.lmstudioUrl = lmstudioUrl;
     session.ws.send(JSON.stringify(msg));
     return;
   }
   try {
     let models = [];
     if (provider === 'ollama')    models = await aiFetchOllamaModelsDirect();
+    else if (provider === 'lmstudio') models = await aiFetchLMStudioModelsDirect();
     else if (provider === 'openai')   models = await aiFetchOpenAIModelsDirect();
     else if (provider === 'gemini')   models = await aiFetchGeminiModelsDirect();
     else if (provider === 'anthropic') models = aiFetchAnthropicModelsDirect();
@@ -190,6 +203,34 @@ async function aiFetchOllamaModelsDirect() {
   return models;
 }
 
+async function aiFetchLMStudioModelsDirect() {
+  const base = document.getElementById('aiLMStudioUrl').value.trim().replace(/\/$/, '') || 'http://localhost:1234';
+  const ctrl = new AbortController(); setTimeout(() => ctrl.abort(), 5000);
+  const r = await fetch(base + '/v1/models', { signal: ctrl.signal });
+  if (!r.ok) throw new Error('LM Studio /v1/models returned ' + r.status);
+  const data = await r.json(); const models = (data.data || []).map(m => m.id);
+  if (!models.length) throw new Error('LM Studio has no models loaded');
+  return models;
+}
+
+export async function aiLMStudioProbe() {
+  const base = document.getElementById('aiLMStudioUrl').value.trim().replace(/\/$/, '') || 'http://localhost:1234';
+  const out  = document.getElementById('aiLMStudioProbeResult');
+  out.style.display = ''; out.textContent = '⏳ Probing ' + base + ' …';
+  const steps = [];
+  try {
+    const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 4000);
+    const r = await fetch(base + '/v1/models', { signal: ctrl.signal }); clearTimeout(t);
+    const data = await r.json();
+    const models = (data.data || []).map(m => m.id);
+    steps.push('✅ Server reachable — HTTP ' + r.status);
+    if (models.length) { steps.push('✅ Found ' + models.length + ' model(s): ' + models.join(', ')); state.aiCachedModels['lmstudio'] = models; aiPopulateModelDropdown('lmstudio', models); }
+    else steps.push('⚠️  No models loaded — load a model in LM Studio, then Developer → Start Server');
+  } catch (e) { steps.push(e.name === 'AbortError' ? '❌ Timed out — is the LM Studio server running?' : '❌ ' + e.message); out.textContent = steps.join('\n'); out.style.color = 'var(--t-red, #f06060)'; return; }
+  out.textContent = steps.join('\n');
+  out.style.color = steps.some(s => s.startsWith('❌')) ? 'var(--t-red, #f06060)' : 'var(--accent-green)';
+}
+
 async function aiFetchOpenAIModelsDirect() {
   const key = aiGetKeyFor('openai'); if (!key) return ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo'];
   const CHAT = ['gpt-4o', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo', 'o1', 'o3'];
@@ -230,6 +271,7 @@ async function aiCallProvider(systemPrompt, messages, onChunk) {
     case 'openai':    return aiCallOpenAI(systemPrompt, messages, model, maxTokens, temp, onChunk);
     case 'gemini':    return aiCallGemini(systemPrompt, messages, model, maxTokens, temp, onChunk);
     case 'ollama':    return aiCallOllama(systemPrompt, messages, model, maxTokens, temp, onChunk);
+    case 'lmstudio':  return aiCallLMStudio(systemPrompt, messages, model, maxTokens, temp, onChunk);
     case 'github':    return aiCallGitHub(systemPrompt, messages, model, maxTokens, temp, onChunk);
     default: throw new Error('Unknown AI provider: ' + state.aiProvider);
   }
@@ -276,6 +318,13 @@ async function aiCallOllama(sys, msgs, model, maxTok, temp, onChunk) {
   model = model || 'llama3.1';
   const resp = await fetch(base + '/v1/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ollama' }, body: JSON.stringify({ model, stream: true, temperature: temp, max_tokens: maxTok, messages: [{ role: 'system', content: sys }, ...msgs] }) });
   if (!resp.ok) throw new Error('Ollama error ' + resp.status + ' — is Ollama running?');
+  return aiReadSSE(resp, d => JSON.parse(d)?.choices?.[0]?.delta?.content || '', onChunk);
+}
+
+async function aiCallLMStudio(sys, msgs, model, maxTok, temp, onChunk) {
+  const base = document.getElementById('aiLMStudioUrl')?.value?.trim().replace(/\/$/, '') || 'http://localhost:1234';
+  const resp = await fetch(base + '/v1/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer lm-studio' }, body: JSON.stringify({ model: model || 'local-model', stream: true, temperature: temp, max_tokens: maxTok, messages: [{ role: 'system', content: sys }, ...msgs] }) });
+  if (!resp.ok) throw new Error('LM Studio error ' + resp.status + ' — is the LM Studio server running?');
   return aiReadSSE(resp, d => JSON.parse(d)?.choices?.[0]?.delta?.content || '', onChunk);
 }
 
@@ -421,7 +470,7 @@ function renderMd(text) {
 Object.assign(window, {
   aiCfgInit, aiCfgSetProvider, aiCfgKeyBlur, aiCfgApply, aiCfgTest,
   aiLoadModels, aiHandleModelsReply, aiHandleConfigured,
-  aiOllamaManualSync, aiOllamaProbe, aiRefreshModels, aiToggleVis,
+  aiOllamaManualSync, aiOllamaProbe, aiLMStudioProbe, aiRefreshModels, aiToggleVis,
   sendCopilotMessage, handleCopilotReply, quickPrompt,
   toggleScreenCtx, copilotKeydown, copilotResize, dlMacro,
 });
