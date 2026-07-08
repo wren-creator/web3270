@@ -282,14 +282,27 @@ export function sshClearSplitPane() {
 }
 
 export async function sshSaveHost() {
+  const statusEl = document.getElementById('sshSaveHostStatus');
+  const setStatus = (msg, ok) => { if (statusEl) { statusEl.textContent = msg; statusEl.style.color = ok ? '#3a9a6a' : '#c0392b'; } };
   const id   = document.getElementById('sshNewId')?.value.trim();
   const name = document.getElementById('sshNewName')?.value.trim();
   const host = document.getElementById('sshNewHost')?.value.trim();
   const port = parseInt(document.getElementById('sshNewPort')?.value) || 22;
   const user = document.getElementById('sshNewUser')?.value.trim() || '';
-  if (!id || !host) return;
-  await fetch('/api/ssh-hosts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, name: name || id, host, port, user }) });
-  await sshLoadHosts();
+  if (!id || !host) { setStatus('id and host are required.', false); return; }
+  try {
+    const res = await fetch('/api/ssh-hosts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, name: name || id, host, port, user }) });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); setStatus(e.error || `Save failed (${res.status}).`, false); return; }
+    await sshLoadHosts();
+    const sel = document.getElementById('sshHostSelect');
+    if (sel) sel.value = id;
+    setStatus(`Saved "${name || id}".`, true);
+    ['sshNewId', 'sshNewName', 'sshNewHost', 'sshNewUser'].forEach(f => { const el = document.getElementById(f); if (el) el.value = ''; });
+    const portEl = document.getElementById('sshNewPort');
+    if (portEl) portEl.value = '22';
+  } catch (err) {
+    setStatus(`Save failed: ${err.message}`, false);
+  }
 }
 
 export function sshEditHost() {
@@ -305,6 +318,8 @@ export function sshEditHost() {
   document.getElementById('sshNewUser').value = h.user || '';
   const details = document.getElementById('sshAddHostDetails');
   if (details) details.open = true;
+  const statusEl = document.getElementById('sshSaveHostStatus');
+  if (statusEl) statusEl.textContent = '';
 }
 
 export async function sshDeleteHost() {
