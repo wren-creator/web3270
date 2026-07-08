@@ -124,6 +124,19 @@ Port guide:
 
 **tn3270e** — set `false` only if your mainframe does not support TN3270E extended protocol negotiation. Default is `true`. See `lpars.txt.example` for full column documentation.
 
+### SSH hosts
+
+SSH host profiles follow the same shipped/private split as LPARs and are merged at startup (user entries take precedence):
+
+| File | Tracked in git | Purpose |
+|---|---|---|
+| `ssh-hosts.shipped.txt` | ✅ Yes | Built-in demo SSH hosts. Ships with the repo. |
+| `ssh-hosts.txt` | ❌ No (gitignored) | Your private SSH hosts. Never committed. Bind-mounted into the container so saves survive rebuilds. |
+
+Hosts can be added, edited, and deleted from the SSH Connect modal — changes are written to `ssh-hosts.txt` immediately (no restart). Passwords are **never** stored; they are prompted at connect time.
+
+> **Fresh clone:** because `ssh-hosts.txt` is gitignored, a new checkout must create it before the first `docker compose up`, otherwise Docker creates a *directory* at the bind-mount path. Run `cp ssh-hosts.txt.example ssh-hosts.txt` once. (`start.sh` seeds this automatically.)
+
 ---
 
 ## Project Structure
@@ -138,6 +151,9 @@ Bridge_server/
 ├── lpars.shipped.txt          ← Built-in demo LPAR profiles (tracked in git)
 ├── lpars.txt                  ← Your private LPAR profiles (gitignored, never committed)
 ├── lpars.txt.example          ← Full column documentation and examples
+├── ssh-hosts.shipped.txt      ← Built-in demo SSH hosts (tracked in git)
+├── ssh-hosts.txt              ← Your private SSH hosts (gitignored, bind-mounted)
+├── ssh-hosts.txt.example      ← Template for fresh clones
 ├── Dockerfile
 ├── docker-compose.yml
 ├── start.sh / start.ps1       ← Start bridge (prompts for port on first run)
