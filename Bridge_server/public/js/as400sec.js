@@ -24,7 +24,10 @@
 
 import { state } from './state.js';
 import { saveAs } from './utils.js';
-import { parseProfileNames, parseLabelValue, parseSpecialAuths, evaluateProfile } from './as400sec-parse.js';
+import {
+  parseProfileNames, parseLabelValue, parseSpecialAuths, evaluateProfile,
+  parseSysvals, evaluateSysval, parseObjects, evaluateObject,
+} from './as400sec-parse.js';
 
 // ── Screen / transport helpers ─────────────────────────────────────────────
 function _screenLines(msg) {
@@ -53,138 +56,177 @@ function _fillFirstInput(text) {
   return true;
 }
 
-// ── State machine ───────────────────────────────────────────────────────────
-let as400 = {
-  running: false,
-  tool: null,
-  expecting: null,   // 'LIST' | 'MENU' | 'DETAIL' — the only screen we act on
-  names: [],
-  idx: 0,
-  results: [],
+// ── Per-tool definitions ────────────────────────────────────────────────────
+// Each tool has DOM ids for its button/status/output, the command it issues,
+// the list-screen title it waits for, and the columns its result table renders.
+const TOOLS = {
+  USRPRF: { cmd: 'WRKUSRPRF', title: 'Work with User Profiles', ids: 'Usrprf' },
+  SYSVAL: { cmd: 'WRKSYSVAL', title: 'Work with System Values', ids: 'Sysval' },
+  OBJ:    { cmd: 'WRKOBJ',    title: 'Work with Objects',       ids: 'Obj' },
 };
+
+// Persisted results per tool (so all three tables/CSV survive across scans).
+const RESULTS = { USRPRF: [], SYSVAL: [], OBJ: [] };
+
+// ── State machine ───────────────────────────────────────────────────────────
+let as400 = { running: false, tool: null, expecting: null, names: [], idx: 0 };
 
 export function as400OnScreen(msg) {
   if (!as400.running) return;
   const lines = _screenLines(msg);
   const text  = lines.join('\n');
+  const tool  = as400.tool;
+  const T = TOOLS[tool];
+  if (!T) return;
 
-  if (as400.tool !== 'USRPRF') return;
-
-  // WRKUSRPRF list → collect profile names, then F3 back to the menu.
-  if (as400.expecting === 'LIST' && text.includes('Work with User Profiles')) {
-    as400.names = parseProfileNames(lines);
-    if (!as400.names.length) {
-      _status('No user profiles discovered on the WRKUSRPRF list.', 'error');
-      _finish();
+  // Every tool starts by waiting for its list screen.
+  if (as400.expecting === 'LIST' && text.includes(T.title)) {
+    if (tool === 'USRPRF') {
+      // Profiles need a per-profile DSPUSRPRF drill-down (see file header).
+      as400.names = parseProfileNames(lines);
+      if (!as400.names.length) { _status(tool, 'No user profiles discovered.', 'error'); _finish(); return; }
+      as400.idx = 0;
+      as400.expecting = 'MENU';
+      _pressF3();
       return;
     }
-    as400.idx = 0;
-    as400.results = [];
-    as400.expecting = 'MENU';
+    // SYSVAL / OBJ: everything needed is on the one list screen.
+    if (tool === 'SYSVAL') {
+      RESULTS.SYSVAL = parseSysvals(lines).map(sv => {
+        const { risk, rec } = evaluateSysval(sv.name, sv.value);
+        return { name: sv.name, value: sv.value, risk, detail: rec };
+      });
+    } else {
+      RESULTS.OBJ = parseObjects(lines).map(o => {
+        const { risk, finding } = evaluateObject(o);
+        return { name: `${o.lib}/${o.name}`, value: o.publicAuth, owner: o.owner, risk, detail: finding };
+      });
+    }
+    _render(tool);
+    const n = RESULTS[tool].length;
+    _status(tool, n ? `Done — ${n} item(s) analyzed.` : 'Nothing parsed from the list.', n ? 'success' : 'error');
+    as400.expecting = 'MENU';   // F3 back to leave a clean menu, then finish
     _pressF3();
     return;
   }
 
-  // Back on a menu (command line present) → drive the next DSPUSRPRF, or finish.
-  if (as400.expecting === 'MENU' && text.includes('Selection or command')) {
+  // USRPRF only: bounce through the menu issuing each DSPUSRPRF.
+  if (tool === 'USRPRF' && as400.expecting === 'MENU' && text.includes('Selection or command')) {
     if (as400.idx < as400.names.length) {
       const name = as400.names[as400.idx];
-      _status(`Auditing ${as400.idx + 1}/${as400.names.length}: ${name}…`);
+      _status(tool, `Auditing ${as400.idx + 1}/${as400.names.length}: ${name}…`);
       as400.expecting = 'DETAIL';
       _fillFirstInput(`DSPUSRPRF USRPRF(${name})`);
       _pressEnter();
     } else {
-      _render();
-      _status(`Done — ${as400.results.length} profile(s) audited.`, 'success');
+      _render(tool);
+      _status(tool, `Done — ${RESULTS.USRPRF.length} profile(s) audited.`, 'success');
       _finish();
     }
     return;
   }
 
-  // DSPUSRPRF detail → parse, classify, then Enter back to the menu.
-  if (as400.expecting === 'DETAIL' && text.includes('Display User Profile')) {
+  // SYSVAL / OBJ: the F3 after rendering lands back on the menu → finish.
+  if (tool !== 'USRPRF' && as400.expecting === 'MENU' && text.includes('Selection or command')) {
+    _finish();
+    return;
+  }
+
+  // USRPRF DSPUSRPRF detail → parse, classify, then Enter back to the menu.
+  if (tool === 'USRPRF' && as400.expecting === 'DETAIL' && text.includes('Display User Profile')) {
     const name       = as400.names[as400.idx];
     const status     = parseLabelValue(lines, 'Status');
-    const lmtCpb      = parseLabelValue(lines, 'Limit capabilities');
+    const lmtCpb     = parseLabelValue(lines, 'Limit capabilities');
     const auths      = parseSpecialAuths(text);
     const defaultPwd = text.includes('password matches profile name');
     const { risk, finding } = evaluateProfile({ status, lmtCpb, auths, defaultPwd });
 
-    as400.results.push({ profile: name, status, lmtCpb, auths: auths.join(' '), risk, finding });
-    _render();
+    RESULTS.USRPRF.push({ name, status, value: auths.join(' '), risk, detail: finding });
+    _render(tool);
 
     as400.idx++;
     as400.expecting = 'MENU';
     _pressEnter();
-    return;
   }
 }
 
 function _finish() {
-  as400.running = false;
-  as400.expecting = null;
-  const btn = document.getElementById('as400UsrprfBtn');
+  const btn = document.getElementById('as400' + (TOOLS[as400.tool]?.ids || '') + 'Btn');
   if (btn) btn.disabled = false;
+  as400 = { running: false, tool: null, expecting: null, names: [], idx: 0 };
 }
 
 // ── UI ──────────────────────────────────────────────────────────────────────
-function _status(text, type = 'info') {
-  const el = document.getElementById('as400UsrprfStatus');
+function _status(tool, text, type = 'info') {
+  const el = document.getElementById('as400' + TOOLS[tool].ids + 'Status');
   if (!el) return;
   el.textContent = text;
   el.style.color = type === 'error' ? '#e06060' : type === 'success' ? '#3a8a3a' : 'var(--text-muted)';
 }
 
-const RISK_C = { CRITICAL: '#e06060', HIGH: '#e0a060', MEDIUM: '#d0c060', OK: '#3a6a3a' };
-const RISK_ORDER = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, OK: 3 };
+const RISK_C = { CRITICAL: '#e06060', HIGH: '#e0a060', MEDIUM: '#d0c060', LOW: '#9a9a5a', INFO: '#666', OK: '#3a6a3a' };
+const RISK_ORDER = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3, INFO: 4, OK: 5 };
 
-function _render() {
-  const el = document.getElementById('as400UsrprfOut');
+// Column headers per tool for the first two data columns (risk/detail are shared).
+const COLS = {
+  USRPRF: ['PROFILE', 'AUTHORITIES'],
+  SYSVAL: ['SYSTEM VALUE', 'CURRENT'],
+  OBJ:    ['OBJECT', '*PUBLIC'],
+};
+
+function _render(tool) {
+  const el = document.getElementById('as400' + TOOLS[tool].ids + 'Out');
   if (!el) return;
-  if (!as400.results.length) { el.innerHTML = ''; return; }
+  const rows = RESULTS[tool];
+  if (!rows.length) { el.innerHTML = ''; return; }
   const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
-  const sorted = [...as400.results].sort((a, b) => (RISK_ORDER[a.risk] ?? 4) - (RISK_ORDER[b.risk] ?? 4));
+  const [c1, c2] = COLS[tool];
+  const sorted = [...rows].sort((a, b) => (RISK_ORDER[a.risk] ?? 6) - (RISK_ORDER[b.risk] ?? 6));
+  const th = t => `<th style="text-align:left;padding:2px 4px;font-weight:normal">${t}</th>`;
   el.innerHTML =
     '<table style="width:100%;border-collapse:collapse;font-size:10px;margin-top:4px">' +
-    '<tr style="color:var(--text-muted)">' +
-      '<th style="text-align:left;padding:2px 4px;font-weight:normal">PROFILE</th>' +
-      '<th style="text-align:left;padding:2px 4px;font-weight:normal">STATUS</th>' +
-      '<th style="text-align:left;padding:2px 4px;font-weight:normal">AUTHORITIES</th>' +
-      '<th style="text-align:left;padding:2px 4px;font-weight:normal">RISK</th>' +
-      '<th style="text-align:left;padding:2px 4px;font-weight:normal">FINDING</th></tr>' +
+    `<tr style="color:var(--text-muted)">${th(c1)}${th(c2)}${th('RISK')}${th('DETAIL')}</tr>` +
     sorted.map(r =>
       `<tr>` +
-      `<td style="padding:2px 4px;color:#ccc;font-family:'IBM Plex Mono',monospace">${esc(r.profile)}</td>` +
-      `<td style="padding:2px 4px;color:${r.status === '*DISABLED' ? '#888' : '#aaa'};font-size:9px">${esc(r.status)}</td>` +
-      `<td style="padding:2px 4px;color:#888;font-family:'IBM Plex Mono',monospace;font-size:9px">${esc(r.auths || '*NONE')}</td>` +
+      `<td style="padding:2px 4px;color:#ccc;font-family:'IBM Plex Mono',monospace;font-size:9px">${esc(r.name)}</td>` +
+      `<td style="padding:2px 4px;color:#999;font-family:'IBM Plex Mono',monospace;font-size:9px">${esc(r.value || '*NONE')}</td>` +
       `<td style="padding:2px 4px;color:${RISK_C[r.risk] || '#999'};font-weight:${r.risk === 'CRITICAL' ? '700' : 'normal'}">${esc(r.risk)}</td>` +
-      `<td style="padding:2px 4px;color:#999;font-size:9px">${esc(r.finding)}</td></tr>`
+      `<td style="padding:2px 4px;color:#999;font-size:9px">${esc(r.detail)}</td></tr>`
     ).join('') + '</table>';
 }
 
-export function startAs400UserScan() {
+function _start(tool) {
   if (as400.running) return;
-  const scr = state.liveScreen;
-  if (!scr || !(state.liveScreenText || '').includes('Selection or command')) {
-    _status('Sign on and navigate to an AS/400 menu (with a command line) first.', 'error');
+  if (!state.liveScreen || !(state.liveScreenText || '').includes('Selection or command')) {
+    _status(tool, 'Sign on and navigate to an AS/400 menu (with a command line) first.', 'error');
     return;
   }
-  as400 = { running: true, tool: 'USRPRF', expecting: 'LIST', names: [], idx: 0, results: [] };
-  const btn = document.getElementById('as400UsrprfBtn');
+  RESULTS[tool] = [];
+  _render(tool);
+  as400 = { running: true, tool, expecting: 'LIST', names: [], idx: 0 };
+  const btn = document.getElementById('as400' + TOOLS[tool].ids + 'Btn');
   if (btn) btn.disabled = true;
-  _status('Issuing WRKUSRPRF…');
-  _fillFirstInput('WRKUSRPRF');
+  _status(tool, `Issuing ${TOOLS[tool].cmd}…`);
+  _fillFirstInput(TOOLS[tool].cmd);
   _pressEnter();
 }
 
+export function startAs400UserScan()   { _start('USRPRF'); }
+export function startAs400SysvalScan() { _start('SYSVAL'); }
+export function startAs400ObjScan()    { _start('OBJ'); }
+
 export function as400ExportCsv() {
-  if (!as400.results.length) return;
   const ts = new Date().toISOString();
-  const rows = [['tool', 'profile', 'status', 'authorities', 'risk', 'finding', 'timestamp']];
-  for (const r of as400.results)
-    rows.push(['usrprf-enum', r.profile, r.status, r.auths, r.risk, r.finding, ts]);
+  const rows = [['tool', 'item', 'value', 'risk', 'detail', 'timestamp']];
+  const add = (tool, label) => RESULTS[tool].forEach(r => rows.push([label, r.name, r.value, r.risk, r.detail, ts]));
+  add('SYSVAL', 'sysval-analyzer');
+  add('USRPRF', 'usrprf-enum');
+  add('OBJ',    'object-scanner');
+  if (rows.length === 1) return;
   const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-  saveAs(new Blob([csv], { type: 'text/csv' }), `as400-usrprf-${ts.slice(0, 19).replace(/:/g, '-')}.csv`);
+  saveAs(new Blob([csv], { type: 'text/csv' }), `as400-audit-${ts.slice(0, 19).replace(/:/g, '-')}.csv`);
 }
 
-Object.assign(window, { as400OnScreen, startAs400UserScan, as400ExportCsv });
+Object.assign(window, {
+  as400OnScreen, startAs400UserScan, startAs400SysvalScan, startAs400ObjScan, as400ExportCsv,
+});
