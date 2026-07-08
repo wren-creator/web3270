@@ -22,6 +22,7 @@ import './syscheck.js';
 import './cics.js';
 import './negotiate.js';
 import './sdsf.js';
+import './as400sec.js';
 import './walkthrough.js';
 
 function tick() {

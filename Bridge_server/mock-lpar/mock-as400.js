@@ -226,10 +226,10 @@ const MENUS = {
     title: 'GENERAL SYSTEM TASKS',
     parent: 'MAIN',
     options: [
-      { num: '1', label: 'Work with active jobs' },
+      { num: '1', label: 'Work with active jobs',           run: 'WRKACTJOB' },
       { num: '2', label: 'Work with printers' },
       { num: '3', label: 'Display system status' },
-      { num: '4', label: 'Work with subsystems' },
+      { num: '4', label: 'Work with subsystems',            run: 'WRKSBS' },
       { num: '5', label: 'Work with system values',         run: 'WRKSYSVAL' },
       { num: '6', label: 'Work with user profiles',         run: 'WRKUSRPRF' },
       { num: '7', label: 'Work with objects (public auth)', run: 'WRKOBJ' },
@@ -318,6 +318,72 @@ const OBJECTS = [
     priv: [ { user: '*PUBLIC', auth: '*USE' } ] },
 ];
 
+// ── Wave 2 surfaces ────────────────────────────────────────────────
+// Network attributes (DSPNETA). Weak inbound-request settings are remote
+// job / command execution vectors.
+const NETA = {
+  SYSNAME:   { value: SYSNAME,   text: 'Current system name',            weak: false },
+  LCLLOCNAME:{ value: 'MOCKLOC', text: 'Local location name',            weak: false },
+  JOBACN:    { value: '*FILE',   text: 'Job action (inbound requests)',  weak: true,
+               note: '*FILE runs submitted job streams automatically — remote job/command execution. Use *REJECT or *SEARCH.' },
+  DDMACC:    { value: '*ALL',    text: 'DDM/DRDA request access',        weak: true,
+               note: '*ALL lets any remote system run DDM/DRDA (remote SQL and commands). Restrict with a DDM exit program.' },
+  PCSACC:    { value: '*REGFAC', text: 'Client request access',          weak: true,
+               note: '*REGFAC allows Client Access host-server functions broadly; gate them with registered exit programs.' },
+  ALWANYNET: { value: '*ANYNET', text: 'Allow AnyNet support',           weak: true,
+               note: '*ANYNET permits APPC-over-TCP tunnelling — widens the remote attack surface. Use *NONE unless required.' },
+  ALRSTS:    { value: '*ON',     text: 'Alert status',                   weak: false },
+};
+
+// Job descriptions (WRKJOBD/DSPJOBD). A JOBD that names a real USER() and is
+// usable by *PUBLIC lets any user SBMJOB and run code as that user — the
+// classic IBM i privilege-escalation path when the user is privileged.
+const JOBDS = [
+  { name: 'QDFTJOBD', lib: 'QGPL',   user: '*RQD',     publicAuth: '*USE',     jobq: 'QBATCH', rtgdta: 'QCMDI', text: 'Default job description' },
+  { name: 'QBATCH',   lib: 'QGPL',   user: '*RQD',     publicAuth: '*USE',     jobq: 'QBATCH', rtgdta: 'QCMDB', text: 'Batch job description' },
+  { name: 'APPJOBD',  lib: 'APPLIB', user: 'QSECOFR',  publicAuth: '*USE',     jobq: 'QBATCH', rtgdta: 'QCMDB', text: 'Application batch submit' },
+  { name: 'WEBJOBD',  lib: 'APPLIB', user: 'APPADMIN', publicAuth: '*CHANGE',  jobq: 'QBATCH', rtgdta: 'QCMDB', text: 'Web backend jobs' },
+  { name: 'OPSJOBD',  lib: 'QGPL',   user: 'QSYSOPR',  publicAuth: '*EXCLUDE', jobq: 'QBATCH', rtgdta: 'QCMDB', text: 'Operations jobs' },
+];
+
+// Authorization lists (WRKAUTL/DSPAUTL). Over-permissive *PUBLIC on an authl
+// cascades to every object it secures.
+const AUTLS = [
+  { name: 'SECAUTL',  owner: 'QSECOFR',  publicAuth: '*EXCLUDE', text: 'Security config objects',
+    users: [ { user: '*PUBLIC', auth: '*EXCLUDE' }, { user: 'APPADMIN', auth: '*USE' } ],
+    secured: [ 'APPLIB/CONFIG' ] },
+  { name: 'PAYAUTL',  owner: 'APPADMIN', publicAuth: '*CHANGE',  text: 'Payroll objects',
+    users: [ { user: '*PUBLIC', auth: '*CHANGE' }, { user: 'JSMITH', auth: '*ALL' } ],
+    secured: [ 'PAYROLL/EMPMAST', 'QSYS/PAYROLL' ] },
+  { name: 'QSYSAUTL', owner: 'QSYS',     publicAuth: '*USE',     text: 'System shared objects',
+    users: [ { user: '*PUBLIC', auth: '*USE' } ],
+    secured: [ 'QSYS/QGPL' ] },
+];
+
+// Active jobs (WRKACTJOB). Jobs running under a privileged profile are the
+// interesting finding — an *ALLOBJ batch job or a broadly-reachable host server.
+const ACTJOBS = [
+  { sbs: 'QINTER',  job: 'DSP01',      user: 'JSMITH',   type: 'INT', func: 'CMD-WRKACTJOB', status: 'RUN' },
+  { sbs: 'QBATCH',  job: 'NIGHTLYRUN', user: 'APPADMIN', type: 'BCH', func: 'PGM-PAYRPT',    status: 'ACTIVE' },
+  { sbs: 'QSYSWRK', job: 'QZDASOINIT', user: 'QUSER',    type: 'PJ',  func: 'PGM-QZDASO',    status: 'ACTIVE' },
+  { sbs: 'QCMN',    job: 'QRWTSRVR',   user: 'QUSER',    type: 'PJ',  func: '*',             status: 'ACTIVE' },
+  { sbs: 'QSYSWRK', job: 'MAINTJOB',   user: 'QSECOFR',  type: 'BCH', func: 'PGM-MAINT',     status: 'ACTIVE' },
+];
+
+// Subsystems (WRKSBS) — mostly informational context for the active-job view.
+const SBS = [
+  { name: 'QINTER',  status: 'ACTIVE', maxJobs: '*NOMAX', text: 'Interactive subsystem' },
+  { name: 'QBATCH',  status: 'ACTIVE', maxJobs: '*NOMAX', text: 'Batch subsystem' },
+  { name: 'QSYSWRK', status: 'ACTIVE', maxJobs: '*NOMAX', text: 'System work subsystem' },
+  { name: 'QCMN',    status: 'ACTIVE', maxJobs: '*NOMAX', text: 'Communications subsystem' },
+  { name: 'QTCP',    status: 'ACTIVE', maxJobs: '*NOMAX', text: 'TCP/IP subsystem' },
+];
+
+// Which user names denote a privileged profile (for red-highlighting jobs /
+// JOBDs that run as them). Derived from USRPRFS so it stays in sync.
+const PRIV_USERS = new Set(USRPRFS.filter(p =>
+  p.specialAuth.includes('*ALLOBJ') || p.specialAuth.includes('*SECADM')).map(p => p.name));
+
 // ── CL command interpreter ─────────────────────────────────────────
 // Parses a command typed on any "Selection or command" / panel command
 // line into a navigation result the connection state machine applies.
@@ -361,6 +427,24 @@ function runCommand(raw) {
       if (idx === -1) return { type: 'error', message: `CPF9801 - Object ${obj} not found.` };
       return { type: 'detail', screen: 'OBJ_DETAIL', target: idx };
     }
+    case 'DSPNETA': return { type: 'detail', screen: 'NETA', target: null };
+    case 'WRKJOBD': return { type: 'screen', screen: 'JOBD_LIST' };
+    case 'DSPJOBD': {
+      const jobd = params.JOBD;
+      if (!jobd) return { type: 'error', message: 'CPD0043 - Keyword JOBD required for DSPJOBD.' };
+      const nm = jobd.includes('/') ? jobd.split('/')[1] : jobd;
+      if (!JOBDS.find(j => j.name === nm)) return { type: 'error', message: `CPF9801 - Object ${jobd} not found.` };
+      return { type: 'detail', screen: 'JOBD_DETAIL', target: nm };
+    }
+    case 'WRKAUTL': return { type: 'screen', screen: 'AUTL_LIST' };
+    case 'DSPAUTL': {
+      const name = params.AUTL;
+      if (!name) return { type: 'error', message: 'CPD0043 - Keyword AUTL required for DSPAUTL.' };
+      if (!AUTLS.find(a => a.name === name)) return { type: 'error', message: `CPF2289 - Authorization list ${name} not found.` };
+      return { type: 'detail', screen: 'AUTL_DETAIL', target: name };
+    }
+    case 'WRKACTJOB': return { type: 'screen', screen: 'ACTJOB_LIST' };
+    case 'WRKSBS':     return { type: 'screen', screen: 'SBS_LIST' };
     case 'DSPMSG':  return { type: 'messages' };
     case 'SIGNOFF': return { type: 'signoff' };
     default:
@@ -383,6 +467,24 @@ function pickOption(runs, startRow, count) {
 // line), the panel command line sits at LIST_CMD_ROW.
 const LIST_START_ROW = 6;
 const LIST_CMD_ROW   = 21;
+
+// Which "Work with" list panels exist, how many rows each has, and (if the
+// panel supports 5=Display) how a picked row maps to a detail screen + target.
+// list-only panels set detail:null. The connection state machine drives all of
+// this generically, so a new panel is just an entry here + a screen builder.
+const LIST_META = {
+  SYSVAL_LIST: { count: () => SYSVAL_KEYS.length, detail: i => ['SYSVAL_DETAIL', SYSVAL_KEYS[i]] },
+  USRPRF_LIST: { count: () => USRPRFS.length,     detail: i => ['USRPRF_DETAIL', USRPRFS[i].name] },
+  OBJ_LIST:    { count: () => OBJECTS.length,      detail: i => ['OBJ_DETAIL', i] },
+  JOBD_LIST:   { count: () => JOBDS.length,        detail: i => ['JOBD_DETAIL', JOBDS[i].name] },
+  AUTL_LIST:   { count: () => AUTLS.length,        detail: i => ['AUTL_DETAIL', AUTLS[i].name] },
+  ACTJOB_LIST: { count: () => ACTJOBS.length,      detail: null },
+  SBS_LIST:    { count: () => SBS.length,           detail: null },
+};
+// Detail/display screens where Enter/F3/F12 all navigate back one level.
+const DETAIL_SCREENS = new Set([
+  'SYSVAL_DETAIL', 'USRPRF_DETAIL', 'OBJ_DETAIL', 'NETA', 'JOBD_DETAIL', 'AUTL_DETAIL',
+]);
 
 const AID_F3  = 0x33;
 const AID_F12 = 0x3C;
@@ -627,6 +729,161 @@ function screenObjDetail(idx) {
   return wrapPanel(fields, { row: 22, col: 44 });
 }
 
+// ── Wave 2 panels ────────────────────────────────────────────────────
+function screenNetaDetail() {
+  const fields = [
+    { row: 0, col: 27, text: 'Display Network Attributes', input: false },
+    { row: 0, col: 68, text: SYSNAME, input: false },
+  ];
+  let r = 2;
+  for (const [name, a] of Object.entries(NETA)) {
+    fields.push({ row: r, col: 2,  text: `${name.padEnd(11, ' ')}. . . . . . . :`, input: false });
+    fields.push({ row: r, col: 33, text: a.value, input: false, attr: authAttr(a.weak) });
+    r++;
+  }
+  fields.push({ row: 22, col: 2,  text: 'Press Enter to continue', input: false });
+  fields.push({ row: 23, col: 2,  text: 'F3=Exit   F12=Cancel', input: false });
+  fields.push({ row: 22, col: 44, text: '', input: true, length: 1 });
+  return wrapPanel(fields, { row: 22, col: 44 });
+}
+
+function screenJobdList(ctx) {
+  const fields = [
+    { row: 0, col: 27, text: 'Work with Job Descriptions', input: false },
+    { row: 0, col: 68, text: SYSNAME, input: false },
+    { row: 2, col: 2,  text: 'Type options, press Enter.', input: false },
+    { row: 3, col: 4,  text: '5=Display', input: false },
+    { row: 5, col: 2,  text: 'Opt  Job Desc    Library    User         *PUBLIC', input: false },
+  ];
+  JOBDS.forEach((j, idx) => {
+    const row = LIST_START_ROW + idx;
+    const runsAs = j.user !== '*RQD';
+    const weak = runsAs && ['*USE', '*CHANGE', '*ALL'].includes(j.publicAuth);
+    fields.push({ row, col: 2,  text: '', input: true, length: 2 });
+    fields.push({ row, col: 6,  text: j.name.padEnd(10, ' '), input: false });
+    fields.push({ row, col: 17, text: j.lib.padEnd(10, ' '), input: false });
+    fields.push({ row, col: 28, text: j.user.padEnd(11, ' '), input: false, attr: authAttr(runsAs) });
+    fields.push({ row, col: 40, text: j.publicAuth, input: false, attr: authAttr(weak) });
+  });
+  listTrailer(fields, ctx.message);
+  return wrapPanel(fields, { row: LIST_START_ROW, col: 2 });
+}
+
+function screenJobdDetail(name) {
+  const j = JOBDS.find(x => x.name === name);
+  if (!j) return screenStub('JOB DESCRIPTION NOT FOUND', { user: '' });
+  const runsAs = j.user !== '*RQD';
+  const usable = ['*USE', '*CHANGE', '*ALL'].includes(j.publicAuth);
+  const fields = [
+    { row: 0,  col: 28, text: 'Display Job Description', input: false },
+    { row: 2,  col: 2,  text: `Job description  . . . . . :   ${j.name}`, input: false },
+    { row: 3,  col: 2,  text: `Library  . . . . . . . . . :   ${j.lib}`, input: false },
+    { row: 4,  col: 2,  text: `Text . . . . . . . . . . . :   ${j.text}`, input: false },
+    { row: 6,  col: 2,  text: 'User . . . . . . . . . . . :', input: false },
+    { row: 6,  col: 33, text: j.user, input: false, attr: authAttr(runsAs) },
+    { row: 7,  col: 2,  text: `Job queue  . . . . . . . . :   ${j.jobq}`, input: false },
+    { row: 8,  col: 2,  text: `Routing data . . . . . . . :   ${j.rtgdta}`, input: false },
+    { row: 10, col: 2,  text: '*PUBLIC authority  :', input: false },
+    { row: 10, col: 24, text: j.publicAuth, input: false, attr: authAttr(runsAs && usable) },
+  ];
+  if (runsAs && usable) {
+    fields.push({ row: 12, col: 2, text: `*** WARNING: *PUBLIC can SBMJOB this JOBD to run as ${j.user} ***`, input: false, attr: ATTR_RED });
+  }
+  fields.push({ row: 22, col: 2,  text: 'Press Enter to continue', input: false });
+  fields.push({ row: 23, col: 2,  text: 'F3=Exit   F12=Cancel', input: false });
+  fields.push({ row: 22, col: 44, text: '', input: true, length: 1 });
+  return wrapPanel(fields, { row: 22, col: 44 });
+}
+
+function screenAutlList(ctx) {
+  const fields = [
+    { row: 0, col: 28, text: 'Work with Authorization Lists', input: false },
+    { row: 0, col: 68, text: SYSNAME, input: false },
+    { row: 2, col: 2,  text: 'Type options, press Enter.', input: false },
+    { row: 3, col: 4,  text: '5=Display', input: false },
+    { row: 5, col: 2,  text: 'Opt  Auth List   Owner      *PUBLIC    Text', input: false },
+  ];
+  AUTLS.forEach((a, idx) => {
+    const row = LIST_START_ROW + idx;
+    const weak = a.publicAuth === '*ALL' || a.publicAuth === '*CHANGE';
+    fields.push({ row, col: 2,  text: '', input: true, length: 2 });
+    fields.push({ row, col: 6,  text: a.name.padEnd(11, ' '), input: false });
+    fields.push({ row, col: 17, text: a.owner.padEnd(10, ' '), input: false });
+    fields.push({ row, col: 28, text: a.publicAuth.padEnd(10, ' '), input: false, attr: authAttr(weak) });
+    fields.push({ row, col: 39, text: a.text.slice(0, 30), input: false });
+  });
+  listTrailer(fields, ctx.message);
+  return wrapPanel(fields, { row: LIST_START_ROW, col: 2 });
+}
+
+function screenAutlDetail(name) {
+  const a = AUTLS.find(x => x.name === name);
+  if (!a) return screenStub('AUTHORIZATION LIST NOT FOUND', { user: '' });
+  const weak = a.publicAuth === '*ALL' || a.publicAuth === '*CHANGE';
+  const fields = [
+    { row: 0, col: 28, text: 'Display Authorization List', input: false },
+    { row: 2, col: 2,  text: `Authorization list :   ${a.name}`, input: false },
+    { row: 3, col: 2,  text: `Owner  . . . . . . :   ${a.owner}`, input: false },
+    { row: 4, col: 2,  text: '*PUBLIC authority  :', input: false },
+    { row: 4, col: 24, text: a.publicAuth, input: false, attr: authAttr(weak) },
+    { row: 6, col: 2,  text: 'User          Authority', input: false },
+  ];
+  a.users.forEach((u, i) => {
+    const w = u.user === '*PUBLIC' && (u.auth === '*ALL' || u.auth === '*CHANGE');
+    fields.push({ row: 7 + i, col: 2,  text: u.user.padEnd(12, ' '), input: false });
+    fields.push({ row: 7 + i, col: 16, text: u.auth, input: false, attr: w ? ATTR_RED : ATTR_GREEN });
+  });
+  let sr = 7 + a.users.length + 1;
+  fields.push({ row: sr++, col: 2, text: 'Secured objects:', input: false });
+  a.secured.forEach(obj => fields.push({ row: sr++, col: 4, text: obj, input: false, attr: weak ? ATTR_RED : ATTR_WHITE }));
+  if (weak) fields.push({ row: sr + 1, col: 2, text: `*** *PUBLIC ${a.publicAuth} cascades to all secured objects ***`, input: false, attr: ATTR_RED });
+  fields.push({ row: 22, col: 2,  text: 'Press Enter to continue', input: false });
+  fields.push({ row: 23, col: 2,  text: 'F3=Exit   F12=Cancel', input: false });
+  fields.push({ row: 22, col: 44, text: '', input: true, length: 1 });
+  return wrapPanel(fields, { row: 22, col: 44 });
+}
+
+function screenActjobList(ctx) {
+  const fields = [
+    { row: 0, col: 30, text: 'Work with Active Jobs', input: false },
+    { row: 0, col: 68, text: SYSNAME, input: false },
+    { row: 2, col: 2,  text: 'Type options, press Enter.', input: false },
+    { row: 5, col: 2,  text: 'Opt  Job         Subsystem   User         Type  Function      Status', input: false },
+  ];
+  ACTJOBS.forEach((j, idx) => {
+    const row = LIST_START_ROW + idx;
+    const priv = PRIV_USERS.has(j.user);
+    fields.push({ row, col: 2,  text: '', input: true, length: 2 });
+    fields.push({ row, col: 6,  text: j.job.slice(0, 10).padEnd(10, ' '), input: false });
+    fields.push({ row, col: 17, text: j.sbs.padEnd(10, ' '), input: false });
+    fields.push({ row, col: 28, text: j.user.padEnd(11, ' '), input: false, attr: authAttr(priv) });
+    fields.push({ row, col: 40, text: j.type.padEnd(5, ' '), input: false });
+    fields.push({ row, col: 46, text: j.func.padEnd(13, ' '), input: false });
+    fields.push({ row, col: 60, text: j.status, input: false });
+  });
+  listTrailer(fields, ctx.message);
+  return wrapPanel(fields, { row: LIST_START_ROW, col: 2 });
+}
+
+function screenSbsList(ctx) {
+  const fields = [
+    { row: 0, col: 30, text: 'Work with Subsystems', input: false },
+    { row: 0, col: 68, text: SYSNAME, input: false },
+    { row: 2, col: 2,  text: 'Type options, press Enter.', input: false },
+    { row: 5, col: 2,  text: 'Opt  Subsystem   Status     Max Active   Text', input: false },
+  ];
+  SBS.forEach((s, idx) => {
+    const row = LIST_START_ROW + idx;
+    fields.push({ row, col: 2,  text: '', input: true, length: 2 });
+    fields.push({ row, col: 6,  text: s.name.padEnd(11, ' '), input: false });
+    fields.push({ row, col: 17, text: s.status.padEnd(10, ' '), input: false });
+    fields.push({ row, col: 28, text: s.maxJobs.padEnd(12, ' '), input: false });
+    fields.push({ row, col: 41, text: s.text.slice(0, 30), input: false });
+  });
+  listTrailer(fields, ctx.message);
+  return wrapPanel(fields, { row: LIST_START_ROW, col: 2 });
+}
+
 function seedMessages(user) {
   const now = new Date();
   const date = now.toLocaleDateString('en-US');
@@ -796,6 +1053,20 @@ function handleConnection(socket) {
       ds = screenObjList({ message: menuMessage });
     } else if (screen === 'OBJ_DETAIL') {
       ds = screenObjDetail(cmdTarget);
+    } else if (screen === 'NETA') {
+      ds = screenNetaDetail();
+    } else if (screen === 'JOBD_LIST') {
+      ds = screenJobdList({ message: menuMessage });
+    } else if (screen === 'JOBD_DETAIL') {
+      ds = screenJobdDetail(cmdTarget);
+    } else if (screen === 'AUTL_LIST') {
+      ds = screenAutlList({ message: menuMessage });
+    } else if (screen === 'AUTL_DETAIL') {
+      ds = screenAutlDetail(cmdTarget);
+    } else if (screen === 'ACTJOB_LIST') {
+      ds = screenActjobList({ message: menuMessage });
+    } else if (screen === 'SBS_LIST') {
+      ds = screenSbsList({ message: menuMessage });
     } else if (MENUS[screen]) {
       ds = screenMenu(screen, { user, unreadCount, message: menuMessage });
     } else {
@@ -859,26 +1130,21 @@ function handleConnection(socket) {
     } else if (screen === 'STUB') {
       screen = returnTo;
       menuMessage = '';
-    } else if (screen === 'SYSVAL_LIST' || screen === 'USRPRF_LIST' || screen === 'OBJ_LIST') {
+    } else if (LIST_META[screen]) {
+      const meta = LIST_META[screen];
       const cmdLine = fieldAt(runs, LIST_CMD_ROW);
       if (aid === AID_F3 || aid === AID_F12) {
         goBack();
       } else if (cmdLine) {
         applyCommand(runCommand(cmdLine));
-      } else {
-        const count = screen === 'SYSVAL_LIST' ? SYSVAL_KEYS.length
-                    : screen === 'USRPRF_LIST' ? USRPRFS.length
-                    : OBJECTS.length;
-        const pick = pickOption(runs, LIST_START_ROW, count);
-        if (pick) {
-          // Any non-blank option acts as 5=Display in the mock.
-          if (screen === 'SYSVAL_LIST')      goTo('SYSVAL_DETAIL', SYSVAL_KEYS[pick.index]);
-          else if (screen === 'USRPRF_LIST') goTo('USRPRF_DETAIL', USRPRFS[pick.index].name);
-          else                               goTo('OBJ_DETAIL', pick.index);
-        }
+      } else if (meta.detail) {
+        // Any non-blank Opt acts as 5=Display in the mock.
+        const pick = pickOption(runs, LIST_START_ROW, meta.count());
+        if (pick) { const [scr, tgt] = meta.detail(pick.index); goTo(scr, tgt); }
         // bare Enter with no option typed → redraw as-is
       }
-    } else if (screen === 'SYSVAL_DETAIL' || screen === 'USRPRF_DETAIL' || screen === 'OBJ_DETAIL') {
+      // list-only panels (no meta.detail) ignore Opt and just redraw
+    } else if (DETAIL_SCREENS.has(screen)) {
       // Enter, F3, or F12 all return to the panel we came from.
       goBack();
     } else if (MENUS[screen]) {
