@@ -1,0 +1,8 @@
+# SSH host profiles for WebTerm/3270
+# Format: id, name, host/IP, port, user
+# Password is prompted at connect time — never stored here.
+#
+# Examples:
+# mock-zvm, Mock z/VM SSH, mock-zvm, 22, ibmuser
+# prod-uss, z/OS USS Production, 10.0.0.5, 22, sshuser
+# linux-gw, Linux Gateway, 192.168.1.10, 22, admin

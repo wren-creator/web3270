@@ -5,6 +5,10 @@ node_modules/
 # User macros — local data, never commit
 macros/local/
 
+# Private connection profiles — user's own hosts, never commit
+ssh-hosts.txt
+lpars.txt
+
 # Stale root-level artifacts
 macros.json
 macros/macros.json

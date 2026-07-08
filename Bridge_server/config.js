@@ -11,9 +11,8 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// ── Load SSH host profiles from ssh-hosts.txt ─────────────────────
-function loadSshHostsFile() {
-  const filePath = path.join(__dirname, 'ssh-hosts.txt');
+// ── Parse a single ssh-hosts file into profile objects ────────────
+function parseSshHostsFile(filePath) {
   if (!fs.existsSync(filePath)) return [];
   return fs.readFileSync(filePath, 'utf8')
     .split('\n')
@@ -21,8 +20,23 @@ function loadSshHostsFile() {
     .map(line => {
       const parts = line.split(',').map(s => s.trim());
       const [id, name, host, port, user] = parts;
+      if (!id) return null;
       return { id, name: name || id, host: host || id, port: parseInt(port || '22', 10), user: user || '' };
-    });
+    })
+    .filter(Boolean);
+}
+
+// ── Load SSH host profiles — merges shipped defaults + user file ──
+// ssh-hosts.shipped.txt: tracked in git, built-in demo hosts
+// ssh-hosts.txt:         gitignored, user's private hosts (bind-mounted in Docker)
+// User entries with the same id override shipped entries.
+function loadSshHostsFile() {
+  const shipped = parseSshHostsFile(path.join(__dirname, 'ssh-hosts.shipped.txt'));
+  const user    = parseSshHostsFile(path.join(__dirname, 'ssh-hosts.txt'));
+
+  // User entries override shipped entries with the same id
+  const userIds = new Set(user.map(p => p.id));
+  return [...shipped.filter(p => !userIds.has(p.id)), ...user];
 }
 
 // ── Parse a single lpars file into profile objects ────────────────
