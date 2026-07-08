@@ -172,15 +172,7 @@ async function handleConfigure(msg, ws, wsId) {
  * can be called with temporary credentials without affecting the active provider.
  */
 function loadProviderModule(name) {
-  const paths = {
-    anthropic: '../copilot/default/anthropic-default',
-    ollama:    '../copilot/auxiliary/ollama',
-    openai:    '../copilot/auxiliary/openai',
-    gemini:    '../copilot/auxiliary/gemini',
-    github:    '../copilot/auxiliary/github-models',
-    azure:     '../copilot/auxiliary/azure-openai',
-  };
-  // Use the path relative to this file
+  // Paths relative to this file
   const relPaths = {
     anthropic: './default/anthropic-default',
     ollama:    './auxiliary/ollama',
