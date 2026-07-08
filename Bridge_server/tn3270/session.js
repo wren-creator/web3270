@@ -344,7 +344,7 @@ class Tn3270Session extends EventEmitter {
     return parts.join('') + '  [nondisplay masked]';
   }
 
-  typeAt(row, col, text) {
+  typeAt(row, col, text, emit = true) {
    let addr = row * this.cols + col;
 
    // Skip past field attribute byte if cursor is on one
@@ -360,10 +360,10 @@ class Tn3270Session extends EventEmitter {
      }
    }
    this.cursorAddr = Math.min(addr + eb.length, this.rows * this.cols - 1);
-   this._emitScreen();
+   if (emit) this._emitScreen();
   }
 
-  eraseAt(row, col) {
+  eraseAt(row, col, emit = true) {
    let addr = row * this.cols + col;
    if (this.buffer[addr] && this.buffer[addr].fa !== undefined) addr++;
    if (this.buffer[addr] && this.buffer[addr].fa === undefined) {
@@ -371,6 +371,17 @@ class Tn3270Session extends EventEmitter {
      this.buffer[addr].modified = true;
    }
    this.cursorAddr = addr; // stay at same position, don't advance
+   if (emit) this._emitScreen();
+  }
+
+  // Erase from (row,col) to end of line, then type text starting there, with a
+  // single screen emit so recalled commands appear in place instead of being
+  // animated one character at a time.
+  fillField(row, col, text) {
+   const cols = this.cols || 80;
+   for (let c = col; c <= cols - 1; c++) this.eraseAt(row, c, false);
+   for (let i = 0; i < text.length; i++) this.typeAt(row, col + i, text[i], false);
+   this.moveCursor(row, col + text.length);
    this._emitScreen();
   }
 

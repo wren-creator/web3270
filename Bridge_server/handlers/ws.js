@@ -207,12 +207,9 @@ export function createWsHandler({ config, logger, sessions, Ebcdic }) {
             session.eraseAt(msg.row, msg.col);
             break;
 
-          case 'fillField': {
-            const cols = session.cols || 80;
-            for (let c = msg.col; c <= cols - 1; c++) session.eraseAt(msg.row, c);
-            for (let i = 0; i < msg.text.length; i++) session.typeAt(msg.row, msg.col + i, msg.text[i]);
+          case 'fillField':
+            session.fillField(msg.row, msg.col, msg.text);
             break;
-          }
 
           case 'sec.patchFa':
             if (typeof msg.addr === 'number' && typeof msg.fa === 'number') {
