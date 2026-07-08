@@ -258,7 +258,7 @@ class Tn5250Session extends EventEmitter {
     this.cursorAddr = Math.min(row * this.cols + col, this.rows * this.cols - 1);
   }
 
-  eraseAt(row, col) {
+  eraseAt(row, col, emit = true) {
     let addr = row * this.cols + col;
     if (this.buffer[addr] && this.buffer[addr].fa !== undefined) addr++;
     if (this.buffer[addr] && this.buffer[addr].fa === undefined) {
@@ -266,10 +266,10 @@ class Tn5250Session extends EventEmitter {
       this.buffer[addr].modified = true;
     }
     this.cursorAddr = addr;
-    this._emitScreen();
+    if (emit) this._emitScreen();
   }
 
-  typeAt(row, col, text) {
+  typeAt(row, col, text, emit = true) {
     const addr = row * this.cols + col;
     const eb = Ebcdic.fromAscii(text, this.codepage);
     for (let i = 0; i < eb.length && addr + i < this.buffer.length; i++) {
@@ -279,6 +279,16 @@ class Tn5250Session extends EventEmitter {
       }
     }
     this.cursorAddr = Math.min(addr + eb.length, this.rows * this.cols - 1);
+    if (emit) this._emitScreen();
+  }
+
+  // Erase to end of line and type text starting at (row,col) with a single
+  // screen emit, so recalled commands land in place instead of animating.
+  fillField(row, col, text) {
+    const cols = this.cols || 80;
+    for (let c = col; c <= cols - 1; c++) this.eraseAt(row, c, false);
+    for (let i = 0; i < text.length; i++) this.typeAt(row, col + i, text[i], false);
+    this.moveCursor(row, col + text.length);
     this._emitScreen();
   }
 
