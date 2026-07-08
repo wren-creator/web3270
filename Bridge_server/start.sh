@@ -31,7 +31,10 @@ if [ "$1" = "--setup" ] || [ ! -f .env ]; then
 fi
 
 # ── Seed required files ────────────────────────────────────────────────────
+# These are bind-mounted into the container; if they don't exist, Docker would
+# create a directory at the mount path instead of a file.
 [ ! -f lpars.txt ] && echo '# id, name, host/IP, port, tls, type, model' > lpars.txt
+[ ! -f ssh-hosts.txt ] && cp ssh-hosts.txt.example ssh-hosts.txt
 
 # ── Migrate macros from old location if needed ────────────────────────────
 mkdir -p macros/local
