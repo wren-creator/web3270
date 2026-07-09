@@ -1,0 +1,26 @@
+# Backs the three paths docker-compose bind/volume-mounts today:
+# lpars.txt, ssh-hosts.txt (user-editable via /api/profiles, /api/ssh-hosts)
+# and macros/local (written by macros/store.js).
+#
+# accessMode is ReadWriteMany on purpose: if the bridge Deployment scales to
+# >1 replica, every pod needs to see the same lpars.txt/ssh-hosts.txt/macro
+# edits, since config.js only reloads them at process start or after a local
+# write. That requires a storage class backed by shared storage (NFS, Azure
+# Files, ODF/Ceph-FS, EFS via CSI, etc.).
+#
+# If your cluster only offers ReadWriteOnce storage, change this to RWO and
+# keep the Deployment's replicas at 1 — see openshift/README.md.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tn3270-bridge-data
+  labels:
+    app: tn3270-bridge
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi
+  # storageClassName: <set to an RWX-capable class in your cluster, or omit
+  #   to use the project/cluster default>

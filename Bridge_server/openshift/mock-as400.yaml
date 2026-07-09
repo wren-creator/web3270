@@ -1,0 +1,58 @@
+# Internal-only test fixture (TN5250 mock AS/400). See mock-lpar.yaml for
+# the reasoning behind single replica / no Route.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-as400
+  labels:
+    app: mock-as400
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mock-as400
+  template:
+    metadata:
+      labels:
+        app: mock-as400
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: mock-as400
+          image: mock-as400:latest
+          ports:
+            - containerPort: 3272
+              name: tn5250
+          env:
+            - name: MOCK_AS400_PORT
+              value: "3272"
+            - name: MOCK_AS400_SYSID
+              value: "AS400MOCK"
+            - name: LOG_LEVEL
+              value: "info"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mock-as400
+  labels:
+    app: mock-as400
+spec:
+  selector:
+    app: mock-as400
+  ports:
+    - name: tn5250
+      port: 3272
+      targetPort: 3272

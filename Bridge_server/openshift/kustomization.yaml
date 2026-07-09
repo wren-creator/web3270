@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - bridge-configmap.yaml
+  - bridge-secret.yaml
+  - bridge-pvc.yaml
+  - bridge-deployment.yaml
+  - bridge-service.yaml
+  - bridge-route.yaml
+  - mock-lpar.yaml
+  - mock-zvm.yaml
+  - mock-tpf.yaml
+  - mock-as400.yaml

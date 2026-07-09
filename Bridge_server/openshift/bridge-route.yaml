@@ -1,0 +1,30 @@
+# Edge TLS termination: the router terminates HTTPS and talks plain HTTP to
+# the pod (matches the bridge, which doesn't terminate TLS itself). WebSocket
+# upgrades are passed through by the HAProxy router automatically — no
+# special annotation needed for that part.
+#
+# Session affinity IS required though: browsers hit /api/recording/*
+# (routes/recording.js) as separate HTTP requests after the WebSocket is
+# already established, keyed by a wsId that only exists in the memory of
+# whichever pod holds that WebSocket. Cookie-based affinity keeps a given
+# client pinned to the same pod for both. This only works with edge/reencrypt
+# termination (the router needs to see HTTP to set the cookie) — it will NOT
+# work if you switch this to passthrough termination.
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: tn3270-bridge
+  labels:
+    app: tn3270-bridge
+  annotations:
+    haproxy.router.openshift.io/disable_cookies: "false"
+    haproxy.router.openshift.io/balance: "roundrobin"
+spec:
+  to:
+    kind: Service
+    name: tn3270-bridge
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

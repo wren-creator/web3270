@@ -1,0 +1,105 @@
+# Replicas > 1 requires:
+#   1. The RWX PVC in bridge-pvc.yaml (so every pod sees the same
+#      lpars.txt/ssh-hosts.txt/macro edits), and
+#   2. Session-affinity on the Route (bridge-route.yaml) — session state
+#      (live TN3270/5250 socket, MITM/recording state) lives in one pod's
+#      memory per WebSocket connection, and the HTTP recording endpoints
+#      (/api/recording/*) are keyed by a per-process wsId that a follow-up
+#      request from the same browser must land on the same pod to resolve.
+# Bump replicas here only after both are in place.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tn3270-bridge
+  labels:
+    app: tn3270-bridge
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tn3270-bridge
+  template:
+    metadata:
+      labels:
+        app: tn3270-bridge
+    spec:
+      # No runAsUser/fsGroup pinned here — OpenShift's default SCC assigns
+      # an arbitrary UID from the namespace's allocated range and chowns
+      # mounted volumes to match via fsGroup. The Dockerfile's `USER tn3270`
+      # gets overridden by that, which is expected: the app doesn't need a
+      # specific UID, just write access to the mounted paths below.
+      securityContext:
+        runAsNonRoot: true
+
+      initContainers:
+        # Seeds the PVC on first run so the subPath mounts below always have
+        # something to bind to, without clobbering data on later restarts.
+        - name: seed-config
+          image: tn3270-bridge:latest
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              mkdir -p /data/macros-local
+              [ -f /data/lpars.txt ]     || touch /data/lpars.txt
+              [ -f /data/ssh-hosts.txt ] || touch /data/ssh-hosts.txt
+          volumeMounts:
+            - name: bridge-data
+              mountPath: /data
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+
+      containers:
+        - name: tn3270-bridge
+          image: tn3270-bridge:latest
+          ports:
+            - containerPort: 8081
+              name: http
+          envFrom:
+            - configMapRef:
+                name: tn3270-bridge-config
+            - secretRef:
+                name: tn3270-bridge-secret
+          volumeMounts:
+            - name: bridge-data
+              mountPath: /app/lpars.txt
+              subPath: lpars.txt
+            - name: bridge-data
+              mountPath: /app/ssh-hosts.txt
+              subPath: ssh-hosts.txt
+            - name: bridge-data
+              mountPath: /app/macros/local
+              subPath: macros-local
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8081
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: bridge-data
+          persistentVolumeClaim:
+            claimName: tn3270-bridge-data

@@ -1,0 +1,60 @@
+# Internal-only test fixture (TN3270 mock z/TPF). See mock-lpar.yaml for the
+# reasoning behind single replica / no Route.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-tpf
+  labels:
+    app: mock-tpf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mock-tpf
+  template:
+    metadata:
+      labels:
+        app: mock-tpf
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: mock-tpf
+          image: mock-tpf:latest
+          ports:
+            - containerPort: 3274
+              name: tn3270
+          env:
+            - name: MOCK_PORT
+              value: "3274"
+            - name: MOCK_SYSID
+              value: "TPFSYS1"
+            - name: MOCK_LU
+              value: "TPFLU01"
+            - name: LOG_LEVEL
+              value: "info"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mock-tpf
+  labels:
+    app: mock-tpf
+spec:
+  selector:
+    app: mock-tpf
+  ports:
+    - name: tn3270
+      port: 3274
+      targetPort: 3274
