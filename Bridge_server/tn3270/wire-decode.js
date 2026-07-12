@@ -19,7 +19,7 @@
  */
 
 import * as Ebcdic from './ebcdic.js';
-import { decode3270Address, AIDS, _decodeTn3270eSubneg as decodeTn3270eSubneg } from './session.js';
+import { decode3270Address, AIDS, _decodeTn3270eSubneg as decodeTn3270eSubneg, modelDimensions } from './session.js';
 
 // ── Telnet framing ───────────────────────────────────────────────────
 const IAC = 0xFF, DONT = 0xFE, DO = 0xFD, WONT = 0xFC, WILL = 0xFB;
@@ -45,10 +45,10 @@ const isNonDisplayFa = fa => (fa & FA_INTENSITY) === FA_NONDISPLAY;
 const CMD_INFO = {
   0x01: { name: 'Write',                      kind: 'write', erase: false },
   0xF1: { name: 'Write',                      kind: 'write', erase: false },
-  0x05: { name: 'Erase/Write',                kind: 'write', erase: true  },
-  0xF5: { name: 'Erase/Write',                kind: 'write', erase: true  },
-  0x0D: { name: 'Erase/Write Alternate',      kind: 'write', erase: true  },
-  0x7E: { name: 'Erase/Write Alternate',      kind: 'write', erase: true  },
+  0x05: { name: 'Erase/Write',                kind: 'write', erase: true, alt: false },
+  0xF5: { name: 'Erase/Write',                kind: 'write', erase: true, alt: false },
+  0x0D: { name: 'Erase/Write Alternate',      kind: 'write', erase: true, alt: true  },
+  0x7E: { name: 'Erase/Write Alternate',      kind: 'write', erase: true, alt: true  },
   0x0F: { name: 'Erase All Unprotected',      kind: 'eau'   },
   0x6F: { name: 'Erase All Unprotected',      kind: 'eau'   },
   0x02: { name: 'Read Buffer',                kind: 'read'  },
@@ -64,6 +64,17 @@ const AID_BY_BYTE = Object.fromEntries(Object.entries(AIDS).map(([name, byte]) =
 
 const CP037 = 37;
 const toAscii = buf => Ebcdic.toAscii(Buffer.isBuffer(buf) ? buf : Buffer.from(buf), CP037);
+
+// Same device-type pattern session.js matches out of BIND-IMAGE payloads
+// and mock hosts match out of TTYPE/DEVICE-TYPE negotiation — redeclared
+// here so the decoder can pick the model out of whichever of the three
+// carries it (TN3270E DEVICE-TYPE subneg, classic TTYPE subneg, BIND-IMAGE).
+const MODEL_RE = /IBM-(3278|3279)-(\d)(-E)?/;
+function extractModel(buf) {
+  const text = buf.toString('ascii').replace(/[^\x20-\x7e]/g, '');
+  const m = text.match(MODEL_RE);
+  return m ? `${m[1]}-${m[2]}${m[3] || ''}` : null;
+}
 
 function describeFa(fa) {
   const bits = [];
@@ -310,13 +321,24 @@ function decodeAid(bytes, faMap, cols, totalCells) {
 /**
  * @param {Array<{ts:number, dir:'sent'|'recv', data:Buffer}>} frames — in
  *   chronological order, exactly as stored by features/pcap.js.
- * @param {{cols?:number}} opts
+ * @param {{cols?:number, rows?:number}} opts — initial/default geometry
+ *   (24x80 unless overridden), active until a model is negotiated and/or
+ *   the host switches geometry with Erase/Write (Alternate).
  * @returns {Array} decoded records: {ts, dir, kind, raw, summary, aid, orders, danger}
  */
 export function decodeCapture(frames, opts = {}) {
-  let cols = opts.cols || 80;
-  const rows = opts.rows || 24;
+  // The *default* geometry (EW) is always 24x80 regardless of model — only
+  // the *alternate* geometry (EWA) depends on the negotiated device type,
+  // exactly as Tn3270Session._applyModel/_setActiveGeometry track it.
+  const DEFAULT_ROWS = 24, DEFAULT_COLS = 80;
+  let cols = opts.cols || DEFAULT_COLS;
+  let rows = opts.rows || DEFAULT_ROWS;
   let totalCells = cols * rows;
+  let altRows = rows, altCols = cols;
+  const applyModel = model => {
+    const dims = modelDimensions(model);
+    altRows = dims.rows; altCols = dims.cols;
+  };
   const faMap = new Map();
   let tn3270e = false;
 
@@ -352,6 +374,11 @@ export function decodeCapture(frames, opts = {}) {
         const isTn3270e = opt === 0x28;
         const summary = isTn3270e ? decodeTn3270eSubneg(u.bytes) : `SB opt=0x${opt.toString(16)} (${u.bytes.length}B)`;
         if (isTn3270e && (u.bytes[1] === 0x03 || u.bytes[1] === 0x02)) tn3270e = true; // FUNCTIONS or DEVICE-TYPE exchange implies TN3270E active
+        // TN3270E DEVICE-TYPE (opt 0x28) and classic TTYPE (opt 0x18) subnegs
+        // both carry an "IBM-model" string — either can be the one that
+        // reveals what the alternate screen size actually is.
+        const detectedModel = extractModel(u.bytes);
+        if (detectedModel) applyModel(detectedModel);
         out.push({
           ts: frame.ts, dir: frame.dir, kind: 'tn3270e-subneg',
           raw: u.bytes, summary, aid: null, orders: [], danger: false,
@@ -369,6 +396,8 @@ export function decodeCapture(frames, opts = {}) {
         if (tn3270e && frame.dir === 'recv') {
           const dataType = body[0];
           if (dataType === 0x05) { // BIND-IMAGE
+            const detectedModel = extractModel(body.slice(5));
+            if (detectedModel) applyModel(detectedModel);
             out.push({ ts: frame.ts, dir: frame.dir, kind: 'bind-image', raw: body, summary: 'BIND-IMAGE (session parameters)', aid: null, orders: [], danger: false });
             continue;
           }
@@ -380,6 +409,15 @@ export function decodeCapture(frames, opts = {}) {
         }
 
         if (frame.dir === 'recv') {
+          // EW selects the default 24x80 geometry, EWA selects the model's
+          // alternate size — every buffer address that follows is relative
+          // to whichever one was just selected (mirrors _setActiveGeometry).
+          const info = CMD_INFO[body[0]];
+          if (info?.erase) {
+            cols = info.alt ? altCols : DEFAULT_COLS;
+            rows = info.alt ? altRows : DEFAULT_ROWS;
+            totalCells = cols * rows;
+          }
           const decoded = decodeWrite(body, faMap, cols, totalCells);
           out.push({ ts: frame.ts, dir: frame.dir, kind: 'write', raw: body, ...decoded });
         } else {
