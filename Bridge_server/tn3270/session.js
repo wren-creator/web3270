@@ -61,7 +61,7 @@ const TN3E_REASON_NAMES = {
   0x03: 'INV-NAME',     0x04: 'INV-DEVICE-TYPE',0x05: 'TYPE-NAME-ERROR',
   0x06: 'UNKNOWN-ERROR',0x07: 'UNSUPPORTED-REQ',
 };
-function _decodeTn3270eSubneg(data) {
+export function _decodeTn3270eSubneg(data) {
   const func    = TN3E_FUNC_NAMES[data[1]] || `0x${(data[1]||0).toString(16)}`;
   const subFunc = TN3E_FUNC_NAMES[data[2]] || `0x${(data[2]||0).toString(16)}`;
   const payload = data.slice(3);
@@ -83,7 +83,7 @@ function _decodeTn3270eSubneg(data) {
 }
 
 // 3270 AID bytes
-const AIDS = {
+export const AIDS = {
   NONE:   0x60,
   ENTER:  0x7D,
   CLEAR:  0x6D,
@@ -1638,7 +1638,7 @@ class Tn3270Session extends EventEmitter {
 
 // ── Utilities ──────────────────────────────────────────────────────
 
-function decode3270Address(b1, b2, cols) {
+export function decode3270Address(b1, b2, cols) {
   // 3270 buffer address encoding per IBM 3270 Data Stream Programmer's Reference:
   //   • b1 top 2 bits = 00 → 14-bit format: ((b1 & 0x3F) << 8) | b2
   //   • b1 top 2 bits = 01 / 10 / 11 → 12-bit format using low 6 bits of each byte

@@ -22,6 +22,7 @@ const OPT_EOR     = 0x19;
 const OPT_TTYPE   = 0x18;
 const OPT_TN3270E = 0x28;
 
+const TN3E_CONNECT     = 0x01;
 const TN3E_DEVICE_TYPE = 0x02;
 const TN3E_FUNCTIONS   = 0x03;
 const TN3E_IS          = 0x04;
@@ -37,10 +38,11 @@ const ORDER_SA  = 0x28;  // Set Attribute (character-level color/highlight)
 const ORDER_SBA = 0x11;
 const ORDER_IC  = 0x13;
 
-const FA_PROTECTED       = 0x60;
-const FA_PROTECTED_HIGH  = 0xE0;
-const FA_UNPROTECTED     = 0x40;
-const FA_UNPROTECTED_NUM = 0x50;
+const FA_PROTECTED        = 0x60;
+const FA_PROTECTED_HIGH   = 0xE0;
+const FA_UNPROTECTED      = 0x40;
+const FA_UNPROTECTED_NUM  = 0x50;
+const FA_UNPROTECTED_HIDDEN = 0x4C;  // unprotected + nondisplay (bits 3-2 = 11) — real password-field FA
 
 // 3270 extended color codes (SFE/SA type 0x42)
 const COL_BLUE   = 0xF1;
@@ -116,6 +118,18 @@ const MODEL_DIMS = {
 // so this is safe despite being module-level shared state.
 let mockCols = 80;
 
+// ── Cross-session buffer bleed simulation ──────────────────────────────
+// A real 3270 controller only clears its buffer on an Erase command; if a
+// pooled LU is handed to a new logical session before the app issues its
+// own Erase/Write, whatever was left in the old field data (incl. MDT-set,
+// nondisplay fields) can still be present for a brief window. We model that
+// here: on disconnect, cache the last-typed userid/password for the LU the
+// client requested; on the next connection that asks for the *same* LU
+// within BUFFER_BLEED_WINDOW_MS, replay that stale field data as a non-
+// erasing Write before the fresh (erased) logon screen goes out.
+const _luBufferCache = new Map(); // luName -> { user, pass, ts }
+const BUFFER_BLEED_WINDOW_MS = 90000;
+
 function encodeAddr(addr) {
   const hi = (addr >> 6) & 0x3F;
   const lo =  addr       & 0x3F;
@@ -174,7 +188,7 @@ function screenLogon() {
     { row:5,  col:14, text: '        ' },
     { row:6,  col:2,  fa: FA_PROTECTED, color: COL_BLUE },
     { row:6,  col:2,  text: 'Password===>' },
-    { row:6,  col:14, fa: FA_UNPROTECTED_NUM, color: COL_GREEN },
+    { row:6,  col:14, fa: FA_UNPROTECTED_HIDDEN, color: COL_GREEN },
     { row:6,  col:14, text: '        ' },
     { row:7,  col:2,  fa: FA_PROTECTED, color: COL_BLUE },
     { row:7,  col:2,  text: 'Procedure==> TSOPROC' },
@@ -188,6 +202,16 @@ function screenLogon() {
     { row:15, col:2,  fa: FA_PROTECTED, color: COL_GREEN },
     { row:15, col:2,  text: `${SYSNAME} - Mock LPAR Daemon v1.0  ${dateStr}  ${timeStr}` },
   ]);
+}
+
+// Non-erasing Write that pokes stale userid/password bytes into the logon
+// screen's field coordinates with MDT forced on — simulates a controller
+// buffer that still holds a prior session's modified fields.
+function screenBufferBleed(cached) {
+  const fields = [];
+  if (cached.user) fields.push({ row:5, col:14, fa: FA_UNPROTECTED | 0x01,        color: COL_GREEN, text: cached.user.padEnd(8, ' ').slice(0, 8) });
+  if (cached.pass) fields.push({ row:6, col:14, fa: FA_UNPROTECTED_HIDDEN | 0x01, color: COL_GREEN, text: cached.pass.padEnd(8, ' ').slice(0, 8) });
+  return buildScreen(false, fields); // false = Write, not Erase/Write — buffer is not cleared
 }
 
 function screenISPF(userid = 'DEMO') {
@@ -512,6 +536,10 @@ function handleConnection(socket) {
   let lastScreen    = null;
   let userid        = 'DEMO';
   let negotiationComplete = false;
+  let requestedLu   = null;   // LU the client asked for via TN3270E CONNECT
+  let lastEnteredUser = '';   // last-typed logon fields, for buffer-bleed cache on disconnect
+  let lastEnteredPass = '';
+  let firstScreenSent = false;
 
   // Track what we've agreed to
   let clientWillTN3270E  = false;
@@ -544,8 +572,14 @@ function handleConnection(socket) {
     processBuffer();
   });
 
-  socket.on('end',   () => log(`[${id}] Disconnected`));
-  socket.on('error', err => log(`[${id}] Error: ${err.message}`));
+  function cacheBufferOnExit() {
+    if (requestedLu && (lastEnteredUser || lastEnteredPass)) {
+      _luBufferCache.set(requestedLu, { user: lastEnteredUser, pass: lastEnteredPass, ts: Date.now() });
+      debug(`[${id}] Cached residual buffer for LU=${requestedLu}`);
+    }
+  }
+  socket.on('end',   () => { log(`[${id}] Disconnected`); cacheBufferOnExit(); });
+  socket.on('error', err => { log(`[${id}] Error: ${err.message}`); cacheBufferOnExit(); });
 
   function processBuffer() {
     // Strip and handle IAC telnet commands first, then find IAC EOR delimiters
@@ -678,12 +712,19 @@ function handleConnection(socket) {
           const dims  = MODEL_DIMS[model];
           if (dims) { accepted = `IBM-${model}`; cols = dims.cols; }
         }
-        socket.write(Buffer.from([
-          IAC, SB, OPT_TN3270E, TN3E_DEVICE_TYPE, TN3E_IS,
-          ...Buffer.from(accepted),
-          IAC, SE,
-        ]));
-        debug(`[${id}] → TN3270E DEVICE-TYPE IS ${accepted} (cols=${cols})`);
+        // Client may ask for a specific LU via a CONNECT sub-marker after the
+        // device-type string — accept whatever it asks for (no allocation
+        // check) and echo it back, same as a real VTAM pool would.
+        const connIdx = data.indexOf(TN3E_CONNECT, 3);
+        if (connIdx !== -1) {
+          requestedLu = data.slice(connIdx + 1).toString('ascii');
+          debug(`[${id}] ← DEVICE-TYPE REQUEST CONNECT LU=${requestedLu}`);
+        }
+        const isParts = [IAC, SB, OPT_TN3270E, TN3E_DEVICE_TYPE, TN3E_IS, ...Buffer.from(accepted)];
+        if (requestedLu) isParts.push(TN3E_CONNECT, ...Buffer.from(requestedLu));
+        isParts.push(IAC, SE);
+        socket.write(Buffer.from(isParts));
+        debug(`[${id}] → TN3270E DEVICE-TYPE IS ${accepted}${requestedLu ? ' CONNECT LU=' + requestedLu : ''} (cols=${cols})`);
       }
 
       if (func === TN3E_FUNCTIONS && data[2] === TN3E_IS) {
@@ -692,7 +733,7 @@ function handleConnection(socket) {
         debug(`[${id}] ← TN3270E FUNCTIONS IS [${[...supported].map(b=>'0x'+b.toString(16)).join(' ')}]`);
         if (!negotiationComplete) {
           negotiationComplete = true;
-          setImmediate(() => sendCurrentScreen());
+          setImmediate(() => sendInitialScreen());
         }
       }
 
@@ -707,7 +748,7 @@ function handleConnection(socket) {
         debug(`[${id}] → TN3270E FUNCTIONS IS (echoing client request)`);
         if (!negotiationComplete) {
           negotiationComplete = true;
-          setImmediate(() => sendCurrentScreen());
+          setImmediate(() => sendInitialScreen());
         }
       }
     }
@@ -723,7 +764,7 @@ function handleConnection(socket) {
       }
       if (!negotiationComplete) {
         negotiationComplete = true;
-        setImmediate(() => sendCurrentScreen());
+        setImmediate(() => sendInitialScreen());
       }
     }
   }
@@ -775,6 +816,8 @@ function handleConnection(socket) {
           const enteredUser = (parts[0] || 'DEMO').toUpperCase().slice(0, 8);
           const enteredPass = parts[1] || '';
           userid = enteredUser;
+          lastEnteredUser = enteredUser;
+          lastEnteredPass = enteredPass;
           const validPass = VALID_CREDENTIALS[enteredUser];
           if (validPass && enteredPass === validPass) {
             // Successful logon
@@ -883,6 +926,33 @@ function handleConnection(socket) {
         }
         break;
     }
+  }
+
+  function writeRaw(ds) {
+    if (tn3270eMode) {
+      ds = Buffer.concat([Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00]), ds]);
+    }
+    socket.write(wrapEOR(ds));
+  }
+
+  // First screen of the connection: if this LU had a residual buffer cached
+  // from a prior session (see cacheBufferOnExit), flash that stale content
+  // as a non-erasing Write before the real (erased) logon screen — see the
+  // BUFFER_BLEED comment near _luBufferCache above.
+  function sendInitialScreen() {
+    if (!firstScreenSent) {
+      firstScreenSent = true;
+      mockCols = cols;
+      const cached = requestedLu ? _luBufferCache.get(requestedLu) : null;
+      if (cached && Date.now() - cached.ts < BUFFER_BLEED_WINDOW_MS) {
+        _luBufferCache.delete(requestedLu); // one-shot — buffer is "read" now
+        log(`[${id}] Buffer bleed: replaying stale LU=${requestedLu} field data before fresh logon`);
+        writeRaw(screenBufferBleed(cached));
+        setTimeout(() => sendCurrentScreen(), 400);
+        return;
+      }
+    }
+    sendCurrentScreen();
   }
 
   function sendCurrentScreen() {

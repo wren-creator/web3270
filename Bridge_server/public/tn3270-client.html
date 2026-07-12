@@ -543,6 +543,18 @@
               <span class="sec-panel-btn-sub">Force all text to visible color — exposes color-on-color hidden content</span>
             </button>
           </div>
+          <div class="sec-panel-hint" style="margin:6px 0">Field Length Disclosure — MDT + buffer-address deltas reveal how many characters were typed into a nondisplay field, even though the characters themselves are masked.</div>
+          <div class="sec-row" style="gap:6px">
+            <button id="fdScanBtn" onclick="fieldDiscScanOnce()" style="flex:1;background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 8px;cursor:pointer">🔍 Scan Screen Now</button>
+            <button id="fdWatchBtn" class="sec-panel-btn sec-panel-btn-inline" onclick="toggleFieldDiscWatch()" style="flex:1">
+              <span class="sec-panel-btn-label">👁 Watch</span>
+            </button>
+          </div>
+          <div id="fdResultsTable"></div>
+          <div style="margin-top:6px;display:flex;gap:6px">
+            <button onclick="fieldDiscExportCsv()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ Export CSV</button>
+            <button onclick="fieldDiscClear()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">Clear</button>
+          </div>
         </div>
       </div>
 
@@ -566,6 +578,12 @@
             <button id="sessionViewerBtn" class="sec-panel-btn" onclick="openTrafficViewer()">
               <span class="sec-panel-btn-label">⇄ Session Viewer</span>
               <span class="sec-panel-btn-sub">AID keys sent and screens received, CSV export</span>
+            </button>
+          </div>
+          <div class="sec-row">
+            <button id="wireInspectorBtn" class="sec-panel-btn" onclick="openWireInspector()">
+              <span class="sec-panel-btn-label">🔌 Wire Inspector</span>
+              <span class="sec-panel-btn-sub">3270-aware packet view — decoded orders, filter, color, replay</span>
             </button>
           </div>
           <div class="sec-row">
@@ -704,6 +722,42 @@
           <div id="probeResultsTable"></div>
           <div style="margin-top:6px">
             <button onclick="probeExportCsv()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ Export CSV</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- SESSION HYGIENE section — Cross-Session Buffer Bleed -->
+      <div class="sec-section">
+        <div class="sec-section-hdr">SESSION HYGIENE</div>
+        <div class="sec-section-body">
+          <div class="sec-panel-hint" style="margin-bottom:6px">Cross-Session Buffer Bleed — detects a pooled LU's controller buffer surviving into the next session before the fresh Erase/Write. Set an LU Name in the connect form, connect, disconnect, then reconnect with the SAME LU Name within ~90s. FOR AUTHORIZED USE ONLY.</div>
+          <div class="sec-row">
+            <button id="bbArmBtn" class="sec-panel-btn" onclick="toggleBufferBleedWatch()">
+              <span class="sec-panel-btn-label">🩸 Arm Buffer-Bleed Watch</span>
+              <span class="sec-panel-btn-sub">Watches the first screens after every connect for stale field data</span>
+            </button>
+          </div>
+          <div id="bbStatus" style="font-size:10px;color:var(--text-muted);margin-top:4px;min-height:14px"></div>
+          <div id="bbResultsTable"></div>
+          <div style="margin-top:6px;display:flex;gap:6px">
+            <button onclick="bufferBleedExportCsv()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ Export CSV</button>
+            <button onclick="bufferBleedClear()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">Clear</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- VM MINIDISK SECURITY section -->
+      <div class="sec-section">
+        <div class="sec-section-hdr">VM MINIDISK SECURITY</div>
+        <div class="sec-section-body">
+          <div class="sec-panel-hint" style="margin-bottom:6px">VM Minidisk Password Exposure — CP has no masked-input primitive for command arguments, so a LINK minidisk password typed at the CP READ prompt renders in cleartext. Connect to a z/VM CP session and type e.g. <code>LINK MAINT 191 191 MR mysecretpw</code>. FOR AUTHORIZED USE ONLY.</div>
+          <div class="sec-row">
+            <button id="vmScanBtn" onclick="vmMinidiskScanNow()" style="flex:1;background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 8px;cursor:pointer">🔎 Scan Current Screen</button>
+          </div>
+          <div id="vmResultsTable"></div>
+          <div style="margin-top:6px;display:flex;gap:6px">
+            <button onclick="vmMinidiskExportCsv()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ Export CSV</button>
+            <button onclick="vmMinidiskClear()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">Clear</button>
           </div>
         </div>
       </div>

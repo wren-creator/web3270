@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>WebTerm/3270 — Wire Inspector</title>
+<style>
+:root{
+  --bg-void:#030508; --bg-panel:#05090f; --bg-hover:rgba(255,255,255,0.025);
+  --border:#0d1a2a; --border-bright:#1a2f44;
+  --text-primary:#8aaccc; --text-dim:#5a7a9a; --text-faint:#2a4a6a;
+  --accent-out:#c8922a; --accent-in:#3a9a6a; --accent-aid:#9a6acc;
+  --accent-warn:#ffb800; --accent-danger:#ff5a7a; --accent-link:#4af;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;}
+body{
+  background:var(--bg-void); color:var(--text-primary);
+  font-family:'IBM Plex Mono','SF Mono','Roboto Mono',Consolas,monospace; font-size:11px;
+  display:flex; flex-direction:column; height:100vh; overflow:hidden;
+}
+button{font-family:inherit;}
+
+.toolbar{display:flex; align-items:center; gap:8px; padding:6px 10px; background:var(--bg-panel); border-bottom:1px solid var(--border); flex-shrink:0; flex-wrap:wrap;}
+.toolbar-title{font-size:10px; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; color:var(--accent-link); white-space:nowrap;}
+.sep{width:1px; height:16px; background:var(--border-bright); flex-shrink:0;}
+.filter-wrap{display:flex; align-items:center; gap:6px; flex:1; min-width:220px;}
+.filter-input{flex:1; background:var(--bg-void); border:1px solid var(--border-bright); border-radius:3px; color:#cfe6ff; font-family:inherit; font-size:10px; padding:3px 8px; outline:none;}
+.filter-input:focus{border-color:var(--accent-link);}
+.filter-input::placeholder{color:var(--text-faint);}
+.count{font-size:9px; color:var(--text-faint); white-space:nowrap;}
+
+.search-input{background:var(--bg-void); border:1px solid var(--border-bright); border-radius:3px; color:var(--text-primary); font-family:inherit; font-size:10px; padding:3px 7px; outline:none;}
+.search-input:focus{border-color:var(--accent-link);}
+
+.btn{background:none; border:1px solid var(--border-bright); border-radius:3px; color:var(--text-dim); font-size:10px; font-weight:600; padding:3px 9px; cursor:pointer; transition:border-color .12s,color .12s; white-space:nowrap;}
+.btn:hover{border-color:var(--accent-link); color:#acd;}
+.btn.primary{border-color:#1a5a3a; color:var(--accent-in);}
+.btn.primary:hover{border-color:#3aaa6a; color:#6add99;}
+.btn.warn{border-color:#5a4410; color:var(--accent-warn);}
+.btn.warn:hover{background:rgba(255,184,0,.08);}
+.btn.window-ctrl{border-color:#111d2a; font-size:12px; padding:1px 7px;}
+.btn.window-ctrl:hover{border-color:#3a6a9a; color:#9acdff;}
+.btn:disabled{opacity:.35; cursor:default; pointer-events:none;}
+
+.legend{display:flex; align-items:center; gap:10px; padding:5px 10px; background:var(--bg-panel); border-bottom:1px solid var(--border); flex-shrink:0; flex-wrap:wrap;}
+.legend-label{font-size:9px; color:var(--text-faint); text-transform:uppercase; letter-spacing:.08em;}
+.chip{display:flex; align-items:center; gap:5px; font-size:10px; color:var(--text-dim); cursor:pointer; user-select:none; padding:2px 7px 2px 5px; border-radius:10px; transition:opacity .12s;}
+.chip.off{opacity:.35;}
+.chip .dot{width:8px; height:8px; border-radius:2px; flex-shrink:0;}
+
+.main{flex:1; display:flex; flex-direction:column; min-height:0;}
+.pane-list{flex:1 1 52%; min-height:60px; overflow-y:auto; border-bottom:1px solid var(--border);}
+.pane-list::-webkit-scrollbar, .hexwrap::-webkit-scrollbar, .treewrap::-webkit-scrollbar{width:6px;}
+.pane-list::-webkit-scrollbar-thumb, .hexwrap::-webkit-scrollbar-thumb, .treewrap::-webkit-scrollbar-thumb{background:var(--border-bright); border-radius:3px;}
+
+table{width:100%; border-collapse:collapse; table-layout:fixed;}
+thead th{position:sticky; top:0; background:#04070c; border-bottom:1px solid var(--border); padding:4px 8px; text-align:left; font-size:9px; font-weight:600; color:var(--text-faint); letter-spacing:.08em; text-transform:uppercase; white-space:nowrap; z-index:1;}
+.col-no{width:38px;} .col-ts{width:78px;} .col-sess{width:52px;} .col-dir{width:26px;}
+.col-len{width:48px;} .col-proto{width:150px;} .col-aid{width:64px;} .col-sum{width:auto;}
+
+tbody tr{border-left:3px solid transparent; border-bottom:1px solid #07090e; cursor:pointer;}
+tbody tr:hover{background:var(--bg-hover);}
+tbody tr.selected{background:rgba(74,170,255,.08); border-left-color:var(--accent-link) !important;}
+tbody tr.hidden{display:none;}
+td{padding:3px 8px; vertical-align:middle; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.no,.ts,.len{color:var(--text-faint); font-variant-numeric:tabular-nums;}
+.sess-badge{color:var(--text-dim); cursor:pointer;}
+.sess-badge:hover{color:var(--accent-link); text-decoration:underline;}
+.dir-out{color:var(--accent-out); font-weight:700;}
+.dir-in{color:var(--accent-in); font-weight:700;}
+.proto{color:var(--text-dim);}
+.aid-val{color:var(--accent-aid); font-weight:600;}
+.summary{color:#9fc0dd; font-size:10.5px;}
+.flag{display:inline-block; width:6px; height:6px; border-radius:50%; margin-right:6px; vertical-align:middle;}
+.flag-danger{background:var(--accent-danger); box-shadow:0 0 5px rgba(255,90,122,.7);}
+tr.row-out{border-left-color:rgba(200,146,42,.55);}
+tr.row-in{border-left-color:rgba(58,154,106,.55);}
+tr.row-danger{border-left-color:var(--accent-danger) !important;}
+tr.row-danger .summary{color:#ffb2c2;}
+tr.row-negotiation .summary{color:var(--text-faint);}
+
+.pane-detail{flex:1 1 48%; display:flex; min-height:80px;}
+.treewrap{flex:1 1 46%; overflow-y:auto; border-right:1px solid var(--border); padding:6px 0;}
+.hexpane{flex:1 1 54%; display:flex; flex-direction:column; min-width:0;}
+.hexwrap{flex:1; overflow-y:auto; padding:8px 12px;}
+.pane-hdr{font-size:9px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--text-faint); padding:5px 10px; border-bottom:1px solid var(--border); background:#04070c;}
+
+.tree-item{padding:4px 10px 4px 14px; cursor:default; border-left:2px solid transparent; font-size:10.5px; line-height:1.5;}
+.tree-item:hover, .tree-item.hl{background:rgba(74,170,255,.07); border-left-color:var(--accent-link);}
+.tree-item .t-order{color:var(--accent-link); font-weight:700; margin-right:6px;}
+.tree-item .t-meaning{color:var(--text-primary);}
+.tree-item.danger .t-order{color:var(--accent-danger);}
+.tree-item.danger .t-meaning{color:#ffc3d0;}
+.tree-actions{display:flex; gap:6px; padding:8px 10px; border-top:1px solid var(--border); margin-top:2px;}
+
+.hexgrid{font-size:11px; line-height:1.75; white-space:pre;}
+.hexrow{display:flex; gap:14px;}
+.hexoff{color:var(--text-faint); width:52px; flex-shrink:0; font-variant-numeric:tabular-nums;}
+.hexbytes{display:flex; gap:5px; flex-wrap:wrap; width:340px; flex-shrink:0;}
+.hb{color:var(--text-dim); padding:0 1px; border-radius:2px;}
+.hb.hl{background:rgba(74,170,255,.28); color:#dff0ff;}
+.hb.danger{background:rgba(255,90,122,.18); color:#ffb2c2;}
+.hexascii{color:var(--text-faint); letter-spacing:1px;}
+.hexascii .hl{background:rgba(74,170,255,.28); color:#dff0ff; border-radius:2px;}
+.hexascii .mask{color:var(--accent-danger);}
+
+.empty-detail, .empty-msg{display:flex; align-items:center; justify-content:center; height:100%; color:var(--text-faint); font-size:10.5px; flex-direction:column; gap:6px; padding:20px; text-align:center;}
+.empty-detail .big{font-size:20px; opacity:.4;}
+
+.statusbar{display:flex; align-items:center; gap:14px; padding:3px 10px; background:var(--bg-panel); border-top:1px solid var(--border); font-size:9.5px; color:var(--text-faint); flex-shrink:0;}
+.spacer{flex:1;}
+.resize-handle{height:5px; background:#080e18; border-top:1px solid var(--border); cursor:ns-resize; flex-shrink:0;}
+.resize-handle:hover{background:#0d1a2a;}
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <span class="toolbar-title">🔌 Wire Inspector</span>
+  <div class="sep"></div>
+  <div class="filter-wrap">
+    <input class="filter-input" id="filterInput" spellcheck="false"
+      placeholder="dir:out aid:enter · field:nondisplay · order:sf · session:3 · free text…">
+  </div>
+  <select id="sessFilter" class="search-input" style="width:100px" title="Filter by session (wsId)">
+    <option value="">All sessions</option>
+  </select>
+  <span class="count" id="countEl">0 records</span>
+  <div class="sep"></div>
+  <button class="btn" id="btnFollow" disabled>⇄ Follow Session</button>
+  <button class="btn warn" id="btnReplay" disabled>↻ Replay Selected</button>
+  <div class="sep"></div>
+  <button class="btn" onclick="loadData()" title="Refresh from server">↺ Refresh</button>
+  <button class="btn primary" onclick="downloadPcap()" title="Download all captured sessions as a Wireshark-readable PCAP">↓ PCAP</button>
+  <button class="btn" onclick="downloadCsv()">↓ CSV</button>
+  <button class="btn" onclick="clearLog()">✕ Clear</button>
+  <div class="sep"></div>
+  <button class="btn window-ctrl" id="btnFs" onclick="toggleFullscreen()">⊡</button>
+</div>
+
+<div class="legend">
+  <span class="legend-label">Show</span>
+  <span class="chip" data-cat="out"><span class="dot" style="background:var(--accent-out)"></span>Client → Host</span>
+  <span class="chip" data-cat="in"><span class="dot" style="background:var(--accent-in)"></span>Host → Client</span>
+  <span class="chip" data-cat="aid"><span class="dot" style="background:var(--accent-aid)"></span>AID key</span>
+  <span class="chip" data-cat="danger"><span class="dot" style="background:var(--accent-danger)"></span>Nondisplay field touched</span>
+  <span class="chip" data-cat="negotiation"><span class="dot" style="background:var(--text-faint)"></span>Telnet negotiation</span>
+</div>
+
+<div class="main">
+  <div class="pane-list" id="paneList">
+    <table>
+      <thead>
+        <tr>
+          <th class="col-no">#</th>
+          <th class="col-ts">Time</th>
+          <th class="col-sess">Sess</th>
+          <th class="col-dir"></th>
+          <th class="col-len">Bytes</th>
+          <th class="col-proto">Protocol</th>
+          <th class="col-aid">AID</th>
+          <th class="col-sum">Summary</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+    <div class="empty-msg" id="emptyMsg">No traffic captured yet. Connect to an LPAR and interact with the session.</div>
+  </div>
+
+  <div class="pane-detail">
+    <div class="treewrap" id="treewrap"><div class="empty-detail"><span class="big">◇</span>Select a record to decode it</div></div>
+    <div class="hexpane">
+      <div class="pane-hdr">Hex / ASCII</div>
+      <div class="hexwrap" id="hexwrap"></div>
+    </div>
+  </div>
+</div>
+<div class="resize-handle" id="resizeHandle"></div>
+
+<div class="statusbar">
+  <span id="statusTotal">0 records</span>
+  <span id="statusSessions">0 sessions</span>
+  <div class="spacer"></div>
+  <span>hover a decoded order to highlight its bytes</span>
+</div>
+
+<script>
+const KIND_PROTO = {
+  negotiation:   'Telnet negotiation',
+  'tn3270e-subneg': 'TN3270E sub-negotiation',
+  'bind-image':  'TN3270E BIND-IMAGE',
+  write:         '3270-DATA Write',
+  aid:           '3270-DATA AID',
+  unknown:       'Unrecognized',
+};
+
+let allRecords = [];
+let activeCats = new Set(['out','in','aid','danger','negotiation']);
+let selected = null;
+
+const tbody        = document.getElementById('tbody');
+const filterInput   = document.getElementById('filterInput');
+const sessFilter    = document.getElementById('sessFilter');
+const countEl       = document.getElementById('countEl');
+const emptyMsg      = document.getElementById('emptyMsg');
+const statusTotal   = document.getElementById('statusTotal');
+const statusSessions = document.getElementById('statusSessions');
+const btnFollow     = document.getElementById('btnFollow');
+const btnReplay     = document.getElementById('btnReplay');
+
+function escHtml(s){ return String(s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function shortTs(ts){ return ts ? new Date(ts).toISOString().slice(11,23) : ''; }
+function hexToBytes(hex){ const out=[]; for(let i=0;i<hex.length;i+=2) out.push(parseInt(hex.slice(i,i+2),16)); return out; }
+
+async function loadData() {
+  try {
+    const res = await fetch('/api/wire');
+    allRecords = await res.json();
+    updateSessFilter();
+    renderRows();
+  } catch (e) { console.error('Failed to load wire capture', e); }
+}
+
+function updateSessFilter() {
+  const ids = [...new Set(allRecords.map(r => String(r.wsId)))].sort((a,b)=>a-b);
+  const cur = sessFilter.value;
+  sessFilter.innerHTML = '<option value="">All sessions</option>';
+  for (const id of ids) {
+    const opt = document.createElement('option');
+    opt.value = id; opt.textContent = `Session #${id}`;
+    if (id === cur) opt.selected = true;
+    sessFilter.appendChild(opt);
+  }
+  statusSessions.textContent = `${ids.length} session${ids.length===1?'':'s'}`;
+}
+
+function catsFor(r) {
+  const cats = [r.dir];
+  if (r.aid) cats.push('aid');
+  if (r.kind === 'negotiation' || r.kind === 'tn3270e-subneg') cats.push('negotiation');
+  if (r.danger) cats.push('danger');
+  return cats;
+}
+
+function matchesFilter(r, terms) {
+  for (const t of terms) {
+    if (t.startsWith('dir:')) { if (r.dir !== t.slice(4)) return false; }
+    else if (t.startsWith('aid:')) { if ((r.aid||'').toLowerCase() !== t.slice(4)) return false; }
+    else if (t.startsWith('session:')) { if (String(r.wsId) !== t.slice(8)) return false; }
+    else if (t.startsWith('order:')) { if (!(r.orders||[]).some(o => o.type.toLowerCase().includes(t.slice(6)))) return false; }
+    else if (t === 'field:nondisplay') { if (!r.danger) return false; }
+    else { if (!(r.summary||'').toLowerCase().includes(t) && !(KIND_PROTO[r.kind]||'').toLowerCase().includes(t)) return false; }
+  }
+  return true;
+}
+
+function renderRows() {
+  tbody.innerHTML = '';
+  const q = filterInput.value.trim().toLowerCase();
+  const terms = q.length ? q.split(/\s+/) : [];
+  const sessVal = sessFilter.value;
+  let shown = 0;
+
+  for (const r of allRecords) {
+    if (sessVal && String(r.wsId) !== sessVal) continue;
+    if (!catsFor(r).every(c => activeCats.has(c))) continue;
+    if (!matchesFilter(r, terms)) continue;
+
+    shown++;
+    const tr = document.createElement('tr');
+    const cls = [r.dir === 'out' ? 'row-out' : 'row-in'];
+    if (r.kind === 'negotiation' || r.kind === 'tn3270e-subneg') cls.push('row-negotiation');
+    if (r.danger) cls.push('row-danger');
+    tr.className = cls.join(' ') + (selected === r.no ? ' selected' : '');
+
+    tr.innerHTML = `
+      <td class="no">${r.no}</td>
+      <td class="ts">${escHtml(shortTs(r.ts))}</td>
+      <td class="sess-badge" data-follow="${r.wsId}">#${r.wsId}</td>
+      <td class="${r.dir==='out'?'dir-out':'dir-in'}">${r.dir==='out'?'→':'←'}</td>
+      <td class="len">${(r.raw.length/2)|0}B</td>
+      <td class="proto">${escHtml(KIND_PROTO[r.kind] || r.kind)}</td>
+      <td>${r.aid ? `<span class="aid-val">${escHtml(r.aid)}</span>` : '<span style="color:var(--text-faint)">—</span>'}</td>
+      <td class="summary">${r.danger ? '<span class="flag flag-danger" title="Touches a nondisplay field"></span>' : ''}${escHtml(r.summary)}</td>
+    `;
+    tr.addEventListener('click', () => selectRecord(r.no));
+    tr.querySelector('.sess-badge').addEventListener('click', e => { e.stopPropagation(); sessFilter.value = r.wsId; renderRows(); });
+    tbody.appendChild(tr);
+  }
+
+  countEl.textContent = `${shown} of ${allRecords.length} records`;
+  statusTotal.textContent = `${allRecords.length} records`;
+  emptyMsg.style.display = tbody.children.length === 0 ? 'flex' : 'none';
+  document.getElementById('paneList').querySelector('table').style.display = tbody.children.length === 0 && allRecords.length === 0 ? 'none' : '';
+}
+
+function selectRecord(no) {
+  selected = no;
+  renderRows();
+  const r = allRecords.find(x => x.no === no);
+  if (!r) return;
+  renderTree(r);
+  renderHex(r);
+  btnFollow.disabled = false;
+  btnReplay.disabled = r.dir !== 'out';
+  btnFollow.onclick = () => { sessFilter.value = r.wsId; renderRows(); };
+  btnReplay.onclick = () => replayRecord(r);
+}
+
+function renderTree(r) {
+  const wrap = document.getElementById('treewrap');
+  wrap.innerHTML = '';
+  if (!r.orders || !r.orders.length) {
+    wrap.innerHTML = `<div class="empty-detail"><span class="big">◇</span>${escHtml(r.summary)}</div>`;
+    return;
+  }
+  r.orders.forEach(o => {
+    const el = document.createElement('div');
+    el.className = 'tree-item' + (o.danger ? ' danger' : '');
+    el.innerHTML = `<span class="t-order">${escHtml(o.type)}</span><span class="t-meaning">${escHtml(o.meaning)}</span>`;
+    el.addEventListener('mouseenter', () => highlightRange(o.range));
+    el.addEventListener('mouseleave', () => highlightRange(null));
+    wrap.appendChild(el);
+  });
+  const actions = document.createElement('div');
+  actions.className = 'tree-actions';
+  actions.innerHTML = r.dir === 'out'
+    ? `<button class="btn warn" style="flex:1" onclick="replayRecord(${JSON.stringify(r).replace(/"/g,'&quot;')})">↻ Replay into session #${r.wsId}</button>
+       <button class="btn" style="flex:1" onclick="document.getElementById('sessFilter').value='${r.wsId}'; renderRows();">⇄ Follow session #${r.wsId}</button>`
+    : `<button class="btn" style="flex:1" onclick="document.getElementById('sessFilter').value='${r.wsId}'; renderRows();">⇄ Follow session #${r.wsId}</button>`;
+  wrap.appendChild(actions);
+}
+
+function renderHex(r) {
+  const wrap = document.getElementById('hexwrap');
+  wrap.innerHTML = '';
+  const bytes = hexToBytes(r.raw);
+  const dangerRanges = (r.orders||[]).filter(o => o.danger).map(o => o.range);
+  const isDangerByte = i => dangerRanges.some(([a,b]) => i>=a && i<=b);
+
+  const grid = document.createElement('div');
+  grid.className = 'hexgrid';
+  const perRow = 8;
+  for (let row=0; row<bytes.length; row+=perRow) {
+    const rowBytes = bytes.slice(row, row+perRow);
+    const rowEl = document.createElement('div'); rowEl.className = 'hexrow';
+    const off = document.createElement('span'); off.className = 'hexoff'; off.textContent = row.toString(16).padStart(4,'0').toUpperCase();
+    const bytesEl = document.createElement('span'); bytesEl.className = 'hexbytes';
+    const asciiEl = document.createElement('span'); asciiEl.className = 'hexascii';
+    rowBytes.forEach((b,i) => {
+      const gi = row+i, danger = isDangerByte(gi);
+      const hb = document.createElement('span'); hb.className = 'hb' + (danger?' danger':''); hb.dataset.idx = gi;
+      hb.textContent = b.toString(16).padStart(2,'0').toUpperCase();
+      bytesEl.appendChild(hb);
+      const asc = document.createElement('span'); asc.dataset.idx = gi;
+      if (danger) { asc.textContent = '•'; asc.className = 'mask'; }
+      else { asc.textContent = (b>=0x20 && b<0x7f) ? String.fromCharCode(b) : '·'; }
+      asciiEl.appendChild(asc);
+    });
+    rowEl.appendChild(off); rowEl.appendChild(bytesEl); rowEl.appendChild(asciiEl);
+    grid.appendChild(rowEl);
+  }
+  wrap.appendChild(grid);
+}
+
+function highlightRange(range) {
+  document.querySelectorAll('.hb.hl, .hexascii .hl').forEach(el => el.classList.remove('hl'));
+  if (!range) return;
+  for (let i=range[0]; i<=range[1]; i++) {
+    document.querySelectorAll(`.hb[data-idx="${i}"]`).forEach(el => el.classList.add('hl'));
+    document.querySelectorAll(`.hexascii span[data-idx="${i}"]`).forEach(el => el.classList.add('hl'));
+  }
+}
+
+function replayRecord(r) {
+  if (!window.opener || window.opener.closed) { alert('Main WebTerm window is not open — cannot replay.'); return; }
+  const ok = window.opener.wireReplaySend?.(r.wsId, r.raw, r.no);
+  if (!ok) alert(`Session #${r.wsId} is not currently connected — cannot replay.`);
+}
+
+// ── Legend toggles ───────────────────────────────────────────────
+document.querySelectorAll('.chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    const cat = chip.dataset.cat;
+    if (activeCats.has(cat)) { activeCats.delete(cat); chip.classList.add('off'); }
+    else { activeCats.add(cat); chip.classList.remove('off'); }
+    renderRows();
+  });
+});
+filterInput.addEventListener('input', renderRows);
+sessFilter.addEventListener('change', renderRows);
+
+// ── Export / clear ───────────────────────────────────────────────
+function downloadPcap() {
+  const ts = new Date().toISOString().slice(0,19).replace(/[:.]/g,'-');
+  const a = document.createElement('a');
+  a.href = '/api/wire/pcap'; a.download = `wire-inspector-${ts}.pcap`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+
+function downloadCsv() {
+  const rows = [['no','timestamp','wsId','direction','protocol','aid','danger','summary']];
+  for (const r of allRecords) rows.push([r.no, new Date(r.ts).toISOString(), r.wsId, r.dir, KIND_PROTO[r.kind]||r.kind, r.aid||'', r.danger, r.summary]);
+  const csv = rows.map(row => row.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const ts = new Date().toISOString().slice(0,19).replace(/[:.]/g,'-');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = `wire-inspector-${ts}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+
+async function clearLog() {
+  if (!confirm('Clear all captured traffic on the server? This clears both the Session Viewer log and this Wire Inspector capture.')) return;
+  await fetch('/api/traffic/csv', { method: 'DELETE' });
+  allRecords = []; selected = null;
+  renderRows();
+  document.getElementById('treewrap').innerHTML = '<div class="empty-detail"><span class="big">◇</span>Select a record to decode it</div>';
+  document.getElementById('hexwrap').innerHTML = '';
+  btnFollow.disabled = true; btnReplay.disabled = true;
+}
+
+function toggleFullscreen() {
+  if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(()=>{});
+  else document.exitFullscreen();
+}
+document.addEventListener('fullscreenchange', () => {
+  document.getElementById('btnFs').textContent = document.fullscreenElement ? '⊠' : '⊡';
+});
+
+// ── Resize handle (matches Session Viewer / Proxy Viewer) ────────
+(function() {
+  const handle = document.getElementById('resizeHandle');
+  let startY, startH;
+  handle.addEventListener('mousedown', e => {
+    startY = e.screenY; startH = window.outerHeight;
+    const onMove = ev => { try { window.resizeTo(window.outerWidth, Math.max(200, startH + (ev.screenY - startY))); } catch {} };
+    const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    e.preventDefault();
+  });
+})();
+
+loadData();
+// Wire captures are only ever added to (not streamed), so a light poll
+// keeps the panel current without needing a second WebSocket connection
+// from this popup — matches how Session Viewer's Refresh button works,
+// just automatic.
+setInterval(loadData, 4000);
+</script>
+</body>
+</html>
