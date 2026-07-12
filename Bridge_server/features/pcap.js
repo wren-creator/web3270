@@ -20,6 +20,15 @@ export function clearCaptures() {
   captures.clear();
 }
 
+// Read-only accessor for the wire inspector: returns [{wsId, host, port, frames}]
+// for every session with captured traffic (or just the requested wsId).
+export function getCaptures(wsId = null) {
+  const ids = wsId != null ? [wsId] : [...captures.keys()];
+  return ids
+    .filter(id => captures.has(id))
+    .map(id => ({ wsId: id, ...captures.get(id) }));
+}
+
 // ── PCAP framing ────────────────────────────────────────────────────
 
 function ipChecksum(buf) {

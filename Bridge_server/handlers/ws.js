@@ -226,6 +226,14 @@ export function createWsHandler({ config, logger, sessions, Ebcdic }) {
             handleFuzz(msg, ws, wsId, session, send, logger);
             break;
 
+          case 'sec.wireReplay':
+            if (typeof msg.hex === 'string' && msg.hex.length) {
+              logger.info(`[ws:${wsId}] Wire Inspector: replaying ${msg.hex.length / 2}B outbound record`);
+              session.sendRawAid(Buffer.from(msg.hex, 'hex'));
+              send(ws, { type: 'sec.wire.replayed', no: msg.no });
+            }
+            break;
+
           case 'disconnect':
             session.disconnect('client request');
             break;

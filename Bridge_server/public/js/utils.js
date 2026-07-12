@@ -1,4 +1,5 @@
 // ── js/utils.js — HTML escaping, saveAs dialog, misc utilities ──────
+import { state } from './state.js';
 
 export function esc(s) {
   return String(s).replace(/[&<>"']/g, c =>
@@ -93,5 +94,26 @@ export function openLogsViewer() {
   window.open('/logs', 'logsViewer', `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=no`);
 }
 
+export function openWireInspector() {
+  const w = 980, h = 620;
+  const left = Math.max(0, screen.width  - w - 20);
+  const top  = Math.max(0, screen.height - h - 80);
+  window.open('/wire', 'wireInspector', `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=no`);
+}
+
+// Called by the Wire Inspector popup (via window.opener) to replay a
+// captured outbound record into the session it actually belongs to —
+// each browser WebSocket maps to exactly one bridge session (wsId), so
+// the replay has to go out over that same connection, not a new one.
+export function wireReplaySend(wsId, hex, no) {
+  for (const s of state.sessions.values()) {
+    if (s.wsId === wsId && s.ws && s.ws.readyState === WebSocket.OPEN) {
+      s.ws.send(JSON.stringify({ type: 'sec.wireReplay', hex, no }));
+      return true;
+    }
+  }
+  return false;
+}
+
 // Assign to window so onclick attributes and dynamic HTML can use them
-Object.assign(window, { esc, escAttr, saveAs, openTrafficViewer, openLogsViewer });
+Object.assign(window, { esc, escAttr, saveAs, openTrafficViewer, openLogsViewer, openWireInspector, wireReplaySend });
