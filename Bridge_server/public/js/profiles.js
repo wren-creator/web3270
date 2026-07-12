@@ -263,7 +263,7 @@ export function handleBridgeMsg(sid, msg) {
             if (e) e.textContent = msg.tlsVersion === 'PLAIN' ? '3270' : msg.tlsVersion;
           }
         }
-        if (msg.wsId !== undefined) window.recorderSetSession?.(msg.wsId);
+        if (msg.wsId !== undefined) { session.wsId = msg.wsId; window.recorderSetSession?.(msg.wsId); }
       } else if (msg.state === 'disconnected') {
         session.tn3270Connected = false;
         setConnStatus(session.name, 'disconnected'); updateSessionDot(sid, 'disconnected');
