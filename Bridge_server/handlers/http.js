@@ -11,6 +11,7 @@ import * as recording from '../routes/recording.js';
 import * as security  from '../routes/security.js';
 import * as negotiate from '../routes/negotiate.js';
 import * as health    from '../routes/health.js';
+import * as wire      from '../routes/wire.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -26,7 +27,7 @@ const MIME = {
 };
 
 // health first — cheapest route, hit most often by orchestrator probes
-const ROUTES = [health, traffic, logs, profiles, sshHosts, macros, recording, security, negotiate];
+const ROUTES = [health, traffic, logs, profiles, sshHosts, macros, recording, security, negotiate, wire];
 
 export function createRequestHandler({ config, logger, sessions }) {
   const ctx = { config, logger, sessions };
@@ -44,6 +45,7 @@ export function createRequestHandler({ config, logger, sessions }) {
     else if (urlPath === '/replay' || urlPath === '/replay.html')    filePath = path.join(PUBLIC_DIR, 'replay.html');
     else if (urlPath === '/logs' || urlPath === '/logs.html')        filePath = path.join(PUBLIC_DIR, 'logs.html');
     else if (urlPath === '/traffic' || urlPath === '/traffic.html')  filePath = path.join(PUBLIC_DIR, 'traffic.html');
+    else if (urlPath === '/wire' || urlPath === '/wire.html')        filePath = path.join(PUBLIC_DIR, 'wire.html');
     else if (urlPath === '/copilot' || urlPath === '/copilot.html')  filePath = path.join(PUBLIC_DIR, 'copilot-panel-standalone.html');
     else {
       filePath = path.join(PUBLIC_DIR, urlPath);
