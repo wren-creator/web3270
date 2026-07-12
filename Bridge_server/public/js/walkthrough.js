@@ -1922,6 +1922,60 @@ const _WALKTHROUGHS = [
     ],
   },
 
+  // ── Cross-Session Buffer Bleed ──────────────────────────────────────
+  {
+    id:       'buffer-bleed',
+    category: 'security',
+    title:    'Cross-Session Buffer Bleed',
+    desc:     'A pooled LU\'s controller buffer is only guaranteed clear after an Erase/Write — reused too soon, it can hand the next session a prior user\'s field data.',
+    steps: [
+      {
+        title: 'Why buffer reuse matters',
+        body:  'A real 3270 controller only clears its screen buffer on an Erase command. If a Logical Unit (LU) is pooled and handed to a new logical session before the host application issues its own fresh Erase/Write, whatever the previous occupant left behind — including unprotected or nondisplay fields with MDT still set — can still be present for a brief window before the new screen paints over it.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click 🔒 in the OIA bar and enter the security password.',
+        highlight: 'secBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Arm the watch',
+        body:  'In the SESSION HYGIENE section, click "🩸 Arm Buffer-Bleed Watch". The tool now inspects the first screens after every connect for content that shouldn\'t be there yet.',
+        highlight: 'bbArmBtn',
+        autoFn: 'toggleBufferBleedWatch',
+        autoLabel: 'Arm the watch for me',
+      },
+      {
+        title: 'Pin a specific LU and connect',
+        body:  'Open the Connect modal. In the LU Name field, type a name you\'ll reuse — e.g. TESTLU01 — and connect. Type a userid and password into the logon fields (any values), then disconnect without necessarily submitting.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Reconnect to the SAME LU',
+        body:  'Within about 90 seconds, open the Connect modal again, enter the exact same LU Name (TESTLU01), and connect. If the host or gateway reuses LU buffers without a full Erase, the very first screen frame of this new session can carry the prior session\'s field content.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Check the results',
+        body:  'The results table logs the LU name, the field coordinates, and the leaked content — masked for nondisplay fields, shown in plain text otherwise. A hit here means one logical session bled into the next before the host had a chance to draw its own screen.',
+        highlight: 'bbResultsTable',
+        autoFn: null,
+      },
+      {
+        title: 'Export',
+        body:  'Click ↓ Export CSV to document the LU, coordinates, and leaked content for your report.',
+        highlight: 'bbResultsTable',
+        autoFn: 'bufferBleedExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
   // ── IBM i (AS/400) System Value Security Analyzer ─────────────────
   {
     id:       'as400-sysval-analyzer',
