@@ -545,7 +545,7 @@
           </div>
           <div class="sec-panel-hint" style="margin:6px 0">Field Length Disclosure — MDT + buffer-address deltas reveal how many characters were typed into a nondisplay field, even though the characters themselves are masked.</div>
           <div class="sec-row" style="gap:6px">
-            <button onclick="fieldDiscScanOnce()" style="flex:1;background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 8px;cursor:pointer">🔍 Scan Screen Now</button>
+            <button id="fdScanBtn" onclick="fieldDiscScanOnce()" style="flex:1;background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 8px;cursor:pointer">🔍 Scan Screen Now</button>
             <button id="fdWatchBtn" class="sec-panel-btn sec-panel-btn-inline" onclick="toggleFieldDiscWatch()" style="flex:1">
               <span class="sec-panel-btn-label">👁 Watch</span>
             </button>
