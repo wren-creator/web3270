@@ -1520,6 +1520,118 @@ The `/api/negotiate` route includes this log. The client renders it in order wit
 
 ---
 
+## Part 2W — Field Length Disclosure
+
+A nondisplay field masks its *characters*, not its *length*. The MDT (Modified Data Tag) bit plus the field's buffer-address span are ordinary, unmasked datastream metadata — anything reading the wire can measure exactly how many characters were typed into a "hidden" field without ever seeing what they were. This is a structural side-channel in the 3270 datastream itself, not a timing attack, and it applies to any nondisplay field on any screen — password prompts, PIN entry, API keys typed into a masked field, anything.
+
+---
+
+### Location
+
+Security panel → FIELD ANALYSIS → Field Length Disclosure (below Color Reveal)
+
+### How it works
+
+Every field the bridge decodes carries `nondisplay`, `modified` (the MDT bit), and `content` (`tn3270/session.js`'s `_extractFields()`). The scanner (`fielddisclosure.js`) walks `screen.fields` for anything where `nondisplay && modified && content.trim().length > 0`, and logs the field's row/column and trimmed content length. "🔍 Scan Screen Now" does a single pass over the current screen; "👁 Watch" re-runs the scan on every incoming screen automatically, silently harvesting nondisplay-field lengths across an entire session with no active probing.
+
+### Why "non-display = safe" is the wrong assumption
+
+Knowing a password is exactly 8 characters (not "up to 8," not "8 or fewer" — exactly 8) collapses a brute-force or dictionary search space dramatically before a single logon attempt is made. Combined with a wordlist tool like the RACF Probe, length disclosure lets an attacker pre-filter candidates by length, cutting attempt counts (and lockout risk) substantially.
+
+### Testing / Teaching scenario
+
+Navigate to a TSO logon screen (or the bundled mock, which now correctly masks its PASSWORD field). Type a password of a known length into the field but do not submit — this is exactly the mid-entry state a shoulder-surfing tool, proxy, or malicious middleware would observe. Run the scanner and confirm the reported length matches. Then arm Watch and step through several screens in a session (logon, CICS signon, a change-password panel) to show the finding accumulates passively across an entire session, not just one screen.
+
+---
+
+## Part 2X — Cross-Session Buffer Bleed
+
+A real 3270 controller buffer is only guaranteed clear after an Erase/Write. If a Logical Unit (LU) is pooled and handed to a new logical session before the host application issues its own fresh Erase/Write, whatever the previous occupant left in the buffer — including unprotected or nondisplay fields with the MDT bit still set — can still be present for a brief window before the new session's screen paints over it.
+
+---
+
+### Location
+
+Security panel → SESSION HYGIENE → 🩸 Arm Buffer-Bleed Watch
+
+### How it works
+
+The client side (`bufferbleed.js`) arms on toggle, then watches the first screens delivered after every `status: connecting` event on the active session; any unprotected field with non-blank content and the MDT bit set on those early frames is flagged, since a genuinely fresh logon screen should not have anything typed into it yet.
+
+The bundled mock (`mock-lpar.js`) now models the underlying vulnerability class instead of just the client-side detector: it parses and echoes back the LU name requested via the TN3270E `CONNECT` sub-negotiation (previously ignored entirely), and on disconnect caches the last-typed userid/password keyed by that LU name. If a new connection requests the *same* LU within `BUFFER_BLEED_WINDOW_MS` (90s), the mock replays the cached field data as a non-erasing **Write** (not Erase/Write) before sending the real, freshly-erased logon screen — exactly modeling a pooled LU whose controller buffer wasn't cleared before reassignment.
+
+### Risk
+
+A MEDIUM–HIGH finding depending on environment. In real VTAM/LU-pool deployments, LUs are reused across logical sessions for efficiency. If the host or any gateway in the path ever sends data before a full Erase/Write on session start, a new user landing on a reused LU can briefly see (or a tool positioned to catch the first frame can capture) the prior user's field data — including a password that was typed but never submitted.
+
+### Testing
+
+Set an explicit LU Name in the Connect modal (e.g. `TESTLU01`), connect, type a userid/password without necessarily submitting, then disconnect. Reconnect with the exact same LU Name within 90 seconds with the watch armed. A hit in the results table means the first screen of the new session carried the prior session's data.
+
+### Teaching scenario
+
+Run the test twice: once reconnecting within the 90s window (expect a hit against the bundled mock), and once waiting past the window or using a different LU name (expect no hit — the fresh logon screen only). This demonstrates the difference between "the vulnerability exists in principle" and "the vulnerability is reproducible against this exact target," which is the more defensible claim to bring to a disclosure conversation.
+
+---
+
+## Part 2Y — VM Minidisk Password Exposure
+
+z/VM's CP LOGON PASSWORD field is masked exactly like a TSO password field — but CP has no concept of "this command argument is a secret." A minidisk `LINK` password typed at the ordinary CP READ command line lands in a normal, display-intensity, unprotected field and renders in cleartext the instant it's typed, before ENTER is even pressed.
+
+---
+
+### Location
+
+Security panel → VM MINIDISK SECURITY → 🔎 Scan Current Screen
+
+### How it works
+
+`vmminidisk.js` scans the current screen's text for the CP `LINK owner fromVdev toVdev mode [password]` syntax and extracts the password argument. It then cross-checks the field the command was typed into against `screen.fields` to confirm its FA byte is *not* nondisplay — the receipt that this is a structural gap (CP has no masked-input primitive for command arguments) rather than user error or a one-off misconfiguration.
+
+The bundled mock (`mock-lpar/mock-zvm.js`, an existing local z/VM CP/CMS daemon) now handles `LINK` at the CP Ready prompt: it parses the command, returns a `DASD nnn LINKED R/O|R/W` confirmation, and logs the raw command line to an in-memory console log — modeling what a real operator console or SMF accounting record would retain in production.
+
+### Risk
+
+A HIGH finding where minidisk link passwords are still used for access control (common on older z/VM estates). Anything that observes the session — a traffic log, a screen recorder, a proxy, a shared or shoulder-surfed console, or simply this tool sitting where a defender should have been looking first — captures the password in plaintext. Unlike a LOGON password, there is no masking to bypass; it was never masked in the first place.
+
+### Testing / Teaching scenario
+
+Connect to a z/VM CP session (the bundled mock or type `ZVM` target) and log on. At the CP Ready prompt, type `LINK MAINT 191 191 MR mysecretpw` and pause before pressing Enter — point out that the full command, including the password, is already visible on screen. Run the scanner and show the FA cross-check: `NORMAL — unmasked` in orange, versus the `NONDISPLAY` you'd see (in green) for the LOGON PASSWORD field a screen earlier. This side-by-side is the clearest way to make the point that masking is per-field, not per-secret — CP protects the field it knows about and nothing else.
+
+---
+
+## Part 2Z — Wire Inspector
+
+A 3270-aware packet inspector, in the same spirit as Wireshark but decoding the *protocol*, not just the bytes. Wireshark has no native TN3270 dissector — piped raw bytes only ever show Telnet/TCP framing. The Wire Inspector decodes every SF/SFE/SBA/AID order into plain language, color-codes by direction and security relevance, and can replay a captured outbound record back into its live session.
+
+---
+
+### Location
+
+Security panel → TRAFFIC → 🔌 Wire Inspector (opens as its own popup window, alongside Session Viewer and Proxy Viewer)
+
+### How it works
+
+Every byte that crosses the wire in either direction is already captured unconditionally by `features/pcap.js` — `Tn3270Session._onData`/`_send` emit a `'raw'` event before any telnet or 3270 parsing happens, which is what powers the existing PCAP export. The Wire Inspector adds a decoder on top of that same capture (`tn3270/wire-decode.js`) instead of a second capture path.
+
+The decoder is a stateless-replay pass, not a live session: it re-walks the raw bytes exactly like `Tn3270Session._processBuffer` does (telnet DO/WILL triplets, `IAC SB…IAC SE` sub-negotiations, `IAC EOR`-terminated 3270 data records), but instead of mutating a rendering buffer it reconstructs only what's needed to label records correctly — principally a map of buffer-address → field-attribute byte, updated as inbound `SF`/`SFE`/`MF` orders are seen, so an outbound field write can be checked against it and flagged when it targets a nondisplay field. Two non-trivial pieces are reused directly from `session.js` rather than reimplemented — the 12/14-bit buffer address decoder and the TN3270E sub-negotiation describer — everything else (order bytes, command bytes) is redeclared locally, matching the convention the mock daemons already use for staying self-contained.
+
+One asymmetry worth knowing if you're reading the decoder: outbound (client→host) records in this codebase never carry the TN3270E 5-byte header, even after negotiation — `Tn3270Session._sendDataRecord()` doesn't prepend one, and the mock hosts don't expect one on receipt either. Only inbound host→client writes get the header stripped. The decoder mirrors this — get it backwards and every outbound AID record decodes as garbage.
+
+### Reading the panel
+
+- **Packet list** — one row per decoded record: time, session, direction arrow, byte count, protocol label, AID (if any), and a one-line summary. A red dot + red left border flags any record that reads or writes a nondisplay field.
+- **Filter bar** — `dir:out`, `aid:enter`, `order:sf`, `session:3`, `field:nondisplay`, plus free text, combinable. Narrower than Wireshark's display-filter grammar on purpose — the point is 3270-semantic queries Wireshark can't do at all.
+- **Order tree + hex pane** — click a row to decode it order-by-order on the left, with the raw hex/ASCII on the right. Hover an order to highlight exactly which bytes produced it.
+- **Follow Session** — filters the list to one session's back-and-forth.
+- **Replay Selected** — re-sends an outbound record's exact bytes into the session it came from, via `session.sendRawAid()`. Only available for outbound records (replaying "what the host said" doesn't mean anything). The popup reaches back into the main window via `window.opener` to use that session's already-open WebSocket — replay has to go out over the same connection the record belongs to, not a new one.
+
+### Testing / Teaching scenario
+
+Connect to any TN3270 host, open the Wire Inspector, and log on. Filter to `field:nondisplay` — the only rows left should be the logon screen's password field write and your own password field submission. Click the outbound AID record: the order tree shows the USERID field in cleartext and the PASSWORD field's bytes replaced with "N byte(s) — nondisplay field content, masked" — the same content-never-leaves-the-decoder guarantee the rest of the product already holds for logs. Then select an earlier command (e.g. a `LISTDS` or menu selection) and click Replay — watch the host process it again live, exactly as if you'd typed it, without touching the keyboard.
+
+---
+
 ## Part 3 — IBM i (AS/400) Security Tools
 
 The tools in Parts 1–2 target z/OS over TN3270. Part 3 covers the first tools that target **IBM i (AS/400) over TN5250**. They audit the three foundations of IBM i security — system values, user profiles with their special authorities, and object *PUBLIC authority — against the seeded weak posture in the mock IBM i host (`mock-lpar/mock-as400.js`).

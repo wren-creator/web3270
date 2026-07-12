@@ -1868,6 +1868,233 @@ const _WALKTHROUGHS = [
     ],
   },
 
+  // ── Field Length Disclosure ─────────────────────────────────────────
+  {
+    id:       'field-length-disclosure',
+    category: 'security',
+    title:    'Field Length Disclosure',
+    desc:     'Nondisplay fields mask characters, not length — the MDT bit plus buffer-address deltas reveal exactly how many characters were typed into a password field.',
+    steps: [
+      {
+        title: 'Why "nondisplay" isn\'t "safe"',
+        body:  'A password field\'s FA byte sets the nondisplay intensity bits so the terminal doesn\'t render typed characters. But the field\'s buffer-address span and its MDT (Modified Data Tag) bit are ordinary, unmasked datastream metadata — anyone reading the wire (or sitting where this tool sits) can measure exactly how many characters were typed without ever seeing what they were. That\'s a structural side-channel in the protocol itself, not a timing attack.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click 🔒 in the OIA bar and enter the security password.',
+        highlight: 'secBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Go to a logon screen and type a password — don\'t press Enter',
+        body:  'Navigate to a TSO logon screen. Type anything into the USERID field, then type a password of any length into the PASSWORD field. Leave the cursor there without submitting — this is exactly the moment a real user would be mid-entry.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Scan the screen',
+        body:  'In the FIELD ANALYSIS section, click "🔍 Scan Screen Now". The scanner walks every field on the current screen, finds any nondisplay field with the MDT bit set, and logs its exact character count — even though the field itself still renders masked on your terminal.',
+        highlight: 'fdScanBtn',
+        autoFn: 'fieldDiscScanOnce',
+        autoLabel: 'Scan for me',
+      },
+      {
+        title: 'Read the result',
+        body:  'The results table shows the field\'s row/column and its length in plain numbers. This is the whole finding: you now know the password is, say, exactly 8 characters — a dictionary/brute-force attacker can immediately drop every candidate that isn\'t 8 characters long, without a single failed logon attempt.',
+        highlight: 'fdResultsTable',
+        autoFn: null,
+      },
+      {
+        title: 'Optional: passive watch mode',
+        body:  'Click "👁 Watch" to leave the scanner running in the background — it re-scans every screen the session receives and logs new nondisplay+MDT findings automatically, silently harvesting password lengths across an entire session without any active probing.',
+        highlight: 'fdWatchBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Export',
+        body:  'Click ↓ Export CSV to save row/column/length/timestamp findings for your report.',
+        highlight: 'fdResultsTable',
+        autoFn: 'fieldDiscExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
+  // ── Cross-Session Buffer Bleed ──────────────────────────────────────
+  {
+    id:       'buffer-bleed',
+    category: 'security',
+    title:    'Cross-Session Buffer Bleed',
+    desc:     'A pooled LU\'s controller buffer is only guaranteed clear after an Erase/Write — reused too soon, it can hand the next session a prior user\'s field data.',
+    steps: [
+      {
+        title: 'Why buffer reuse matters',
+        body:  'A real 3270 controller only clears its screen buffer on an Erase command. If a Logical Unit (LU) is pooled and handed to a new logical session before the host application issues its own fresh Erase/Write, whatever the previous occupant left behind — including unprotected or nondisplay fields with MDT still set — can still be present for a brief window before the new screen paints over it.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click 🔒 in the OIA bar and enter the security password.',
+        highlight: 'secBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Arm the watch',
+        body:  'In the SESSION HYGIENE section, click "🩸 Arm Buffer-Bleed Watch". The tool now inspects the first screens after every connect for content that shouldn\'t be there yet.',
+        highlight: 'bbArmBtn',
+        autoFn: 'toggleBufferBleedWatch',
+        autoLabel: 'Arm the watch for me',
+      },
+      {
+        title: 'Pin a specific LU and connect',
+        body:  'Open the Connect modal. In the LU Name field, type a name you\'ll reuse — e.g. TESTLU01 — and connect. Type a userid and password into the logon fields (any values), then disconnect without necessarily submitting.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Reconnect to the SAME LU',
+        body:  'Within about 90 seconds, open the Connect modal again, enter the exact same LU Name (TESTLU01), and connect. If the host or gateway reuses LU buffers without a full Erase, the very first screen frame of this new session can carry the prior session\'s field content.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Check the results',
+        body:  'The results table logs the LU name, the field coordinates, and the leaked content — masked for nondisplay fields, shown in plain text otherwise. A hit here means one logical session bled into the next before the host had a chance to draw its own screen.',
+        highlight: 'bbResultsTable',
+        autoFn: null,
+      },
+      {
+        title: 'Export',
+        body:  'Click ↓ Export CSV to document the LU, coordinates, and leaked content for your report.',
+        highlight: 'bbResultsTable',
+        autoFn: 'bufferBleedExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
+  // ── VM Minidisk Password Exposure ───────────────────────────────────
+  {
+    id:       'vm-minidisk-exposure',
+    category: 'security',
+    title:    'VM Minidisk Password Exposure',
+    desc:     'z/VM\'s CP has no masked-input primitive for command arguments — a minidisk LINK password typed at the ordinary CP READ prompt renders in cleartext.',
+    steps: [
+      {
+        title: 'Why this is different from a LOGON password',
+        body:  'z/VM\'s CP LOGON PASSWORD field is properly masked — its FA byte sets the nondisplay bits, same as a TSO password field. But CP has no concept of "this command argument is a secret": a minidisk LINK password typed at the ordinary CP READ command line lands in a normal, NORMAL-intensity, unprotected field. It renders in cleartext the instant it\'s typed — before ENTER is even pressed — and is captured by anything watching the session: traffic logs, screen recorders, or a shared/shoulder-surfed console.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click 🔒 in the OIA bar and enter the security password.',
+        highlight: 'secBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Connect to a z/VM CP session',
+        body:  'Connect to a z/VM target (type ZVM in your profile, or the bundled mock at mock-zvm/3271) and log on. You\'ll land at the CP Ready prompt.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Type a LINK command with a password',
+        body:  'At the CP READ command line, type: LINK MAINT 191 191 MR mysecretpw — but don\'t press Enter yet. Look at the screen: the entire command, including the password, is fully visible in plain text. Compare that with the LOGON PASSWORD field a moment earlier, which was masked.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Scan the screen',
+        body:  'Click "🔎 Scan Current Screen". The scanner recognizes the LINK syntax, extracts the password, and cross-checks the field\'s FA byte to confirm it was never marked nondisplay — the receipt that proves this isn\'t user error, it\'s a structural gap in CP\'s command-line design.',
+        highlight: 'vmScanBtn',
+        autoFn: 'vmMinidiskScanNow',
+        autoLabel: 'Scan for me',
+      },
+      {
+        title: 'Read the result',
+        body:  'The results table shows the owner, target virtual device, the exposed password in plain text, and the field\'s FA — flagged NORMAL / unmasked in orange rather than the green NONDISPLAY you\'d see for a properly protected field.',
+        highlight: 'vmResultsTable',
+        autoFn: null,
+      },
+      {
+        title: 'Export',
+        body:  'Click ↓ Export CSV to document the exposure for your report.',
+        highlight: 'vmResultsTable',
+        autoFn: 'vmMinidiskExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
+  // ── Wire Inspector ───────────────────────────────────────────────
+  {
+    id:       'wire-inspector',
+    category: 'security',
+    title:    'Wire Inspector',
+    desc:     'A 3270-aware packet inspector — decoded orders, security-relevant color coding, and replay, in a Wireshark-shaped window Wireshark itself can\'t build without a custom dissector.',
+    steps: [
+      {
+        title: 'Why not just use Wireshark?',
+        body:  'Wireshark has no native TN3270 dissector — a raw capture piped to it only ever shows Telnet/TCP framing, not decoded 3270 orders (SBA, SF, AID, field boundaries). The Wire Inspector reuses the same raw byte capture that already powers PCAP export, but decodes it with this product\'s own 3270 parser instead, so filtering and color-coding can be genuinely protocol-aware.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click 🔒 in the OIA bar and enter the security password.',
+        highlight: 'secBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Open the Wire Inspector',
+        body:  'In the TRAFFIC section, click "🔌 Wire Inspector". It opens as its own popup window, same as Session Viewer and Proxy Viewer.',
+        highlight: 'wireInspectorBtn',
+        autoFn: 'openWireInspector',
+        autoLabel: 'Open it for me',
+      },
+      {
+        title: 'Connect and log on',
+        body:  'Back in the main window, connect to a host and log on. Every screen and every key you send appears in the Wire Inspector\'s packet list in real time (it polls every few seconds) — negotiation, sub-negotiation, writes, and your outbound AID records.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Filter to nondisplay-field activity',
+        body:  'In the Wire Inspector, type "field:nondisplay" into the filter bar. The list narrows to exactly the records that read or wrote a nondisplay field — the logon screen\'s PASSWORD field definition, and your own submission of it.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Decode a record',
+        body:  'Click your logon AID record. The left pane shows an order-by-order breakdown — AID, cursor, each SBA/field pair. Notice the USERID field shows its content in cleartext, but the PASSWORD field shows "N byte(s) — nondisplay field content, masked" — the decoder never surfaces nondisplay content, matching the same guarantee the rest of this product holds everywhere else.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Hover to sync hex ↔ order',
+        body:  'Hover any line in the order tree — the corresponding bytes highlight in the hex/ASCII pane on the right. This is how you\'d explain to someone exactly which bytes produced a given piece of the decode.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Replay an outbound record',
+        body:  'Select an earlier outbound record — a menu selection or command you typed — and click "↻ Replay Selected". The exact bytes are re-sent into that same session, and the host processes it again live, no keyboard involved. Only outbound records are replayable; replaying "what the host said" isn\'t meaningful the same way.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Export',
+        body:  'Use ↓ PCAP for a Wireshark-readable capture (Telnet/TCP level only, same limitation as always), or ↓ CSV for the decoded record list — timestamps, direction, AID, and summaries.',
+        highlight: null,
+        autoFn: null,
+      },
+    ],
+  },
+
   // ── IBM i (AS/400) System Value Security Analyzer ─────────────────
   {
     id:       'as400-sysval-analyzer',
