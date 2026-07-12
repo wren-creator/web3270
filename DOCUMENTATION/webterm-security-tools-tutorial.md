@@ -1544,6 +1544,36 @@ Navigate to a TSO logon screen (or the bundled mock, which now correctly masks i
 
 ---
 
+## Part 2X — Cross-Session Buffer Bleed
+
+A real 3270 controller buffer is only guaranteed clear after an Erase/Write. If a Logical Unit (LU) is pooled and handed to a new logical session before the host application issues its own fresh Erase/Write, whatever the previous occupant left in the buffer — including unprotected or nondisplay fields with the MDT bit still set — can still be present for a brief window before the new session's screen paints over it.
+
+---
+
+### Location
+
+Security panel → SESSION HYGIENE → 🩸 Arm Buffer-Bleed Watch
+
+### How it works
+
+The client side (`bufferbleed.js`) arms on toggle, then watches the first screens delivered after every `status: connecting` event on the active session; any unprotected field with non-blank content and the MDT bit set on those early frames is flagged, since a genuinely fresh logon screen should not have anything typed into it yet.
+
+The bundled mock (`mock-lpar.js`) now models the underlying vulnerability class instead of just the client-side detector: it parses and echoes back the LU name requested via the TN3270E `CONNECT` sub-negotiation (previously ignored entirely), and on disconnect caches the last-typed userid/password keyed by that LU name. If a new connection requests the *same* LU within `BUFFER_BLEED_WINDOW_MS` (90s), the mock replays the cached field data as a non-erasing **Write** (not Erase/Write) before sending the real, freshly-erased logon screen — exactly modeling a pooled LU whose controller buffer wasn't cleared before reassignment.
+
+### Risk
+
+A MEDIUM–HIGH finding depending on environment. In real VTAM/LU-pool deployments, LUs are reused across logical sessions for efficiency. If the host or any gateway in the path ever sends data before a full Erase/Write on session start, a new user landing on a reused LU can briefly see (or a tool positioned to catch the first frame can capture) the prior user's field data — including a password that was typed but never submitted.
+
+### Testing
+
+Set an explicit LU Name in the Connect modal (e.g. `TESTLU01`), connect, type a userid/password without necessarily submitting, then disconnect. Reconnect with the exact same LU Name within 90 seconds with the watch armed. A hit in the results table means the first screen of the new session carried the prior session's data.
+
+### Teaching scenario
+
+Run the test twice: once reconnecting within the 90s window (expect a hit against the bundled mock), and once waiting past the window or using a different LU name (expect no hit — the fresh logon screen only). This demonstrates the difference between "the vulnerability exists in principle" and "the vulnerability is reproducible against this exact target," which is the more defensible claim to bring to a disclosure conversation.
+
+---
+
 ## Part 3 — IBM i (AS/400) Security Tools
 
 The tools in Parts 1–2 target z/OS over TN3270. Part 3 covers the first tools that target **IBM i (AS/400) over TN5250**. They audit the three foundations of IBM i security — system values, user profiles with their special authorities, and object *PUBLIC authority — against the seeded weak posture in the mock IBM i host (`mock-lpar/mock-as400.js`).
