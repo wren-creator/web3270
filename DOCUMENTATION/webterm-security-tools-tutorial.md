@@ -1574,6 +1574,32 @@ Run the test twice: once reconnecting within the 90s window (expect a hit agains
 
 ---
 
+## Part 2Y — VM Minidisk Password Exposure
+
+z/VM's CP LOGON PASSWORD field is masked exactly like a TSO password field — but CP has no concept of "this command argument is a secret." A minidisk `LINK` password typed at the ordinary CP READ command line lands in a normal, display-intensity, unprotected field and renders in cleartext the instant it's typed, before ENTER is even pressed.
+
+---
+
+### Location
+
+Security panel → VM MINIDISK SECURITY → 🔎 Scan Current Screen
+
+### How it works
+
+`vmminidisk.js` scans the current screen's text for the CP `LINK owner fromVdev toVdev mode [password]` syntax and extracts the password argument. It then cross-checks the field the command was typed into against `screen.fields` to confirm its FA byte is *not* nondisplay — the receipt that this is a structural gap (CP has no masked-input primitive for command arguments) rather than user error or a one-off misconfiguration.
+
+The bundled mock (`mock-lpar/mock-zvm.js`, an existing local z/VM CP/CMS daemon) now handles `LINK` at the CP Ready prompt: it parses the command, returns a `DASD nnn LINKED R/O|R/W` confirmation, and logs the raw command line to an in-memory console log — modeling what a real operator console or SMF accounting record would retain in production.
+
+### Risk
+
+A HIGH finding where minidisk link passwords are still used for access control (common on older z/VM estates). Anything that observes the session — a traffic log, a screen recorder, a proxy, a shared or shoulder-surfed console, or simply this tool sitting where a defender should have been looking first — captures the password in plaintext. Unlike a LOGON password, there is no masking to bypass; it was never masked in the first place.
+
+### Testing / Teaching scenario
+
+Connect to a z/VM CP session (the bundled mock or type `ZVM` target) and log on. At the CP Ready prompt, type `LINK MAINT 191 191 MR mysecretpw` and pause before pressing Enter — point out that the full command, including the password, is already visible on screen. Run the scanner and show the FA cross-check: `NORMAL — unmasked` in orange, versus the `NONDISPLAY` you'd see (in green) for the LOGON PASSWORD field a screen earlier. This side-by-side is the clearest way to make the point that masking is per-field, not per-secret — CP protects the field it knows about and nothing else.
+
+---
+
 ## Part 3 — IBM i (AS/400) Security Tools
 
 The tools in Parts 1–2 target z/OS over TN3270. Part 3 covers the first tools that target **IBM i (AS/400) over TN5250**. They audit the three foundations of IBM i security — system values, user profiles with their special authorities, and object *PUBLIC authority — against the seeded weak posture in the mock IBM i host (`mock-lpar/mock-as400.js`).
