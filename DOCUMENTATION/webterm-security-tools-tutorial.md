@@ -1630,6 +1630,12 @@ One asymmetry worth knowing if you're reading the decoder: outbound (client→ho
 
 Connect to any TN3270 host, open the Wire Inspector, and log on. Filter to `field:nondisplay` — the only rows left should be the logon screen's password field write and your own password field submission. Click the outbound AID record: the order tree shows the USERID field in cleartext and the PASSWORD field's bytes replaced with "N byte(s) — nondisplay field content, masked" — the same content-never-leaves-the-decoder guarantee the rest of the product already holds for logs. Then select an earlier command (e.g. a `LISTDS` or menu selection) and click Replay — watch the host process it again live, exactly as if you'd typed it, without touching the keyboard.
 
+### Build notes / known limitations
+
+The E2E test for this feature caught a real bug before it shipped: outbound records were getting the TN3270E header incorrectly stripped, corrupting AID decode (see the asymmetry noted above — outbound records never carry that header, so stripping one that isn't there eats real order bytes). Fixed pre-commit, not shipped broken. The same test run incidentally cross-validated the Cross-Session Buffer Bleed detector from earlier in this build — a reconnect during testing tripped it correctly.
+
+**Known limitation:** `routes/wire.js` hardcodes `{cols: 80, rows: 24}` for row/col display math. On 132-column models (3278-5, common on z/VM/JES profiles), byte-level decode and nondisplay flagging are still correct, but the row/col numbers shown in the order tree will be wrong. Fix requires `getCaptures()` to carry the negotiated screen model per session — scoped out of this build to keep it bounded. Follow-up: wire the negotiated model through to the row/col math.
+
 ---
 
 ## Part 3 — IBM i (AS/400) Security Tools
