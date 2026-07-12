@@ -2030,6 +2030,71 @@ const _WALKTHROUGHS = [
     ],
   },
 
+  // ── Wire Inspector ───────────────────────────────────────────────
+  {
+    id:       'wire-inspector',
+    category: 'security',
+    title:    'Wire Inspector',
+    desc:     'A 3270-aware packet inspector — decoded orders, security-relevant color coding, and replay, in a Wireshark-shaped window Wireshark itself can\'t build without a custom dissector.',
+    steps: [
+      {
+        title: 'Why not just use Wireshark?',
+        body:  'Wireshark has no native TN3270 dissector — a raw capture piped to it only ever shows Telnet/TCP framing, not decoded 3270 orders (SBA, SF, AID, field boundaries). The Wire Inspector reuses the same raw byte capture that already powers PCAP export, but decodes it with this product\'s own 3270 parser instead, so filtering and color-coding can be genuinely protocol-aware.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click 🔒 in the OIA bar and enter the security password.',
+        highlight: 'secBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Open the Wire Inspector',
+        body:  'In the TRAFFIC section, click "🔌 Wire Inspector". It opens as its own popup window, same as Session Viewer and Proxy Viewer.',
+        highlight: 'wireInspectorBtn',
+        autoFn: 'openWireInspector',
+        autoLabel: 'Open it for me',
+      },
+      {
+        title: 'Connect and log on',
+        body:  'Back in the main window, connect to a host and log on. Every screen and every key you send appears in the Wire Inspector\'s packet list in real time (it polls every few seconds) — negotiation, sub-negotiation, writes, and your outbound AID records.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Filter to nondisplay-field activity',
+        body:  'In the Wire Inspector, type "field:nondisplay" into the filter bar. The list narrows to exactly the records that read or wrote a nondisplay field — the logon screen\'s PASSWORD field definition, and your own submission of it.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Decode a record',
+        body:  'Click your logon AID record. The left pane shows an order-by-order breakdown — AID, cursor, each SBA/field pair. Notice the USERID field shows its content in cleartext, but the PASSWORD field shows "N byte(s) — nondisplay field content, masked" — the decoder never surfaces nondisplay content, matching the same guarantee the rest of this product holds everywhere else.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Hover to sync hex ↔ order',
+        body:  'Hover any line in the order tree — the corresponding bytes highlight in the hex/ASCII pane on the right. This is how you\'d explain to someone exactly which bytes produced a given piece of the decode.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Replay an outbound record',
+        body:  'Select an earlier outbound record — a menu selection or command you typed — and click "↻ Replay Selected". The exact bytes are re-sent into that same session, and the host processes it again live, no keyboard involved. Only outbound records are replayable; replaying "what the host said" isn\'t meaningful the same way.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Export',
+        body:  'Use ↓ PCAP for a Wireshark-readable capture (Telnet/TCP level only, same limitation as always), or ↓ CSV for the decoded record list — timestamps, direction, AID, and summaries.',
+        highlight: null,
+        autoFn: null,
+      },
+    ],
+  },
+
   // ── IBM i (AS/400) System Value Security Analyzer ─────────────────
   {
     id:       'as400-sysval-analyzer',

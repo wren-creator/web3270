@@ -1600,6 +1600,38 @@ Connect to a z/VM CP session (the bundled mock or type `ZVM` target) and log on.
 
 ---
 
+## Part 2Z — Wire Inspector
+
+A 3270-aware packet inspector, in the same spirit as Wireshark but decoding the *protocol*, not just the bytes. Wireshark has no native TN3270 dissector — piped raw bytes only ever show Telnet/TCP framing. The Wire Inspector decodes every SF/SFE/SBA/AID order into plain language, color-codes by direction and security relevance, and can replay a captured outbound record back into its live session.
+
+---
+
+### Location
+
+Security panel → TRAFFIC → 🔌 Wire Inspector (opens as its own popup window, alongside Session Viewer and Proxy Viewer)
+
+### How it works
+
+Every byte that crosses the wire in either direction is already captured unconditionally by `features/pcap.js` — `Tn3270Session._onData`/`_send` emit a `'raw'` event before any telnet or 3270 parsing happens, which is what powers the existing PCAP export. The Wire Inspector adds a decoder on top of that same capture (`tn3270/wire-decode.js`) instead of a second capture path.
+
+The decoder is a stateless-replay pass, not a live session: it re-walks the raw bytes exactly like `Tn3270Session._processBuffer` does (telnet DO/WILL triplets, `IAC SB…IAC SE` sub-negotiations, `IAC EOR`-terminated 3270 data records), but instead of mutating a rendering buffer it reconstructs only what's needed to label records correctly — principally a map of buffer-address → field-attribute byte, updated as inbound `SF`/`SFE`/`MF` orders are seen, so an outbound field write can be checked against it and flagged when it targets a nondisplay field. Two non-trivial pieces are reused directly from `session.js` rather than reimplemented — the 12/14-bit buffer address decoder and the TN3270E sub-negotiation describer — everything else (order bytes, command bytes) is redeclared locally, matching the convention the mock daemons already use for staying self-contained.
+
+One asymmetry worth knowing if you're reading the decoder: outbound (client→host) records in this codebase never carry the TN3270E 5-byte header, even after negotiation — `Tn3270Session._sendDataRecord()` doesn't prepend one, and the mock hosts don't expect one on receipt either. Only inbound host→client writes get the header stripped. The decoder mirrors this — get it backwards and every outbound AID record decodes as garbage.
+
+### Reading the panel
+
+- **Packet list** — one row per decoded record: time, session, direction arrow, byte count, protocol label, AID (if any), and a one-line summary. A red dot + red left border flags any record that reads or writes a nondisplay field.
+- **Filter bar** — `dir:out`, `aid:enter`, `order:sf`, `session:3`, `field:nondisplay`, plus free text, combinable. Narrower than Wireshark's display-filter grammar on purpose — the point is 3270-semantic queries Wireshark can't do at all.
+- **Order tree + hex pane** — click a row to decode it order-by-order on the left, with the raw hex/ASCII on the right. Hover an order to highlight exactly which bytes produced it.
+- **Follow Session** — filters the list to one session's back-and-forth.
+- **Replay Selected** — re-sends an outbound record's exact bytes into the session it came from, via `session.sendRawAid()`. Only available for outbound records (replaying "what the host said" doesn't mean anything). The popup reaches back into the main window via `window.opener` to use that session's already-open WebSocket — replay has to go out over the same connection the record belongs to, not a new one.
+
+### Testing / Teaching scenario
+
+Connect to any TN3270 host, open the Wire Inspector, and log on. Filter to `field:nondisplay` — the only rows left should be the logon screen's password field write and your own password field submission. Click the outbound AID record: the order tree shows the USERID field in cleartext and the PASSWORD field's bytes replaced with "N byte(s) — nondisplay field content, masked" — the same content-never-leaves-the-decoder guarantee the rest of the product already holds for logs. Then select an earlier command (e.g. a `LISTDS` or menu selection) and click Replay — watch the host process it again live, exactly as if you'd typed it, without touching the keyboard.
+
+---
+
 ## Part 3 — IBM i (AS/400) Security Tools
 
 The tools in Parts 1–2 target z/OS over TN3270. Part 3 covers the first tools that target **IBM i (AS/400) over TN5250**. They audit the three foundations of IBM i security — system values, user profiles with their special authorities, and object *PUBLIC authority — against the seeded weak posture in the mock IBM i host (`mock-lpar/mock-as400.js`).
