@@ -1652,7 +1652,7 @@ function newBuffer(rows, cols) {
   return Array.from({ length: rows * cols }, () => ({ char: 0x00, fa: undefined, modified: false, color: 0x00, highlight: 0x00 }));
 }
 
-function modelDimensions(model) {
+export function modelDimensions(model) {
   const map = {
     // 3278 family
     '3278-2': { rows: 24,  cols: 80  },
