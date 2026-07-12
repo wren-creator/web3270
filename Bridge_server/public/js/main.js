@@ -24,6 +24,7 @@ import './negotiate.js';
 import './sdsf.js';
 import './as400sec.js';
 import './fielddisclosure.js';
+import './bufferbleed.js';
 import './walkthrough.js';
 
 function tick() {

@@ -273,6 +273,7 @@ export function handleBridgeMsg(sid, msg) {
         if (sid === state.activeSession) _showDisconnectScreen(session.name, null, sid);
         else if (state.splitMode && sid === state.splitSid) _showDisconnectScreen(session.name, document.getElementById('terminal-split'), sid);
       } else if (msg.state === 'connecting') { setConnStatus(session.name, 'connecting'); }
+      if (sid === state.activeSession) window.bufferBleedOnStatus?.(msg);
       break;
     case 'screen':
       if (session) session.lastScreen = msg;
@@ -288,6 +289,7 @@ export function handleBridgeMsg(sid, msg) {
         window.sdsfOnScreen?.(msg);
         window.as400OnScreen?.(msg);
         window.fieldDiscOnScreen?.(msg);
+        window.bufferBleedOnScreen?.(msg);
       } else if (state.splitMode && sid === state.splitSid) {
         const term2 = document.getElementById('terminal-split');
         if (term2) renderLiveScreen(msg, term2);
