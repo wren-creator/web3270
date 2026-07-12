@@ -1976,6 +1976,60 @@ const _WALKTHROUGHS = [
     ],
   },
 
+  // ── VM Minidisk Password Exposure ───────────────────────────────────
+  {
+    id:       'vm-minidisk-exposure',
+    category: 'security',
+    title:    'VM Minidisk Password Exposure',
+    desc:     'z/VM\'s CP has no masked-input primitive for command arguments — a minidisk LINK password typed at the ordinary CP READ prompt renders in cleartext.',
+    steps: [
+      {
+        title: 'Why this is different from a LOGON password',
+        body:  'z/VM\'s CP LOGON PASSWORD field is properly masked — its FA byte sets the nondisplay bits, same as a TSO password field. But CP has no concept of "this command argument is a secret": a minidisk LINK password typed at the ordinary CP READ command line lands in a normal, NORMAL-intensity, unprotected field. It renders in cleartext the instant it\'s typed — before ENTER is even pressed — and is captured by anything watching the session: traffic logs, screen recorders, or a shared/shoulder-surfed console.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click 🔒 in the OIA bar and enter the security password.',
+        highlight: 'secBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Connect to a z/VM CP session',
+        body:  'Connect to a z/VM target (type ZVM in your profile, or the bundled mock at mock-zvm/3271) and log on. You\'ll land at the CP Ready prompt.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Type a LINK command with a password',
+        body:  'At the CP READ command line, type: LINK MAINT 191 191 MR mysecretpw — but don\'t press Enter yet. Look at the screen: the entire command, including the password, is fully visible in plain text. Compare that with the LOGON PASSWORD field a moment earlier, which was masked.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Scan the screen',
+        body:  'Click "🔎 Scan Current Screen". The scanner recognizes the LINK syntax, extracts the password, and cross-checks the field\'s FA byte to confirm it was never marked nondisplay — the receipt that proves this isn\'t user error, it\'s a structural gap in CP\'s command-line design.',
+        highlight: 'vmScanBtn',
+        autoFn: 'vmMinidiskScanNow',
+        autoLabel: 'Scan for me',
+      },
+      {
+        title: 'Read the result',
+        body:  'The results table shows the owner, target virtual device, the exposed password in plain text, and the field\'s FA — flagged NORMAL / unmasked in orange rather than the green NONDISPLAY you\'d see for a properly protected field.',
+        highlight: 'vmResultsTable',
+        autoFn: null,
+      },
+      {
+        title: 'Export',
+        body:  'Click ↓ Export CSV to document the exposure for your report.',
+        highlight: 'vmResultsTable',
+        autoFn: 'vmMinidiskExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
   // ── IBM i (AS/400) System Value Security Analyzer ─────────────────
   {
     id:       'as400-sysval-analyzer',
