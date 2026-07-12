@@ -740,6 +740,22 @@
         </div>
       </div>
 
+      <!-- VM MINIDISK SECURITY section -->
+      <div class="sec-section">
+        <div class="sec-section-hdr">VM MINIDISK SECURITY</div>
+        <div class="sec-section-body">
+          <div class="sec-panel-hint" style="margin-bottom:6px">VM Minidisk Password Exposure — CP has no masked-input primitive for command arguments, so a LINK minidisk password typed at the CP READ prompt renders in cleartext. Connect to a z/VM CP session and type e.g. <code>LINK MAINT 191 191 MR mysecretpw</code>. FOR AUTHORIZED USE ONLY.</div>
+          <div class="sec-row">
+            <button onclick="vmMinidiskScanNow()" style="flex:1;background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 8px;cursor:pointer">🔎 Scan Current Screen</button>
+          </div>
+          <div id="vmResultsTable"></div>
+          <div style="margin-top:6px;display:flex;gap:6px">
+            <button onclick="vmMinidiskExportCsv()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ Export CSV</button>
+            <button onclick="vmMinidiskClear()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">Clear</button>
+          </div>
+        </div>
+      </div>
+
       <!-- FUZZ section -->
       <div class="sec-section">
         <div class="sec-section-hdr">PROTOCOL FUZZER</div>
