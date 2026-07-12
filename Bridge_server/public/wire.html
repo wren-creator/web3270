@@ -234,8 +234,13 @@ function updateSessFilter() {
   statusSessions.textContent = `${ids.length} session${ids.length===1?'':'s'}`;
 }
 
+// Records carry dir:'sent'|'recv' (see wire-decode.js); the UI's filter
+// chips and styling use 'out'/'in' — this is the single place that maps
+// between the two so they never drift apart again.
+function dirCat(r) { return r.dir === 'sent' ? 'out' : 'in'; }
+
 function catsFor(r) {
-  const cats = [r.dir];
+  const cats = [dirCat(r)];
   if (r.aid) cats.push('aid');
   if (r.kind === 'negotiation' || r.kind === 'tn3270e-subneg') cats.push('negotiation');
   if (r.danger) cats.push('danger');
@@ -244,7 +249,7 @@ function catsFor(r) {
 
 function matchesFilter(r, terms) {
   for (const t of terms) {
-    if (t.startsWith('dir:')) { if (r.dir !== t.slice(4)) return false; }
+    if (t.startsWith('dir:')) { if (dirCat(r) !== t.slice(4)) return false; }
     else if (t.startsWith('aid:')) { if ((r.aid||'').toLowerCase() !== t.slice(4)) return false; }
     else if (t.startsWith('session:')) { if (String(r.wsId) !== t.slice(8)) return false; }
     else if (t.startsWith('order:')) { if (!(r.orders||[]).some(o => o.type.toLowerCase().includes(t.slice(6)))) return false; }
@@ -268,7 +273,7 @@ function renderRows() {
 
     shown++;
     const tr = document.createElement('tr');
-    const cls = [r.dir === 'out' ? 'row-out' : 'row-in'];
+    const cls = [dirCat(r) === 'out' ? 'row-out' : 'row-in'];
     if (r.kind === 'negotiation' || r.kind === 'tn3270e-subneg') cls.push('row-negotiation');
     if (r.danger) cls.push('row-danger');
     tr.className = cls.join(' ') + (selected === r.no ? ' selected' : '');
@@ -277,7 +282,7 @@ function renderRows() {
       <td class="no">${r.no}</td>
       <td class="ts">${escHtml(shortTs(r.ts))}</td>
       <td class="sess-badge" data-follow="${r.wsId}">#${r.wsId}</td>
-      <td class="${r.dir==='out'?'dir-out':'dir-in'}">${r.dir==='out'?'→':'←'}</td>
+      <td class="${dirCat(r)==='out'?'dir-out':'dir-in'}">${dirCat(r)==='out'?'→':'←'}</td>
       <td class="len">${(r.raw.length/2)|0}B</td>
       <td class="proto">${escHtml(KIND_PROTO[r.kind] || r.kind)}</td>
       <td>${r.aid ? `<span class="aid-val">${escHtml(r.aid)}</span>` : '<span style="color:var(--text-faint)">—</span>'}</td>
@@ -302,7 +307,7 @@ function selectRecord(no) {
   renderTree(r);
   renderHex(r);
   btnFollow.disabled = false;
-  btnReplay.disabled = r.dir !== 'out';
+  btnReplay.disabled = dirCat(r) !== 'out';
   btnFollow.onclick = () => { sessFilter.value = r.wsId; renderRows(); };
   btnReplay.onclick = () => replayRecord(r);
 }
@@ -324,7 +329,7 @@ function renderTree(r) {
   });
   const actions = document.createElement('div');
   actions.className = 'tree-actions';
-  actions.innerHTML = r.dir === 'out'
+  actions.innerHTML = dirCat(r) === 'out'
     ? `<button class="btn warn" style="flex:1" onclick="replayRecord(${JSON.stringify(r).replace(/"/g,'&quot;')})">↻ Replay into session #${r.wsId}</button>
        <button class="btn" style="flex:1" onclick="document.getElementById('sessFilter').value='${r.wsId}'; renderRows();">⇄ Follow session #${r.wsId}</button>`
     : `<button class="btn" style="flex:1" onclick="document.getElementById('sessFilter').value='${r.wsId}'; renderRows();">⇄ Follow session #${r.wsId}</button>`;
@@ -400,7 +405,7 @@ function downloadPcap() {
 
 function downloadCsv() {
   const rows = [['no','timestamp','wsId','direction','protocol','aid','danger','summary']];
-  for (const r of allRecords) rows.push([r.no, new Date(r.ts).toISOString(), r.wsId, r.dir, KIND_PROTO[r.kind]||r.kind, r.aid||'', r.danger, r.summary]);
+  for (const r of allRecords) rows.push([r.no, new Date(r.ts).toISOString(), r.wsId, dirCat(r), KIND_PROTO[r.kind]||r.kind, r.aid||'', r.danger, r.summary]);
   const csv = rows.map(row => row.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\r\n');
   const blob = new Blob([csv], { type: 'text/csv' });
   const ts = new Date().toISOString().slice(0,19).replace(/[:.]/g,'-');
