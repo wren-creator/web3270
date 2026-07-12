@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tn3270-bridge-config
+  labels:
+    app: tn3270-bridge
+data:
+  BRIDGE_PORT: "8081"
+  LOG_LEVEL: "info"
+  BRIDGE_VERIFY_TLS: "true"
+  BRIDGE_SOCKET_TIMEOUT_MS: "300000"
+  # Per-pod cap, now enforced in handlers/ws.js. Size to what one pod can
+  # comfortably hold in memory/FDs, then scale out with replicas rather
+  # than raising this indefinitely.
+  BRIDGE_MAX_SESSIONS: "100"
+  BRIDGE_CORS_ORIGIN: "*"
+  DEFAULT_MODEL: "3278-5"
+  DEFAULT_CODEPAGE: "37"

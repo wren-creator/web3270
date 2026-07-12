@@ -1,0 +1,64 @@
+# Internal-only test fixture (TN3270 mock z/OS) — no Route, reached by the
+# bridge over the ClusterIP Service DNS name, matching the "mock-lpar" host
+# already used in lpars.shipped.txt. Single replica: it's a demo/test
+# server, holds no shared state that would benefit from scaling, and each
+# inbound TCP connection already gets correctly-scoped per-connection state
+# (see mock-lpar/mock-lpar.js — no code changes needed here).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-lpar
+  labels:
+    app: mock-lpar
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mock-lpar
+  template:
+    metadata:
+      labels:
+        app: mock-lpar
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: mock-lpar
+          image: mock-lpar:latest
+          ports:
+            - containerPort: 3270
+              name: tn3270
+          env:
+            - name: MOCK_PORT
+              value: "3270"
+            - name: MOCK_SYSID
+              value: "DEMOSYS"
+            - name: MOCK_LU
+              value: "MOCKLU01"
+            - name: LOG_LEVEL
+              value: "info"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mock-lpar
+  labels:
+    app: mock-lpar
+spec:
+  selector:
+    app: mock-lpar
+  ports:
+    - name: tn3270
+      port: 3270
+      targetPort: 3270

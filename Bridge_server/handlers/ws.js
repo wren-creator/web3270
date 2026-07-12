@@ -64,6 +64,12 @@ export function createWsHandler({ config, logger, sessions, Ebcdic }) {
         ws.close(); return;
       }
 
+      if (sessions.size >= config.bridge.maxSessions) {
+        logger.warn(`[ws:${wsId}] Rejected connect — at capacity (${sessions.size}/${config.bridge.maxSessions})`);
+        send(ws, { type: 'error', message: `Server at capacity (${config.bridge.maxSessions} sessions). Try again later.` });
+        ws.close(); return;
+      }
+
       send(ws, { type: 'status', state: 'connecting', host, port });
 
       // ── Create session (protocol-specific engine, shared event API) ──
