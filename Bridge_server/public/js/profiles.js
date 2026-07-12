@@ -290,6 +290,7 @@ export function handleBridgeMsg(sid, msg) {
         window.as400OnScreen?.(msg);
         window.fieldDiscOnScreen?.(msg);
         window.bufferBleedOnScreen?.(msg);
+        window.vmMinidiskOnScreen?.(msg);
       } else if (state.splitMode && sid === state.splitSid) {
         const term2 = document.getElementById('terminal-split');
         if (term2) renderLiveScreen(msg, term2);

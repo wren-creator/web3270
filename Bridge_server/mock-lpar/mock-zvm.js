@@ -431,6 +431,25 @@ function screenCPQuery(userid, queryResult = '') {
   return buildScreen(true, fields);
 }
 
+// ── Console log ────────────────────────────────────────────────────
+// Models what a real operator console / SMF accounting record retains.
+// CP has no way to know a command argument is a secret — it just reads
+// tokens off the command line — so anything typed at the CP READ prompt,
+// including a minidisk LINK password, lands here in cleartext. The field
+// it was typed into (see screenCPReady's row:21 input line) is an ordinary
+// FA_UNPROTECTED field, not FA_UNPROTECTED_NONDISPLAY like the LOGON
+// PASSWORD field above — CP has no masked-input primitive for command
+// arguments, only for its own dedicated password prompt.
+const _cpConsoleLog = []; // { ts, userid, raw }
+
+function simulateLink(userid, cmd) {
+  const m = cmd.match(/^LINK\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)(?:\s+(\S+))?/i);
+  if (!m) return null;
+  const [, owner, fromVdev, toVdev, mode] = m;
+  const ro = /^R(D|R)?$/i.test(mode) || /^RO$/i.test(mode) || /^R$/i.test(mode);
+  return `DASD ${toVdev.toUpperCase()} LINKED R/${ro ? 'O' : 'W'}; R/${ro ? 'O' : 'W'} BY ${owner.toUpperCase()}\nReady; T=0.01/0.01`;
+}
+
 // ── CP QUERY simulator ────────────────────────────────────────────
 function simulateCPQuery(cmd) {
   const upper = cmd.toUpperCase();
@@ -759,10 +778,15 @@ function handleConnection(socket) {
         const cmd = inputText.toUpperCase().trim();
         if (aid === AID_ENTER) {
           if (!cmd) { sendCurrentScreen(); break; }
+          _cpConsoleLog.push({ ts: new Date().toISOString(), userid, raw: inputText.trim() });
 
           if (cmd === 'IPL CMS' || cmd === 'CMS' || cmd === 'IPL 190') {
             currentScreen = 'cms';
             lastCMSMsg    = 'IPL CMS\nz/VM CMS is loaded.\nReady; T=0.01/0.01';
+            sendCurrentScreen();
+          } else if (cmd.startsWith('LINK ')) {
+            const result = simulateLink(userid, inputText.trim());
+            lastCPMsg = result || `HCPLNM119E Invalid LINK operand\nReady(00119); T=0.01/0.01`;
             sendCurrentScreen();
           } else if (cmd.startsWith('Q ') || cmd.startsWith('QUERY ') || cmd === 'QUERY' || cmd === 'Q') {
             cpQueryResult = simulateCPQuery(inputText);
@@ -893,6 +917,7 @@ server.listen(PORT, '0.0.0.0', () => {
   log(`  LU Name       ${LU_NAME}`);
   log('  Protocol      TN3270E + classic TN3270 fallback');
   log('  Screens       Logon → CP → CMS → FILELIST / RDRLIST / XEDIT');
+  log('  Try           LINK MAINT 191 191 MR mysecretpw   (at the CP Ready prompt)');
   log('─────────────────────────────────────────────────────');
 });
 

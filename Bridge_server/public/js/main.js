@@ -25,6 +25,7 @@ import './sdsf.js';
 import './as400sec.js';
 import './fielddisclosure.js';
 import './bufferbleed.js';
+import './vmminidisk.js';
 import './walkthrough.js';
 
 function tick() {
