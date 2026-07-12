@@ -37,10 +37,11 @@ const ORDER_SA  = 0x28;  // Set Attribute (character-level color/highlight)
 const ORDER_SBA = 0x11;
 const ORDER_IC  = 0x13;
 
-const FA_PROTECTED       = 0x60;
-const FA_PROTECTED_HIGH  = 0xE0;
-const FA_UNPROTECTED     = 0x40;
-const FA_UNPROTECTED_NUM = 0x50;
+const FA_PROTECTED        = 0x60;
+const FA_PROTECTED_HIGH   = 0xE0;
+const FA_UNPROTECTED      = 0x40;
+const FA_UNPROTECTED_NUM  = 0x50;
+const FA_UNPROTECTED_HIDDEN = 0x4C;  // unprotected + nondisplay (bits 3-2 = 11) — real password-field FA
 
 // 3270 extended color codes (SFE/SA type 0x42)
 const COL_BLUE   = 0xF1;
@@ -174,7 +175,7 @@ function screenLogon() {
     { row:5,  col:14, text: '        ' },
     { row:6,  col:2,  fa: FA_PROTECTED, color: COL_BLUE },
     { row:6,  col:2,  text: 'Password===>' },
-    { row:6,  col:14, fa: FA_UNPROTECTED_NUM, color: COL_GREEN },
+    { row:6,  col:14, fa: FA_UNPROTECTED_HIDDEN, color: COL_GREEN },
     { row:6,  col:14, text: '        ' },
     { row:7,  col:2,  fa: FA_PROTECTED, color: COL_BLUE },
     { row:7,  col:2,  text: 'Procedure==> TSOPROC' },
