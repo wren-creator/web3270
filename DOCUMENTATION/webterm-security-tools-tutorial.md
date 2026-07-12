@@ -1520,6 +1520,30 @@ The `/api/negotiate` route includes this log. The client renders it in order wit
 
 ---
 
+## Part 2W — Field Length Disclosure
+
+A nondisplay field masks its *characters*, not its *length*. The MDT (Modified Data Tag) bit plus the field's buffer-address span are ordinary, unmasked datastream metadata — anything reading the wire can measure exactly how many characters were typed into a "hidden" field without ever seeing what they were. This is a structural side-channel in the 3270 datastream itself, not a timing attack, and it applies to any nondisplay field on any screen — password prompts, PIN entry, API keys typed into a masked field, anything.
+
+---
+
+### Location
+
+Security panel → FIELD ANALYSIS → Field Length Disclosure (below Color Reveal)
+
+### How it works
+
+Every field the bridge decodes carries `nondisplay`, `modified` (the MDT bit), and `content` (`tn3270/session.js`'s `_extractFields()`). The scanner (`fielddisclosure.js`) walks `screen.fields` for anything where `nondisplay && modified && content.trim().length > 0`, and logs the field's row/column and trimmed content length. "🔍 Scan Screen Now" does a single pass over the current screen; "👁 Watch" re-runs the scan on every incoming screen automatically, silently harvesting nondisplay-field lengths across an entire session with no active probing.
+
+### Why "non-display = safe" is the wrong assumption
+
+Knowing a password is exactly 8 characters (not "up to 8," not "8 or fewer" — exactly 8) collapses a brute-force or dictionary search space dramatically before a single logon attempt is made. Combined with a wordlist tool like the RACF Probe, length disclosure lets an attacker pre-filter candidates by length, cutting attempt counts (and lockout risk) substantially.
+
+### Testing / Teaching scenario
+
+Navigate to a TSO logon screen (or the bundled mock, which now correctly masks its PASSWORD field). Type a password of a known length into the field but do not submit — this is exactly the mid-entry state a shoulder-surfing tool, proxy, or malicious middleware would observe. Run the scanner and confirm the reported length matches. Then arm Watch and step through several screens in a session (logon, CICS signon, a change-password panel) to show the finding accumulates passively across an entire session, not just one screen.
+
+---
+
 ## Part 3 — IBM i (AS/400) Security Tools
 
 The tools in Parts 1–2 target z/OS over TN3270. Part 3 covers the first tools that target **IBM i (AS/400) over TN5250**. They audit the three foundations of IBM i security — system values, user profiles with their special authorities, and object *PUBLIC authority — against the seeded weak posture in the mock IBM i host (`mock-lpar/mock-as400.js`).

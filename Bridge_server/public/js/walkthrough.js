@@ -1868,6 +1868,60 @@ const _WALKTHROUGHS = [
     ],
   },
 
+  // ── Field Length Disclosure ─────────────────────────────────────────
+  {
+    id:       'field-length-disclosure',
+    category: 'security',
+    title:    'Field Length Disclosure',
+    desc:     'Nondisplay fields mask characters, not length — the MDT bit plus buffer-address deltas reveal exactly how many characters were typed into a password field.',
+    steps: [
+      {
+        title: 'Why "nondisplay" isn\'t "safe"',
+        body:  'A password field\'s FA byte sets the nondisplay intensity bits so the terminal doesn\'t render typed characters. But the field\'s buffer-address span and its MDT (Modified Data Tag) bit are ordinary, unmasked datastream metadata — anyone reading the wire (or sitting where this tool sits) can measure exactly how many characters were typed without ever seeing what they were. That\'s a structural side-channel in the protocol itself, not a timing attack.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click 🔒 in the OIA bar and enter the security password.',
+        highlight: 'secBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Go to a logon screen and type a password — don\'t press Enter',
+        body:  'Navigate to a TSO logon screen. Type anything into the USERID field, then type a password of any length into the PASSWORD field. Leave the cursor there without submitting — this is exactly the moment a real user would be mid-entry.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Scan the screen',
+        body:  'In the FIELD ANALYSIS section, click "🔍 Scan Screen Now". The scanner walks every field on the current screen, finds any nondisplay field with the MDT bit set, and logs its exact character count — even though the field itself still renders masked on your terminal.',
+        highlight: 'fdScanBtn',
+        autoFn: 'fieldDiscScanOnce',
+        autoLabel: 'Scan for me',
+      },
+      {
+        title: 'Read the result',
+        body:  'The results table shows the field\'s row/column and its length in plain numbers. This is the whole finding: you now know the password is, say, exactly 8 characters — a dictionary/brute-force attacker can immediately drop every candidate that isn\'t 8 characters long, without a single failed logon attempt.',
+        highlight: 'fdResultsTable',
+        autoFn: null,
+      },
+      {
+        title: 'Optional: passive watch mode',
+        body:  'Click "👁 Watch" to leave the scanner running in the background — it re-scans every screen the session receives and logs new nondisplay+MDT findings automatically, silently harvesting password lengths across an entire session without any active probing.',
+        highlight: 'fdWatchBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Export',
+        body:  'Click ↓ Export CSV to save row/column/length/timestamp findings for your report.',
+        highlight: 'fdResultsTable',
+        autoFn: 'fieldDiscExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
   // ── IBM i (AS/400) System Value Security Analyzer ─────────────────
   {
     id:       'as400-sysval-analyzer',
