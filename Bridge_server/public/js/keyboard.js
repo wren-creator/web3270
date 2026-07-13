@@ -72,8 +72,15 @@ export function sendType(row, col, text) {
     const cols = state.liveScreen.cols || 80;
     const numRows = state.liveScreen.rows?.length || 24;
     const r = state.liveScreen.rows[state.cursorRow];
-    if (r && r[state.cursorCol] && r[state.cursorCol].fa === undefined) {
-      r[state.cursorCol].char = text; r[state.cursorCol].modified = true;
+    const cell = r && r[state.cursorCol];
+    // Real 3278/3279 keyboards default to uppercase-only entry, and many host
+    // command tables (VTAM USS tables, TSO logon panels) are case-sensitive —
+    // lowercase input silently fails there even though it round-trips fine
+    // against permissive mock hosts. Match hardware default; nondisplay
+    // (password) fields are left alone since those are case-sensitive by design.
+    if (!(cell && cell.nondisplay)) text = text.toUpperCase();
+    if (cell && cell.fa === undefined) {
+      cell.char = text; cell.modified = true;
     }
     state.cursorCol++;
     if (state.cursorCol >= cols) { state.cursorCol = 0; state.cursorRow = (state.cursorRow + 1) % numRows; }
