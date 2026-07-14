@@ -194,6 +194,7 @@ class Tn3270Session extends EventEmitter {
     this.negotiatedLu     = null;
     this.recvBuf          = Buffer.alloc(0);
     this.tn3270eLog       = [];  // TN3270E sub-negotiation trace: { dir, func, decoded, raw }
+    this._tn3270eSeq      = 0;   // outbound TN3270E header SEQ-NUMBER counter
 
     // Negotiation flags
     this._willSend  = false;  // we've sent WILL TN3270E
@@ -1319,6 +1320,17 @@ class Tn3270Session extends EventEmitter {
   }
 
   _sendDataRecord(data) {
+    // TN3270E (RFC 2355) requires a 5-byte header on every client→host data
+    // record once negotiated: DATA-TYPE(1)=0x00 3270-DATA, REQUEST-FLAG(1)=0x00,
+    // RESPONSE-FLAG(1)=0x00 NO-RESPONSE (we only ever request the
+    // DATA-STREAM-CTRL function, never RESPONSES, so the host never expects
+    // anything else here), SEQ-NUMBER(2, big-endian). Symmetric with the
+    // receive path, which strips this same 5-byte header (see _handle3270Record).
+    if (this.tn3270eEnabled) {
+      this._tn3270eSeq = (this._tn3270eSeq + 1) & 0xFFFF;
+      const header = Buffer.from([0x00, 0x00, 0x00, (this._tn3270eSeq >> 8) & 0xFF, this._tn3270eSeq & 0xFF]);
+      data = Buffer.concat([header, data]);
+    }
     // Escape IAC bytes and wrap with IAC EOR
     const escaped = [];
     for (const b of data) {
