@@ -36,13 +36,16 @@
  * Add to .env:
  *   COPILOT_PROVIDER=ollama
  *   OLLAMA_MODEL=llama3.1
- *   OLLAMA_HOST=http://localhost:11434   # optional, this is the default
+ *   OLLAMA_HOST=http://host.docker.internal:11434   # optional, this is the default
  *
  * Required environment variables:
  *   OLLAMA_MODEL   — model name (llama3.1, mistral, codellama, etc.)
  *
  * Optional:
- *   OLLAMA_HOST         — default: http://localhost:11434
+ *   OLLAMA_HOST         — default: http://host.docker.internal:11434
+ *                         (the bridge always runs inside a Docker container,
+ *                         so "localhost" refers to the container, not the
+ *                         host machine where Ollama is actually listening)
  *   COPILOT_MAX_TOKENS  — default: 1000
  */
 
@@ -50,13 +53,32 @@
 
 const logger = require('../../logger.cjs');
 
-const HOST       = (process.env.OLLAMA_HOST || 'http://localhost:11434').replace(/\/$/, '');
+const HOST       = (process.env.OLLAMA_HOST || 'http://host.docker.internal:11434').replace(/\/$/, '');
 const MODEL      = process.env.OLLAMA_MODEL || 'llama3.1';
 const MAX_TOKENS = parseInt(process.env.COPILOT_MAX_TOKENS || '1000', 10);
 
 function validate() {
   if (!process.env.OLLAMA_MODEL) {
     logger.warn('[copilot/ollama] OLLAMA_MODEL not set, defaulting to llama3.1');
+  }
+}
+
+/**
+ * The bridge always runs inside a Docker container. If the configured host
+ * points at localhost/127.0.0.1 (the value a browser on the host machine
+ * would correctly use, and the default this field ships with), that address
+ * means "the container itself" from Node's point of view, not the host
+ * machine — so we transparently retry against host.docker.internal, which
+ * Docker resolves to the host machine (see extra_hosts in docker-compose.yml).
+ */
+async function fetchWithHostFallback(path, opts) {
+  try {
+    return await fetch(`${HOST}${path}`, opts);
+  } catch (err) {
+    const fallbackHost = HOST.replace(/\/\/(localhost|127\.0\.0\.1)(:|\/|$)/, '//host.docker.internal$2');
+    if (fallbackHost === HOST) throw err;
+    logger.debug(`[copilot/ollama] ${HOST} unreachable (${err.message}), retrying via ${fallbackHost}`);
+    return fetch(`${fallbackHost}${path}`, opts);
   }
 }
 
@@ -82,7 +104,7 @@ async function complete(systemPrompt, messages) {
   logger.debug(`[copilot/ollama] host=${HOST} model=${MODEL} messages=${fullMessages.length}`);
 
   // Use OpenAI-compatible endpoint (available in Ollama 0.1.24+)
-  const response = await fetch(`${HOST}/v1/chat/completions`, {
+  const response = await fetchWithHostFallback('/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -107,10 +129,10 @@ async function complete(systemPrompt, messages) {
  * List models currently available in the local Ollama instance.
  */
 async function listModels() {
-  const response = await fetch(`${HOST}/api/tags`);
+  const response = await fetchWithHostFallback('/api/tags');
   if (!response.ok) throw new Error(`Ollama not reachable at ${HOST}`);
   const data = await response.json();
-  return data.models || [];
+  return (data.models || []).map(m => m.name);
 }
 
 module.exports = { complete, listModels, name: 'ollama', model: MODEL };
