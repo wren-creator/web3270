@@ -770,9 +770,10 @@ function handleConnection(socket) {
   }
 
   function handle3270Record(data) {
-    // Client→server data is raw 3270 (AID + cursor SBA + field SBAs + data)
-    // regardless of TN3270E negotiation — no header to strip.
-    const payload = data;
+    // Once TN3270E is negotiated, the client prepends the same 5-byte header
+    // (DATA-TYPE/REQUEST-FLAG/RESPONSE-FLAG/SEQ-NUMBER) it expects to receive —
+    // strip it before parsing the AID record underneath.
+    const payload = tn3270eMode ? data.slice(5) : data;
     if (payload.length === 0) return;
 
     const aid = payload[0];

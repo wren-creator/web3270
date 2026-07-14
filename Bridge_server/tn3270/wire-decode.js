@@ -388,12 +388,11 @@ export function decodeCapture(frames, opts = {}) {
 
       if (u.type === 'data') {
         let body = u.bytes;
-        // Only inbound (host→client) records carry the TN3270E 5-byte
-        // header in this codebase — Tn3270Session._sendDataRecord() never
-        // prepends one on send, and the mock hosts never expect one on
-        // receipt either (see Tn3270Session._handle3270Record, which only
-        // strips it when `this.tn3270eEnabled` gates *incoming* bytes).
-        if (tn3270e && frame.dir === 'recv') {
+        // Both directions carry the TN3270E 5-byte header once negotiated —
+        // Tn3270Session._sendDataRecord() prepends it on send, symmetric with
+        // _handle3270Record() stripping it on receipt (see also the mock
+        // hosts' handle3270Record(), which mirrors the same symmetry).
+        if (tn3270e) {
           const dataType = body[0];
           if (dataType === 0x05) { // BIND-IMAGE
             const detectedModel = extractModel(body.slice(5));
