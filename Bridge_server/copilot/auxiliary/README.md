@@ -70,7 +70,16 @@ ollama pull llama3.1
 # .env
 COPILOT_PROVIDER=ollama
 OLLAMA_MODEL=llama3.1
+OLLAMA_HOST=http://host.docker.internal:11434   # optional, this is the default
 ```
+
+The bridge runs inside a Docker container, so `localhost` refers to the
+container itself, not the machine Ollama is actually running on — use
+`host.docker.internal` (already wired up via `extra_hosts` in
+`docker-compose.yml`). The provider also auto-retries against
+`host.docker.internal` if a configured `localhost`/`127.0.0.1` host is
+unreachable, so the AI Config tab's default URL field (which browsers
+correctly read as `localhost`) still works out of the box.
 
 Minimum 8 GB RAM. GPU optional but significantly faster.
 
@@ -108,5 +117,6 @@ currently loaded. Minimum 8 GB RAM; GPU optional but significantly faster.
 | Azure 401 | API key wrong — check Azure Portal → Keys and Endpoint |
 | Ollama refused | Run `ollama serve` in WSL2 or `docker compose up ollama -d` |
 | Ollama model missing | Run `ollama pull llama3.1` first |
+| Ollama "not reachable" while connected to an LPAR | The bridge (not your browser) is making the request from inside the container — confirm Ollama is reachable from *inside* the container: `docker compose exec tn3270-bridge curl http://host.docker.internal:11434/api/tags` |
 | LM Studio refused | Open LM Studio → Developer tab → Start Server |
 | LM Studio 404 on model | `LMSTUDIO_MODEL` id must match one from `/v1/models`, or leave it unset |

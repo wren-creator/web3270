@@ -136,7 +136,10 @@ export function aiHandleModelsReply(msg) {
   const loadingEl = document.getElementById('aiModelLoading-' + provider);
   if (loadingEl) loadingEl.style.display = 'none';
   if (models && models.length) { state.aiCachedModels[provider] = models; aiPopulateModelDropdown(provider, models); }
-  if (error) console.warn('[ai-cfg] bridge model load error:', error);
+  if (error) {
+    console.warn('[ai-cfg] bridge model load error:', error);
+    if (provider === state.aiProvider) aiCfgShowStatus('Model load failed: ' + error, 'red');
+  }
 }
 
 export function aiHandleConfigured(msg) {
