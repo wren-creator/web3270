@@ -45,6 +45,7 @@ document.getElementById('mainConnDot').className       = 'conn-dot disconnected'
 window.loadProfiles?.();
 window.loadMacros?.();
 window.aiCfgInit?.();
+window.initConnectionSettingsUI?.();
 
 const defaultPanel = document.getElementById('panelSettings');
 if (defaultPanel) {

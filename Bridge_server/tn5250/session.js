@@ -160,6 +160,8 @@ class Tn5250Session extends EventEmitter {
     this.codepage = opts.codepage || 37;
     this.tlsOpts  = opts.tlsOptions || {};
     this.user     = opts.user || null;
+    this.keepAliveSec = opts.keepAliveSec || 0;
+    this._keepAliveTimer = null;
 
     this._applyModel(this.model);
 
@@ -209,11 +211,29 @@ class Tn5250Session extends EventEmitter {
 
     this.socket.on('data', chunk => this._onData(chunk));
     this.socket.on('error', err => { this.emit('error', err); this._cleanup(); });
-    this.socket.on('close', () => { this.emit('disconnected', 'tcp close'); this._cleanup(); });
+    this.socket.on('close', () => {
+      // disconnect() may already have emitted 'disconnected' with a more
+      // specific reason (e.g. 'client request') and destroyed the socket
+      // itself — don't double-fire with a generic 'tcp close' after it.
+      if (this._destroyed) return;
+      this._destroyed = true;
+      this.emit('disconnected', 'tcp close');
+      this._cleanup();
+    });
     this.socket.setTimeout(config.bridge.socketTimeoutMs, () => {
       this.emit('error', new Error('Socket timeout'));
       this._cleanup();
     });
+    this._startKeepAlive();
+  }
+
+  // Periodic IAC NOP — content-free Telnet command, keeps the socket
+  // active so quiet 5250 screens don't trip config.bridge.socketTimeoutMs.
+  _startKeepAlive() {
+    if (!this.keepAliveSec) return;
+    this._keepAliveTimer = setInterval(() => {
+      if (this.socket && !this._destroyed) this.socket.write(Buffer.from([IAC, NOP]));
+    }, this.keepAliveSec * 1000);
   }
 
   disconnect(reason = 'client') {
@@ -772,6 +792,7 @@ class Tn5250Session extends EventEmitter {
   }
 
   _cleanup() {
+    if (this._keepAliveTimer) { clearInterval(this._keepAliveTimer); this._keepAliveTimer = null; }
     if (this.socket) {
       this.socket.removeAllListeners();
       if (!this.socket.destroyed) this.socket.destroy();

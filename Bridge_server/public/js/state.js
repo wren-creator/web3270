@@ -34,6 +34,21 @@ export const AI_PROVIDER_LABELS = {
   github:    'GitHub Models',
 };
 
+const SETTINGS_KEY = 'bridgeSettings';
+
+function loadSettings() {
+  const defaults = { autoReconnect: true, keepAliveSec: 30 };
+  try {
+    return { ...defaults, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') };
+  } catch {
+    return defaults;
+  }
+}
+
+export function saveSettings() {
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings)); } catch {}
+}
+
 export const state = {
   // Session
   sessions:          new Map(),
@@ -77,4 +92,7 @@ export const state = {
 
   // Security
   secUnlocked:       false,
+
+  // Connection settings (persisted to localStorage)
+  settings:          loadSettings(),
 };

@@ -1,4 +1,4 @@
-import { state } from './state.js';
+import { state, saveSettings } from './state.js';
 import { fitScreen, measureCellWidth } from './geometry.js';
 import { renderLiveScreen } from './rendering.js';
 
@@ -34,6 +34,26 @@ export function toggleShowPassword(el) {
   if (state.liveScreen) renderLiveScreen(state.liveScreen);
 }
 
+export function toggleAutoReconnect(el) {
+  el.classList.toggle('on');
+  state.settings.autoReconnect = el.classList.contains('on');
+  saveSettings();
+}
+
+export function setKeepAlive(input) {
+  const n = Math.max(5, Math.min(600, parseInt(input.value, 10) || 30));
+  input.value = n;
+  state.settings.keepAliveSec = n;
+  saveSettings();
+}
+
+export function initConnectionSettingsUI() {
+  const toggle = document.getElementById('autoReconnectToggle');
+  if (toggle) toggle.classList.toggle('on', !!state.settings.autoReconnect);
+  const input = document.getElementById('keepAliveInput');
+  if (input) input.value = state.settings.keepAliveSec;
+}
+
 const THEMES = {
   green: { bg:'#000810', fg:'#33ff66', cursor:'#33ff66', blue:'#5599ff', red:'#ff5555', turq:'#33ccaa', white:'#e0e0e0' },
   blue:  { bg:'#000a1a', fg:'#66aaff', cursor:'#66aaff', blue:'#88ccff', red:'#ff7766', turq:'#66ddff', white:'#e0e8f0' },
@@ -55,4 +75,7 @@ export function setTheme(name, swatchEl) {
   if (swatchEl) { swatchEl.parentNode.querySelectorAll('.theme-swatch').forEach(s => s.classList.remove('active')); swatchEl.classList.add('active'); }
 }
 
-Object.assign(window, { setZoom, setFontSize, toggleScanlines, toggleCursorBlink, toggleFieldHighlights, toggleShowPassword, setTheme });
+Object.assign(window, {
+  setZoom, setFontSize, toggleScanlines, toggleCursorBlink, toggleFieldHighlights, toggleShowPassword, setTheme,
+  toggleAutoReconnect, setKeepAlive, initConnectionSettingsUI,
+});
