@@ -31,6 +31,12 @@ export function createRequestHandler({ config, logger, sessions }) {
   const ctx = { config, logger, sessions };
 
   return function handleRequest(req, res) {
+    if (req.url === '/health' && req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ status: 'ok' }));
+      return;
+    }
+
     for (const route of ROUTES) {
       if (route.handle(req, res, ctx)) return;
     }

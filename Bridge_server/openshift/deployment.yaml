@@ -1,0 +1,116 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web3270-bridge
+  namespace: tenant-mgmt-web3270-test
+  labels:
+    app: web3270-bridge
+spec:
+  # Single replica: sessions (both the mainframe/SSH connection and the
+  # in-memory screen state) live inside one process. A second replica
+  # wouldn't share that state, so users would land on a random instance
+  # with no session — this app doesn't horizontally scale as-is.
+  replicas: 1
+  selector:
+    matchLabels:
+      app: web3270-bridge
+  # RWO PVC + single replica: let the old pod fully terminate (and
+  # release the volume) before the new one starts, instead of the
+  # default RollingUpdate trying to run both at once.
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: web3270-bridge
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      # Seeds the PVC on first run so lpars.txt / ssh-hosts.txt exist as
+      # files (not directories) and macros/local exists as a directory,
+      # before the main container's subPath mounts touch them. Safe to
+      # re-run on every pod start — it only creates what's missing.
+      initContainers:
+        - name: seed-data
+          image: image-registry.openshift-image-registry.svc:5000/tenant-mgmt-web3270-test/web3270-bridge:latest
+          command:
+            - sh
+            - -c
+            - |
+              [ -f /data/lpars.txt ]     || : > /data/lpars.txt
+              [ -f /data/ssh-hosts.txt ] || : > /data/ssh-hosts.txt
+              mkdir -p /data/macros-local
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      containers:
+        - name: web3270-bridge
+          image: image-registry.openshift-image-registry.svc:5000/tenant-mgmt-web3270-test/web3270-bridge:latest
+          ports:
+            - containerPort: 8081
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          env:
+            - name: BRIDGE_PORT
+              value: "8081"
+            - name: LOG_LEVEL
+              value: "info"
+            # This deployment has no mock-lpar/mock-zvm/mock-tpf/mock-as400
+            # containers to resolve, so skip the built-in "shipped" demo
+            # profiles that point at those container hostnames.
+            - name: BRIDGE_SKIP_SHIPPED_PROFILES
+              value: "true"
+            - name: BRIDGE_SOCKET_TIMEOUT_MS
+              value: "300000"
+            - name: BRIDGE_MAX_SESSIONS
+              value: "50"
+            - name: DEFAULT_MODEL
+              value: "3278-2"
+            - name: DEFAULT_CODEPAGE
+              value: "37"
+            # Leave BRIDGE_VERIFY_TLS unset (defaults to true — verify certs)
+            # since this points at real hosts, not the mock/demo LPARs.
+            # Set to "false" only if a target host uses a self-signed cert.
+          volumeMounts:
+            - name: data
+              mountPath: /app/lpars.txt
+              subPath: lpars.txt
+            - name: data
+              mountPath: /app/ssh-hosts.txt
+              subPath: ssh-hosts.txt
+            - name: data
+              mountPath: /app/macros/local
+              subPath: macros-local
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8081
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              memory: 64Mi
+              cpu: 100m
+            limits:
+              memory: 256Mi
+              cpu: 500m
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: web3270-bridge-data

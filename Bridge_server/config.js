@@ -31,7 +31,8 @@ function parseSshHostsFile(filePath) {
 // ssh-hosts.txt:         gitignored, user's private hosts (bind-mounted in Docker)
 // User entries with the same id override shipped entries.
 function loadSshHostsFile() {
-  const shipped = parseSshHostsFile(path.join(__dirname, 'ssh-hosts.shipped.txt'));
+  const skipShipped = process.env.BRIDGE_SKIP_SHIPPED_PROFILES === 'true';
+  const shipped = skipShipped ? [] : parseSshHostsFile(path.join(__dirname, 'ssh-hosts.shipped.txt'));
   const user    = parseSshHostsFile(path.join(__dirname, 'ssh-hosts.txt'));
 
   // User entries override shipped entries with the same id
@@ -77,8 +78,9 @@ function parseLparFile(filePath, source) {
 function loadLparFile() {
   const shippedPath = path.join(__dirname, 'lpars.shipped.txt');
   const userPath    = path.join(__dirname, 'lpars.txt');
+  const skipShipped = process.env.BRIDGE_SKIP_SHIPPED_PROFILES === 'true';
 
-  const shipped = parseLparFile(shippedPath, 'shipped');
+  const shipped = skipShipped ? [] : parseLparFile(shippedPath, 'shipped');
   const user    = parseLparFile(userPath,    'user');
 
   if (shipped.length === 0 && user.length === 0) {

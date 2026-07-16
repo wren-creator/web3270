@@ -1,0 +1,26 @@
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: web3270-bridge
+  namespace: tenant-mgmt-web3270-test
+  labels:
+    app: web3270-bridge
+spec:
+  # Binary build: source comes from `oc start-build --from-dir=.` on your
+  # machine, not from a Git remote. Works the same whether or not this
+  # cluster has outbound access to GitHub.
+  source:
+    type: Binary
+    binary: {}
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: Dockerfile
+  output:
+    to:
+      kind: ImageStreamTag
+      name: web3270-bridge:latest
+  # Existing runs are replaced rather than piling up — fine for a test
+  # namespace where you'll be rebuilding often.
+  successfulBuildsHistoryLimit: 3
+  failedBuildsHistoryLimit: 3
