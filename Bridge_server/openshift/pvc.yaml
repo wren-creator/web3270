@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: web3270-bridge-data
+  namespace: tenant-mgmt-web3270-test
+  labels:
+    app: web3270-bridge
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  # No storageClassName set — uses the namespace's default StorageClass.
+  # If this project has no default, add: storageClassName: <name>

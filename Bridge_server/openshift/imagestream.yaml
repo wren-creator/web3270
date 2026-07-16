@@ -1,0 +1,10 @@
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: web3270-bridge
+  namespace: tenant-mgmt-web3270-test
+  labels:
+    app: web3270-bridge
+spec:
+  lookupPolicy:
+    local: true

@@ -3,3 +3,5 @@
 *.log
 macros/local/
 macros/macros.json
+.git
+backup-files/

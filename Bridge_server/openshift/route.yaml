@@ -1,0 +1,18 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: web3270-bridge
+  namespace: tenant-mgmt-web3270-test
+  labels:
+    app: web3270-bridge
+spec:
+  to:
+    kind: Service
+    name: web3270-bridge
+  port:
+    targetPort: http
+  tls:
+    # The app itself only speaks plain HTTP/WS — TLS terminates at the
+    # router, backend traffic stays HTTP inside the cluster.
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
