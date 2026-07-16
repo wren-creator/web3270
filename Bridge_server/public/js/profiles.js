@@ -202,18 +202,14 @@ function connectLpar(name) {
   openSession(profile);
 }
 
-export function openSession(profile) {
-  hideConnectModal();
-  if (state.splitMode && state.sessions.size >= 2) {
-    showBridgeError('Split-screen mode: max 2 sessions allowed.\nClose a session or turn off split mode first.');
-    return;
-  }
-  const sid  = ++state.sessionSeq;
-  const name = profile.id || 'Session ' + sid;
-  setConnStatus(name, 'connecting');
+// Opens (or reopens, for reconnect) the browser-side WebSocket for a TN3270/
+// TN5250 session onto an existing sid. Split out from openSession so a
+// dropped session can be reconnected onto the same tab instead of spawning
+// a new one.
+function _connectTn3270Ws(sid, profile, name) {
   let ws;
   try { ws = new WebSocket(BRIDGE_URL); }
-  catch (e) { setConnStatus(name, 'error'); showBridgeError(e.message); return; }
+  catch (e) { setConnStatus(name, 'error'); showBridgeError(e.message); return null; }
   ws.onopen = () => {
     ws.send(JSON.stringify({
       type: 'connect', host: profile.host, port: profile.port,
@@ -222,6 +218,7 @@ export function openSession(profile) {
       model: profile.model ?? (profile.protocol === '5250' ? '3179-2' : '3278-5'),
       codepage: profile.codepage ?? 37,
       tn3270e: profile.tn3270e ?? (profile.type !== 'ZVM'),
+      keepAliveSec: state.settings.keepAliveSec,
     }));
   };
   ws.onmessage = event => { let msg; try { msg = JSON.parse(event.data); } catch { return; } handleBridgeMsg(sid, msg); };
@@ -232,10 +229,48 @@ export function openSession(profile) {
       setConnStatus(name, 'disconnected'); updateSessionDot(sid, 'disconnected');
       if (sid === state.activeSession) _showDisconnectScreen(name, null, sid);
       else if (state.splitMode && sid === state.splitSid) _showDisconnectScreen(name, document.getElementById('terminal-split'), sid);
+      // The bridge WebSocket itself dropped (not just the host-side session) —
+      // e.g. bridge restart or network blip. The tab is still open (it wasn't
+      // deleted from state.sessions by a user-initiated close), so retry.
+      if (state.settings.autoReconnect) _scheduleTn3270Reconnect(sid);
     }
   };
+  return ws;
+}
+
+const RECONNECT_DELAYS_MS = [2000, 5000, 10000];
+
+// Retries a dropped TN3270/5250 session onto its existing tab (sid), rather
+// than opening a new one. Only called for unexpected drops — see the
+// 'disconnected' case in handleBridgeMsg for the reason check that gates this.
+function _scheduleTn3270Reconnect(sid) {
+  const session = state.sessions.get(sid);
+  if (!session) return;
+  const attempt = session.reconnectAttempt || 0;
+  if (attempt >= RECONNECT_DELAYS_MS.length) return;
+  session.reconnectAttempt = attempt + 1;
+  setTimeout(() => {
+    const s = state.sessions.get(sid);
+    if (!s) return; // tab was closed while we were waiting
+    setConnStatus(s.name, 'connecting'); updateSessionDot(sid, 'connecting');
+    const ws = _connectTn3270Ws(sid, s.profile, s.name);
+    if (ws) s.ws = ws;
+  }, RECONNECT_DELAYS_MS[attempt]);
+}
+
+export function openSession(profile) {
+  hideConnectModal();
+  if (state.splitMode && state.sessions.size >= 2) {
+    showBridgeError('Split-screen mode: max 2 sessions allowed.\nClose a session or turn off split mode first.');
+    return;
+  }
+  const sid  = ++state.sessionSeq;
+  const name = profile.id || 'Session ' + sid;
+  setConnStatus(name, 'connecting');
+  const ws = _connectTn3270Ws(sid, profile, name);
+  if (!ws) return;
   const tabEl = addSessionTab(name, profile.type || 'TSO', sid);
-  state.sessions.set(sid, { ws, profile, tabEl, name, tn3270Connected: false });
+  state.sessions.set(sid, { ws, profile, tabEl, name, tn3270Connected: false, reconnectAttempt: 0 });
   if (state.splitMode && state.sessions.size === 2) {
     state.splitSid = sid;
     const paneR = document.getElementById('splitPaneRight');
@@ -252,6 +287,7 @@ export function handleBridgeMsg(sid, msg) {
     case 'status':
       if (msg.state === 'connected') {
         session.tn3270Connected = true;
+        session.reconnectAttempt = 0;
         setConnStatus(session.name, 'connected'); updateSessionDot(sid, 'connected');
         if (msg.lu)    { const e = document.getElementById('oiaLu');    if (e) e.textContent = msg.lu; }
         if (msg.model) { const e = document.getElementById('oiaModel'); if (e) e.textContent = msg.model; }
@@ -272,6 +308,9 @@ export function handleBridgeMsg(sid, msg) {
         if (sid === state.activeSession) { const tlsE = document.getElementById('oiaTls'); if (tlsE) tlsE.textContent = '—'; }
         if (sid === state.activeSession) _showDisconnectScreen(session.name, null, sid);
         else if (state.splitMode && sid === state.splitSid) _showDisconnectScreen(session.name, document.getElementById('terminal-split'), sid);
+        if (state.settings.autoReconnect && msg.reason && msg.reason !== 'client request') {
+          _scheduleTn3270Reconnect(sid);
+        }
       } else if (msg.state === 'connecting') { setConnStatus(session.name, 'connecting'); }
       if (sid === state.activeSession) window.bufferBleedOnStatus?.(msg);
       break;

@@ -68,12 +68,15 @@ export function createWsHandler({ config, logger, sessions, Ebcdic }) {
 
       // ── Create session (protocol-specific engine, shared event API) ──
       let session;
+      const keepAliveSec = parseInt(params.keepAliveSec, 10) || 0;
+
       if (protocol === '5250') {
         const model = params.model || '3179-2';
         logger.info(`[ws:${wsId}] Connecting (TN5250) → ${host}:${port} tls=${useTls} devname=${luName||'any'} model=${model}`);
         session = new Tn5250Session({
           wsId, host, port, useTls, luName, model, codepage,
           user: params.user,
+          keepAliveSec,
           tlsOptions: buildTlsOptions(params, config),
         });
       } else {
@@ -83,6 +86,7 @@ export function createWsHandler({ config, logger, sessions, Ebcdic }) {
         session = new Tn3270Session({
           wsId, host, port, useTls, luName, model, codepage,
           useTn3270e,
+          keepAliveSec,
           tlsOptions: buildTlsOptions(params, config),
         });
       }

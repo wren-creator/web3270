@@ -76,10 +76,95 @@ export async function sshConnect() {
   _sshOpenSession(sid, name, host, port, username, password);
 }
 
-function _sshOpenSession(sid, name, host, port, username, password) {
-  const WS_URL = `ws://${location.host}`;
-  const ws = new WebSocket(WS_URL);
+// Opens (or reopens, for reconnect) the WebSocket for an SSH session onto
+// an existing sid, reusing the session's terminal. Split out from
+// _sshOpenSession so a dropped session can be reconnected onto the same
+// tab instead of spawning a new one.
+function _sshConnectWs(sid) {
+  const session = state.sessions.get(sid);
+  if (!session) return null;
+  const ws = new WebSocket(`ws://${location.host}`);
 
+  ws.onopen = () => {
+    ws.send(JSON.stringify({
+      type: 'ssh.connect', host: session.host, port: session.port,
+      username: session.username, password: session.password,
+      rows: session.term.rows, cols: session.term.cols,
+      keepAliveSec: state.settings.keepAliveSec,
+    }));
+  };
+
+  ws.onmessage = e => {
+    let msg;
+    try { msg = JSON.parse(e.data); } catch { return; }
+    if (msg.type === 'ssh.data') {
+      session.term.write(Uint8Array.from(atob(msg.data), c => c.charCodeAt(0)));
+    } else if (msg.type === 'ssh.status') {
+      if (msg.state === 'connected') {
+        session.state = 'connected';
+        session.reconnectAttempt = 0;
+        if (msg.sshVersion) session.sshVersion = msg.sshVersion.replace(/^SSH-\d+\.\d+-/, '');
+        _sshUpdateTabDot(sid, '#3a9a6a');
+        if (state.activeSshSession === sid) {
+          const oiaMode = document.getElementById('oiaMode');
+          if (oiaMode) { oiaMode.textContent = 'SSH CONNECTED'; oiaMode.className = 'oia-val blue'; }
+          const oiaTls = document.getElementById('oiaTls');
+          if (oiaTls && session.sshVersion) oiaTls.textContent = session.sshVersion;
+        }
+      } else if (msg.state === 'disconnected') {
+        session.state = 'disconnected';
+        _sshUpdateTabDot(sid, '#c0392b');
+        if (state.activeSshSession === sid) {
+          const oiaMode = document.getElementById('oiaMode');
+          if (oiaMode) { oiaMode.textContent = 'SSH CLOSED'; oiaMode.className = 'oia-val'; }
+        }
+        if (state.settings.autoReconnect && msg.reason && msg.reason !== 'client request') {
+          _scheduleSshReconnect(sid);
+        }
+      }
+    } else if (msg.type === 'ssh.error') {
+      session.state = 'error';
+      session.term.writeln(`\r\n\x1b[31m[SSH Error] ${msg.message}\x1b[0m`);
+      _sshUpdateTabDot(sid, '#c0392b');
+      if (state.activeSshSession === sid) {
+        setConnStatus(session.name, 'error');
+      }
+    }
+  };
+
+  ws.onclose = () => {
+    session.state = 'closed';
+    _sshUpdateTabDot(sid, '#888');
+    // The bridge WebSocket itself dropped (not just the remote SSH session) —
+    // e.g. bridge restart or network blip. If the tab was closed intentionally,
+    // sshCloseTab already deleted it from state.sessions, so this won't fire.
+    if (state.sessions.has(sid) && state.settings.autoReconnect) _scheduleSshReconnect(sid);
+  };
+
+  return ws;
+}
+
+const SSH_RECONNECT_DELAYS_MS = [2000, 5000, 10000];
+
+// Retries a dropped SSH session onto its existing tab (sid). Only called
+// for unexpected drops — see the reason check in _sshConnectWs above.
+function _scheduleSshReconnect(sid) {
+  const session = state.sessions.get(sid);
+  if (!session) return;
+  const attempt = session.reconnectAttempt || 0;
+  if (attempt >= SSH_RECONNECT_DELAYS_MS.length) return;
+  session.reconnectAttempt = attempt + 1;
+  setTimeout(() => {
+    const s = state.sessions.get(sid);
+    if (!s) return; // tab was closed while we were waiting
+    s.term.writeln('\r\n\x1b[33m[Reconnecting…]\x1b[0m');
+    _sshUpdateTabDot(sid, '#ffaa00');
+    const ws = _sshConnectWs(sid);
+    if (ws) s.ws = ws;
+  }, SSH_RECONNECT_DELAYS_MS[attempt]);
+}
+
+function _sshOpenSession(sid, name, host, port, username, password) {
   const container = document.createElement('div');
   container.className = 'ssh-xterm-container';
   container.style.cssText = 'width:100%;height:100%;display:none;';
@@ -102,58 +187,16 @@ function _sshOpenSession(sid, name, host, port, username, password) {
   term.loadAddon(fitAddon);
   term.open(container);
 
-  const session = { ws, term, fitAddon, container, host, name, port, username, type: 'ssh', sid, state: 'connecting' };
+  const session = {
+    ws: null, term, fitAddon, container, host, name, port, username, password,
+    type: 'ssh', sid, state: 'connecting', reconnectAttempt: 0,
+  };
   state.sessions.set(sid, session);
-
-  ws.onopen = () => {
-    ws.send(JSON.stringify({
-      type: 'ssh.connect', host, port, username, password,
-      rows: term.rows, cols: term.cols,
-    }));
-  };
-
-  ws.onmessage = e => {
-    let msg;
-    try { msg = JSON.parse(e.data); } catch { return; }
-    if (msg.type === 'ssh.data') {
-      term.write(Uint8Array.from(atob(msg.data), c => c.charCodeAt(0)));
-    } else if (msg.type === 'ssh.status') {
-      if (msg.state === 'connected') {
-        session.state = 'connected';
-        if (msg.sshVersion) session.sshVersion = msg.sshVersion.replace(/^SSH-\d+\.\d+-/, '');
-        _sshUpdateTabDot(sid, '#3a9a6a');
-        if (state.activeSshSession === sid) {
-          const oiaMode = document.getElementById('oiaMode');
-          if (oiaMode) { oiaMode.textContent = 'SSH CONNECTED'; oiaMode.className = 'oia-val blue'; }
-          const oiaTls = document.getElementById('oiaTls');
-          if (oiaTls && session.sshVersion) oiaTls.textContent = session.sshVersion;
-        }
-      } else if (msg.state === 'disconnected') {
-        session.state = 'disconnected';
-        _sshUpdateTabDot(sid, '#c0392b');
-        if (state.activeSshSession === sid) {
-          const oiaMode = document.getElementById('oiaMode');
-          if (oiaMode) { oiaMode.textContent = 'SSH CLOSED'; oiaMode.className = 'oia-val'; }
-        }
-      }
-    } else if (msg.type === 'ssh.error') {
-      session.state = 'error';
-      term.writeln(`\r\n\x1b[31m[SSH Error] ${msg.message}\x1b[0m`);
-      _sshUpdateTabDot(sid, '#c0392b');
-      if (state.activeSshSession === sid) {
-        setConnStatus(session.name, 'error');
-      }
-    }
-  };
-
-  ws.onclose = () => {
-    session.state = 'closed';
-    _sshUpdateTabDot(sid, '#888');
-  };
+  session.ws = _sshConnectWs(sid);
 
   term.onData(data => {
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'ssh.data', data: btoa(data) }));
+    if (session.ws && session.ws.readyState === WebSocket.OPEN) {
+      session.ws.send(JSON.stringify({ type: 'ssh.data', data: btoa(data) }));
     }
   });
 

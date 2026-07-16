@@ -6,12 +6,14 @@ export function handleSshConnect(ws, wsId, params, send, logger) {
     send(ws, { type: 'ssh.error', message: 'host, username and password are required' });
     ws.close(); return;
   }
+  const keepAliveSec = parseInt(params.keepAliveSec, 10) || 0;
 
   logger.info(`[ws:${wsId}] SSH → ${username}@${host}:${port}`);
   send(ws, { type: 'ssh.status', state: 'connecting' });
 
   const conn = new SshClient();
   let stream = null;
+  let clientInitiated = false;
 
   conn.on('ready', () => {
     const sshVersion = conn._remoteVer || 'SSH';
@@ -28,7 +30,7 @@ export function handleSshConnect(ws, wsId, params, send, logger) {
       sh.stderr.on('data', d => { if (ws.readyState === 1) send(ws, { type: 'ssh.data', data: d.toString('base64') }); });
       sh.on('close', () => {
         logger.info(`[ws:${wsId}] SSH shell closed`);
-        send(ws, { type: 'ssh.status', state: 'disconnected' });
+        send(ws, { type: 'ssh.status', state: 'disconnected', reason: clientInitiated ? 'client request' : 'remote close' });
         conn.end();
         ws.close();
       });
@@ -49,6 +51,7 @@ export function handleSshConnect(ws, wsId, params, send, logger) {
     } else if (msg.type === 'ssh.resize' && stream) {
       stream.setWindow(msg.rows || 24, msg.cols || 80);
     } else if (msg.type === 'ssh.disconnect') {
+      clientInitiated = true;
       if (stream) stream.end();
       conn.end();
     }
@@ -63,5 +66,8 @@ export function handleSshConnect(ws, wsId, params, send, logger) {
     finish(Array(_prompts.length).fill(password));
   });
 
-  conn.connect({ host, port, username, password, tryKeyboard: true, readyTimeout: 15000 });
+  conn.connect({
+    host, port, username, password, tryKeyboard: true, readyTimeout: 15000,
+    ...(keepAliveSec ? { keepaliveInterval: keepAliveSec * 1000, keepaliveCountMax: 3 } : {}),
+  });
 }

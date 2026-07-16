@@ -254,9 +254,8 @@
       </div>
       <div class="setting-group">
         <div class="setting-label">Connection</div>
-        <div class="setting-row"><label>Auto Reconnect</label><div class="toggle on" onclick="this.classList.toggle('on')"></div></div>
-        <div class="setting-row"><label>Keep-Alive (s)</label><input type="number" value="30" style="width:60px"></div>
-        <div class="setting-row"><label>TN3270E</label><span style="font-size:10px;color:var(--text-muted)">Set per session in connect dialog</span></div>
+        <div class="setting-row"><label>Auto Reconnect</label><div class="toggle on" id="autoReconnectToggle" onclick="toggleAutoReconnect(this)"></div></div>
+        <div class="setting-row"><label>Keep-Alive (s)</label><input type="number" id="keepAliveInput" value="30" style="width:60px" onchange="setKeepAlive(this)"></div>
       </div>
     </div>
 
