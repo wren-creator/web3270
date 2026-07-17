@@ -199,7 +199,8 @@ const MENUS = {
       { num: '1', label: 'User tasks',                    goto: 'USER' },
       { num: '2', label: 'Office tasks',                   goto: 'OFFICE' },
       { num: '3', label: 'General system tasks',           goto: 'SYSTEM' },
-      { num: '4', label: 'Files, libraries, and folders' },
+      { num: '4', label: 'Files, libraries, and folders',  goto: 'FILES' },
+      { num: '5', label: 'Programming',                    goto: 'PROGRAMMING' },
       { num: '9', label: 'Display messages',                action: 'messages' },
     ],
   },
@@ -207,10 +208,11 @@ const MENUS = {
     title: 'USER TASKS',
     parent: 'MAIN',
     options: [
-      { num: '1', label: 'Send messages' },
+      { num: '1', label: 'Send messages',                  run: 'SNDMSG' },
       { num: '2', label: 'Display messages',                action: 'messages' },
-      { num: '3', label: 'Work with spooled files' },
-      { num: '4', label: 'Work with batch jobs' },
+      { num: '3', label: 'Work with spooled files',        run: 'WRKSPLF' },
+      { num: '4', label: 'Work with batch jobs',           run: 'WRKBCHJOB' },
+      { num: '5', label: 'Work with your jobs',             run: 'WRKUSRJOB' },
     ],
   },
   OFFICE: {
@@ -219,7 +221,7 @@ const MENUS = {
     options: [
       { num: '1', label: 'Work with calendar' },
       { num: '2', label: 'Send/receive documents' },
-      { num: '3', label: 'Work with mail' },
+      { num: '3', label: 'Work with mail',                  action: 'messages' },
     ],
   },
   SYSTEM: {
@@ -233,6 +235,22 @@ const MENUS = {
       { num: '5', label: 'Work with system values',         run: 'WRKSYSVAL' },
       { num: '6', label: 'Work with user profiles',         run: 'WRKUSRPRF' },
       { num: '7', label: 'Work with objects (public auth)', run: 'WRKOBJ' },
+    ],
+  },
+  FILES: {
+    title: 'FILES, LIBRARIES, AND FOLDERS',
+    parent: 'MAIN',
+    options: [
+      { num: '1', label: 'Work with libraries',            run: 'WRKLIB' },
+      { num: '2', label: 'Display library list',           run: 'DSPLIBL' },
+    ],
+  },
+  PROGRAMMING: {
+    title: 'PROGRAMMING',
+    parent: 'MAIN',
+    options: [
+      { num: '1', label: 'Programming Development Manager (PDM)', run: 'STRPDM' },
+      { num: '2', label: 'Interactive SQL',                        run: 'STRSQL' },
     ],
   },
 };
@@ -384,6 +402,148 @@ const SBS = [
 const PRIV_USERS = new Set(USRPRFS.filter(p =>
   p.specialAuth.includes('*ALLOBJ') || p.specialAuth.includes('*SECADM')).map(p => p.name));
 
+// ── Wave 3 surfaces ───────────────────────────────────────────────
+// Everyday operator / PDM / SQL navigation — realistic-looking data, no
+// weak/privileged flagging (unlike Waves 1-2, these aren't a security demo).
+
+// Spooled files (WRKSPLF). System-wide, like the other "Work with" panels
+// (not filtered to the signed-on user) so there's always something to see.
+const SPLFILES = [
+  { file: 'QSYSPRT',   number: '000123', job: 'PAYRPT/APPADMIN/048812', user: 'APPADMIN', status: '*RDY', pages: 42,  copies: 1, formtype: '*STD',   priority: 5, outq: 'QGPL/QPRINT',
+    content: [
+      'PAYROLL REGISTER -- PAY PERIOD ENDING 07/15/26',
+      '',
+      'EMP NO   NAME               DEPT     GROSS PAY',
+      '10234    J SMITH            ACCT       3,420.00',
+      '10391    R JONES            MFG        2,980.50',
+      '10502    A GARCIA           ACCT       3,105.75',
+      '',
+      '*** END OF REPORT -- 3 EMPLOYEES ***',
+    ] },
+  { file: 'QPJOBLOG',  number: '000098', job: 'RPTPRINT/JSMITH/048790', user: 'JSMITH',   status: '*SAV', pages: 3,   copies: 1, formtype: '*STD',   priority: 5, outq: 'QGPL/QPRINT',
+    content: [
+      'Job 048790/JSMITH/RPTPRINT started on 07/16/26 at 14:22:10 in subsystem QBATCH.',
+      'CPF1124 - Job 048790/JSMITH/RPTPRINT started.',
+      'Job 048790/JSMITH/RPTPRINT completed normally on 07/16/26 at 14:23:02.',
+    ] },
+  { file: 'MTHENDRPT', number: '000101', job: 'MTHEND/QPGMR/048805',    user: 'QPGMR',    status: '*HLD', pages: 128, copies: 2, formtype: 'INVOICE', priority: 3, outq: 'QGPL/QPRINT',
+    content: [ '(Spooled file held -- release with WRKSPLF option 6 on a real system.)' ] },
+];
+
+// Output queues (WRKOUTQ).
+const OUTQS = [
+  { name: 'QPRINT',    lib: 'QGPL',    files: 2, status: 'RELEASED', maxpri: '*NOMAX' },
+  { name: 'PRT01',     lib: 'QUSRSYS', files: 1, status: 'RELEASED', maxpri: '*NOMAX' },
+  { name: 'QEZJOBLOG', lib: 'QGPL',    files: 0, status: 'HELD',     maxpri: '*NOMAX' },
+];
+
+// Batch jobs (WRKBCHJOB) -- system-wide submitted jobs, distinct from a
+// user's own jobs (WRKUSRJOB, built dynamically below).
+const BCHJOBS = [
+  { name: 'PAYRPT',   user: 'APPADMIN', number: '048812', sbs: 'QBATCH', jobq: 'QGPL/QBATCH', status: '*ACTIVE', submitted: '07/16/26 22:00:03' },
+  { name: 'MTHEND',   user: 'QPGMR',    number: '048805', sbs: 'QBATCH', jobq: 'QGPL/QBATCH', status: '*JOBQ',   submitted: '07/17/26 06:00:00' },
+  { name: 'RPTPRINT', user: 'JSMITH',   number: '048790', sbs: 'QBATCH', jobq: 'QGPL/QBATCH', status: '*OUTQ',   submitted: '07/16/26 14:22:10' },
+];
+
+// A signed-on user's own jobs (WRKUSRJOB), built live from the session's
+// user rather than a static table since any userid can sign on. Also the
+// lookup path JOB_DETAIL uses for jobs picked from USRJOB_LIST.
+function buildUserJobs(user) {
+  return [
+    { name: 'QPADEV0001', user, number: '041823', sbs: 'QINTER', jobq: null,           type: 'INT', status: '*ACTIVE', func: 'CMD-ENTRY' },
+    { name: 'RPTQRY',     user, number: '041790', sbs: 'QBATCH', jobq: 'QGPL/QBATCH',  type: 'BCH', status: '*OUTQ',   func: 'PGM-RPTQRY' },
+  ];
+}
+
+// Libraries (WRKLIB).
+const LIBRARIES = [
+  { name: 'QGPL',    type: '*PROD', asp: 1, text: 'General purpose library',          objects: 812 },
+  { name: 'QSYS',    type: '*SYS',  asp: 1, text: 'System library',                   objects: 4213 },
+  { name: 'QTEMP',   type: '*TEMP', asp: 1, text: 'Temporary job library',            objects: 0 },
+  { name: 'PAYROLL', type: '*PROD', asp: 1, text: 'Payroll application data',         objects: 18 },
+  { name: 'APPLIB',  type: '*PROD', asp: 1, text: 'Application program library',      objects: 47 },
+  { name: 'MYLIB',   type: '*TEST', asp: 1, text: 'Personal development library',     objects: 6 },
+];
+
+// Current library list (DSPLIBL) -- fixed order: system, product, current, user.
+const LIBL = [
+  { name: 'QSYS',    type: 'SYS' },
+  { name: 'QSYS2',   type: 'SYS' },
+  { name: 'QHLPSYS', type: 'SYS' },
+  { name: 'QUSRSYS', type: 'SYS' },
+  { name: 'APPLIB',  type: 'PRD' },
+  { name: 'MYLIB',   type: 'CUR' },
+  { name: 'QGPL',    type: 'USR' },
+  { name: 'QTEMP',   type: 'USR' },
+];
+
+// Objects browsed with PDM (WRKOBJPDM LIB(x)), keyed by library name.
+const PDM_OBJECTS = {
+  QGPL: [
+    { name: 'QCLSRC',  type: '*FILE', attr: 'PF-SRC', text: 'CL source physical file',       size: '128K' },
+    { name: 'QDDSSRC', type: '*FILE', attr: 'PF-SRC', text: 'DDS source physical file',       size: '64K' },
+    { name: 'STRSBS',  type: '*PGM',  attr: 'CLLE',   text: 'Start subsystem wrapper',        size: '32K' },
+  ],
+  APPLIB: [
+    { name: 'QRPGLESRC', type: '*FILE', attr: 'PF-SRC', text: 'RPGLE source physical file',   size: '256K' },
+    { name: 'PAYRPT',    type: '*PGM',  attr: 'RPGLE',  text: 'Payroll report program',       size: '184K' },
+    { name: 'CONFIG',    type: '*FILE', attr: 'PF',     text: 'Application config data',      size: '8K' },
+  ],
+};
+
+// Source members browsed with PDM (WRKMBRPDM FILE(lib/file)), keyed by "LIB/FILE".
+const SRCMEMBERS = {
+  'APPLIB/QRPGLESRC': [
+    { name: 'PAYRPT', type: 'RPGLE', text: 'Payroll report program', changed: '07/10/26 11:04:22', src: [
+      '     H OPTION(*SRCSTMT)',
+      '     FEMPMAST   IF   E           K DISK',
+      '     C                   READ      EMPMAST                              99',
+      '     C                   DOW       NOT %EOF',
+      '     C                   EXCEPT    DETAIL',
+      '     C                   READ      EMPMAST                              99',
+      '     C                   ENDDO',
+    ] },
+    { name: 'LEAVCALC', type: 'RPGLE', text: 'Leave balance calculation', changed: '06/28/26 09:15:40', src: [
+      '     H OPTION(*SRCSTMT)',
+      '     D balance         S              7P 2',
+      '     C     eval      balance = balance + accrued',
+    ] },
+  ],
+  'QGPL/QCLSRC': [
+    { name: 'STRSBS', type: 'CLLE', text: 'Start subsystem wrapper', changed: '05/02/26 08:30:00', src: [
+      '             PGM',
+      '             STRSBS    SBSD(QBATCH)',
+      '             MONMSG    MSGID(CPF0000)',
+      '             ENDPGM',
+    ] },
+  ],
+};
+
+// Tables queryable from STRSQL, keyed by "LIB/TABLE". QIWS/QCUSTCDT is IBM's
+// real out-of-box sample customer table -- the same one that ships on every
+// physical IBM i, so `SELECT * FROM QIWS.QCUSTCDT` here is the same command
+// worth trying on real hardware.
+const SQL_TABLES = {
+  'QIWS/QCUSTCDT': {
+    columns: ['CUSNUM', 'LSTNAM', 'INIT', 'STREET', 'CITY', 'STATE', 'ZIPCOD', 'CDTLMT', 'CHGCOD', 'BALDUE', 'CDTDUE'],
+    rows: [
+      ['938472', 'Henning',  'G K', '4859 Elm Ave',     'Dallas',       'TX', '75217', '5000', '3', '37.00',   '.00'],
+      ['839283', 'Jones',    'B D', '21B N Broadway',   'Dallas',       'TX', '75217', '400',  '1', '100.00',  '.00'],
+      ['392859', 'Vine',     'S S', 'PO Box 79',        'Broken Arrow', 'OK', '74011', '700',  '1', '439.00',  '.00'],
+      ['938485', 'Johnson',  'J A', '3 Alpine Way',     'Dallas',       'TX', '75217', '9999', '2', '3987.50', '33.50'],
+      ['397267', 'Tyron',    'W E', '13 Myrtle Dr',     'Hopkins',      'MN', '55343', '1000', '1', '.00',     '.00'],
+    ],
+  },
+  'PAYROLL/EMPMAST': {
+    columns: ['EMPNO', 'NAME', 'DEPT', 'SALARY'],
+    rows: [
+      ['10234', 'J SMITH',  'ACCT', '58400.00'],
+      ['10391', 'R JONES',  'MFG',  '61250.00'],
+      ['10502', 'A GARCIA', 'ACCT', '54900.00'],
+    ],
+  },
+};
+
 // ── CL command interpreter ─────────────────────────────────────────
 // Parses a command typed on any "Selection or command" / panel command
 // line into a navigation result the connection state machine applies.
@@ -445,6 +605,29 @@ function runCommand(raw) {
     }
     case 'WRKACTJOB': return { type: 'screen', screen: 'ACTJOB_LIST' };
     case 'WRKSBS':     return { type: 'screen', screen: 'SBS_LIST' };
+    // Wave 3 — everyday operator / PDM / SQL
+    case 'WRKSPLF': return { type: 'screen', screen: 'SPLF_LIST' };
+    case 'WRKOUTQ': return { type: 'screen', screen: 'OUTQ_LIST' };
+    case 'WRKJOB':  return { type: 'detail', screen: 'JOB_DETAIL', target: '*CURRENT' };
+    case 'WRKUSRJOB': return { type: 'screen', screen: 'USRJOB_LIST' };
+    case 'WRKBCHJOB': return { type: 'screen', screen: 'BCHJOB_LIST' };
+    case 'WRKLIB':  return { type: 'screen', screen: 'LIB_LIST' };
+    case 'DSPLIBL': return { type: 'detail', screen: 'LIBL_DETAIL', target: null };
+    case 'STRPDM':  return { type: 'screen', screen: 'LIB_LIST' };
+    case 'WRKOBJPDM': {
+      const lib = params.LIB;
+      if (!lib) return { type: 'error', message: 'CPD0043 - Keyword LIB required for WRKOBJPDM.' };
+      if (!PDM_OBJECTS[lib]) return { type: 'error', message: `CPF9810 - Library ${lib} not found.` };
+      return { type: 'detail', screen: 'OBJPDM_LIST', target: lib };
+    }
+    case 'WRKMBRPDM': {
+      const file = params.FILE;
+      if (!file) return { type: 'error', message: 'CPD0043 - Keyword FILE required for WRKMBRPDM.' };
+      if (!SRCMEMBERS[file]) return { type: 'error', message: `CPF9801 - Object ${file} not found.` };
+      return { type: 'detail', screen: 'MBRPDM_LIST', target: file };
+    }
+    case 'SNDMSG': return { type: 'screen', screen: 'SNDMSG_COMPOSE' };
+    case 'STRSQL': return { type: 'screen', screen: 'SQL' };
     case 'DSPMSG':  return { type: 'messages' };
     case 'SIGNOFF': return { type: 'signoff' };
     default:
@@ -472,6 +655,10 @@ const LIST_CMD_ROW   = 21;
 // panel supports 5=Display) how a picked row maps to a detail screen + target.
 // list-only panels set detail:null. The connection state machine drives all of
 // this generically, so a new panel is just an entry here + a screen builder.
+//
+// count/detail both take the panel's current cmdTarget as an argument (most
+// panels ignore it and show the whole table; a couple of the Wave 3 panels
+// are scoped to a library/file picked via the CL command that opened them).
 const LIST_META = {
   SYSVAL_LIST: { count: () => SYSVAL_KEYS.length, detail: i => ['SYSVAL_DETAIL', SYSVAL_KEYS[i]] },
   USRPRF_LIST: { count: () => USRPRFS.length,     detail: i => ['USRPRF_DETAIL', USRPRFS[i].name] },
@@ -480,10 +667,19 @@ const LIST_META = {
   AUTL_LIST:   { count: () => AUTLS.length,        detail: i => ['AUTL_DETAIL', AUTLS[i].name] },
   ACTJOB_LIST: { count: () => ACTJOBS.length,      detail: null },
   SBS_LIST:    { count: () => SBS.length,           detail: null },
+  // Wave 3
+  SPLF_LIST:   { count: () => SPLFILES.length,     detail: i => ['SPLF_DETAIL', i] },
+  OUTQ_LIST:   { count: () => OUTQS.length,        detail: null },
+  USRJOB_LIST: { count: () => 2,                   detail: i => ['JOB_DETAIL', buildUserJobs('*')[i].name] },
+  BCHJOB_LIST: { count: () => BCHJOBS.length,      detail: i => ['JOB_DETAIL', BCHJOBS[i].name] },
+  LIB_LIST:    { count: () => LIBRARIES.length,    detail: i => ['LIB_DETAIL', LIBRARIES[i].name] },
+  OBJPDM_LIST: { count: (t) => (PDM_OBJECTS[t] || []).length, detail: null },
+  MBRPDM_LIST: { count: (t) => (SRCMEMBERS[t] || []).length,  detail: (i, t) => ['MBR_DETAIL', `${t}|${SRCMEMBERS[t][i].name}`] },
 };
 // Detail/display screens where Enter/F3/F12 all navigate back one level.
 const DETAIL_SCREENS = new Set([
   'SYSVAL_DETAIL', 'USRPRF_DETAIL', 'OBJ_DETAIL', 'NETA', 'JOBD_DETAIL', 'AUTL_DETAIL',
+  'SPLF_DETAIL', 'JOB_DETAIL', 'LIB_DETAIL', 'LIBL_DETAIL', 'MBR_DETAIL',
 ]);
 
 const AID_F3  = 0x33;
@@ -894,6 +1090,332 @@ function seedMessages(user) {
   ];
 }
 
+// ── Wave 3 panels (everyday operator / PDM / SQL) ────────────────────
+// Neutral/realistic data — no red/green weak-value flagging like Waves 1-2.
+
+function screenSplfList(ctx) {
+  const fields = [
+    { row: 0, col: 30, text: 'Work with Spooled Files', input: false },
+    { row: 0, col: 68, text: SYSNAME, input: false },
+    { row: 2, col: 2,  text: 'Type options, press Enter.', input: false },
+    { row: 3, col: 4,  text: '5=Display', input: false },
+    { row: 5, col: 2,  text: 'Opt  File         User        Status  Pages  Copies  Output queue', input: false },
+  ];
+  SPLFILES.forEach((s, idx) => {
+    const row = LIST_START_ROW + idx;
+    fields.push({ row, col: 2,  text: '', input: true, length: 2 });
+    fields.push({ row, col: 6,  text: s.file.padEnd(12, ' '), input: false });
+    fields.push({ row, col: 19, text: s.user.padEnd(11, ' '), input: false });
+    fields.push({ row, col: 31, text: s.status.padEnd(7, ' '), input: false });
+    fields.push({ row, col: 39, text: String(s.pages).padStart(4, ' '), input: false });
+    fields.push({ row, col: 46, text: String(s.copies).padStart(5, ' '), input: false });
+    fields.push({ row, col: 54, text: s.outq, input: false });
+  });
+  listTrailer(fields, ctx.message);
+  return wrapPanel(fields, { row: LIST_START_ROW, col: 2 });
+}
+
+function screenSplfDetail(idx) {
+  const s = SPLFILES[idx];
+  if (!s) return screenStub('SPOOLED FILE NOT FOUND', { user: '' });
+  const fields = [
+    { row: 0, col: 25, text: 'Display Spooled File Attributes', input: false },
+    { row: 2, col: 2,  text: `Spooled file . . . :   ${s.file}`, input: false },
+    { row: 2, col: 48, text: `Number . . :   ${s.number}`, input: false },
+    { row: 3, col: 2,  text: `Job  . . . . . . . :   ${s.job}`, input: false },
+    { row: 4, col: 2,  text: `User . . . . . . . :   ${s.user}`, input: false },
+    { row: 5, col: 2,  text: `Status . . . . . . :   ${s.status}`, input: false },
+    { row: 6, col: 2,  text: `Pages  . . . . . . :   ${s.pages}`, input: false },
+    { row: 6, col: 40, text: `Copies . . :   ${s.copies}`, input: false },
+    { row: 7, col: 2,  text: `Form type  . . . . :   ${s.formtype}`, input: false },
+    { row: 7, col: 40, text: `Priority . :   ${s.priority}`, input: false },
+    { row: 8, col: 2,  text: `Output queue . . . :   ${s.outq}`, input: false },
+    { row: 10, col: 2, text: 'Content preview:', input: false },
+  ];
+  s.content.forEach((line, i) => {
+    if (11 + i > 19) return;
+    fields.push({ row: 11 + i, col: 2, text: line.slice(0, 76), input: false });
+  });
+  fields.push({ row: 22, col: 2,  text: 'Press Enter to continue', input: false });
+  fields.push({ row: 23, col: 2,  text: 'F3=Exit   F12=Cancel', input: false });
+  fields.push({ row: 22, col: 44, text: '', input: true, length: 1 });
+  return wrapPanel(fields, { row: 22, col: 44 });
+}
+
+function screenOutqList(ctx) {
+  const fields = [
+    { row: 0, col: 30, text: 'Work with Output Queues', input: false },
+    { row: 0, col: 68, text: SYSNAME, input: false },
+    { row: 2, col: 2,  text: 'Type options, press Enter.', input: false },
+    { row: 5, col: 2,  text: 'Opt  Output queue  Library    Files  Status', input: false },
+  ];
+  OUTQS.forEach((o, idx) => {
+    const row = LIST_START_ROW + idx;
+    fields.push({ row, col: 2,  text: '', input: true, length: 2 });
+    fields.push({ row, col: 6,  text: o.name.padEnd(13, ' '), input: false });
+    fields.push({ row, col: 19, text: o.lib.padEnd(10, ' '), input: false });
+    fields.push({ row, col: 29, text: String(o.files).padStart(5, ' '), input: false });
+    fields.push({ row, col: 36, text: o.status, input: false });
+  });
+  listTrailer(fields, ctx.message);
+  return wrapPanel(fields, { row: LIST_START_ROW, col: 2 });
+}
+
+// Looks up a job by name for JOB_DETAIL, whichever source it came from:
+// '*CURRENT' (bare WRKJOB, built live from the signed-on user), the
+// system-wide BCHJOBS table, or the signed-on user's own jobs.
+function findJob(name, ctxUser) {
+  if (name === '*CURRENT') {
+    return { name: 'QPADEV0001', user: ctxUser || 'UNKNOWN', number: '041823', sbs: 'QINTER', jobq: null, type: 'INT', status: '*ACTIVE' };
+  }
+  return BCHJOBS.find(j => j.name === name) || buildUserJobs(ctxUser || 'UNKNOWN').find(j => j.name === name);
+}
+
+function screenJobDetail(name, ctxUser) {
+  const j = findJob(name, ctxUser);
+  if (!j) return screenStub('JOB NOT FOUND', { user: ctxUser });
+  const isBatch = j.type === 'BCH' || !!j.jobq;
+  const fields = [
+    { row: 0,  col: 25, text: 'Display Job Status Attributes', input: false },
+    { row: 2,  col: 2,  text: `Job name . . . . . . . . . :   ${j.name}`, input: false },
+    { row: 3,  col: 2,  text: `User . . . . . . . . . . . :   ${j.user}`, input: false },
+    { row: 4,  col: 2,  text: `Number . . . . . . . . . . :   ${j.number}`, input: false },
+    { row: 5,  col: 2,  text: `Subsystem  . . . . . . . . :   ${j.sbs}`, input: false },
+    { row: 6,  col: 2,  text: `Status . . . . . . . . . . :   ${j.status}`, input: false },
+    { row: 7,  col: 2,  text: `Type . . . . . . . . . . . :   ${isBatch ? '*BATCH' : '*INTERACT'}`, input: false },
+  ];
+  let r = 8;
+  if (j.jobq) fields.push({ row: r++, col: 2, text: `Job queue  . . . . . . . . :   ${j.jobq}`, input: false });
+  r++;
+  fields.push({ row: r++, col: 2, text: 'Job log:', input: false });
+  const joblog = j.submitted
+    ? [`Job ${j.number}/${j.user}/${j.name} submitted ${j.submitted}.`, `Job ${j.number}/${j.user}/${j.name} status is ${j.status}.`]
+    : [`Job ${j.number}/${j.user}/${j.name} active in subsystem ${j.sbs}.`];
+  joblog.forEach(line => fields.push({ row: r++, col: 4, text: line.slice(0, 74), input: false }));
+  fields.push({ row: 22, col: 2,  text: 'Press Enter to continue', input: false });
+  fields.push({ row: 23, col: 2,  text: 'F3=Exit   F12=Cancel', input: false });
+  fields.push({ row: 22, col: 44, text: '', input: true, length: 1 });
+  return wrapPanel(fields, { row: 22, col: 44 });
+}
+
+function screenUsrjobList(ctx) {
+  const jobs = buildUserJobs(ctx.user || 'UNKNOWN');
+  const fields = [
+    { row: 0, col: 29, text: 'Work with User Jobs', input: false },
+    { row: 0, col: 68, text: SYSNAME, input: false },
+    { row: 2, col: 2,  text: 'Type options, press Enter.', input: false },
+    { row: 3, col: 4,  text: '5=Display', input: false },
+    { row: 5, col: 2,  text: 'Opt  Job          User        Number  Type  Status', input: false },
+  ];
+  jobs.forEach((j, idx) => {
+    const row = LIST_START_ROW + idx;
+    fields.push({ row, col: 2,  text: '', input: true, length: 2 });
+    fields.push({ row, col: 6,  text: j.name.padEnd(12, ' '), input: false });
+    fields.push({ row, col: 19, text: j.user.padEnd(11, ' '), input: false });
+    fields.push({ row, col: 31, text: j.number, input: false });
+    fields.push({ row, col: 39, text: j.type.padEnd(5, ' '), input: false });
+    fields.push({ row, col: 46, text: j.status, input: false });
+  });
+  listTrailer(fields, ctx.message);
+  return wrapPanel(fields, { row: LIST_START_ROW, col: 2 });
+}
+
+function screenBchjobList(ctx) {
+  const fields = [
+    { row: 0, col: 28, text: 'Work with Batch Jobs', input: false },
+    { row: 0, col: 68, text: SYSNAME, input: false },
+    { row: 2, col: 2,  text: 'Type options, press Enter.', input: false },
+    { row: 3, col: 4,  text: '5=Display', input: false },
+    { row: 5, col: 2,  text: 'Opt  Job          User        Number  Status   Submitted', input: false },
+  ];
+  BCHJOBS.forEach((j, idx) => {
+    const row = LIST_START_ROW + idx;
+    fields.push({ row, col: 2,  text: '', input: true, length: 2 });
+    fields.push({ row, col: 6,  text: j.name.padEnd(12, ' '), input: false });
+    fields.push({ row, col: 19, text: j.user.padEnd(11, ' '), input: false });
+    fields.push({ row, col: 31, text: j.number, input: false });
+    fields.push({ row, col: 39, text: j.status.padEnd(8, ' '), input: false });
+    fields.push({ row, col: 48, text: j.submitted, input: false });
+  });
+  listTrailer(fields, ctx.message);
+  return wrapPanel(fields, { row: LIST_START_ROW, col: 2 });
+}
+
+function screenLibList(ctx) {
+  const fields = [
+    { row: 0, col: 32, text: 'Work with Libraries', input: false },
+    { row: 0, col: 68, text: SYSNAME, input: false },
+    { row: 2, col: 2,  text: 'Type options, press Enter.', input: false },
+    { row: 3, col: 4,  text: '5=Display', input: false },
+    { row: 5, col: 2,  text: 'Opt  Library     Type    Objects  Text', input: false },
+  ];
+  LIBRARIES.forEach((l, idx) => {
+    const row = LIST_START_ROW + idx;
+    fields.push({ row, col: 2,  text: '', input: true, length: 2 });
+    fields.push({ row, col: 6,  text: l.name.padEnd(11, ' '), input: false });
+    fields.push({ row, col: 17, text: l.type.padEnd(8, ' '), input: false });
+    fields.push({ row, col: 25, text: String(l.objects).padStart(7, ' '), input: false });
+    fields.push({ row, col: 34, text: l.text.slice(0, 40), input: false });
+  });
+  listTrailer(fields, ctx.message);
+  return wrapPanel(fields, { row: LIST_START_ROW, col: 2 });
+}
+
+function screenLibDetail(name) {
+  const l = LIBRARIES.find(x => x.name === name);
+  if (!l) return screenStub('LIBRARY NOT FOUND', { user: '' });
+  const fields = [
+    { row: 0, col: 26, text: 'Display Library Description', input: false },
+    { row: 2, col: 2,  text: `Library  . . . . . . . . . :   ${l.name}`, input: false },
+    { row: 3, col: 2,  text: `Type . . . . . . . . . . . :   ${l.type}`, input: false },
+    { row: 4, col: 2,  text: `Auxiliary storage pool  . . :  ${l.asp}`, input: false },
+    { row: 5, col: 2,  text: `Number of objects  . . . . :   ${l.objects}`, input: false },
+    { row: 6, col: 2,  text: `Text . . . . . . . . . . . :   ${l.text}`, input: false },
+    { row: 22, col: 2,  text: 'Press Enter to continue', input: false },
+    { row: 23, col: 2,  text: 'F3=Exit   F12=Cancel', input: false },
+    { row: 22, col: 44, text: '', input: true, length: 1 },
+  ];
+  return wrapPanel(fields, { row: 22, col: 44 });
+}
+
+function screenLiblDetail() {
+  const fields = [
+    { row: 0, col: 28, text: 'Display Library List', input: false },
+    { row: 0, col: 68, text: SYSNAME, input: false },
+    { row: 2, col: 2,  text: 'Library     Type', input: false },
+  ];
+  LIBL.forEach((l, idx) => {
+    fields.push({ row: 3 + idx, col: 2, text: l.name.padEnd(12, ' '), input: false });
+    fields.push({ row: 3 + idx, col: 14, text: l.type, input: false });
+  });
+  fields.push({ row: 22, col: 2,  text: 'Press Enter to continue', input: false });
+  fields.push({ row: 23, col: 2,  text: 'F3=Exit   F12=Cancel', input: false });
+  fields.push({ row: 22, col: 44, text: '', input: true, length: 1 });
+  return wrapPanel(fields, { row: 22, col: 44 });
+}
+
+function screenObjpdmList(lib, ctx) {
+  const objs = PDM_OBJECTS[lib] || [];
+  const fields = [
+    { row: 0, col: 26, text: 'Work with Objects Using PDM', input: false },
+    { row: 0, col: 68, text: SYSNAME, input: false },
+    { row: 2, col: 2,  text: 'Type options, press Enter.', input: false },
+    { row: 3, col: 2,  text: `Library  . . . . . :   ${lib}`, input: false },
+    { row: 5, col: 2,  text: 'Opt  Object      Type     Attribute  Size    Text', input: false },
+  ];
+  objs.forEach((o, idx) => {
+    const row = LIST_START_ROW + idx;
+    fields.push({ row, col: 2,  text: '', input: true, length: 2 });
+    fields.push({ row, col: 6,  text: o.name.padEnd(11, ' '), input: false });
+    fields.push({ row, col: 18, text: o.type.padEnd(9, ' '), input: false });
+    fields.push({ row, col: 28, text: o.attr.padEnd(10, ' '), input: false });
+    fields.push({ row, col: 39, text: o.size.padEnd(7, ' '), input: false });
+    fields.push({ row, col: 47, text: o.text.slice(0, 30), input: false });
+  });
+  listTrailer(fields, ctx.message);
+  return wrapPanel(fields, { row: LIST_START_ROW, col: 2 });
+}
+
+function screenMbrpdmList(fileKey, ctx) {
+  const mbrs = SRCMEMBERS[fileKey] || [];
+  const fields = [
+    { row: 0, col: 26, text: 'Work with Members Using PDM', input: false },
+    { row: 0, col: 68, text: SYSNAME, input: false },
+    { row: 2, col: 2,  text: 'Type options, press Enter.', input: false },
+    { row: 3, col: 4,  text: '5=Display', input: false },
+    { row: 4, col: 2,  text: `File . . . . . . . :   ${fileKey}`, input: false },
+    { row: 5, col: 2,  text: 'Opt  Member      Type     Text                       Changed', input: false },
+  ];
+  mbrs.forEach((m, idx) => {
+    const row = LIST_START_ROW + idx;
+    fields.push({ row, col: 2,  text: '', input: true, length: 2 });
+    fields.push({ row, col: 6,  text: m.name.padEnd(11, ' '), input: false });
+    fields.push({ row, col: 18, text: m.type.padEnd(9, ' '), input: false });
+    fields.push({ row, col: 28, text: m.text.slice(0, 26).padEnd(26, ' '), input: false });
+    fields.push({ row, col: 55, text: m.changed, input: false });
+  });
+  listTrailer(fields, ctx.message);
+  return wrapPanel(fields, { row: LIST_START_ROW, col: 2 });
+}
+
+function screenMbrDetail(compositeKey) {
+  const [fileKey, mbrName] = (compositeKey || '').split('|');
+  const m = (SRCMEMBERS[fileKey] || []).find(x => x.name === mbrName);
+  if (!m) return screenStub('MEMBER NOT FOUND', { user: '' });
+  const fields = [
+    { row: 0, col: 25, text: 'Display Physical File Member', input: false },
+    { row: 2, col: 2,  text: `File . . . . . . . . . . . :   ${fileKey}`, input: false },
+    { row: 3, col: 2,  text: `Member . . . . . . . . . . :   ${m.name}`, input: false },
+    { row: 4, col: 2,  text: `Type . . . . . . . . . . . :   ${m.type}`, input: false },
+    { row: 5, col: 2,  text: `Text . . . . . . . . . . . :   ${m.text}`, input: false },
+    { row: 6, col: 2,  text: `Source last changed . . . . :  ${m.changed}`, input: false },
+    { row: 8, col: 2,  text: 'Source (preview):', input: false },
+  ];
+  m.src.forEach((line, i) => {
+    if (9 + i > 19) return;
+    fields.push({ row: 9 + i, col: 2, text: line.slice(0, 76), input: false });
+  });
+  fields.push({ row: 22, col: 2,  text: 'Press Enter to continue', input: false });
+  fields.push({ row: 23, col: 2,  text: 'F3=Exit   F12=Cancel', input: false });
+  fields.push({ row: 22, col: 44, text: '', input: true, length: 1 });
+  return wrapPanel(fields, { row: 22, col: 44 });
+}
+
+// SNDMSG compose panel — bespoke handleRecord logic (not an Opt-column list).
+function screenSndmsgCompose(ctx) {
+  const fields = [
+    { row: 0, col: 30, text: 'Send a Message', input: false },
+    { row: 2, col: 2,  text: 'To user  . . . . . . . . . . . :', input: false },
+    { row: 2, col: 36, text: '', input: true, length: 10 },
+    { row: 4, col: 2,  text: 'Message text:', input: false },
+    { row: 5, col: 2,  text: '', input: true, length: 74 },
+  ];
+  if (ctx.message) fields.push({ row: 20, col: 2, text: ctx.message, input: false });
+  fields.push({ row: 22, col: 2,  text: 'Press Enter to send', input: false });
+  fields.push({ row: 23, col: 2,  text: 'F3=Exit   F12=Cancel', input: false });
+  return wrapPanel(fields, { row: 2, col: 36 });
+}
+// Row layout screenSndmsgCompose relies on -- kept as named constants so the
+// handleRecord field-read matches the field-write above.
+const SNDMSG_TOUSER_ROW = 2;
+const SNDMSG_TEXT_ROW   = 5;
+
+// Interactive SQL — bespoke handleRecord logic. Understands exactly one
+// statement shape (`SELECT * FROM lib.table`, no WHERE/JOIN) against
+// SQL_TABLES; anything else is a realistic-looking SQL error. QIWS/QCUSTCDT
+// is IBM's real sample table, so this is the same command worth trying on
+// real hardware.
+const SQL_CMD_ROW = 5;
+function runSql(stmt) {
+  const m = /^SELECT\s+\*\s+FROM\s+([A-Z0-9_]+)\.([A-Z0-9_]+)\s*;?$/i.exec(stmt.trim());
+  if (!m) return { error: 'SQL0104 - Statement not understood by this mock (try: SELECT * FROM lib.table).' };
+  const key = `${m[1].toUpperCase()}/${m[2].toUpperCase()}`;
+  const table = SQL_TABLES[key];
+  if (!table) return { error: `SQL0204 - ${key.replace('/', '.')} in *LIBL type *FILE not found.` };
+  return { cols: table.columns, rows: table.rows };
+}
+function screenSql(ctx) {
+  const fields = [
+    { row: 0, col: 33, text: 'Interactive SQL', input: false },
+    { row: 0, col: 68, text: SYSNAME, input: false },
+    { row: 2, col: 2,  text: 'Type SQL statement, press Enter to run.', input: false },
+    { row: 3, col: 2,  text: '(This mock only understands: SELECT * FROM library.table)', input: false },
+    { row: SQL_CMD_ROW, col: 2, text: '===>', input: false },
+    { row: SQL_CMD_ROW, col: 7, text: '', input: true, length: 70 },
+  ];
+  if (ctx.message) fields.push({ row: 7, col: 2, text: ctx.message, input: false });
+  if (ctx.resultCols) {
+    const header = ctx.resultCols.map(c => c.padEnd(10, ' ')).join('').slice(0, 76);
+    fields.push({ row: 9, col: 2, text: header, input: false });
+    ctx.resultRows.slice(0, 10).forEach((rvals, idx) => {
+      const line = rvals.map(v => String(v).padEnd(10, ' ')).join('').slice(0, 76);
+      fields.push({ row: 10 + idx, col: 2, text: line, input: false });
+    });
+  }
+  fields.push({ row: 22, col: 2, text: 'F3=Exit', input: false });
+  return wrapPanel(fields, { row: SQL_CMD_ROW, col: 7 });
+}
+
 // ── Connection handling ───────────────────────────────────────────
 let connCount = 0;
 
@@ -913,14 +1435,24 @@ function handleConnection(socket) {
   let stubLabel = '';      // which option led to the current STUB screen
   let cmdTarget = null;    // detail target: sysval name / profile name / object index
   let navStack = [];       // back-navigation stack for the WRK/DSP security panels
+  let sqlResult = null;    // last STRSQL result: { cols, rows } or null
 
   // Navigate one level deeper (remember where we came from), back up one
   // level, or apply a parsed CL command's navigation result.
-  function goTo(next, target = null) { navStack.push(screen); screen = next; cmdTarget = target; menuMessage = ''; }
-  function goBack() { screen = navStack.pop() || 'MAIN'; menuMessage = ''; }
+  // Each stack frame remembers both the screen AND its cmdTarget, since a
+  // few Wave 3 panels (e.g. MBRPDM_LIST) are themselves scoped by cmdTarget
+  // and also drill into a detail screen that overwrites it — plain screen-id
+  // stacking would lose the scope on the way back out.
+  function goTo(next, target = null) { navStack.push({ screen, cmdTarget }); screen = next; cmdTarget = target; menuMessage = ''; }
+  function goBack() {
+    const prev = navStack.pop();
+    screen = prev ? prev.screen : 'MAIN';
+    cmdTarget = prev ? prev.cmdTarget : null;
+    menuMessage = '';
+  }
   function applyCommand(res) {
     switch (res.type) {
-      case 'screen':   goTo(res.screen); break;
+      case 'screen':   if (res.screen === 'SQL') sqlResult = null; goTo(res.screen); break;
       case 'detail':   goTo(res.screen, res.target); break;
       case 'messages': returnTo = screen; screen = 'MESSAGES'; break;
       case 'signoff':  screen = 'signon'; user = null; messages = []; unreadCount = 0; navStack = []; break;
@@ -1067,6 +1599,34 @@ function handleConnection(socket) {
       ds = screenActjobList({ message: menuMessage });
     } else if (screen === 'SBS_LIST') {
       ds = screenSbsList({ message: menuMessage });
+    } else if (screen === 'SPLF_LIST') {
+      ds = screenSplfList({ message: menuMessage });
+    } else if (screen === 'SPLF_DETAIL') {
+      ds = screenSplfDetail(cmdTarget);
+    } else if (screen === 'OUTQ_LIST') {
+      ds = screenOutqList({ message: menuMessage });
+    } else if (screen === 'JOB_DETAIL') {
+      ds = screenJobDetail(cmdTarget, user);
+    } else if (screen === 'USRJOB_LIST') {
+      ds = screenUsrjobList({ message: menuMessage, user });
+    } else if (screen === 'BCHJOB_LIST') {
+      ds = screenBchjobList({ message: menuMessage });
+    } else if (screen === 'LIB_LIST') {
+      ds = screenLibList({ message: menuMessage });
+    } else if (screen === 'LIB_DETAIL') {
+      ds = screenLibDetail(cmdTarget);
+    } else if (screen === 'LIBL_DETAIL') {
+      ds = screenLiblDetail();
+    } else if (screen === 'OBJPDM_LIST') {
+      ds = screenObjpdmList(cmdTarget, { message: menuMessage });
+    } else if (screen === 'MBRPDM_LIST') {
+      ds = screenMbrpdmList(cmdTarget, { message: menuMessage });
+    } else if (screen === 'MBR_DETAIL') {
+      ds = screenMbrDetail(cmdTarget);
+    } else if (screen === 'SNDMSG_COMPOSE') {
+      ds = screenSndmsgCompose({ message: menuMessage });
+    } else if (screen === 'SQL') {
+      ds = screenSql({ message: menuMessage, resultCols: sqlResult && sqlResult.cols, resultRows: sqlResult && sqlResult.rows });
     } else if (MENUS[screen]) {
       ds = screenMenu(screen, { user, unreadCount, message: menuMessage });
     } else {
@@ -1130,6 +1690,38 @@ function handleConnection(socket) {
     } else if (screen === 'STUB') {
       screen = returnTo;
       menuMessage = '';
+    } else if (screen === 'SNDMSG_COMPOSE') {
+      if (aid === AID_F3 || aid === AID_F12) {
+        goBack();
+      } else {
+        const toUser = fieldAt(runs, SNDMSG_TOUSER_ROW);
+        const text = fieldAt(runs, SNDMSG_TEXT_ROW);
+        if (!toUser || !text) {
+          menuMessage = 'Message text and To user are both required.';
+        } else {
+          const now = new Date();
+          messages.push({
+            from: user, date: now.toLocaleDateString('en-US'), time: now.toLocaleTimeString('en-US', { hour12: false }),
+            text: `(sent to ${toUser}): ${text}`,
+          });
+          unreadCount++;
+          goBack();
+          menuMessage = `Message sent to ${toUser}.`;
+        }
+      }
+    } else if (screen === 'SQL') {
+      if (aid === AID_F3 || aid === AID_F12) {
+        sqlResult = null;
+        goBack();
+      } else {
+        const stmt = fieldAt(runs, SQL_CMD_ROW);
+        if (stmt) {
+          const res = runSql(stmt);
+          if (res.error) { sqlResult = null; menuMessage = res.error; }
+          else { sqlResult = { cols: res.cols, rows: res.rows }; menuMessage = `${res.rows.length} rows selected.`; }
+        }
+        // blank Enter just redraws the panel with whatever's already there
+      }
     } else if (LIST_META[screen]) {
       const meta = LIST_META[screen];
       const cmdLine = fieldAt(runs, LIST_CMD_ROW);
@@ -1139,8 +1731,8 @@ function handleConnection(socket) {
         applyCommand(runCommand(cmdLine));
       } else if (meta.detail) {
         // Any non-blank Opt acts as 5=Display in the mock.
-        const pick = pickOption(runs, LIST_START_ROW, meta.count());
-        if (pick) { const [scr, tgt] = meta.detail(pick.index); goTo(scr, tgt); }
+        const pick = pickOption(runs, LIST_START_ROW, meta.count(cmdTarget));
+        if (pick) { const [scr, tgt] = meta.detail(pick.index, cmdTarget); goTo(scr, tgt); }
         // bare Enter with no option typed → redraw as-is
       }
       // list-only panels (no meta.detail) ignore Opt and just redraw

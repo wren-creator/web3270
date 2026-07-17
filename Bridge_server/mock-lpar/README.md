@@ -170,7 +170,11 @@ SIGNON screen
       │  type a userid + ENTER
       ▼
 MAIN MENU  ──── command line: type a CL command (see below)
+      │  1 → User tasks       → send/display messages, spooled files, batch/your jobs
+      │  2 → Office tasks     → mail (Work with mail = DSPMSG)
       │  3 → General system tasks → 5/6/7 → the security panels
+      │  4 → Files, libraries, and folders → WRKLIB, DSPLIBL
+      │  5 → Programming      → PDM, Interactive SQL (STRSQL)
       │  90 + ENTER → back to SIGNON (sign off)
 ```
 
@@ -213,6 +217,34 @@ are the single source of truth. Harden a value (or add a profile/object/etc.)
 by editing its entry there; nothing else needs to change. The `weak`/
 privileged flags drive the red highlighting automatically, and adding a new
 "Work with" panel is one `LIST_META` entry plus a screen builder.
+
+### Everyday navigation surface ("Wave 3")
+
+Waves 1-2 above are a security-audit demo. Wave 3 is the opposite purpose:
+realistic, **neutral** (no weak/privileged red-flagging) everyday IBM i
+navigation — spooled files, jobs, libraries, PDM, and SQL — for practicing
+green-screen navigation before touching a real box. Reachable by command
+**or** via the menu options shown:
+
+| Command | Panel | Reachable via menu | Notes |
+|---------|-------|---------------------|-------|
+| `WRKSPLF` | Work with spooled files | User tasks (1) → 3 | Opt `5` shows a fake report/job-log content preview |
+| `WRKOUTQ` | Work with output queues | — | List-only |
+| `WRKJOB` | Display job status (current job) | — | No params — always the signed-on user's "current" interactive job |
+| `WRKUSRJOB` | Work with (your) jobs | User tasks (1) → 5 | Built live from whichever userid signed on |
+| `WRKBCHJOB` | Work with batch jobs | User tasks (1) → 4 | System-wide submitted jobs, several users/statuses |
+| `SNDMSG` | Send a Message | User tasks (1) → 1 | Compose screen (To user + text); appears in your own `DSPMSG` queue on send |
+| `WRKLIB` | Work with libraries | Files… (4) → 1 | Opt `5` shows a library description |
+| `DSPLIBL` | Display library list | Files… (4) → 2 | Direct detail, no list |
+| `STRPDM` | (aliases `WRKLIB`) | Programming (5) → 1 | PDM's real entry point is the library list |
+| `WRKOBJPDM LIB(x)` | Work with Objects Using PDM | — | `LIB` param required (e.g. `WRKOBJPDM LIB(APPLIB)`) |
+| `WRKMBRPDM FILE(lib/file)` | Work with Members Using PDM | — | `FILE` param required (e.g. `WRKMBRPDM FILE(APPLIB/QRPGLESRC)`); opt `5` previews canned RPGLE/CLLE source |
+| `STRSQL` | Interactive SQL | Programming (5) → 2 | Understands exactly `SELECT * FROM lib.table` (no `WHERE`/joins) against `SQL_TABLES` — try `SELECT * FROM QIWS.QCUSTCDT`, IBM's real out-of-box sample table, same command that works on real hardware |
+| `DSPMSG` | (Work with mail) | Office tasks (2) → 3 | Legacy OfficeVision menu option repointed at the same message queue |
+
+Backing data lives in `SPLFILES`, `OUTQS`, `BCHJOBS`/`buildUserJobs()`,
+`LIBRARIES`, `LIBL`, `PDM_OBJECTS`, `SRCMEMBERS`, and `SQL_TABLES`, following
+the same "edit the table, nothing else changes" convention as Waves 1-2.
 
 It's wired into `docker-compose.yml` as the `mock-as400` service (port
 3272 inside the Docker network, not published to the host — same as
