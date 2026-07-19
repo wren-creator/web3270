@@ -27,6 +27,7 @@ import './fielddisclosure.js';
 import './bufferbleed.js';
 import './vmminidisk.js';
 import './walkthrough.js';
+import { initBarbieEgg } from './easteregg.js';
 
 function tick() {
   document.getElementById('oiaTime').textContent =
@@ -46,6 +47,7 @@ window.loadProfiles?.();
 window.loadMacros?.();
 window.aiCfgInit?.();
 window.initConnectionSettingsUI?.();
+initBarbieEgg();
 
 const defaultPanel = document.getElementById('panelSettings');
 if (defaultPanel) {
