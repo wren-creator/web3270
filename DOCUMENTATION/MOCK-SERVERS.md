@@ -107,6 +107,38 @@ Simulates an IBM z/OS system running TSO/E and ISPF. The session starts at the T
 
 ---
 
+#### TSO READY Prompt
+
+Type a command at the `READY` line and press **Enter**.
+
+| Command | Result |
+|---------|--------|
+| `ISPF` / `ISRDDN` | Opens ISPF Primary Option Menu |
+| `LISTAPF` | APF-authorized library list (one entry flagged writable) |
+| `LISTA` / `LISTA STATUS` | Dataset list |
+| `WHOAMI` / `LISTUSER` | Userid/system/groups summary |
+| `PROFILE` | TSO profile settings |
+| `GDDM` | GDDM graphics demo — see below |
+| *(anything else)* | `IKJ56500I COMMAND ... NOT FOUND` |
+
+| Key | Action |
+|-----|--------|
+| **PF3** | Logoff / disconnect |
+
+---
+
+#### GDDM Graphics Demo
+
+Sends a real GDDM Object Data structured field (SFID `0x0F0F`, GDF order stream — `GSCOL`/`GLINE`/`GMRK`/`GCHST`) carrying a hand-authored bar chart, "Q4 Regional Sales" with four colored bars (NORTH/SOUTH/EAST/WEST), axis lines, labels, and a trend-marker line. The bridge decodes it (`tn3270/gddm.js`) and the browser draws it as a canvas overlay on top of the terminal (`public/js/gddm.js`) — exercises the same detection path the Wire Inspector flags (see the security tools tutorial, Part 2Z), plus the renderer built on top of it.
+
+| Key | Action |
+|-----|--------|
+| **Enter** / **PF3** | Return to TSO READY |
+
+> Renderer scope: 5 GDF order types (Comment/boundary, Set Color, Line, Marker, Character String) — enough for a real chart, not a full GDDM client. Arcs, fillets, images, symbol sets, and clipping are not implemented.
+
+---
+
 #### ISPF Primary Option Menu
 
 Type a command into the `Option ===>` field and press **Enter**.

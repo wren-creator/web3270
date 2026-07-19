@@ -1,0 +1,114 @@
+/**
+ * tn3270/gddm.js
+ * ─────────────────────────────────────────────────────────────────
+ * Decoder for the GDF (Graphics Data Format) order stream carried
+ * inside a 3270 Object Data/Picture structured field (see
+ * tn3270/session.js _processWriteStructuredField, sfId 0x0F) when
+ * OBJTYP is Graphics. Per the GDDM Base Application Programming
+ * Reference, ch.10 "GDF order descriptions".
+ *
+ * Scope: 5 order types, enough to draw a labeled chart — Comment
+ * (picture boundary), Set Color, Line, Marker, Character String.
+ * Arcs, fillets, images, symbol sets, color-mix modes, and clipping
+ * are NOT implemented — this is a demo-scale renderer, not a full
+ * GDDM client. Unrecognized orders are skipped rather than treated
+ * as errors, since a real GDF stream may use orders outside this
+ * subset.
+ */
+
+import * as Ebcdic from './ebcdic.js';
+
+const CP037 = 37;
+const toAscii = buf => Ebcdic.toAscii(Buffer.isBuffer(buf) ? buf : Buffer.from(buf), CP037);
+
+const ORDER_COMMENT = 0x01; // GCOMT
+const ORDER_COLOR   = 0x0A; // GSCOL — short format
+const ORDER_LINE     = 0xC1, ORDER_LINE_CP     = 0x81; // GLINE
+const ORDER_MARKER   = 0xC2, ORDER_MARKER_CP   = 0x82; // GMRK
+const ORDER_CHARSTR  = 0xC3, ORDER_CHARSTR_CP  = 0x83; // GCHST
+
+// Set Color order palette (GDDM Base Application Programming Reference
+// ch.10, "Color" section) — a real, documented palette, not invented.
+const COLOR_NAME = {
+  0x00: 'default', 0x01: 'blue', 0x02: 'red', 0x03: 'pink',
+  0x04: 'green', 0x05: 'turquoise', 0x06: 'yellow', 0x07: 'white',
+  0x08: 'background',
+};
+
+// Is `code` a short-format order? (first nibble < 8, second nibble >= 8 —
+// same rule documented for the Wire Inspector's structured-field work.)
+function isShortFormat(code) {
+  return (code >> 4) < 8 && (code & 0x0F) >= 8;
+}
+
+// Reads a sequence of (x,y) 2-byte halfword coordinate pairs from `buf`.
+function readCoordPairs(buf) {
+  const points = [];
+  for (let i = 0; i + 4 <= buf.length; i += 4) {
+    const x = buf.readInt16BE(i);
+    const y = buf.readInt16BE(i + 2);
+    points.push([x, y]);
+  }
+  return points;
+}
+
+/**
+ * @param {Buffer} buf — the DATA portion of an Object Data/Picture
+ *   structured field (i.e. everything after the OBJTYP byte).
+ * @returns {{ boundary: {xL:number,xU:number,yL:number,yU:number}|null,
+ *             primitives: Array }}
+ */
+export function decodeGdfStream(buf) {
+  let boundary = null;
+  const primitives = [];
+  let color = COLOR_NAME[0x00];
+
+  let i = 0;
+  while (i < buf.length) {
+    const code = buf[i];
+
+    if (isShortFormat(code)) {
+      const operand = buf[i + 1];
+      if (code === ORDER_COLOR) color = COLOR_NAME[operand] || color;
+      i += 2;
+      continue;
+    }
+
+    // Normal format: order(1) + len(1) + operand(len bytes)
+    const len = buf[i + 1];
+    if (len === undefined || i + 2 + len > buf.length) break; // truncated
+    const operand = buf.slice(i + 2, i + 2 + len);
+
+    if (code === ORDER_COMMENT) {
+      // Picture-boundary convention: coordType(2) + xL(2) + xU(2) + yL(2) + yU(2)
+      if (operand.length >= 10) {
+        boundary = {
+          xL: operand.readInt16BE(2), xU: operand.readInt16BE(4),
+          yL: operand.readInt16BE(6), yU: operand.readInt16BE(8),
+        };
+      }
+    } else if (code === ORDER_LINE || code === ORDER_LINE_CP) {
+      const points = readCoordPairs(operand);
+      if (points.length) primitives.push({ type: 'line', points, color });
+    } else if (code === ORDER_MARKER || code === ORDER_MARKER_CP) {
+      const points = readCoordPairs(operand);
+      if (points.length) primitives.push({ type: 'marker', points, color });
+    } else if (code === ORDER_CHARSTR || code === ORDER_CHARSTR_CP) {
+      if (code === ORDER_CHARSTR) {
+        const x = operand.readInt16BE(0), y = operand.readInt16BE(2);
+        const text = toAscii(operand.slice(4));
+        primitives.push({ type: 'text', x, y, text, color });
+      } else {
+        // At-current-position form has no coordinate — nothing to anchor
+        // it to without tracking current position, which this demo-scale
+        // decoder doesn't model. Skip rather than guess a position.
+      }
+    }
+    // Unrecognized normal-format orders (arcs, fillets, images, symbol
+    // sets, etc.) are intentionally skipped — out of scope, see header.
+
+    i += 2 + len;
+  }
+
+  return { boundary, primitives };
+}

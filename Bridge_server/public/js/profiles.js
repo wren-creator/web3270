@@ -330,6 +330,7 @@ export function handleBridgeMsg(sid, msg) {
         window.fieldDiscOnScreen?.(msg);
         window.bufferBleedOnScreen?.(msg);
         window.vmMinidiskOnScreen?.(msg);
+        window.gddmClear?.();
       } else if (state.splitMode && sid === state.splitSid) {
         const term2 = document.getElementById('terminal-split');
         if (term2) renderLiveScreen(msg, term2);
@@ -337,6 +338,9 @@ export function handleBridgeMsg(sid, msg) {
       break;
     case 'oia':
       if (sid === state.activeSession) updateOIA(msg);
+      break;
+    case 'gddm':
+      if (sid === state.activeSession) window.gddmOnScreen?.(msg);
       break;
     case 'copilot.provider':
       { const sub = document.getElementById('copilotSubtitle'); if (sub) sub.textContent = msg.name + ' · ' + msg.model; }
