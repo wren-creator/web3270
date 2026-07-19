@@ -527,11 +527,18 @@ function gdfShortOrder(code, byte) {
 // the kind of output GDDM-PGF's Interactive Chart Utility historically
 // produced from a TSO/CMS session.
 function buildGddmObjectDataWsf() {
+  // Heights and label/title y-positions are kept below y=620 (out of the
+  // declared yU=700 picture boundary) on purpose — the canvas overlay
+  // spans the full terminal, and the alphanumeric frame's header row
+  // (row 0, "GDDM GRAPHICS DEMO ... User: ...") lives in roughly the top
+  // 8% of that same space (~y>642). Anything drawn above ~y=620 visibly
+  // collides with that DOM text (confirmed via screenshot — title and a
+  // bar's value label were overlapping "User: IBMUSER").
   const bars = [
-    { name: 'NORTH', x: 100, h: 450, color: 0x01 }, // blue
-    { name: 'SOUTH', x: 350, h: 300, color: 0x02 }, // red
-    { name: 'EAST',  x: 600, h: 550, color: 0x04 }, // green
-    { name: 'WEST',  x: 850, h: 200, color: 0x06 }, // yellow
+    { name: 'NORTH', x: 100, h: 380, color: 0x01 }, // blue
+    { name: 'SOUTH', x: 350, h: 250, color: 0x02 }, // red
+    { name: 'EAST',  x: 600, h: 480, color: 0x04 }, // green
+    { name: 'WEST',  x: 850, h: 170, color: 0x06 }, // yellow
   ];
   const baseY = 100, barWidth = 150;
   const COL_NEUTRAL_WHITE = 0x07, COL_GDF_YELLOW = 0x06;
@@ -542,11 +549,11 @@ function buildGddmObjectDataWsf() {
 
   // Title
   parts.push(gdfShortOrder(0x0A, COL_NEUTRAL_WHITE));
-  parts.push(gdfOrder(0xC3, Buffer.concat([gdfHalfwords(280, 660), toEbcdic('Q4 REGIONAL SALES')])));
+  parts.push(gdfOrder(0xC3, Buffer.concat([gdfHalfwords(280, 610), toEbcdic('Q4 REGIONAL SALES')])));
 
   // Axes
   parts.push(gdfOrder(0xC1, gdfHalfwords(50, baseY, 950, baseY))); // baseline
-  parts.push(gdfOrder(0xC1, gdfHalfwords(50, baseY, 50, 650)));    // left axis
+  parts.push(gdfOrder(0xC1, gdfHalfwords(50, baseY, 50, 600)));    // left axis
 
   const markerPoints = [];
   for (const bar of bars) {
