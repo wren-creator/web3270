@@ -62,6 +62,41 @@ const CMD_INFO = {
 
 const AID_BY_BYTE = Object.fromEntries(Object.entries(AIDS).map(([name, byte]) => [byte, name]));
 
+// ── GDDM / Object Data structured fields ────────────────────────────
+// IBM 3270 Data Stream Programmer's Reference (GA23-0059) ch.5 "Object
+// Control/Data/Picture" — carries GDDM graphics (GDF order stream, see
+// GDDM Base Application Programming Reference ch.10) or images embedded
+// in a Write Structured Field payload: length(2) + SFID(2) + PID(1) +
+// flags(1) + OBJTYP(1) + DATA(n). We only flag presence/type here — the
+// GDF order stream itself isn't decoded, that's a separate rendering
+// concern out of scope for a wire-level security inspector.
+const OBJ_SF = { 0x0F0F: 'Object Data', 0x0F10: 'Object Picture', 0x0F11: 'Object Control' };
+const OBJTYP_NAME = { 0x00: 'Graphics', 0x01: 'Image' };
+
+// AID X'88' precedes inbound structured-field replies (ch.2/6 of
+// GA23-0059) — e.g. a terminal's response to a Read Partition Query.
+// Query Reply structured fields use a 1-byte SFID (X'81') + 1-byte QCODE
+// rather than the 2-byte SFID that Object Control/Data/Picture use.
+const AID_STRUCTURED_FIELD = 0x88;
+const QUERY_REPLY_SFID = 0x81;
+const GRAPHIC_QCODE = { 0x85: 'Extended Drawing Routine', 0x86: 'Graphic Symbol Sets', 0xB4: 'Graphic Color' };
+
+// Walks length-prefixed structured fields starting at `offset` within
+// `bytes`. Each field: length(2, includes itself) + id1(1) + id2(1) + body.
+// Stops at the first malformed/truncated field rather than throwing —
+// this runs over untrusted wire data.
+function walkStructuredFields(bytes, offset) {
+  const fields = [];
+  let i = offset;
+  while (i + 4 <= bytes.length) {
+    const len = (bytes[i] << 8) | bytes[i + 1];
+    if (len < 4 || i + len > bytes.length) break;
+    fields.push({ start: i, end: i + len, id1: bytes[i + 2], id2: bytes[i + 3], id: (bytes[i + 2] << 8) | bytes[i + 3] });
+    i += len;
+  }
+  return fields;
+}
+
 const CP037 = 37;
 const toAscii = buf => Ebcdic.toAscii(Buffer.isBuffer(buf) ? buf : Buffer.from(buf), CP037);
 
@@ -168,6 +203,20 @@ function decodeWrite(bytes, faMap, cols, totalCells) {
     return { summary: cmdName, orders: [{ type: info?.kind === 'read' ? 'READ' : 'CMD', meaning: cmdName, range: [0, bytes.length - 1] }], danger: false, aid: null };
   }
   if (info.kind === 'wsf') {
+    const gddmFields = walkStructuredFields(bytes, 1)
+      .filter(f => OBJ_SF[f.id])
+      .map(f => ({ field: f, name: OBJ_SF[f.id], objtypName: OBJTYP_NAME[bytes[f.start + 6]] || `0x${bytes[f.start + 6]?.toString(16)}` }));
+
+    if (gddmFields.length) {
+      const orders = gddmFields.map(g => ({
+        type: 'GDDM-OBJ',
+        meaning: `${g.name} (SFID 0x${g.field.id.toString(16).toUpperCase()}) — object type ${g.objtypName}`,
+        range: [g.field.start, g.field.end - 1],
+      }));
+      const kinds = [...new Set(gddmFields.map(g => g.objtypName))].join('/');
+      return { summary: `${cmdName} — GDDM/Object Data (${kinds}) (${bytes.length}B)`, orders, danger: false, aid: null };
+    }
+
     return { summary: `${cmdName} (${bytes.length}B)`, orders: [{ type: 'WSF', meaning: 'Write Structured Field — payload not decoded (query reply / IND$FILE / etc.)', range: [0, bytes.length - 1] }], danger: false, aid: null };
   }
 
@@ -279,6 +328,25 @@ function decodeWrite(bytes, faMap, cols, totalCells) {
 function decodeAid(bytes, faMap, cols, totalCells) {
   if (bytes.length < 3) return null;
   const aidByte = bytes[0];
+
+  if (aidByte === AID_STRUCTURED_FIELD) {
+    const fields = walkStructuredFields(bytes, 1);
+    let gddmCap = false;
+    const orders = [{ type: 'AID', meaning: 'STRUCTURED FIELD — inbound structured field reply', range: [0, 0] }];
+    for (const f of fields) {
+      const graphic = f.id1 === QUERY_REPLY_SFID && GRAPHIC_QCODE[f.id2];
+      if (graphic) gddmCap = true;
+      orders.push({
+        type: 'QueryReply',
+        meaning: graphic
+          ? `Query Reply (${GRAPHIC_QCODE[f.id2]}) — terminal declares GDDM/graphics capability`
+          : `Structured field (SFID 0x${f.id.toString(16).toUpperCase()}, ${f.end - f.start}B)`,
+        range: [f.start, f.end - 1],
+      });
+    }
+    return { summary: `STRUCTURED FIELD reply${gddmCap ? ' · GDDM graphics capability declared' : ''}`, orders, danger: false, aid: 'STRUCTURED_FIELD' };
+  }
+
   const aidName = AID_BY_BYTE[aidByte];
   if (!aidName) return null; // not a recognized AID — caller falls back to a generic label
 
