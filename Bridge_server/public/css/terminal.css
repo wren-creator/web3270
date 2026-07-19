@@ -24,6 +24,9 @@
   --t-white:       #eeeeff;
   --t-field-bg:    #001a08;
   --t-cursor:      #33ff66;
+  --logo-bg:         #1a0a12;
+  --logo-ring:       #D4537E;
+  --logo-ring-light: #F4C0D1;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
