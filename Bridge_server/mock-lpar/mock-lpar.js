@@ -32,6 +32,7 @@ const TN3E_SEND        = 0x08;
 const CMD_ERASE_WRITE     = 0xF5;
 const CMD_ERASE_WRITE_ALT = 0x7E;
 const CMD_WRITE           = 0xF1;
+const CMD_WSF             = 0xF3;  // Write Structured Field (SNA encoding)
 const ORDER_SF  = 0x1D;
 const ORDER_SFE = 0x29;  // Start Field Extended (with color/highlight pairs)
 const ORDER_SA  = 0x28;  // Set Attribute (character-level color/highlight)
@@ -487,6 +488,95 @@ function screenRacfLockout(userid) {
   ]);
 }
 
+// ── GDDM graphics demo ──────────────────────────────────────────────
+// Alphanumeric frame only in rows 0/23 — the graphics area (rows 1-22)
+// is left blank so the Object Data WSF's chart (drawn client-side as a
+// canvas overlay) doesn't compete with DOM text in the same screen
+// region, matching how a real GDDM operator window is a distinct area
+// from the surrounding alphanumeric chrome.
+function screenGDDM(userid) {
+  return buildScreen(true, [
+    { row:0,  col:0,  fa: FA_PROTECTED_HIGH, color: COL_WHITE, highlight: HL_INTENS },
+    { row:0,  col:1,  text: 'GDDM GRAPHICS DEMO' },
+    { row:0,  col:40, fa: FA_PROTECTED, color: COL_BLUE },
+    { row:0,  col:40, text: `User: ${userid.padEnd(8)}` },
+    { row:23, col:0,  fa: FA_PROTECTED, color: COL_BLUE },
+    { row:23, col:0,  text: 'PF3=Exit to TSO READY' },
+  ]);
+}
+
+// GDF (Graphics Data Format) order encoders — GDDM Base Application
+// Programming Reference ch.10. Byte layouts match tn3270/gddm.js's
+// decoder exactly (both were validated against the manual's own worked
+// examples, e.g. "C1 08 0002 0003 0004 0006" = Line (2,3)->(4,6)).
+function gdfHalfwords(...nums) {
+  const buf = Buffer.alloc(nums.length * 2);
+  nums.forEach((n, i) => buf.writeInt16BE(n, i * 2));
+  return buf;
+}
+function gdfOrder(code, operand) {
+  return Buffer.concat([Buffer.from([code, operand.length]), operand]);
+}
+function gdfShortOrder(code, byte) {
+  return Buffer.from([code, byte]);
+}
+
+// Builds a full 3270 Write Structured Field (CMD_WSF + Object Data SF)
+// carrying a hand-authored GDF bar chart — "Q4 Regional Sales", four
+// colored bars with labels, an axis, and a trend-marker line. This is
+// the kind of output GDDM-PGF's Interactive Chart Utility historically
+// produced from a TSO/CMS session.
+function buildGddmObjectDataWsf() {
+  const bars = [
+    { name: 'NORTH', x: 100, h: 450, color: 0x01 }, // blue
+    { name: 'SOUTH', x: 350, h: 300, color: 0x02 }, // red
+    { name: 'EAST',  x: 600, h: 550, color: 0x04 }, // green
+    { name: 'WEST',  x: 850, h: 200, color: 0x06 }, // yellow
+  ];
+  const baseY = 100, barWidth = 150;
+  const COL_NEUTRAL_WHITE = 0x07, COL_GDF_YELLOW = 0x06;
+
+  const parts = [];
+  // Picture boundary (Comment order, coordType=2 → 2-byte integers)
+  parts.push(gdfOrder(0x01, Buffer.concat([gdfHalfwords(2), gdfHalfwords(0, 1000, 0, 700)])));
+
+  // Title
+  parts.push(gdfShortOrder(0x0A, COL_NEUTRAL_WHITE));
+  parts.push(gdfOrder(0xC3, Buffer.concat([gdfHalfwords(280, 660), toEbcdic('Q4 REGIONAL SALES')])));
+
+  // Axes
+  parts.push(gdfOrder(0xC1, gdfHalfwords(50, baseY, 950, baseY))); // baseline
+  parts.push(gdfOrder(0xC1, gdfHalfwords(50, baseY, 50, 650)));    // left axis
+
+  const markerPoints = [];
+  for (const bar of bars) {
+    const top = baseY + bar.h;
+    parts.push(gdfShortOrder(0x0A, bar.color));
+    parts.push(gdfOrder(0xC1, gdfHalfwords(
+      bar.x, baseY,
+      bar.x, top,
+      bar.x + barWidth, top,
+      bar.x + barWidth, baseY,
+      bar.x, baseY,
+    )));
+    parts.push(gdfOrder(0xC3, Buffer.concat([gdfHalfwords(bar.x + 20, baseY - 30), toEbcdic(bar.name)])));
+    parts.push(gdfOrder(0xC3, Buffer.concat([gdfHalfwords(bar.x + 20, top + 15), toEbcdic(String(bar.h))])));
+    markerPoints.push(bar.x + barWidth / 2, top);
+  }
+
+  // Trend line across bar tops
+  parts.push(gdfShortOrder(0x0A, COL_GDF_YELLOW));
+  parts.push(gdfOrder(0xC2, gdfHalfwords(...markerPoints)));
+
+  const gdfData = Buffer.concat(parts);
+  const pid = 0x00, flags = 0x03, objtyp = 0x00; // first&last/immediate, Graphics
+  const sfBody = Buffer.concat([Buffer.from([pid, flags, objtyp]), gdfData]);
+  const sfid = Buffer.from([0x0F, 0x0F]); // Object Data (GA23-0059 ch.5)
+  const sfLen = 2 + sfid.length + sfBody.length; // length field counts itself
+  const lenBuf = Buffer.alloc(2); lenBuf.writeUInt16BE(sfLen, 0);
+  return Buffer.concat([Buffer.from([CMD_WSF]), lenBuf, sfid, sfBody]);
+}
+
 function screenTsoCommand(userid = 'DEMO', lastOutput = '') {
   const fields = [
     { row:0,  col:0,  fa: FA_PROTECTED_HIGH, color: COL_WHITE, highlight: HL_INTENS },
@@ -858,6 +948,9 @@ function handleConnection(socket) {
             currentScreen = 'listapf'; sendCurrentScreen();
           } else if (cmd === 'LISTA' || cmd === 'LISTA STATUS') {
             currentScreen = 'lista'; sendCurrentScreen();
+          } else if (cmd === 'GDDM') {
+            currentScreen = 'gddm'; sendCurrentScreen();
+            writeRaw(buildGddmObjectDataWsf());
           } else if (cmd === 'WHOAMI' || cmd === 'LISTUSER') {
             state.tsoOutput = `USERID: ${userid}\nSYSTEM: ${SYSNAME}\nGROUPS: SYS1 DEMOGRP\nATTRIBUTES: NONE`;
             currentScreen = 'tsoCmd'; sendCurrentScreen();
@@ -891,6 +984,9 @@ function handleConnection(socket) {
             currentScreen = 'lista'; sendCurrentScreen();
           } else if (cmd === 'ISPF') {
             currentScreen = 'ispf'; sendCurrentScreen();
+          } else if (cmd === 'GDDM') {
+            currentScreen = 'gddm'; sendCurrentScreen();
+            writeRaw(buildGddmObjectDataWsf());
           } else {
             state.tsoOutput = `IKJ56500I COMMAND ${cmd} NOT FOUND`;
             sendCurrentScreen();
@@ -924,6 +1020,12 @@ function handleConnection(socket) {
           sendCurrentScreen();
         } else if (aid === AID_PF7 || aid === AID_PF8) {
           sendCurrentScreen();
+        }
+        break;
+
+      case 'gddm':
+        if (aid === AID_PF3 || aid === AID_ENTER) {
+          currentScreen = 'ready'; state.readyMsg = ''; sendCurrentScreen();
         }
         break;
     }
@@ -973,6 +1075,7 @@ function handleConnection(socket) {
       case 'ispf34':    ds = screenISPF34(userid);                   break;
       case 'sdsf':      ds = screenSDSF();                           break;
       case 'error':     ds = screenError(state.errorCmd);            break;
+      case 'gddm':      ds = screenGDDM(userid);                     break;
       default:          ds = screenISPF(userid);
     }
 

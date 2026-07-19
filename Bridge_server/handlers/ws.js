@@ -124,6 +124,7 @@ export function createWsHandler({ config, logger, sessions, Ebcdic }) {
       session.on('raw', ({ dir, data }) => captureRaw(wsId, host, port, dir, data));
 
       session.on('oia',          oiaData => { send(ws, { type: 'oia', ...oiaData }); });
+      session.on('gddm',         gddmData => { send(ws, { type: 'gddm', ...gddmData }); });
       session.on('lu',           lu      => { send(ws, { type: 'status', state: 'lu', lu }); });
       session.on('error',        err     => { logger.error(`[ws:${wsId}] Session error: ${err.message}`); send(ws, { type: 'error', message: err.message }); });
       session.on('disconnected', reason  => { logger.info(`[ws:${wsId}] Disconnected: ${reason}`); send(ws, { type: 'status', state: 'disconnected', reason }); });

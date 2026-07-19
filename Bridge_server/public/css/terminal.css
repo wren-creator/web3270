@@ -185,6 +185,7 @@ body.no-highlights .field-label,
 body.no-highlights .field-error,
 body.no-highlights .field-dim          { color:var(--t-green); font-weight:normal; }
 .t3270-screen::after { content:'';position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px);pointer-events:none;z-index:10; }
+.gddm-canvas { position:absolute;inset:0;pointer-events:none;z-index:5; }
 .screen-row { display:block;white-space:nowrap;height:1.45em; }
 .screen-cell { display:inline-block;width:var(--cell-w,1ch);white-space:pre;vertical-align:top; }
 .field-protected    { color:var(--t-blue); }

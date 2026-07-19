@@ -19,6 +19,7 @@ import net from 'net';
 import tls from 'tls';
 import { EventEmitter } from 'events';
 import * as Ebcdic from './ebcdic.js';
+import { decodeGdfStream } from './gddm.js';
 import logger from '../logger.cjs';
 import config from '../config.js';
 
@@ -151,6 +152,12 @@ const MASK_CHAR = '#';
 
 // ── IND$FILE file-transfer protocol (WSF type 0xD0) ─────────────
 const INDFILE_TYPE = 0xD0;
+// Object Control/Data/Picture family (IBM 3270 Data Stream Programmer's
+// Reference GA23-0059 ch.5) — SFID 0x0F0F/0x0F10/0x0F11, all sharing
+// first byte 0x0F. Carries GDDM graphics (GDF order stream, see
+// tn3270/gddm.js) or images embedded in a Write Structured Field.
+const OBJECT_SF_TYPE = 0x0F;
+const OBJTYP_GRAPHICS = 0x00;
 const INDFILE_CHUNK = 2048;
 const INDFILE_REC = {
   CONTENTS:   0x03,
@@ -1009,6 +1016,15 @@ class Tn3270Session extends EventEmitter {
         // IND$FILE structured field — extract the body after sfId
         const sfBody = data.slice(i + 3, i + len);
         this._processIndFile(sfBody);
+      } else if (sfId === OBJECT_SF_TYPE) {
+        // Object Control/Data/Picture: subtype(1)+PID(1)+flags(1)+OBJTYP(1)+DATA(n),
+        // all relative to i+3 (i, i+1 = length; i+2 = this 0x0F byte).
+        const objtyp = data[i + 6];
+        if (objtyp === OBJTYP_GRAPHICS) {
+          const gdfData = data.slice(i + 7, i + len);
+          this.emit('gddm', decodeGdfStream(gdfData));
+        }
+        // Image (OBJTYP 0x01) is not decoded — out of scope.
       }
       i += len;
     }
