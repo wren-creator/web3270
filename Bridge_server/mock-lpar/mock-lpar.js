@@ -917,7 +917,12 @@ function handleConnection(socket) {
           lastEnteredUser = enteredUser;
           lastEnteredPass = enteredPass;
           const validPass = VALID_CREDENTIALS[enteredUser];
-          if (validPass && enteredPass === validPass) {
+          // Case-insensitive on purpose: the real terminal deliberately does
+          // NOT force-uppercase nondisplay (password) fields client-side
+          // (see public/js/keyboard.js — that matters for real case-sensitive
+          // RACF passwords elsewhere), so this mock's own demo credentials
+          // shouldn't require the user to remember to type them in caps.
+          if (validPass && enteredPass.toUpperCase() === validPass) {
             // Successful logon
             loginAttempts = 0;
             log(`[${id}] Logon success: userid='${userid}'`);
