@@ -1618,6 +1618,8 @@ The decoder is a stateless-replay pass, not a live session: it re-walks the raw 
 
 One asymmetry worth knowing if you're reading the decoder: outbound (client→host) records in this codebase never carry the TN3270E 5-byte header, even after negotiation — `Tn3270Session._sendDataRecord()` doesn't prepend one, and the mock hosts don't expect one on receipt either. Only inbound host→client writes get the header stripped. The decoder mirrors this — get it backwards and every outbound AID record decodes as garbage.
 
+The decoder also flags GDDM graphics traffic: outbound Write Structured Field payloads carrying an Object Control/Data/Picture structured field (SFID `0x0F11`/`0x0F0F`/`0x0F10`, per the IBM 3270 Data Stream Programmer's Reference ch.5) are labeled `GDDM/Object Data` with the object type (Graphics vs Image, from the OBJTYP byte). Inbound structured-field replies (AID `0x88`) are decoded too — a Query Reply for Graphic Color/Graphic Symbol Sets/Extended Drawing Routine is called out as "terminal declares GDDM/graphics capability". This is detection only: the GDF order stream carried inside those objects (the actual vector-graphics primitives, per the GDDM Base Application Programming Reference ch.10) is not decoded or rendered — that's a separate, much larger rendering-engine effort, out of scope for a wire-level security inspector.
+
 ### Reading the panel
 
 - **Packet list** — one row per decoded record: time, session, direction arrow, byte count, protocol label, AID (if any), and a one-line summary. A red dot + red left border flags any record that reads or writes a nondisplay field.
