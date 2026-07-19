@@ -675,7 +675,6 @@ function createSession(socket) {
   }
 
   function handleFrame(frame) {
-    // Client→server data is always raw 3270 — no TN3270E header to strip.
     const data = frame;
     // Un-escape IAC IAC
     const unesc = [];
@@ -683,7 +682,13 @@ function createSession(socket) {
       if (data[i] === IAC && data[i+1] === IAC) { unesc.push(IAC); i++; }
       else unesc.push(data[i]);
     }
-    const d = Buffer.from(unesc);
+    // Tn3270Session._sendDataRecord() always prepends the TN3270E 5-byte
+    // header on outbound client->host records once negotiated (see
+    // tn3270/session.js), symmetric with the header sendScreen() prepends
+    // above — strip it here or every AID byte reads as the header's
+    // DATA-TYPE 0x00 instead of the real AID.
+    let d = Buffer.from(unesc);
+    if (tn3270e) d = d.slice(5);
     if (d.length < 1) return;
 
     const aid = d[0];

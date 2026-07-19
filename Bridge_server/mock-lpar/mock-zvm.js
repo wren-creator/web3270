@@ -724,8 +724,10 @@ function handleConnection(socket) {
   function handle3270Record(data) {
     if (!negotiated) return;
 
-    // Strip TN3270E 5-byte header if present
-    const payload = data;
+    // Strip TN3270E 5-byte header if present — Tn3270Session._sendDataRecord()
+    // always prepends it on outbound client->host records once negotiated
+    // (see tn3270/session.js), symmetric with mock-lpar.js's handle3270Record.
+    const payload = tn3270eMode ? data.slice(5) : data;
     if (payload.length === 0) return;
     const aid = payload[0];
     debug(`[${id}] ← AID 0x${aid.toString(16).padStart(2,'0')} screen='${currentScreen}'`);
