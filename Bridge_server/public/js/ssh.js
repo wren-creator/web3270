@@ -113,14 +113,15 @@ function _sshConnectWs(sid) {
         }
       } else if (msg.state === 'disconnected') {
         session.state = 'disconnected';
+        session.lastDisconnectReason = msg.reason;
         _sshUpdateTabDot(sid, '#c0392b');
         if (state.activeSshSession === sid) {
           const oiaMode = document.getElementById('oiaMode');
           if (oiaMode) { oiaMode.textContent = 'SSH CLOSED'; oiaMode.className = 'oia-val'; }
         }
-        if (state.settings.autoReconnect && msg.reason === 'remote close') {
-          _scheduleSshReconnect(sid);
-        }
+        // Reconnect decision happens in ws.onclose below, which fires right
+        // after this message as the server tears down the socket — keeping
+        // it in one place avoids scheduling two competing reconnects.
       }
     } else if (msg.type === 'ssh.error') {
       session.state = 'error';
@@ -135,10 +136,16 @@ function _sshConnectWs(sid) {
   ws.onclose = () => {
     session.state = 'closed';
     _sshUpdateTabDot(sid, '#888');
-    // The bridge WebSocket itself dropped (not just the remote SSH session) —
-    // e.g. bridge restart or network blip. If the tab was closed intentionally,
-    // sshCloseTab already deleted it from state.sessions, so this won't fire.
-    if (state.sessions.has(sid) && state.settings.autoReconnect) _scheduleSshReconnect(sid);
+    // If the tab was closed intentionally, sshCloseTab already deleted it
+    // from state.sessions, so this won't fire.
+    if (!state.sessions.has(sid)) return;
+    const reason = session.lastDisconnectReason;
+    session.lastDisconnectReason = null;
+    // No ssh.status message ever arrived (bridge restart, network blip killed
+    // the socket outright) — treat that as an unexpected drop, same as 'remote close'.
+    if (state.settings.autoReconnect && (reason === 'remote close' || reason === undefined)) {
+      _scheduleSshReconnect(sid);
+    }
   };
 
   return ws;
