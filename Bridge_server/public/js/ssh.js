@@ -118,7 +118,7 @@ function _sshConnectWs(sid) {
           const oiaMode = document.getElementById('oiaMode');
           if (oiaMode) { oiaMode.textContent = 'SSH CLOSED'; oiaMode.className = 'oia-val'; }
         }
-        if (state.settings.autoReconnect && msg.reason && msg.reason !== 'client request') {
+        if (state.settings.autoReconnect && msg.reason === 'remote close') {
           _scheduleSshReconnect(sid);
         }
       }

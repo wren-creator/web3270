@@ -14,6 +14,7 @@ export function handleSshConnect(ws, wsId, params, send, logger) {
   const conn = new SshClient();
   let stream = null;
   let clientInitiated = false;
+  let shellExited = false;
 
   conn.on('ready', () => {
     const sshVersion = conn._remoteVer || 'SSH';
@@ -28,9 +29,14 @@ export function handleSshConnect(ws, wsId, params, send, logger) {
       stream = sh;
       sh.on('data',   d  => { if (ws.readyState === 1) send(ws, { type: 'ssh.data', data: d.toString('base64') }); });
       sh.stderr.on('data', d => { if (ws.readyState === 1) send(ws, { type: 'ssh.data', data: d.toString('base64') }); });
+      // Fires when the remote shell process itself terminates (e.g. the user
+      // typed "exit" or hit Ctrl-D). A raw network drop kills the channel
+      // without this firing, so it's how we tell "user left" from "connection died".
+      sh.on('exit', () => { shellExited = true; });
       sh.on('close', () => {
         logger.info(`[ws:${wsId}] SSH shell closed`);
-        send(ws, { type: 'ssh.status', state: 'disconnected', reason: clientInitiated ? 'client request' : 'remote close' });
+        const reason = clientInitiated ? 'client request' : shellExited ? 'shell exit' : 'remote close';
+        send(ws, { type: 'ssh.status', state: 'disconnected', reason });
         conn.end();
         ws.close();
       });
