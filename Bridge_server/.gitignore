@@ -12,3 +12,6 @@ lpars.txt
 # Stale root-level artifacts
 macros.json
 macros/macros.json
+
+# Working doc, not for the repo
+NDA.md
