@@ -1,5 +1,19 @@
 import { state } from './state.js';
 
+// Applies an explicit px font size, independent of the Zoom auto-fit scale.
+// The terminal box does not shrink to match; .screen-wrapper's overflow:auto
+// picks up the slack with scrollbars when the fixed size doesn't fit.
+function applyFixedFontSize(term, cellCount, fontSize) {
+  term.style.fontSize = fontSize + 'px';
+  measureCellWidth();
+  const cellW = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--cell-w').trim());
+  if (cellW > 0) {
+    const w = Math.ceil(cellCount * cellW);
+    term.style.width = term.style.minWidth = term.style.maxWidth = w + 'px';
+  }
+  term.style.transform = 'none';
+}
+
 export function fitScreen() {
   try {
     const wrapper = document.getElementById('screenWrapper');
@@ -9,6 +23,21 @@ export function fitScreen() {
     if (!rows.length) return;
     const cellCount = rows[0].querySelectorAll('.screen-cell').length;
     if (!cellCount) return;
+
+    const override = state.settings.tnFontSizeOverride;
+    if (override) {
+      applyFixedFontSize(term, cellCount, override);
+      if (state.splitMode) {
+        const term2 = document.getElementById('terminal-split');
+        if (term2) {
+          const rows2 = term2.querySelectorAll('.screen-row');
+          const cols2 = rows2.length ? rows2[0].querySelectorAll('.screen-cell').length : cellCount;
+          applyFixedFontSize(term2, cols2, override);
+        }
+      }
+      return;
+    }
+
     const style        = getComputedStyle(term);
     const baseFontSize = parseFloat(style.fontSize) || 13;
     const cellWVar     = getComputedStyle(document.documentElement).getPropertyValue('--cell-w').trim();

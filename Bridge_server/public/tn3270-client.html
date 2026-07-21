@@ -247,6 +247,11 @@
           <input type="range" id="zoomInput" min="50" max="200" value="100" style="width:80px" oninput="setZoom(this.value)">
           <span style="font-size:10px;color:var(--text-muted);min-width:36px" id="fontSizeLabel">100%</span>
         </div>
+        <div class="setting-row">
+          <label>Font Size</label>
+          <input type="number" id="tnFontSizeInput" min="8" max="48" placeholder="auto" style="width:60px" onchange="setTnFontSize(this)">
+          <span style="font-size:10px;color:var(--text-muted)">px, blank = auto</span>
+        </div>
         <div class="setting-row"><label>CRT Scanlines</label><div class="toggle on" onclick="toggleScanlines(this)"></div></div>
         <div class="setting-row"><label>Cursor Blink</label><div class="toggle on" onclick="toggleCursorBlink(this)"></div></div>
         <div class="setting-row"><label>Field Highlights</label><div class="toggle on" onclick="toggleFieldHighlights(this)"></div></div>
