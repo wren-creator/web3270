@@ -47,11 +47,28 @@ export function setKeepAlive(input) {
   saveSettings();
 }
 
+export function setSshFontSize(input) {
+  const n = Math.max(8, Math.min(32, parseInt(input.value, 10) || 14));
+  input.value = n;
+  state.settings.sshFontSize = n;
+  saveSettings();
+  for (const session of state.sessions.values()) {
+    if (session.type !== 'ssh') continue;
+    session.term.options.fontSize = n;
+    try { session.fitAddon.fit(); } catch {}
+    if (session.ws && session.ws.readyState === WebSocket.OPEN) {
+      session.ws.send(JSON.stringify({ type: 'ssh.resize', rows: session.term.rows, cols: session.term.cols }));
+    }
+  }
+}
+
 export function initConnectionSettingsUI() {
   const toggle = document.getElementById('autoReconnectToggle');
   if (toggle) toggle.classList.toggle('on', !!state.settings.autoReconnect);
   const input = document.getElementById('keepAliveInput');
   if (input) input.value = state.settings.keepAliveSec;
+  const fontInput = document.getElementById('sshFontSizeInput');
+  if (fontInput) fontInput.value = state.settings.sshFontSize;
 }
 
 const THEMES = {
@@ -77,5 +94,5 @@ export function setTheme(name, swatchEl) {
 
 Object.assign(window, {
   setZoom, setFontSize, toggleScanlines, toggleCursorBlink, toggleFieldHighlights, toggleShowPassword, setTheme,
-  toggleAutoReconnect, setKeepAlive, initConnectionSettingsUI,
+  toggleAutoReconnect, setKeepAlive, setSshFontSize, initConnectionSettingsUI,
 });
