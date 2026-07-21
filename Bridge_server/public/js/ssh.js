@@ -179,7 +179,7 @@ function _sshOpenSession(sid, name, host, port, username, password) {
 
   const term = new Terminal({
     fontFamily: "'IBM Plex Mono', 'Courier New', monospace",
-    fontSize: 14,
+    fontSize: state.settings.sshFontSize || 14,
     theme: {
       background:  '#020c14',
       foreground:  '#c8d8e8',

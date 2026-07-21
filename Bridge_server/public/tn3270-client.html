@@ -257,6 +257,10 @@
         <div class="setting-row"><label>Auto Reconnect</label><div class="toggle on" id="autoReconnectToggle" onclick="toggleAutoReconnect(this)"></div></div>
         <div class="setting-row"><label>Keep-Alive (s)</label><input type="number" id="keepAliveInput" value="30" style="width:60px" onchange="setKeepAlive(this)"></div>
       </div>
+      <div class="setting-group">
+        <div class="setting-label">SSH Terminal</div>
+        <div class="setting-row"><label>Font Size</label><input type="number" id="sshFontSizeInput" value="14" min="8" max="32" style="width:60px" onchange="setSshFontSize(this)"></div>
+      </div>
     </div>
 
     <!-- Keys -->
