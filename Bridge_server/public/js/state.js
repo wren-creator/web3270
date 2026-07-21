@@ -37,7 +37,7 @@ export const AI_PROVIDER_LABELS = {
 const SETTINGS_KEY = 'bridgeSettings';
 
 function loadSettings() {
-  const defaults = { autoReconnect: true, keepAliveSec: 30, sshFontSize: 14, zoomPercent: 100 };
+  const defaults = { autoReconnect: true, keepAliveSec: 30, sshFontSize: 14, zoomPercent: 100, tnFontSizeOverride: null };
   try {
     return { ...defaults, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') };
   } catch {

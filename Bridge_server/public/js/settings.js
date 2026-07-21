@@ -15,6 +15,18 @@ export function setZoom(percent) {
 }
 export function setFontSize(percent) { setZoom(percent); }
 
+// Independent of Zoom: fixes the TN3270 character size in px instead of
+// auto-fitting to the available space. Blank input clears the override and
+// falls back to Zoom's auto-fit behavior.
+export function setTnFontSize(input) {
+  const raw = input.value.trim();
+  const n = raw === '' ? null : Math.max(8, Math.min(48, parseInt(raw, 10) || 13));
+  input.value = n === null ? '' : n;
+  state.settings.tnFontSizeOverride = n;
+  saveSettings();
+  fitScreen();
+}
+
 export function toggleScanlines(el) {
   el.classList.toggle('on');
   document.body.classList.toggle('no-scanlines', !el.classList.contains('on'));
@@ -74,6 +86,8 @@ export function initConnectionSettingsUI() {
   const zoomInput = document.getElementById('zoomInput');
   if (zoomInput) zoomInput.value = state.settings.zoomPercent;
   setZoom(state.settings.zoomPercent);
+  const tnFontInput = document.getElementById('tnFontSizeInput');
+  if (tnFontInput) tnFontInput.value = state.settings.tnFontSizeOverride ?? '';
 }
 
 const THEMES = {
@@ -98,6 +112,6 @@ export function setTheme(name, swatchEl) {
 }
 
 Object.assign(window, {
-  setZoom, setFontSize, toggleScanlines, toggleCursorBlink, toggleFieldHighlights, toggleShowPassword, setTheme,
+  setZoom, setFontSize, setTnFontSize, toggleScanlines, toggleCursorBlink, toggleFieldHighlights, toggleShowPassword, setTheme,
   toggleAutoReconnect, setKeepAlive, setSshFontSize, initConnectionSettingsUI,
 });
