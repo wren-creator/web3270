@@ -244,7 +244,7 @@
         <div class="setting-label">Display</div>
         <div class="setting-row">
           <label>Zoom</label>
-          <input type="range" min="50" max="200" value="100" style="width:80px" oninput="setZoom(this.value)">
+          <input type="range" id="zoomInput" min="50" max="200" value="100" style="width:80px" oninput="setZoom(this.value)">
           <span style="font-size:10px;color:var(--text-muted);min-width:36px" id="fontSizeLabel">100%</span>
         </div>
         <div class="setting-row"><label>CRT Scanlines</label><div class="toggle on" onclick="toggleScanlines(this)"></div></div>

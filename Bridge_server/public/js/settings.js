@@ -8,6 +8,8 @@ export function setZoom(percent) {
   document.documentElement.style.setProperty('--term-zoom', String(n / 100));
   const label = document.getElementById('fontSizeLabel');
   if (label) label.textContent = String(n) + '%';
+  state.settings.zoomPercent = n;
+  saveSettings();
   measureCellWidth();
   fitScreen();
 }
@@ -69,6 +71,9 @@ export function initConnectionSettingsUI() {
   if (input) input.value = state.settings.keepAliveSec;
   const fontInput = document.getElementById('sshFontSizeInput');
   if (fontInput) fontInput.value = state.settings.sshFontSize;
+  const zoomInput = document.getElementById('zoomInput');
+  if (zoomInput) zoomInput.value = state.settings.zoomPercent;
+  setZoom(state.settings.zoomPercent);
 }
 
 const THEMES = {
