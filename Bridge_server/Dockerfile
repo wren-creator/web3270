@@ -22,10 +22,12 @@ COPY --chown=tn3270:tn3270 . .
 # OpenShift's default "restricted" SCC runs it as an arbitrary UID it picks
 # itself — always in the root group, never as tn3270 — so group-0
 # read/write is what actually matters there. Harmless locally.
+# /app/macros itself needs the same treatment: macros/store.js mkdir -p's
+# macros/library on first run, which needs write access on the parent dir.
 RUN mkdir -p /app/macros/local && \
     touch /app/lpars.txt /app/ssh-hosts.txt && \
-    chgrp -R 0 /app/macros/local /app/lpars.txt /app/ssh-hosts.txt && \
-    chmod -R g=u /app/macros/local /app/lpars.txt /app/ssh-hosts.txt
+    chgrp -R 0 /app/macros /app/lpars.txt /app/ssh-hosts.txt && \
+    chmod -R g=u /app/macros /app/lpars.txt /app/ssh-hosts.txt
 
 USER tn3270
 
