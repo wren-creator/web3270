@@ -1,6 +1,16 @@
-#/bin/bash
+#!/bin/bash
 
-for img in bridge_server-*; do
-  docker tag "$img:latest" "images.pkgrepo.bcbssc.com/web3270/$img:latest"
-  docker push "images.pkgrepo.bcbssc.com/web3270/$img:latest"
+TAG=${1:-latest}
+REGISTRY="images.pkgrepo.bcbssc.com/web3270"
+
+docker images --format "{{.Repository}}" | grep '^bridge_server-' | while read -r img
+do
+    echo "Tagging: $img:$TAG"
+
+    docker tag "$img:latest" \
+        "$REGISTRY/$img:$TAG"
+
+    docker push \
+        "$REGISTRY/$img:$TAG"
 done
+docker images | grep "$TAG"
