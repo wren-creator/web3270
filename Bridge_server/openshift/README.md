@@ -74,6 +74,38 @@ the Connect dialog's "Add profile" flow writes to `lpars.txt`, and the SSH
 connect dialog's "Save host" flow writes to `ssh-hosts.txt`. Both persist to
 the PVC.
 
+## 7. Set the security tools password
+
+`config.js` gates the security tools behind `SECURITY_TOOLS_PASSWORD`, and
+falls back to a hardcoded default (`2970`) if that env var isn't set, so
+don't run this in a real environment without overriding it. Create it as an
+OpenShift Secret rather than a plain `value:` in `deployment.yaml`, so the
+actual password never lands in git:
+
+```sh
+oc create secret generic web3270-bridge-secrets \
+  --from-literal=security-password='<your-real-password>' \
+  -n tenant-mgmt-web3270-test
+```
+
+Then reference it in the container's `env:` block in `deployment.yaml`:
+
+```yaml
+env:
+  - name: SECURITY_TOOLS_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: web3270-bridge-secrets
+        key: security-password
+  # ...existing BRIDGE_PORT, LOG_LEVEL, etc. stay as plain value: entries
+```
+
+`oc apply -f openshift/deployment.yaml` followed by
+`oc rollout restart deployment/web3270-bridge` to pick it up. To rotate the
+password later, update the secret (`oc create secret ... --dry-run=client -o
+yaml | oc apply -f -`) and roll out again, mounted-as-env secrets aren't
+live-reloaded on their own.
+
 ## Notes / things worth knowing
 
 - **Single replica by design.** Session state (the live mainframe/SSH
