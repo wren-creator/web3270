@@ -103,15 +103,15 @@
       <div class="conn-dot disconnected" id="mainConnDot"></div>
       <span id="connStatusText" style="color:var(--text-muted);font-size:11px">Not connected</span>
     </div>
-    <div class="lpar-dropdown" id="lparDropdown">
-      <div class="lpar-dropdown-btn" id="lparDropdownBtn" onclick="toggleLparDropdown()">
+    <div class="session-dropdown" id="sessionDropdown">
+      <div class="session-dropdown-btn" id="sessionDropdownBtn" onclick="toggleSessionDropdown()">
         <span>⊕ Connect to LPAR</span>
         <span class="chevron">▼</span>
       </div>
-      <div class="lpar-dropdown-menu" id="lparDropdownMenu">
-        <div class="lpar-menu-header">LPAR Profiles</div>
-        <div class="lpar-menu-items" id="lparMenuItems"></div>
-        <div class="lpar-menu-footer" onclick="showConnectModal(); closeLparDropdown()">
+      <div class="session-dropdown-menu" id="sessionDropdownMenu">
+        <div class="session-menu-header">Session Profiles</div>
+        <div class="session-menu-items" id="sessionMenuItems"></div>
+        <div class="session-menu-footer" onclick="showConnectModal(); closeSessionDropdown()">
           <span style="font-size:13px">＋</span> New session / manual connect…
         </div>
       </div>
@@ -134,8 +134,8 @@
   <!-- LEFT SIDEBAR -->
   <div class="sidebar" id="sidebar">
     <div class="sidebar-section">
-      <div class="sidebar-header">LPAR Profiles <span class="sidebar-header-btn" onclick="showConnectModal()">＋</span></div>
-      <div id="sidebarLparList" style="padding:4px 0 8px;max-height:220px;overflow-y:auto;"></div>
+      <div class="sidebar-header">Session Profiles <span class="sidebar-header-btn" onclick="showConnectModal()">＋</span></div>
+      <div id="sidebarSessionList" style="padding:4px 0 8px;max-height:220px;overflow-y:auto;"></div>
     </div>
     <div class="sidebar-section">
       <div class="sidebar-header">Macros <span class="sidebar-header-btn" onclick="startMacroRecord()" title="Record a new macro" style="margin-right:4px;color:#e06060">● REC</span><span class="sidebar-header-btn" onclick="showAddMacroModal()">＋</span></div>

@@ -16,13 +16,13 @@ const _WALKTHROUGHS = [
     id:       'first-connection',
     category: 'general',
     title:    'First Connection to an LPAR',
-    desc:     'Add an LPAR profile and connect to a mainframe for the first time.',
+    desc:     'Add a session profile and connect to a mainframe for the first time.',
     steps: [
       {
         title: 'Open the connection menu',
         body:  'Click ⊕ Connect to LPAR in the top-right status area. A dropdown shows saved profiles. For a new system choose "New session / manual connect…" at the bottom.',
-        highlight: 'lparDropdownBtn',
-        autoFn: 'toggleLparDropdown',
+        highlight: 'sessionDropdownBtn',
+        autoFn: 'toggleSessionDropdown',
         autoLabel: 'Open menu for me',
       },
       {
@@ -34,7 +34,7 @@ const _WALKTHROUGHS = [
       {
         title: 'Save as a profile',
         body:  'Check "Save as profile" before connecting. This writes the LPAR to lpars.txt and adds it to the sidebar and the ⊕ dropdown for future use. Profiles survive restarts — no re-entering connection details each time.',
-        highlight: 'sidebarLparList',
+        highlight: 'sidebarSessionList',
         autoFn: null,
       },
       {
@@ -45,8 +45,8 @@ const _WALKTHROUGHS = [
       },
       {
         title: 'Reconnect quickly next time',
-        body:  'Saved profiles appear in the ⊕ dropdown and in the sidebar under LPAR Profiles. Click any profile to open a new session directly — no dialog required. You can edit or delete profiles from the sidebar context menu.',
-        highlight: 'sidebarLparList',
+        body:  'Saved profiles appear in the ⊕ dropdown and in the sidebar under Session Profiles. Click any profile to open a new session directly — no dialog required. You can edit or delete profiles from the sidebar context menu.',
+        highlight: 'sidebarSessionList',
         autoFn: null,
       },
     ],
@@ -68,7 +68,7 @@ const _WALKTHROUGHS = [
       {
         title: 'Connect the new tab',
         body:  'With the new tab active, click ⊕ Connect to LPAR and choose a profile (or enter details manually). You can connect two tabs to the same LPAR — they negotiate separate LU bindings.',
-        highlight: 'lparDropdownBtn',
+        highlight: 'sessionDropdownBtn',
         autoFn: null,
       },
       {
