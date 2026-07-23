@@ -9,17 +9,17 @@
  * layouts below cross-checked against GDDM Base Programming
  * Reference Volume 2, SC33-0332-1, Appendix D).
  *
- * Scope: 8 order types, enough to draw a labeled chart plus circles/
- * arcs — Comment (picture boundary), Set Color, Line, Marker,
- * Character String, Set Arc Parameters, Arc, Full Arc. Fillets,
- * images, symbol sets, color-mix modes, and clipping are NOT
- * implemented — this is a demo-scale renderer, not a full GDDM
- * client. Unrecognized orders are skipped rather than treated as
- * errors, since a real GDF stream may use orders outside this
- * subset. The "at current position" short forms of orders (e.g.
- * X'86' Arc, X'87' Full Arc) are skipped rather than guessed at,
- * same as the existing GCHST-at-current-position handling — this
- * decoder does not track current position across orders.
+ * Scope: 9 order types, enough to draw a labeled chart plus circles/
+ * arcs/fillets — Comment (picture boundary), Set Color, Line, Marker,
+ * Character String, Set Arc Parameters, Arc, Full Arc, Fillet. Images,
+ * symbol sets, color-mix modes, and clipping are NOT implemented —
+ * this is a demo-scale renderer, not a full GDDM client. Unrecognized
+ * orders are skipped rather than treated as errors, since a real GDF
+ * stream may use orders outside this subset. The "at current
+ * position" short forms of orders (e.g. X'86' Arc, X'87' Full Arc,
+ * X'85' Fillet) are skipped rather than guessed at, same as the
+ * existing GCHST-at-current-position handling — this decoder does
+ * not track current position across orders.
  */
 
 import * as Ebcdic from './ebcdic.js';
@@ -35,6 +35,7 @@ const ORDER_CHARSTR  = 0xC3, ORDER_CHARSTR_CP  = 0x83; // GCHST
 const ORDER_ARC_PARAMS = 0x22;                          // GSAP  — Set Arc Parameters
 const ORDER_ARC         = 0xC6, ORDER_ARC_CP      = 0x86; // GARC  — three-point arc
 const ORDER_FULL_ARC    = 0xC7, ORDER_FULL_ARC_CP = 0x87; // GFARC — full circle/ellipse
+const ORDER_FILLET      = 0xC5, ORDER_FILLET_CP    = 0x85; // GFLT  — curved fillet (polyfillet)
 
 // Default Arc Parameters (P,Q,R,S): P=Q, R=S=0 maps the unit circle to
 // itself — a circle, per the manual's "A circle results if P=Q and
@@ -153,9 +154,18 @@ export function decodeGdfStream(buf) {
       }
     } else if (code === ORDER_FULL_ARC_CP) {
       // At-current-position form — skipped, see header.
+    } else if (code === ORDER_FILLET) {
+      // Polyfillet: 2+ points, joined by imaginary straight lines, with
+      // a curve fitted tangential to the first/last line at their
+      // endpoints and to any intermediate lines at their midpoints
+      // (2 points is the special case that degenerates to a straight line).
+      const points = readCoordPairs(operand);
+      if (points.length >= 2) primitives.push({ type: 'fillet', points, color });
+    } else if (code === ORDER_FILLET_CP) {
+      // At-current-position form — skipped, see header.
     }
-    // Unrecognized normal-format orders (fillets, images, symbol sets,
-    // etc.) are intentionally skipped — out of scope, see header.
+    // Unrecognized normal-format orders (images, symbol sets, color-mix,
+    // clipping, etc.) are intentionally skipped — out of scope, see header.
 
     i += 2 + len;
   }

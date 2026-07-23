@@ -589,6 +589,13 @@ function buildGddmObjectDataWsf() {
   parts.push(gdfShortOrder(0x0A, COL_GDF_YELLOW));
   parts.push(gdfOrder(0xC7, Buffer.concat([gdfHalfwords(895, 285), Buffer.from([0x01, 0x00])]))); // center, M=1.0
 
+  // Decorative underline "ribbon" beneath the whole chart (Fillet
+  // order, X'C5') — 5 points, so it exercises the multi-piece
+  // polyfillet smoothing (not just the 2/3-point special cases).
+  const COL_GDF_TURQ = 0x05;
+  parts.push(gdfShortOrder(0x0A, COL_GDF_TURQ));
+  parts.push(gdfOrder(0xC5, gdfHalfwords(60, 40, 300, 70, 550, 30, 800, 65, 950, 45)));
+
   const gdfData = Buffer.concat(parts);
   const pid = 0x00, flags = 0x03, objtyp = 0x00; // first&last/immediate, Graphics
   const sfBody = Buffer.concat([Buffer.from([pid, flags, objtyp]), gdfData]);

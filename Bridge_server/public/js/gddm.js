@@ -1,8 +1,9 @@
 // ── GDDM Graphics Renderer ───────────────────────────────────────────
 // Draws the primitives decoded by tn3270/gddm.js (server-side) onto a
 // <canvas> overlay on top of the character grid. Demo-scale renderer:
-// lines, markers, text, and arcs/circles/ellipses — see tn3270/gddm.js
-// for the full scope boundary (no fillets/images/symbol sets/clipping).
+// lines, markers, text, arcs/circles/ellipses, and fillets — see
+// tn3270/gddm.js for the full scope boundary (no images/symbol
+// sets/color-mix/clipping).
 // Set Color order names (tn3270/gddm.js COLOR_NAME) → how to paint them.
 // Reuses the terminal's own CSS custom properties so a chart always
 // matches the active theme (including the Barbie easter egg); 'pink'
@@ -161,6 +162,26 @@ export function gddmOnScreen(msg) {
       ctx.arc(0, 0, 1, angle0, angle2, anticlockwise);
       ctx.stroke();
       ctx.restore();
+    } else if (p.type === 'fillet' && p.points.length >= 2) {
+      // Polyfillet: a curve tangent to the first/last line at their
+      // endpoints and to intermediate lines at their midpoints. This is
+      // exactly the classic "quadratic curve through consecutive
+      // midpoints" construction — each piece's control point is an
+      // original vertex, so tangent directions match the adjacent line
+      // segments by construction. Affine-invariant (midpoints and
+      // quadratic Beziers survive toPx's scale+flip), so it's safe to
+      // do the curve fit directly in pixel space.
+      const pts = p.points.map(pt => toPx(...pt));
+      ctx.beginPath();
+      ctx.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 1; i < pts.length - 2; i++) {
+        const mx = (pts[i][0] + pts[i + 1][0]) / 2, my = (pts[i][1] + pts[i + 1][1]) / 2;
+        ctx.quadraticCurveTo(pts[i][0], pts[i][1], mx, my);
+      }
+      const cp = pts[pts.length - 2], end = pts[pts.length - 1];
+      ctx.quadraticCurveTo(cp[0], cp[1], end[0], end[1]);
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
     }
   }
 }
