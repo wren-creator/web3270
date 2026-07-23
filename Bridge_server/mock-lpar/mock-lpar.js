@@ -596,6 +596,18 @@ function buildGddmObjectDataWsf() {
   parts.push(gdfShortOrder(0x0A, COL_GDF_TURQ));
   parts.push(gdfOrder(0xC5, gdfHalfwords(60, 40, 300, 70, 550, 30, 800, 65, 950, 45)));
 
+  // "TOTAL" readout using a non-default character set (Character Set
+  // order X'38', LCID X'41') — the label itself stays in the default
+  // font, but the digits switch to the client's own vector symbol set
+  // (public/js/gddm.js's VECTOR_SYMBOL_SETS[0x41]), a 7-segment-style
+  // digit font, so it renders visibly differently from every other
+  // label on this screen.
+  const total = bars.reduce((sum, bar) => sum + bar.h, 0);
+  parts.push(gdfShortOrder(0x0A, COL_NEUTRAL_WHITE));
+  parts.push(gdfOrder(0xC3, Buffer.concat([gdfHalfwords(60, 605), toEbcdic('TOTAL ')])));
+  parts.push(gdfShortOrder(0x38, 0x41)); // Set Character Set: user-defined LCID 0x41
+  parts.push(gdfOrder(0xC3, Buffer.concat([gdfHalfwords(140, 605), toEbcdic(String(total))])));
+
   const gdfData = Buffer.concat(parts);
   const pid = 0x00, flags = 0x03, objtyp = 0x00; // first&last/immediate, Graphics
   const sfBody = Buffer.concat([Buffer.from([pid, flags, objtyp]), gdfData]);

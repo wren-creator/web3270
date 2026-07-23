@@ -1,9 +1,9 @@
 // ── GDDM Graphics Renderer ───────────────────────────────────────────
 // Draws the primitives decoded by tn3270/gddm.js (server-side) onto a
 // <canvas> overlay on top of the character grid. Demo-scale renderer:
-// lines, markers, text, arcs/circles/ellipses, and fillets — see
-// tn3270/gddm.js for the full scope boundary (no images/symbol
-// sets/color-mix/clipping).
+// lines, markers, text, arcs/circles/ellipses, fillets, and
+// non-default character sets — see tn3270/gddm.js for the full scope
+// boundary (no images/color-mix/clipping).
 // Set Color order names (tn3270/gddm.js COLOR_NAME) → how to paint them.
 // Reuses the terminal's own CSS custom properties so a chart always
 // matches the active theme (including the Barbie easter egg); 'pink'
@@ -75,6 +75,37 @@ function _ccwReachesFirst(from, mid, to) {
   const dMid = norm(mid - from), dTo = norm(to - from);
   return dMid <= dTo;
 }
+
+// Vector symbol sets — GDDM's Character Set order (X'38') only ever
+// selects a symbol set by LCID; per the 3270 Data Stream Programmer's
+// Reference, the Object Data structured field's OBJTYP has no value
+// for transmitting symbol-set glyph data (only Graphics X'00' and
+// Image X'01' exist), so a symbol set is necessarily a resource the
+// terminal already has, same as a built-in font. This table is that
+// resource for LCID 0x41 (first of the "user-defined" range X'41'-
+// X'DF', per Appendix D "Character set") — a small 7-segment-style
+// digit set. Each glyph is a list of independent strokes (arrays of
+// [x,y] points in a 0-100 local box, bottom-left origin, matching GDF
+// convention) drawn with moveTo/lineTo, modeled on the real Vector
+// Symbol Set's "line vs move" primitive semantics (GDDM Base
+// Programming Reference, Appendix F) without needing that format's
+// byte-level encoding, since this data is never actually serialized
+// over the wire in the real protocol.
+const SEGMENT = {
+  a: [[10, 90], [90, 90]], b: [[90, 90], [90, 50]], c: [[90, 50], [90, 10]],
+  d: [[10, 10], [90, 10]], e: [[10, 50], [10, 10]], f: [[10, 90], [10, 50]],
+  g: [[10, 50], [90, 50]],
+};
+const DIGIT_SEGMENTS = {
+  '0': 'abcdef', '1': 'bc', '2': 'abged', '3': 'abgcd', '4': 'fgbc',
+  '5': 'afgcd', '6': 'afgecd', '7': 'abc', '8': 'abcdefg', '9': 'abcdfg',
+};
+const DIGIT_GLYPHS = Object.fromEntries(
+  Object.entries(DIGIT_SEGMENTS).map(([digit, segs]) => [digit, [...segs].map(s => SEGMENT[s])])
+);
+const VECTOR_SYMBOL_SETS = {
+  0x41: { cellWpx: 11, cellHpx: 18, advancePx: 13, glyphs: DIGIT_GLYPHS },
+};
 
 export function gddmClear() {
   const term = document.getElementById('terminal');
@@ -182,6 +213,29 @@ export function gddmOnScreen(msg) {
       ctx.quadraticCurveTo(cp[0], cp[1], end[0], end[1]);
       ctx.lineWidth = 1.5;
       ctx.stroke();
+    } else if (p.type === 'vtext') {
+      // Non-default character set: render each character from the
+      // client's own vector symbol set table rather than the browser
+      // font, positioned at a fixed pixel size (like the default
+      // 'text' path) so it sits comfortably next to regular labels.
+      const set = VECTOR_SYMBOL_SETS[p.charSet];
+      if (!set) continue;
+      const [anchorX, anchorY] = toPx(p.x, p.y);
+      ctx.lineWidth = 1.5;
+      for (let i = 0; i < p.text.length; i++) {
+        const glyph = set.glyphs[p.text[i]];
+        if (!glyph) continue;
+        const gx = anchorX + i * set.advancePx;
+        for (const stroke of glyph) {
+          ctx.beginPath();
+          stroke.forEach(([lx, ly], j) => {
+            const px = gx + (lx / 100) * set.cellWpx;
+            const py = anchorY - (ly / 100) * set.cellHpx;
+            if (j === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+          });
+          ctx.stroke();
+        }
+      }
     }
   }
 }
