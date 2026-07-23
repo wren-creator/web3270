@@ -1,9 +1,9 @@
 // ── GDDM Graphics Renderer ───────────────────────────────────────────
 // Draws the primitives decoded by tn3270/gddm.js (server-side) onto a
 // <canvas> overlay on top of the character grid. Demo-scale renderer:
-// lines, markers, text, arcs/circles/ellipses, fillets, and
-// non-default character sets — see tn3270/gddm.js for the full scope
-// boundary (no images/color-mix/clipping).
+// lines, markers, text, arcs/circles/ellipses, fillets, non-default
+// character sets, and monochrome images — see tn3270/gddm.js for the
+// full scope boundary (no color-mix/clipping).
 // Set Color order names (tn3270/gddm.js COLOR_NAME) → how to paint them.
 // Reuses the terminal's own CSS custom properties so a chart always
 // matches the active theme (including the Barbie easter egg); 'pink'
@@ -236,6 +236,30 @@ export function gddmOnScreen(msg) {
           ctx.stroke();
         }
       }
+    } else if (p.type === 'image' && p.width > 0 && p.depth > 0) {
+      // Monochrome bitmap: 1 bit per display point, MSB first, one
+      // Image Data row per order. The manual doesn't state which row
+      // comes first or which corner (x0,y0) anchors — this renderer's
+      // reasoned interpretation (matching ordinary raster convention)
+      // is that rows arrive top-to-bottom and (x0,y0) is the
+      // bottom-left corner, so row 0 sits at the top of the image.
+      const off = document.createElement('canvas');
+      off.width = p.width; off.height = p.depth;
+      const offCtx = off.getContext('2d');
+      offCtx.fillStyle = _resolveColor(p.color);
+      for (let r = 0; r < p.rows.length; r++) {
+        const row = p.rows[r];
+        for (let c = 0; c < p.width; c++) {
+          const byte = row[c >> 3];
+          if (byte === undefined) continue;
+          if ((byte >> (7 - (c & 7))) & 1) offCtx.fillRect(c, r, 1, 1);
+        }
+      }
+      const [x0px, y0px] = toPx(p.x0, p.y0 + p.imageDepth); // top-left
+      const [x1px, y1px] = toPx(p.x0 + p.imageWidth, p.y0); // bottom-right
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(off, x0px, y0px, x1px - x0px, y1px - y0px);
+      ctx.imageSmoothingEnabled = true;
     }
   }
 }

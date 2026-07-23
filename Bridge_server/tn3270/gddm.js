@@ -9,18 +9,19 @@
  * layouts below cross-checked against GDDM Base Programming
  * Reference Volume 2, SC33-0332-1, Appendix D).
  *
- * Scope: 10 order types, enough to draw a labeled chart plus circles/
- * arcs/fillets and non-default character sets — Comment (picture
- * boundary), Set Color, Line, Marker, Character String, Set Arc
- * Parameters, Arc, Full Arc, Fillet, Character Set. Images, color-mix
- * modes, and clipping are NOT implemented — this is a demo-scale
- * renderer, not a full GDDM client. Unrecognized orders are skipped
- * rather than treated as errors, since a real GDF stream may use
- * orders outside this subset. The "at current position" short forms
- * of orders (e.g. X'86' Arc, X'87' Full Arc, X'85' Fillet) are
- * skipped rather than guessed at, same as the existing
- * GCHST-at-current-position handling — this decoder does not track
- * current position across orders.
+ * Scope: 13 order types, enough to draw a labeled chart plus circles/
+ * arcs/fillets, non-default character sets, and monochrome images —
+ * Comment (picture boundary), Set Color, Line, Marker, Character
+ * String, Set Arc Parameters, Arc, Full Arc, Fillet, Character Set,
+ * Begin Image, Image Data, End Image. Color-mix modes and clipping
+ * are NOT implemented — this is a demo-scale renderer, not a full
+ * GDDM client. Unrecognized orders are skipped rather than treated as
+ * errors, since a real GDF stream may use orders outside this subset.
+ * The "at current position" short forms of orders (e.g. X'86' Arc,
+ * X'87' Full Arc, X'85' Fillet, X'91' Begin Image) are skipped rather
+ * than guessed at, same as the existing GCHST-at-current-position
+ * handling — this decoder does not track current position across
+ * orders.
  *
  * Character Set (X'38') doesn't carry symbol-set glyph data itself —
  * per the 3270 Data Stream Programmer's Reference (GA23-0059), the
@@ -48,6 +49,9 @@ const ORDER_ARC         = 0xC6, ORDER_ARC_CP      = 0x86; // GARC  — three-poi
 const ORDER_FULL_ARC    = 0xC7, ORDER_FULL_ARC_CP = 0x87; // GFARC — full circle/ellipse
 const ORDER_FILLET      = 0xC5, ORDER_FILLET_CP    = 0x85; // GFLT  — curved fillet (polyfillet)
 const ORDER_CHARSET     = 0x38;                             // GSCS  — Set Character Set, short format
+const ORDER_IMAGE_BEGIN = 0xD1, ORDER_IMAGE_BEGIN_CP = 0x91; // GSIMG — Begin Image
+const ORDER_IMAGE_DATA  = 0x92;                              // GIMD  — Image Data (one row per order, FORMAT 0)
+const ORDER_IMAGE_END   = 0x93;                              // GEIMG — End Image
 
 // Character Set LCID values (GDDM Base Programming Reference, Appendix D,
 // "Character set"): X'00' Default, X'01' APL, X'41'-X'DF' user-defined.
@@ -101,6 +105,7 @@ export function decodeGdfStream(buf) {
   let color = COLOR_NAME[0x00];
   let arcParams = { ...DEFAULT_ARC_PARAMS };
   let charSet = CHARSET_DEFAULT;
+  let buildingImage = null; // { x0, y0, width, depth, imageWidth, imageDepth, rows, color } while between Begin/End Image
 
   let i = 0;
   while (i < buf.length) {
@@ -182,9 +187,39 @@ export function decodeGdfStream(buf) {
       if (points.length >= 2) primitives.push({ type: 'fillet', points, color });
     } else if (code === ORDER_FILLET_CP) {
       // At-current-position form — skipped, see header.
+    } else if (code === ORDER_IMAGE_BEGIN) {
+      // FORMAT 0 only (1 bit per display point). IMAGEWIDTH/IMAGEDEPTH
+      // are optional (present together or not at all) — when absent,
+      // each display point is 1 coordinate unit (GDDM Base Programming
+      // Reference, Appendix D, "Image - begin").
+      if (operand.length >= 10) {
+        const x0 = operand.readInt16BE(0), y0 = operand.readInt16BE(2);
+        const format = operand.readInt16BE(4);
+        const width = operand.readUInt16BE(6), depth = operand.readUInt16BE(8);
+        if (format === 0) {
+          const hasScale = operand.length >= 14;
+          buildingImage = {
+            x0, y0, width, depth,
+            imageWidth: hasScale ? operand.readInt16BE(10) : width,
+            imageDepth: hasScale ? operand.readInt16BE(12) : depth,
+            rows: [], color,
+          };
+        }
+      }
+    } else if (code === ORDER_IMAGE_BEGIN_CP) {
+      // At-current-position form — skipped, see header.
+    } else if (code === ORDER_IMAGE_DATA) {
+      // One row of WIDTH display points per order, packed 1 bit each,
+      // MSB first, padded to a byte boundary.
+      if (buildingImage) buildingImage.rows.push(operand);
+    } else if (code === ORDER_IMAGE_END) {
+      if (buildingImage) {
+        primitives.push({ type: 'image', ...buildingImage });
+        buildingImage = null;
+      }
     }
-    // Unrecognized normal-format orders (images, color-mix, clipping,
-    // etc.) are intentionally skipped — out of scope, see header.
+    // Unrecognized normal-format orders (color-mix, clipping, etc.) are
+    // intentionally skipped — out of scope, see header.
 
     i += 2 + len;
   }
