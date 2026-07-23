@@ -54,7 +54,7 @@ export function xferRenderPanel() {
 <div class="xfer-root">
   <div class="xfer-header">
     <div class="xfer-title">&#x21C4; IND$FILE Transfer</div>
-    <div class="xfer-sys-badge xfer-sys-${sysType.toLowerCase()}" title="Detected from LPAR profile">${sysLabel}</div>
+    <div class="xfer-sys-badge xfer-sys-${sysType.toLowerCase()}" title="Detected from session profile">${sysLabel}</div>
     <button class="xfer-mode-toggle" onclick="xferToggleExpert()" title="${_xferExpertMode ? 'Switch to guided mode' : 'Switch to expert mode'}">${_xferExpertMode ? '&#9670; Guided' : '&#9671; Expert'}</button>
   </div>
   ${!connected ? `<div class="xfer-warn">&#9888; Not connected &mdash; connect to an LPAR first</div>` : ''}
