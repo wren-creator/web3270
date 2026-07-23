@@ -629,6 +629,75 @@ function buildGddmObjectDataWsf() {
   return Buffer.concat([Buffer.from([CMD_WSF]), lenBuf, sfid, sfBody]);
 }
 
+// ── "USA" easter egg — a WarGames/WOPR nod ──────────────────────────
+// Same alphanumeric-frame-only pattern as screenGDDM: the graphics
+// area (rows 1-22) stays blank so the canvas overlay owns that space.
+function screenUSA(userid) {
+  return buildScreen(true, [
+    { row:0,  col:0,  fa: FA_PROTECTED_HIGH, color: COL_WHITE, highlight: HL_INTENS },
+    { row:0,  col:1,  text: 'GLOBAL THERMONUCLEAR WAR' },
+    { row:0,  col:40, fa: FA_PROTECTED, color: COL_BLUE },
+    { row:0,  col:40, text: `User: ${userid.padEnd(8)}` },
+    { row:23, col:0,  fa: FA_PROTECTED, color: COL_BLUE },
+    { row:23, col:0,  text: 'PF3=Exit to TSO READY' },
+  ]);
+}
+
+// A simplified, stylized continental-US outline (Line order, X'C1') —
+// recognizable rather than cartographically precise, hand-authored in
+// a 1000x600 world-coordinate box — plus a fan of curved "trajectory"
+// arcs (Arc order, X'C6') from a central origin out past the picture
+// boundary, the classic WOPR "Global Thermonuclear War" display.
+function buildUsaObjectDataWsf() {
+  const COL_WHITE_GDF = 0x07, COL_RED_GDF = 0x02, COL_YELLOW_GDF = 0x06;
+
+  // Clockwise from the Pacific Northwest — Great Lakes notch, New
+  // England bulge, Florida peninsula, Gulf-coast/Mississippi-delta
+  // notch, Texas jutting south, then up the West Coast.
+  const outline = [
+    60, 550,  200, 580,  450, 590,  650, 560,  700, 520,  780, 480,
+    850, 500,  870, 430,  830, 350,  800, 250,  850, 150,  830, 40,
+    760, 120,  650, 180,  550, 130,  450, 160,  400, 40,   300, 150,
+    250, 250,  150, 300,  100, 200,  60, 350,   40, 480,   60, 550,
+  ];
+
+  // Trajectory arcs: origin -> bulge midpoint -> off-screen target,
+  // fanned out in a rough compass spread.
+  const ORIGIN = [500, 300];
+  const trajectories = [
+    [600, 700,   700, 950],   // NNE
+    [850, 600,  1150, 700],   // NE
+    [950, 400,  1300, 350],   // E
+    [850, 50,   1100, -150],  // SE
+    [500, 0,    450, -250],   // S
+    [150, 50,   -150, -100],  // SW
+    [50, 450,   -250, 400],   // W
+    [150, 700,   50, 950],    // NW
+  ];
+
+  const parts = [];
+  parts.push(gdfOrder(0x01, Buffer.concat([gdfHalfwords(2), gdfHalfwords(0, 1000, 0, 600)])));
+
+  parts.push(gdfShortOrder(0x0A, COL_WHITE_GDF));
+  parts.push(gdfOrder(0xC1, gdfHalfwords(...outline)));
+
+  parts.push(gdfShortOrder(0x0A, COL_YELLOW_GDF));
+  parts.push(gdfOrder(0xC2, gdfHalfwords(...ORIGIN))); // launch-site marker
+
+  parts.push(gdfShortOrder(0x0A, COL_RED_GDF));
+  for (const [mx, my, tx, ty] of trajectories) {
+    parts.push(gdfOrder(0xC6, gdfHalfwords(ORIGIN[0], ORIGIN[1], mx, my, tx, ty)));
+  }
+
+  const gdfData = Buffer.concat(parts);
+  const pid = 0x00, flags = 0x03, objtyp = 0x00; // first&last/immediate, Graphics
+  const sfBody = Buffer.concat([Buffer.from([pid, flags, objtyp]), gdfData]);
+  const sfid = Buffer.from([0x0F, 0x0F]); // Object Data (GA23-0059 ch.5)
+  const sfLen = 2 + sfid.length + sfBody.length; // length field counts itself
+  const lenBuf = Buffer.alloc(2); lenBuf.writeUInt16BE(sfLen, 0);
+  return Buffer.concat([Buffer.from([CMD_WSF]), lenBuf, sfid, sfBody]);
+}
+
 function screenTsoCommand(userid = 'DEMO', lastOutput = '') {
   const fields = [
     { row:0,  col:0,  fa: FA_PROTECTED_HIGH, color: COL_WHITE, highlight: HL_INTENS },
@@ -1008,6 +1077,9 @@ function handleConnection(socket) {
           } else if (cmd === 'GDDM') {
             currentScreen = 'gddm'; sendCurrentScreen();
             writeRaw(buildGddmObjectDataWsf());
+          } else if (cmd === 'USA') {
+            currentScreen = 'usa'; sendCurrentScreen();
+            writeRaw(buildUsaObjectDataWsf());
           } else if (cmd === 'WHOAMI' || cmd === 'LISTUSER') {
             state.tsoOutput = `USERID: ${userid}\nSYSTEM: ${SYSNAME}\nGROUPS: SYS1 DEMOGRP\nATTRIBUTES: NONE`;
             currentScreen = 'tsoCmd'; sendCurrentScreen();
@@ -1044,6 +1116,9 @@ function handleConnection(socket) {
           } else if (cmd === 'GDDM') {
             currentScreen = 'gddm'; sendCurrentScreen();
             writeRaw(buildGddmObjectDataWsf());
+          } else if (cmd === 'USA') {
+            currentScreen = 'usa'; sendCurrentScreen();
+            writeRaw(buildUsaObjectDataWsf());
           } else {
             state.tsoOutput = `IKJ56500I COMMAND ${cmd} NOT FOUND`;
             sendCurrentScreen();
@@ -1081,6 +1156,7 @@ function handleConnection(socket) {
         break;
 
       case 'gddm':
+      case 'usa':
         if (aid === AID_PF3 || aid === AID_ENTER) {
           currentScreen = 'ready'; state.readyMsg = ''; sendCurrentScreen();
         }
@@ -1133,6 +1209,7 @@ function handleConnection(socket) {
       case 'sdsf':      ds = screenSDSF();                           break;
       case 'error':     ds = screenError(state.errorCmd);            break;
       case 'gddm':      ds = screenGDDM(userid);                     break;
+      case 'usa':       ds = screenUSA(userid);                      break;
       default:          ds = screenISPF(userid);
     }
 
