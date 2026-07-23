@@ -1,7 +1,8 @@
 # Roadmap
 
 ## Graphics
-- [ ] Full GDDM renderer fidelity: `tn3270/gddm.js` currently decodes a demo-scale subset of the GDF order stream (Comment/picture-boundary, Set Color, Line, Marker, Character String, enough to draw a real labeled chart, see `mock-lpar.js`'s `GDDM` TSO command). Arcs, fillets, images, symbol sets, color-mix modes, and clipping are not implemented. Extending coverage would mean more order-code branches in `decodeGdfStream()` plus matching draw calls in `public/js/gddm.js`'s canvas renderer.
+- [x] Arcs — `tn3270/gddm.js` now decodes Set Arc Parameters (X'22'), three-point Arc (X'C6'), and Full Arc (X'C7') per the GDDM Base Programming Reference (Appendix D), and `public/js/gddm.js` renders circles/ellipses via a canvas transform + circumcircle geometry for the three-point form. `mock-lpar.js`'s `GDDM` demo now exercises both. The "at current position" short forms (X'86'/X'87') are intentionally skipped, same as the existing GCHST-at-current-position handling — this decoder doesn't track current position across orders.
+- [ ] Full GDDM renderer fidelity: `tn3270/gddm.js` still doesn't decode fillets, images, symbol sets, color-mix modes, or clipping. Extending coverage would mean more order-code branches in `decodeGdfStream()` plus matching draw calls in `public/js/gddm.js`'s canvas renderer.
 
 ## Theming
 - [x] Hidden "Barbie" theme easter egg — secret click on the topbar logo flips a full pink/gold palette (terminal + chrome + logo icon), persisted in localStorage. No visible affordance by design.

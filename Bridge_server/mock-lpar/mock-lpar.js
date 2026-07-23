@@ -575,6 +575,20 @@ function buildGddmObjectDataWsf() {
   parts.push(gdfShortOrder(0x0A, COL_GDF_YELLOW));
   parts.push(gdfOrder(0xC2, gdfHalfwords(...markerPoints)));
 
+  // Decorative trend curve (Arc order, X'C6') — a gentle rise from the
+  // NORTH bar top through a point above the midpoint to the EAST bar
+  // top. Default arc parameters (identity — a true circle), since any
+  // 3 non-collinear points already lie on some circle.
+  parts.push(gdfShortOrder(0x0A, COL_NEUTRAL_WHITE));
+  parts.push(gdfOrder(0xC6, gdfHalfwords(175, 480, 425, 570, 675, 580)));
+
+  // Ellipse "badge" around the WEST bar's value label (Set Arc
+  // Parameters X'22' + Full Arc X'C7') — exercises the tilted-ellipse
+  // shape order, not just circles.
+  parts.push(gdfOrder(0x22, gdfHalfwords(60, 20, 0, 0))); // wide, flat ellipse (P=60,Q=20)
+  parts.push(gdfShortOrder(0x0A, COL_GDF_YELLOW));
+  parts.push(gdfOrder(0xC7, Buffer.concat([gdfHalfwords(895, 285), Buffer.from([0x01, 0x00])]))); // center, M=1.0
+
   const gdfData = Buffer.concat(parts);
   const pid = 0x00, flags = 0x03, objtyp = 0x00; // first&last/immediate, Graphics
   const sfBody = Buffer.concat([Buffer.from([pid, flags, objtyp]), gdfData]);
