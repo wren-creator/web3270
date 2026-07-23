@@ -608,6 +608,18 @@ function buildGddmObjectDataWsf() {
   parts.push(gdfShortOrder(0x38, 0x41)); // Set Character Set: user-defined LCID 0x41
   parts.push(gdfOrder(0xC3, Buffer.concat([gdfHalfwords(140, 605), toEbcdic(String(total))])));
 
+  // "Growth" icon — an 8x8 monochrome bitmap (Begin Image X'D1' + 8x
+  // Image Data X'92' + End Image X'93'), an up-arrow, scaled up to
+  // 50x50 world units in the top-right corner. FORMAT must be 0
+  // (1 bit per display point); each row is one Image Data order.
+  const ARROW_ROWS = [0x18, 0x3C, 0x7E, 0xFF, 0x18, 0x18, 0x18, 0x18];
+  parts.push(gdfShortOrder(0x0A, COL_GDF_YELLOW));
+  parts.push(gdfOrder(0xD1, Buffer.concat([
+    gdfHalfwords(940, 550, 0, 8, 8, 50, 50), // x0,y0,FORMAT,WIDTH,DEPTH,IMAGEWIDTH,IMAGEDEPTH
+  ])));
+  for (const row of ARROW_ROWS) parts.push(gdfOrder(0x92, Buffer.from([row])));
+  parts.push(gdfOrder(0x93, Buffer.from([0x00, 0x00])));
+
   const gdfData = Buffer.concat(parts);
   const pid = 0x00, flags = 0x03, objtyp = 0x00; // first&last/immediate, Graphics
   const sfBody = Buffer.concat([Buffer.from([pid, flags, objtyp]), gdfData]);
