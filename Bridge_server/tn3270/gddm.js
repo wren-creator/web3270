@@ -9,17 +9,28 @@
  * layouts below cross-checked against GDDM Base Programming
  * Reference Volume 2, SC33-0332-1, Appendix D).
  *
- * Scope: 9 order types, enough to draw a labeled chart plus circles/
- * arcs/fillets — Comment (picture boundary), Set Color, Line, Marker,
- * Character String, Set Arc Parameters, Arc, Full Arc, Fillet. Images,
- * symbol sets, color-mix modes, and clipping are NOT implemented —
- * this is a demo-scale renderer, not a full GDDM client. Unrecognized
- * orders are skipped rather than treated as errors, since a real GDF
- * stream may use orders outside this subset. The "at current
- * position" short forms of orders (e.g. X'86' Arc, X'87' Full Arc,
- * X'85' Fillet) are skipped rather than guessed at, same as the
- * existing GCHST-at-current-position handling — this decoder does
- * not track current position across orders.
+ * Scope: 10 order types, enough to draw a labeled chart plus circles/
+ * arcs/fillets and non-default character sets — Comment (picture
+ * boundary), Set Color, Line, Marker, Character String, Set Arc
+ * Parameters, Arc, Full Arc, Fillet, Character Set. Images, color-mix
+ * modes, and clipping are NOT implemented — this is a demo-scale
+ * renderer, not a full GDDM client. Unrecognized orders are skipped
+ * rather than treated as errors, since a real GDF stream may use
+ * orders outside this subset. The "at current position" short forms
+ * of orders (e.g. X'86' Arc, X'87' Full Arc, X'85' Fillet) are
+ * skipped rather than guessed at, same as the existing
+ * GCHST-at-current-position handling — this decoder does not track
+ * current position across orders.
+ *
+ * Character Set (X'38') doesn't carry symbol-set glyph data itself —
+ * per the 3270 Data Stream Programmer's Reference (GA23-0059), the
+ * Object Data structured field's OBJTYP only defines Graphics (X'00')
+ * and Image (X'01'); there is no wire format for transmitting a
+ * symbol set. In real GDDM a symbol set is a resource the terminal
+ * already has (like a built-in font); Character Set just selects one
+ * by LCID. This decoder mirrors that: it passes the LCID and the
+ * decoded character string through, and leaves glyph lookup to the
+ * renderer (see public/js/gddm.js's VECTOR_SYMBOL_SETS).
  */
 
 import * as Ebcdic from './ebcdic.js';
@@ -36,6 +47,11 @@ const ORDER_ARC_PARAMS = 0x22;                          // GSAP  — Set Arc Par
 const ORDER_ARC         = 0xC6, ORDER_ARC_CP      = 0x86; // GARC  — three-point arc
 const ORDER_FULL_ARC    = 0xC7, ORDER_FULL_ARC_CP = 0x87; // GFARC — full circle/ellipse
 const ORDER_FILLET      = 0xC5, ORDER_FILLET_CP    = 0x85; // GFLT  — curved fillet (polyfillet)
+const ORDER_CHARSET     = 0x38;                             // GSCS  — Set Character Set, short format
+
+// Character Set LCID values (GDDM Base Programming Reference, Appendix D,
+// "Character set"): X'00' Default, X'01' APL, X'41'-X'DF' user-defined.
+const CHARSET_DEFAULT = 0x00;
 
 // Default Arc Parameters (P,Q,R,S): P=Q, R=S=0 maps the unit circle to
 // itself — a circle, per the manual's "A circle results if P=Q and
@@ -84,6 +100,7 @@ export function decodeGdfStream(buf) {
   const primitives = [];
   let color = COLOR_NAME[0x00];
   let arcParams = { ...DEFAULT_ARC_PARAMS };
+  let charSet = CHARSET_DEFAULT;
 
   let i = 0;
   while (i < buf.length) {
@@ -92,6 +109,7 @@ export function decodeGdfStream(buf) {
     if (isShortFormat(code)) {
       const operand = buf[i + 1];
       if (code === ORDER_COLOR) color = COLOR_NAME[operand] || color;
+      else if (code === ORDER_CHARSET) charSet = operand;
       i += 2;
       continue;
     }
@@ -119,7 +137,8 @@ export function decodeGdfStream(buf) {
       if (code === ORDER_CHARSTR) {
         const x = operand.readInt16BE(0), y = operand.readInt16BE(2);
         const text = toAscii(operand.slice(4));
-        primitives.push({ type: 'text', x, y, text, color });
+        if (charSet === CHARSET_DEFAULT) primitives.push({ type: 'text', x, y, text, color });
+        else primitives.push({ type: 'vtext', x, y, text, charSet, color });
       } else {
         // At-current-position form has no coordinate — nothing to anchor
         // it to without tracking current position, which this demo-scale
@@ -164,8 +183,8 @@ export function decodeGdfStream(buf) {
     } else if (code === ORDER_FILLET_CP) {
       // At-current-position form — skipped, see header.
     }
-    // Unrecognized normal-format orders (images, symbol sets, color-mix,
-    // clipping, etc.) are intentionally skipped — out of scope, see header.
+    // Unrecognized normal-format orders (images, color-mix, clipping,
+    // etc.) are intentionally skipped — out of scope, see header.
 
     i += 2 + len;
   }
