@@ -21,3 +21,7 @@ Feedback from the 2026-07-23 company meeting, ahead of opening the tool up beyon
 
 ## Dataset Export
 - [ ] Excel (.xlsx) export for dataset search/recon results, alongside the existing CSV export (`reconExportCsv()` in `public/js/recon.js`). Covers both the Dataset Recon Scanner output and general dataset search, so results can be handed off in the format most teams actually open.
+
+## Background Sessions
+- [ ] Detached/background sessions — let a TN3270/TN5250 session keep running server-side after the browser tab that started it closes, instead of tearing down when the WebSocket drops (today a session's lifetime is tied 1:1 to its browser WebSocket — see the `sessions` Map in `server.js` and `Tn3270Session` in `tn3270/session.js`). Useful for long-running unattended work (batch monitoring, recon scans) that shouldn't die just because someone closed a laptop lid.
+- [ ] Status dashboard popup listing all running sessions (host, profile, connected duration, state) with a kill action per session, so an orphaned/background session can be terminated without restarting the whole bridge.
