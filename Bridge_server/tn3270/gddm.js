@@ -5,15 +5,21 @@
  * inside a 3270 Object Data/Picture structured field (see
  * tn3270/session.js _processWriteStructuredField, sfId 0x0F) when
  * OBJTYP is Graphics. Per the GDDM Base Application Programming
- * Reference, ch.10 "GDF order descriptions".
+ * Reference, ch.10 "GDF order descriptions" (order codes and operand
+ * layouts below cross-checked against GDDM Base Programming
+ * Reference Volume 2, SC33-0332-1, Appendix D).
  *
- * Scope: 5 order types, enough to draw a labeled chart — Comment
- * (picture boundary), Set Color, Line, Marker, Character String.
- * Arcs, fillets, images, symbol sets, color-mix modes, and clipping
- * are NOT implemented — this is a demo-scale renderer, not a full
- * GDDM client. Unrecognized orders are skipped rather than treated
- * as errors, since a real GDF stream may use orders outside this
- * subset.
+ * Scope: 8 order types, enough to draw a labeled chart plus circles/
+ * arcs — Comment (picture boundary), Set Color, Line, Marker,
+ * Character String, Set Arc Parameters, Arc, Full Arc. Fillets,
+ * images, symbol sets, color-mix modes, and clipping are NOT
+ * implemented — this is a demo-scale renderer, not a full GDDM
+ * client. Unrecognized orders are skipped rather than treated as
+ * errors, since a real GDF stream may use orders outside this
+ * subset. The "at current position" short forms of orders (e.g.
+ * X'86' Arc, X'87' Full Arc) are skipped rather than guessed at,
+ * same as the existing GCHST-at-current-position handling — this
+ * decoder does not track current position across orders.
  */
 
 import * as Ebcdic from './ebcdic.js';
@@ -26,6 +32,20 @@ const ORDER_COLOR   = 0x0A; // GSCOL — short format
 const ORDER_LINE     = 0xC1, ORDER_LINE_CP     = 0x81; // GLINE
 const ORDER_MARKER   = 0xC2, ORDER_MARKER_CP   = 0x82; // GMRK
 const ORDER_CHARSTR  = 0xC3, ORDER_CHARSTR_CP  = 0x83; // GCHST
+const ORDER_ARC_PARAMS = 0x22;                          // GSAP  — Set Arc Parameters
+const ORDER_ARC         = 0xC6, ORDER_ARC_CP      = 0x86; // GARC  — three-point arc
+const ORDER_FULL_ARC    = 0xC7, ORDER_FULL_ARC_CP = 0x87; // GFARC — full circle/ellipse
+
+// Default Arc Parameters (P,Q,R,S): P=Q, R=S=0 maps the unit circle to
+// itself — a circle, per the manual's "A circle results if P=Q and
+// R=S=0" (Appendix D, "Arc parameters").
+const DEFAULT_ARC_PARAMS = { P: 1, Q: 1, R: 0, S: 0 };
+
+// The Full Arc order's Multiplier is an unsigned 8.8 fixed-point value
+// — high byte is the integer part, low byte is the fractional part.
+function readMultiplier(buf, offset) {
+  return buf[offset] + buf[offset + 1] / 256;
+}
 
 // Set Color order palette (GDDM Base Application Programming Reference
 // ch.10, "Color" section) — a real, documented palette, not invented.
@@ -62,6 +82,7 @@ export function decodeGdfStream(buf) {
   let boundary = null;
   const primitives = [];
   let color = COLOR_NAME[0x00];
+  let arcParams = { ...DEFAULT_ARC_PARAMS };
 
   let i = 0;
   while (i < buf.length) {
@@ -103,9 +124,38 @@ export function decodeGdfStream(buf) {
         // it to without tracking current position, which this demo-scale
         // decoder doesn't model. Skip rather than guess a position.
       }
+    } else if (code === ORDER_ARC_PARAMS) {
+      // P,Q,R,S: linear map from the unit circle to the target ellipse
+      // (x'=Px+Ry, y'=Sx+Qy). Circle when P=Q, R=S=0.
+      if (operand.length >= 8) {
+        arcParams = {
+          P: operand.readInt16BE(0), Q: operand.readInt16BE(2),
+          R: operand.readInt16BE(4), S: operand.readInt16BE(6),
+        };
+      }
+    } else if (code === ORDER_ARC) {
+      // Three-point arc: start(x0,y0), a point along the arc(x1,y1), end(x2,y2).
+      if (operand.length >= 12) {
+        const p0 = [operand.readInt16BE(0), operand.readInt16BE(2)];
+        const p1 = [operand.readInt16BE(4), operand.readInt16BE(6)];
+        const p2 = [operand.readInt16BE(8), operand.readInt16BE(10)];
+        primitives.push({ type: 'arc3', p0, p1, p2, arcParams, color });
+      }
+    } else if (code === ORDER_ARC_CP) {
+      // At-current-position form — skipped, see header.
+    } else if (code === ORDER_FULL_ARC) {
+      // Full circle/ellipse: center(x,y) + Multiplier scaling the
+      // current arc-parameter axes (major/minor axis lengths = M*P, M*Q).
+      if (operand.length >= 6) {
+        const cx = operand.readInt16BE(0), cy = operand.readInt16BE(2);
+        const scale = readMultiplier(operand, 4);
+        primitives.push({ type: 'fullArc', cx, cy, scale, arcParams, color });
+      }
+    } else if (code === ORDER_FULL_ARC_CP) {
+      // At-current-position form — skipped, see header.
     }
-    // Unrecognized normal-format orders (arcs, fillets, images, symbol
-    // sets, etc.) are intentionally skipped — out of scope, see header.
+    // Unrecognized normal-format orders (fillets, images, symbol sets,
+    // etc.) are intentionally skipped — out of scope, see header.
 
     i += 2 + len;
   }
