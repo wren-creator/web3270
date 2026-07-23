@@ -6,3 +6,15 @@
 ## Theming
 - [x] Hidden "Barbie" theme easter egg — secret click on the topbar logo flips a full pink/gold palette (terminal + chrome + logo icon), persisted in localStorage. No visible affordance by design.
 - [ ] Company/corporate theme support — per-deployment logo + brand colors. Should extend the existing visible theme system (`public/js/settings.js` `THEMES` object + `.theme-swatches` UI in `tn3270-client.html`) rather than build a new mechanism: add a named entry + a swatch, same as `green`/`blue`/`amber`/`white`/`teal`. Needs a swappable logo asset (the topbar SVG logo colors were decoupled to CSS vars — `--logo-bg`/`--logo-ring`/`--logo-ring-light` in `terminal.css` — as groundwork for this).
+
+## Session Profiles & Access Control
+Feedback from the 2026-07-23 company meeting, ahead of opening the tool up beyond the original one-group user base.
+- [ ] Rename "LPAR PROFILES" to "session profiles" throughout the project. Matches the term users actually recognize; "LPAR" is mainframe-partition jargon that doesn't map to what the feature does for most users. Touches `config.js`, `public/tn3270-client.html`, `public/js/walkthrough.js`, `public/js/profiles.js`, `public/js/xfer.js` (plus their `backup-files/` counterparts).
+- [ ] Private macro library — as the user base grows past the original single group, some users need macros that aren't shared/visible to the whole group.
+- [ ] Role-based access control, gated on a group-admin role, covering:
+  - Session profile management (view/edit) and macro edit/delete permissions.
+  - **Developer/maintainer** — full access to everything.
+  - **Security** — access to security tools, including entering the security-tools password.
+  - **Customer** — basic views (scope still TBD), can create personal macros but cannot edit or delete other users' macros.
+  - **System-admin** — no access to security tools, but the password field/prompt is still present in their view.
+- [ ] VBScript-to-macro converter — a tool to convert an existing VBScript macro into the macro library's JSON format (see `state.macros` step/name/description shape in `public/js/macros.js`). Lets users bring macros over from legacy TN3270 emulators instead of rebuilding them by hand.
