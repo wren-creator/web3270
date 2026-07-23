@@ -9,7 +9,7 @@
 
 ## Session Profiles & Access Control
 Feedback from the 2026-07-23 company meeting, ahead of opening the tool up beyond the original one-group user base.
-- [ ] Rename "LPAR PROFILES" to "session profiles" throughout the project. Matches the term users actually recognize; "LPAR" is mainframe-partition jargon that doesn't map to what the feature does for most users. Touches `config.js`, `public/tn3270-client.html`, `public/js/walkthrough.js`, `public/js/profiles.js`, `public/js/xfer.js` (plus their `backup-files/` counterparts).
+- [x] Rename "LPAR PROFILES" to "session profiles" throughout the project. Matches the term users actually recognize; "LPAR" is mainframe-partition jargon that doesn't map to what the feature does for most users. Renamed UI text, JS state/identifiers, and CSS classes across `config.js`, `public/tn3270-client.html`, `public/js/walkthrough.js`, `public/js/profiles.js`, `public/js/xfer.js`, `public/js/state.js`, and `public/css/terminal.css`. Left `lpars.txt`/`lpars.shipped.txt` and `loadLparFile()`/`parseLparFile()` unchanged so existing deployments don't need a migration step.
 - [ ] Private macro library — as the user base grows past the original single group, some users need macros that aren't shared/visible to the whole group.
 - [ ] Role-based access control, gated on a group-admin role, covering:
   - Session profile management (view/edit) and macro edit/delete permissions.

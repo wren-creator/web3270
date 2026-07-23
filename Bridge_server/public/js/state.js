@@ -71,7 +71,7 @@ export const state = {
   // Profiles / macros
   macros:            [],
   editingProfileId:  null,
-  LPAR_PROFILES:     [],
+  SESSION_PROFILES:  [],
 
   // File transfer
   xferFileData:      null,

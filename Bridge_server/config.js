@@ -71,7 +71,7 @@ function parseLparFile(filePath, source) {
     .filter(Boolean);
 }
 
-// ── Load LPAR profiles — merges shipped defaults + user file ──────
+// ── Load session profiles — merges shipped defaults + user file ──
 // lpars.shipped.txt: tracked in git, built-in demo connections
 // lpars.txt:         gitignored, user's private connections
 // User entries with the same id override shipped entries.
@@ -84,7 +84,7 @@ function loadLparFile() {
   const user    = parseLparFile(userPath,    'user');
 
   if (shipped.length === 0 && user.length === 0) {
-    console.warn('[config] No LPAR profiles found in lpars.shipped.txt or lpars.txt');
+    console.warn('[config] No session profiles found in lpars.shipped.txt or lpars.txt');
   }
 
   // User entries override shipped entries with the same id
