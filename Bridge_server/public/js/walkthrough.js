@@ -20,7 +20,7 @@ const _WALKTHROUGHS = [
     steps: [
       {
         title: 'Open the connection menu',
-        body:  'Click ⊕ Connect to LPAR in the top-right status area. A dropdown shows saved profiles. For a new system choose "New session / manual connect…" at the bottom.',
+        body:  'Click ⊕ Connect in the top-right status area. A dropdown shows saved profiles. For a new system choose "New session / manual connect…" at the bottom.',
         highlight: 'sessionDropdownBtn',
         autoFn: 'toggleSessionDropdown',
         autoLabel: 'Open menu for me',
@@ -67,7 +67,7 @@ const _WALKTHROUGHS = [
       },
       {
         title: 'Connect the new tab',
-        body:  'With the new tab active, click ⊕ Connect to LPAR and choose a profile (or enter details manually). You can connect two tabs to the same LPAR — they negotiate separate LU bindings.',
+        body:  'With the new tab active, click ⊕ Connect and choose a profile (or enter details manually). You can connect two tabs to the same LPAR — they negotiate separate LU bindings.',
         highlight: 'sessionDropdownBtn',
         autoFn: null,
       },
