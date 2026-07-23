@@ -15,7 +15,7 @@ const _WALKTHROUGHS = [
   {
     id:       'first-connection',
     category: 'general',
-    title:    'First Connection to an LPAR',
+    title:    'First Connection to a Session',
     desc:     'Add a session profile and connect to a mainframe for the first time.',
     steps: [
       {
