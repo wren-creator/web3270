@@ -62,49 +62,49 @@ export function connectManual() {
   openSession({ id: name, host, port, name, luName, type, protocol, model, tls, tn3270e, codepage: 37 });
 }
 
-// ── LPAR profiles ─────────────────────────────────────────────────────
+// ── Session profiles ──────────────────────────────────────────────────
 export async function loadProfiles() {
   try {
-    if (window.location.protocol === 'file:') { state.LPAR_PROFILES = []; }
+    if (window.location.protocol === 'file:') { state.SESSION_PROFILES = []; }
     else {
       const res = await fetch('/api/profiles');
       if (!res.ok) throw new Error('HTTP ' + res.status);
-      state.LPAR_PROFILES = await res.json();
+      state.SESSION_PROFILES = await res.json();
     }
-    renderLparDropdown(); renderSidebarLpars(); renderModalProfiles();
+    renderSessionDropdown(); renderSidebarSessions(); renderModalProfiles();
   } catch (err) { console.warn('Could not load profiles:', err.message); }
 }
 
-function renderLparDropdown() {
-  const container = document.getElementById('lparMenuItems');
+function renderSessionDropdown() {
+  const container = document.getElementById('sessionMenuItems');
   if (!container) return;
   const esc = window.esc ?? (s => String(s));
   container.innerHTML = '';
-  state.LPAR_PROFILES.forEach(p => {
-    const badge = p.source === 'shipped' ? ' <span class="lpar-builtin-badge">built-in</span>' : '';
+  state.SESSION_PROFILES.forEach(p => {
+    const badge = p.source === 'shipped' ? ' <span class="session-builtin-badge">built-in</span>' : '';
     const item = document.createElement('div');
-    item.className = 'lpar-menu-item';
-    item.innerHTML = `<div class="lpar-menu-dot"></div><div class="lpar-menu-info"><div class="lpar-menu-name">${esc(p.name||p.id)}${badge}</div><div class="lpar-menu-meta">${esc(p.host)} &middot; :${p.port} &middot; ${esc(p.type||'TSO')} &nbsp;<span class="lpar-menu-status-text offline">&#9675; Offline</span></div></div><div class="lpar-menu-connect">Connect</div>`;
-    item.addEventListener('click', () => connectLpar(p.id));
+    item.className = 'session-menu-item';
+    item.innerHTML = `<div class="session-menu-dot"></div><div class="session-menu-info"><div class="session-menu-name">${esc(p.name||p.id)}${badge}</div><div class="session-menu-meta">${esc(p.host)} &middot; :${p.port} &middot; ${esc(p.type||'TSO')} &nbsp;<span class="session-menu-status-text offline">&#9675; Offline</span></div></div><div class="session-menu-connect">Connect</div>`;
+    item.addEventListener('click', () => connectSession(p.id));
     container.appendChild(item);
   });
 }
 
-function renderSidebarLpars() {
-  const container = document.getElementById('sidebarLparList');
+function renderSidebarSessions() {
+  const container = document.getElementById('sidebarSessionList');
   if (!container) return;
   const esc = window.esc ?? (s => String(s));
   container.innerHTML = '';
-  state.LPAR_PROFILES.forEach(p => {
+  state.SESSION_PROFILES.forEach(p => {
     const shipped = p.source === 'shipped';
-    const badge = shipped ? ' <span class="lpar-builtin-badge">built-in</span>' : '';
-    const editBtnHtml = shipped ? '' : '<button class="lpar-edit-btn" title="Edit">&#x270E;</button>';
-    const deleteBtnHtml = shipped ? '' : '<button class="lpar-delete-btn" title="Delete">&#128465;</button>';
-    const item = document.createElement('div'); item.className = 'lpar-item';
-    item.innerHTML = `<div class="lpar-dot"></div><div class="lpar-name">${esc(p.name||p.id)}${badge}</div><div class="lpar-type">${esc(p.type||'TSO')}</div>${editBtnHtml}${deleteBtnHtml}`;
-    if (!shipped) item.querySelector('.lpar-edit-btn').addEventListener('click', e => { e.stopPropagation(); editProfile(p.id); });
-    if (!shipped) item.querySelector('.lpar-delete-btn').addEventListener('click', e => { e.stopPropagation(); deleteProfile(p.id, p.name||p.id); });
-    item.addEventListener('click', () => connectLpar(p.id));
+    const badge = shipped ? ' <span class="session-builtin-badge">built-in</span>' : '';
+    const editBtnHtml = shipped ? '' : '<button class="session-edit-btn" title="Edit">&#x270E;</button>';
+    const deleteBtnHtml = shipped ? '' : '<button class="session-delete-btn" title="Delete">&#128465;</button>';
+    const item = document.createElement('div'); item.className = 'session-item';
+    item.innerHTML = `<div class="session-dot"></div><div class="session-name">${esc(p.name||p.id)}${badge}</div><div class="session-type">${esc(p.type||'TSO')}</div>${editBtnHtml}${deleteBtnHtml}`;
+    if (!shipped) item.querySelector('.session-edit-btn').addEventListener('click', e => { e.stopPropagation(); editProfile(p.id); });
+    if (!shipped) item.querySelector('.session-delete-btn').addEventListener('click', e => { e.stopPropagation(); deleteProfile(p.id, p.name||p.id); });
+    item.addEventListener('click', () => connectSession(p.id));
     container.appendChild(item);
   });
 }
@@ -114,22 +114,22 @@ function renderModalProfiles() {
   if (!container) return;
   const esc = window.esc ?? (s => String(s));
   container.innerHTML = '';
-  state.LPAR_PROFILES.forEach(p => {
+  state.SESSION_PROFILES.forEach(p => {
     const shipped = p.source === 'shipped';
-    const badge = shipped ? ' <span class="lpar-builtin-badge">built-in</span>' : '';
+    const badge = shipped ? ' <span class="session-builtin-badge">built-in</span>' : '';
     const editBtnHtml = shipped ? '' : '<button class="profile-edit-btn" title="Edit">&#x270E;</button>';
     const deleteBtnHtml = shipped ? '' : '<button class="profile-delete-btn" title="Delete">&#128465;</button>';
     const item = document.createElement('div'); item.className = 'profile-item';
     item.innerHTML = `<div style="flex:1"><div class="profile-name">${esc(p.name||p.id)}${badge}</div><div class="profile-host">${esc(p.host)}:${p.port}${p.tls?' &middot; TLS':''} &middot; ${esc(p.type||'TSO')}</div></div>${editBtnHtml}${deleteBtnHtml}<button class="profile-connect-btn">Connect</button>`;
     if (!shipped) item.querySelector('.profile-edit-btn').addEventListener('click', e => { e.stopPropagation(); editProfile(p.id); });
     if (!shipped) item.querySelector('.profile-delete-btn').addEventListener('click', e => { e.stopPropagation(); deleteProfile(p.id, p.name||p.id); });
-    item.querySelector('.profile-connect-btn').addEventListener('click', () => { connectLpar(p.id); hideConnectModal(); });
+    item.querySelector('.profile-connect-btn').addEventListener('click', () => { connectSession(p.id); hideConnectModal(); });
     container.appendChild(item);
   });
 }
 
 function editProfile(profileId) {
-  const p = state.LPAR_PROFILES.find(p => p.id === profileId);
+  const p = state.SESSION_PROFILES.find(p => p.id === profileId);
   if (!p) return;
   showConnectModal(); state.editingProfileId = profileId;
   document.getElementById('connHost').value  = p.host   || '';
@@ -183,21 +183,21 @@ export async function saveProfileFromForm() {
   } catch (err) { btn.textContent = 'Save Profile'; btn.disabled = false; showBridgeError('Could not save profile: ' + err.message); }
 }
 
-export function toggleLparDropdown() {
-  const btn  = document.getElementById('lparDropdownBtn');
-  const menu = document.getElementById('lparDropdownMenu');
+export function toggleSessionDropdown() {
+  const btn  = document.getElementById('sessionDropdownBtn');
+  const menu = document.getElementById('sessionDropdownMenu');
   const open = menu.classList.toggle('open');
   btn.classList.toggle('open', open);
 }
-function closeLparDropdown() {
-  document.getElementById('lparDropdownBtn').classList.remove('open');
-  document.getElementById('lparDropdownMenu').classList.remove('open');
+function closeSessionDropdown() {
+  document.getElementById('sessionDropdownBtn').classList.remove('open');
+  document.getElementById('sessionDropdownMenu').classList.remove('open');
 }
-document.addEventListener('click', e => { if (!document.getElementById('lparDropdown').contains(e.target)) closeLparDropdown(); });
+document.addEventListener('click', e => { if (!document.getElementById('sessionDropdown').contains(e.target)) closeSessionDropdown(); });
 
-function connectLpar(name) {
-  closeLparDropdown();
-  const profile = state.LPAR_PROFILES.find(p => p.id === name);
+function connectSession(name) {
+  closeSessionDropdown();
+  const profile = state.SESSION_PROFILES.find(p => p.id === name);
   if (!profile) return;
   openSession(profile);
 }
@@ -368,6 +368,6 @@ export function handleBridgeMsg(sid, msg) {
 
 Object.assign(window, {
   showConnectModal, hideConnectModal, connectManual, onConnProtocolChange,
-  loadProfiles, saveProfileFromForm, toggleLparDropdown,
+  loadProfiles, saveProfileFromForm, toggleSessionDropdown,
   openSession, handleBridgeMsg,
 });
