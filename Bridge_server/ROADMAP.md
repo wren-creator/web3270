@@ -18,3 +18,6 @@ Feedback from the 2026-07-23 company meeting, ahead of opening the tool up beyon
   - **Customer** — basic views (scope still TBD), can create personal macros but cannot edit or delete other users' macros.
   - **System-admin** — no access to security tools, but the password field/prompt is still present in their view.
 - [ ] VBScript-to-macro converter — a tool to convert an existing VBScript macro into the macro library's JSON format (see `state.macros` step/name/description shape in `public/js/macros.js`). Lets users bring macros over from legacy TN3270 emulators instead of rebuilding them by hand.
+
+## Dataset Export
+- [ ] Excel (.xlsx) export for dataset search/recon results, alongside the existing CSV export (`reconExportCsv()` in `public/js/recon.js`). Covers both the Dataset Recon Scanner output and general dataset search, so results can be handed off in the format most teams actually open.
