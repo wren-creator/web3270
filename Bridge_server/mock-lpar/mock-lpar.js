@@ -740,15 +740,20 @@ function buildUsaObjectDataWsf() {
   // Sector dividers splitting the outline into rough NORAD-style zones
   // (7 numbered regions, west-to-east across a north band, a large
   // central sector, and an east-west split across a south band).
+  // Every endpoint below is verified inside the outline polygon
+  // (point-in-polygon check) — two originally sat a few units outside
+  // it (26|25's and 20|21's starting points), a stray-endpoint bug
+  // caught while point-in-polygon-testing a since-discarded coastline
+  // experiment against the same technique.
   const dividers = [
-    [260, 560,  280, 320],  // 26 | 25
+    [260, 540,  280, 320],  // 26 | 25
     [470, 555,  440, 320],  // 25 | 24
     [760, 440,  660, 340],  // 24 | 22
     [280, 320,  330, 190],  // north band | central (27), west edge
     [660, 340,  670, 220],  // north band | central (27), east edge
     [330, 190,  360, 70],   // central (27) | south band, west edge
     [670, 220,  660, 80],   // central (27) | south band, east edge
-    [520, 40,   550, 190],  // 20 | 21
+    [520, 65,   550, 190],  // 20 | 21
   ];
 
   // Zone numbers, positioned inside each divider-bounded region.
