@@ -9,19 +9,33 @@
  * layouts below cross-checked against GDDM Base Programming
  * Reference Volume 2, SC33-0332-1, Appendix D).
  *
- * Scope: 13 order types, enough to draw a labeled chart plus circles/
- * arcs/fillets, non-default character sets, and monochrome images —
- * Comment (picture boundary), Set Color, Line, Marker, Character
- * String, Set Arc Parameters, Arc, Full Arc, Fillet, Character Set,
- * Begin Image, Image Data, End Image. Color-mix modes and clipping
- * are NOT implemented — this is a demo-scale renderer, not a full
- * GDDM client. Unrecognized orders are skipped rather than treated as
+ * Scope: 14 order types, enough to draw a labeled chart plus circles/
+ * arcs/fillets, non-default character sets, monochrome images, and
+ * color-mix modes — Comment (picture boundary), Set Color, Set Color
+ * Mix, Line, Marker, Character String, Set Arc Parameters, Arc, Full
+ * Arc, Fillet, Character Set, Begin Image, Image Data, End Image.
+ * This is a demo-scale renderer, not a full GDDM client, but the order
+ * subset above is the complete non-segment, non-shading-pattern GDF
+ * order set. Unrecognized orders are skipped rather than treated as
  * errors, since a real GDF stream may use orders outside this subset.
  * The "at current position" short forms of orders (e.g. X'86' Arc,
  * X'87' Full Arc, X'85' Fillet, X'91' Begin Image) are skipped rather
  * than guessed at, same as the existing GCHST-at-current-position
  * handling — this decoder does not track current position across
  * orders.
+ *
+ * Clipping is deliberately NOT implemented, and can't be: per the
+ * AS/400 GDDM Reference (SC41-3718-00) Appendix B, "GDF Order
+ * Descriptions" is an alphabetical list running Arc, Set Arc
+ * Parameters, Area, Area End, Character*, Color*, Comment, Fillet,
+ * Line*, Marker*, Pattern, Segment*, Set Tag — there is no Clip order
+ * between "Character Shear" and "Color" where one would sort. GSCLP
+ * ("Enable and Disable Clipping") is a host-side GDDM API call that
+ * controls what the *mainframe* includes when it generates the GDF
+ * stream; clipping already happened before any bytes reach this
+ * decoder. There is nothing on the wire for a terminal-side decoder to
+ * act on, the same shape of gap as Character Set (X'38') having no
+ * wire format for symbol-set glyph data.
  *
  * Character Set (X'38') doesn't carry symbol-set glyph data itself —
  * per the 3270 Data Stream Programmer's Reference (GA23-0059), the
@@ -41,6 +55,7 @@ const toAscii = buf => Ebcdic.toAscii(Buffer.isBuffer(buf) ? buf : Buffer.from(b
 
 const ORDER_COMMENT = 0x01; // GCOMT
 const ORDER_COLOR   = 0x0A; // GSCOL — short format
+const ORDER_COLOR_MIX = 0x0C; // GSMIX — Set Color Mix, short format
 const ORDER_LINE     = 0xC1, ORDER_LINE_CP     = 0x81; // GLINE
 const ORDER_MARKER   = 0xC2, ORDER_MARKER_CP   = 0x82; // GMRK
 const ORDER_CHARSTR  = 0xC3, ORDER_CHARSTR_CP  = 0x83; // GCHST
@@ -76,6 +91,16 @@ const COLOR_NAME = {
   0x08: 'background',
 };
 
+// Set Color Mix order (X'0C') MODE values, per the AS/400 GDDM
+// Reference's "Color Mix Order" (Appendix B) and "GSMIX–Set Current
+// Color-Mixing Mode" (ch.2): controls how a new primitive's set bits
+// combine with whatever is already drawn underneath. Mode 0 (default)
+// behaves the same as mode 2 (overpaint), per the manual.
+const MIX_MODE_NAME = {
+  0x00: 'default', 0x01: 'mix', 0x02: 'overpaint',
+  0x03: 'underpaint', 0x04: 'xor',
+};
+
 // Is `code` a short-format order? (first nibble < 8, second nibble >= 8 —
 // same rule documented for the Wire Inspector's structured-field work.)
 function isShortFormat(code) {
@@ -103,6 +128,7 @@ export function decodeGdfStream(buf) {
   let boundary = null;
   const primitives = [];
   let color = COLOR_NAME[0x00];
+  let mixMode = MIX_MODE_NAME[0x00];
   let arcParams = { ...DEFAULT_ARC_PARAMS };
   let charSet = CHARSET_DEFAULT;
   let buildingImage = null; // { x0, y0, width, depth, imageWidth, imageDepth, rows, color } while between Begin/End Image
@@ -114,6 +140,7 @@ export function decodeGdfStream(buf) {
     if (isShortFormat(code)) {
       const operand = buf[i + 1];
       if (code === ORDER_COLOR) color = COLOR_NAME[operand] || color;
+      else if (code === ORDER_COLOR_MIX) mixMode = MIX_MODE_NAME[operand] || mixMode;
       else if (code === ORDER_CHARSET) charSet = operand;
       i += 2;
       continue;
@@ -134,16 +161,16 @@ export function decodeGdfStream(buf) {
       }
     } else if (code === ORDER_LINE || code === ORDER_LINE_CP) {
       const points = readCoordPairs(operand);
-      if (points.length) primitives.push({ type: 'line', points, color });
+      if (points.length) primitives.push({ type: 'line', points, color, mixMode });
     } else if (code === ORDER_MARKER || code === ORDER_MARKER_CP) {
       const points = readCoordPairs(operand);
-      if (points.length) primitives.push({ type: 'marker', points, color });
+      if (points.length) primitives.push({ type: 'marker', points, color, mixMode });
     } else if (code === ORDER_CHARSTR || code === ORDER_CHARSTR_CP) {
       if (code === ORDER_CHARSTR) {
         const x = operand.readInt16BE(0), y = operand.readInt16BE(2);
         const text = toAscii(operand.slice(4));
-        if (charSet === CHARSET_DEFAULT) primitives.push({ type: 'text', x, y, text, color });
-        else primitives.push({ type: 'vtext', x, y, text, charSet, color });
+        if (charSet === CHARSET_DEFAULT) primitives.push({ type: 'text', x, y, text, color, mixMode });
+        else primitives.push({ type: 'vtext', x, y, text, charSet, color, mixMode });
       } else {
         // At-current-position form has no coordinate — nothing to anchor
         // it to without tracking current position, which this demo-scale
@@ -164,7 +191,7 @@ export function decodeGdfStream(buf) {
         const p0 = [operand.readInt16BE(0), operand.readInt16BE(2)];
         const p1 = [operand.readInt16BE(4), operand.readInt16BE(6)];
         const p2 = [operand.readInt16BE(8), operand.readInt16BE(10)];
-        primitives.push({ type: 'arc3', p0, p1, p2, arcParams, color });
+        primitives.push({ type: 'arc3', p0, p1, p2, arcParams, color, mixMode });
       }
     } else if (code === ORDER_ARC_CP) {
       // At-current-position form — skipped, see header.
@@ -174,7 +201,7 @@ export function decodeGdfStream(buf) {
       if (operand.length >= 6) {
         const cx = operand.readInt16BE(0), cy = operand.readInt16BE(2);
         const scale = readMultiplier(operand, 4);
-        primitives.push({ type: 'fullArc', cx, cy, scale, arcParams, color });
+        primitives.push({ type: 'fullArc', cx, cy, scale, arcParams, color, mixMode });
       }
     } else if (code === ORDER_FULL_ARC_CP) {
       // At-current-position form — skipped, see header.
@@ -184,7 +211,7 @@ export function decodeGdfStream(buf) {
       // endpoints and to any intermediate lines at their midpoints
       // (2 points is the special case that degenerates to a straight line).
       const points = readCoordPairs(operand);
-      if (points.length >= 2) primitives.push({ type: 'fillet', points, color });
+      if (points.length >= 2) primitives.push({ type: 'fillet', points, color, mixMode });
     } else if (code === ORDER_FILLET_CP) {
       // At-current-position form — skipped, see header.
     } else if (code === ORDER_IMAGE_BEGIN) {
@@ -202,7 +229,7 @@ export function decodeGdfStream(buf) {
             x0, y0, width, depth,
             imageWidth: hasScale ? operand.readInt16BE(10) : width,
             imageDepth: hasScale ? operand.readInt16BE(12) : depth,
-            rows: [], color,
+            rows: [], color, mixMode,
           };
         }
       }
@@ -224,8 +251,8 @@ export function decodeGdfStream(buf) {
         buildingImage = null;
       }
     }
-    // Unrecognized normal-format orders (color-mix, clipping, etc.) are
-    // intentionally skipped — out of scope, see header.
+    // Unrecognized normal-format orders (Area, Segment, Pattern, etc.)
+    // are intentionally skipped — out of scope, see header.
 
     i += 2 + len;
   }

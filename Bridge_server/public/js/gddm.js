@@ -2,8 +2,10 @@
 // Draws the primitives decoded by tn3270/gddm.js (server-side) onto a
 // <canvas> overlay on top of the character grid. Demo-scale renderer:
 // lines, markers, text, arcs/circles/ellipses, fillets, non-default
-// character sets, and monochrome images — see tn3270/gddm.js for the
-// full scope boundary (no color-mix/clipping).
+// character sets, monochrome images, and color-mix modes — see
+// tn3270/gddm.js for the full scope boundary (clipping is out of scope
+// there for a documented reason: it isn't a wire-format GDF order at
+// all, so there's nothing here to render either).
 // Set Color order names (tn3270/gddm.js COLOR_NAME) → how to paint them.
 // Reuses the terminal's own CSS custom properties so a chart always
 // matches the active theme (including the Barbie easter egg); 'pink'
@@ -15,6 +17,23 @@ const COLOR_VAR = {
   white: '--t-white',
 };
 const COLOR_FALLBACK = { pink: '#ff88cc', background: '#000810' };
+
+// Set Color Mix order (tn3270/gddm.js MIX_MODE_NAME) → canvas
+// globalCompositeOperation. GDDM's mix modes are index-plane bit
+// operations (a new 1-bit over an existing 1-bit resolves to the old
+// color, the new color, or a mixture), which canvas has no literal
+// equivalent for, so each maps to the closest real composite op rather
+// than an invented one: 'overpaint' (new always wins) is ordinary
+// drawing; 'underpaint' (old wins where both are set) is exactly what
+// 'destination-over' does — it draws the new shape behind whatever's
+// already there; 'xor' has a direct canvas match by name; 'mix' (OR,
+// "colors take the mixture of the two") has no OR-like canvas op, so
+// it uses 'lighter' (additive blending) as the closest visual analog
+// for "combine, don't replace".
+const MIX_COMPOSITE = {
+  default: 'source-over', overpaint: 'source-over',
+  underpaint: 'destination-over', xor: 'xor', mix: 'lighter',
+};
 
 function _resolveColor(name) {
   const varName = COLOR_VAR[name];
@@ -133,6 +152,7 @@ export function gddmOnScreen(msg) {
 
   for (const p of primitives) {
     ctx.strokeStyle = ctx.fillStyle = _resolveColor(p.color);
+    ctx.globalCompositeOperation = MIX_COMPOSITE[p.mixMode] || 'source-over';
     if (p.type === 'line' && p.points.length >= 2) {
       ctx.beginPath();
       const [x0, y0] = toPx(...p.points[0]);

@@ -608,6 +608,38 @@ function buildGddmObjectDataWsf() {
   parts.push(gdfShortOrder(0x38, 0x41)); // Set Character Set: user-defined LCID 0x41
   parts.push(gdfOrder(0xC3, Buffer.concat([gdfHalfwords(140, 605), toEbcdic(String(total))])));
 
+  // Color-mix demo — four groups of two overlapping filled squares
+  // (solid 8x8 Image raster, scaled up), each group setting the Color
+  // Mix order (X'0C') to a different mode before drawing the second
+  // (red) square over the first (blue) one, so the overlap band
+  // visibly shows how that mode resolves a new 1-bit over an existing
+  // 1-bit (AS/400 GDDM Reference, Appendix B "Color Mix Order" /
+  // "GSMIX"): OR blends to a lighter combined color, Overpaint lets red
+  // win, Underpaint lets the existing blue win, Exclusive OR cancels
+  // the overlap to background. No text labels — the strip between the
+  // x-axis (y=100) and the row-23 footer text (bottom ~2 rows, same
+  // collision the header text forces at the top of the boundary) is
+  // too thin to fit a label under each square without one edge or the
+  // other clipping, so the four results are left to speak for
+  // themselves, same as the arc/fillet demos elsewhere on this chart.
+  const SOLID_8 = Array(8).fill(0xFF);
+  const COL_GDF_BLUE = 0x01, COL_GDF_RED = 0x02;
+  const drawMixSquare = (x0, y0, color) => {
+    parts.push(gdfShortOrder(0x0A, color));
+    parts.push(gdfOrder(0xD1, gdfHalfwords(x0, y0, 0, 8, 8, 50, 50)));
+    for (const row of SOLID_8) parts.push(gdfOrder(0x92, Buffer.from([row])));
+    parts.push(gdfOrder(0x93, Buffer.from([0x00, 0x00])));
+  };
+  const MIX_MODES = [0x01, 0x02, 0x03, 0x04]; // OR, Overpaint, Underpaint, Exclusive OR
+  MIX_MODES.forEach((mode, i) => {
+    const gx = 60 + i * 230, gy = 35;
+    parts.push(gdfShortOrder(0x0C, 0x02)); // Overpaint — lay down the baseline square
+    drawMixSquare(gx, gy, COL_GDF_BLUE);
+    parts.push(gdfShortOrder(0x0C, mode)); // mode under test for the overlapping square
+    drawMixSquare(gx + 25, gy, COL_GDF_RED);
+  });
+  parts.push(gdfShortOrder(0x0C, 0x02)); // back to Overpaint for everything that follows
+
   // "Growth" icon — an 8x8 monochrome bitmap (Begin Image X'D1' + 8x
   // Image Data X'92' + End Image X'93'), an up-arrow, scaled up to
   // 50x50 world units in the top-right corner. FORMAT must be 0
