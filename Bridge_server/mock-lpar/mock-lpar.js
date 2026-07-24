@@ -521,6 +521,38 @@ function gdfShortOrder(code, byte) {
   return Buffer.from([code, byte]);
 }
 
+// A solid 8x8 raster (Image order), reused anywhere a small filled
+// square icon is needed — see tn3270/gddm.js's Image decoding.
+const SOLID_8 = Array(8).fill(0xFF);
+function gdfSolidSquare(parts, x0, y0, size, color) {
+  parts.push(gdfShortOrder(0x0A, color));
+  parts.push(gdfOrder(0xD1, gdfHalfwords(x0, y0, 0, 8, 8, size, size)));
+  for (const row of SOLID_8) parts.push(gdfOrder(0x92, Buffer.from([row])));
+  parts.push(gdfOrder(0x93, Buffer.from([0x00, 0x00])));
+}
+
+// Flat [x,y,x,y,...] coordinates for a closed N-pointed star outline
+// (alternating outer/inner radius vertices) — GDDM has no star order,
+// so this is hand-drawn as a closed Line polygon like the triangle
+// markers below.
+function starPoints(cx, cy, outerR, innerR, points = 5) {
+  const coords = [];
+  const step = Math.PI / points;
+  for (let i = 0; i <= points * 2; i++) {
+    const r = i % 2 === 0 ? outerR : innerR;
+    const angle = -Math.PI / 2 + i * step;
+    coords.push(Math.round(cx + r * Math.cos(angle)), Math.round(cy + r * Math.sin(angle)));
+  }
+  return coords;
+}
+
+// Flat [x,y,x,y,...] coordinates for a closed upward-pointing triangle
+// outline, centered at (cx,cy) — a Line order polygon, same trick as
+// starPoints.
+function trianglePoints(cx, cy, size) {
+  return [cx, cy + size, cx - size, cy - size, cx + size, cy - size, cx, cy + size];
+}
+
 // Builds a full 3270 Write Structured Field (CMD_WSF + Object Data SF)
 // carrying a hand-authored GDF bar chart — "Q4 Regional Sales", four
 // colored bars with labels, an axis, and a trend-marker line. This is
@@ -622,14 +654,8 @@ function buildGddmObjectDataWsf() {
   // too thin to fit a label under each square without one edge or the
   // other clipping, so the four results are left to speak for
   // themselves, same as the arc/fillet demos elsewhere on this chart.
-  const SOLID_8 = Array(8).fill(0xFF);
   const COL_GDF_BLUE = 0x01, COL_GDF_RED = 0x02;
-  const drawMixSquare = (x0, y0, color) => {
-    parts.push(gdfShortOrder(0x0A, color));
-    parts.push(gdfOrder(0xD1, gdfHalfwords(x0, y0, 0, 8, 8, 50, 50)));
-    for (const row of SOLID_8) parts.push(gdfOrder(0x92, Buffer.from([row])));
-    parts.push(gdfOrder(0x93, Buffer.from([0x00, 0x00])));
-  };
+  const drawMixSquare = (x0, y0, color) => gdfSolidSquare(parts, x0, y0, 50, color);
   const MIX_MODES = [0x01, 0x02, 0x03, 0x04]; // OR, Overpaint, Underpaint, Exclusive OR
   MIX_MODES.forEach((mode, i) => {
     const gx = 60 + i * 230, gy = 35;
@@ -675,50 +701,124 @@ function screenUSA(userid) {
   ]);
 }
 
-// A simplified, stylized continental-US outline (Line order, X'C1') —
-// recognizable rather than cartographically precise, hand-authored in
-// a 1000x600 world-coordinate box — plus a fan of curved "trajectory"
-// arcs (Arc order, X'C6') from a central origin out past the picture
-// boundary, the classic WOPR "Global Thermonuclear War" display.
+// A stylized continental-US outline (Line order, X'C1') with the key
+// landmarks that actually make it read as the US at a glance — Florida
+// peninsula, Texas/Gulf coast, Great Lakes notch, Maine's northeast
+// bulge — NORAD-style sector dividers and zone numbers, a "NORAD"/
+// "GRAND FORKS" callout, scattered radar-site triangles and
+// missile-silo clusters, and incoming (Line order) trajectory streaks
+// raining down from above the picture boundary — the classic WOPR
+// "Global Thermonuclear War" display. Hand-authored in a 1000x600
+// world-coordinate box; recognizable rather than cartographically or
+// organizationally precise (the real NORAD/SAC sector map isn't
+// public domain, and isn't the point — this is a nod, not a
+// reproduction).
 function buildUsaObjectDataWsf() {
-  const COL_WHITE_GDF = 0x07, COL_RED_GDF = 0x02, COL_YELLOW_GDF = 0x06;
+  const COL_WHITE_GDF = 0x07, COL_RED_GDF = 0x02, COL_YELLOW_GDF = 0x06, COL_TURQ_GDF = 0x05;
 
-  // Clockwise from the Pacific Northwest — Great Lakes notch, New
-  // England bulge, Florida peninsula, Gulf-coast/Mississippi-delta
-  // notch, Texas jutting south, then up the West Coast.
+  // Clockwise from Seattle, anchored to real city positions on a
+  // normalized 0-100 grid (Seattle 5,92 / San Diego 8,12 / Houston
+  // 48,16 / Miami 84,6 / Augusta ME 96,94), scaled x10/y6 onto this
+  // function's 1000x600 world box — the canvas stretches whatever box
+  // is declared to fill the screen regardless of true aspect ratio, so
+  // there's no need to preserve real lat/long proportions, just the
+  // relative positions. Everything between those five anchors is
+  // interpolated the same way, not measured, and kept to gentle single
+  // bends (Big Bend's dip, Florida's peninsula, one Great Lakes notch,
+  // Maine's bulge) rather than alternating in/out — a first pass tried
+  // more East Coast detail with x swinging back and forth between
+  // consecutive points and it rendered as a jagged sawtooth instead of
+  // a coastline, because a coordinate list needs each edge to
+  // generally advance rather than double back to read as smooth.
   const outline = [
-    60, 550,  200, 580,  450, 590,  650, 560,  700, 520,  780, 480,
-    850, 500,  870, 430,  830, 350,  800, 250,  850, 150,  830, 40,
-    760, 120,  650, 180,  550, 130,  450, 160,  400, 40,   300, 150,
-    250, 250,  150, 300,  100, 200,  60, 350,   40, 480,   60, 550,
+    50, 552,   30, 360,   80, 72,    300, 48,   400, 40,   480, 60,
+    600, 54,   680, 60,   760, 30,   840, 15,    800, 180,  860, 252,
+    820, 312,  880, 372,  900, 468,  960, 564,   840, 540,  680, 456,
+    500, 528,  460, 576,  200, 540,  50, 552,
   ];
 
-  // Trajectory arcs: origin -> bulge midpoint -> off-screen target,
-  // fanned out in a rough compass spread.
-  const ORIGIN = [500, 300];
-  const trajectories = [
-    [600, 700,   700, 950],   // NNE
-    [850, 600,  1150, 700],   // NE
-    [950, 400,  1300, 350],   // E
-    [850, 50,   1100, -150],  // SE
-    [500, 0,    450, -250],   // S
-    [150, 50,   -150, -100],  // SW
-    [50, 450,   -250, 400],   // W
-    [150, 700,   50, 950],    // NW
+  // Sector dividers splitting the outline into rough NORAD-style zones
+  // (7 numbered regions, west-to-east across a north band, a large
+  // central sector, and an east-west split across a south band).
+  const dividers = [
+    [260, 560,  280, 320],  // 26 | 25
+    [470, 555,  440, 320],  // 25 | 24
+    [760, 440,  660, 340],  // 24 | 22
+    [280, 320,  330, 190],  // north band | central (27), west edge
+    [660, 340,  670, 220],  // north band | central (27), east edge
+    [330, 190,  360, 70],   // central (27) | south band, west edge
+    [670, 220,  660, 80],   // central (27) | south band, east edge
+    [520, 40,   550, 190],  // 20 | 21
+  ];
+
+  // Zone numbers, positioned inside each divider-bounded region.
+  const zoneNumbers = [
+    ['26', 110, 490], ['25', 300, 480], ['24', 520, 480], ['22', 760, 470],
+    ['27', 460, 220], ['20', 400, 90], ['21', 700, 110],
+  ];
+
+  const NORAD = [540, 300];
+  const GRAND_FORKS = [430, 510];
+
+  // Radar-site markers (closed triangle outlines) clustered mainly
+  // around the 24/25/27 sectors, echoing the reference display's
+  // density there.
+  const triangles = [
+    [160, 420], [330, 440], [400, 390], [470, 440], [540, 400],
+    [600, 440], [660, 420], [460, 250], [560, 230], [400, 310], [640, 290],
+  ];
+
+  // Missile-silo icon clusters (small grids of filled squares, Image
+  // order) near Grand Forks, NORAD, and one western sector.
+  const siloClusters = [
+    { x: 450, y: 460, cols: 3, rows: 2 },
+    { x: 480, y: 245, cols: 2, rows: 2 },
+    { x: 280, y: 400, cols: 2, rows: 2 },
+  ];
+  const SILO_SIZE = 10, SILO_SPACING = 16;
+
+  // Incoming streaks: short lines falling from above the picture
+  // boundary down onto scattered landing points, matching the
+  // reference display's raining trajectory lines. No outgoing
+  // strikes — the reference display only shows incoming fire.
+  const incoming = [
+    [150, 650,  220, 510], [300, 680,  350, 530], [450, 700,  460, 545],
+    [600, 690,  585, 535], [750, 660,  725, 505], [870, 640,  820, 480],
   ];
 
   const parts = [];
   parts.push(gdfOrder(0x01, Buffer.concat([gdfHalfwords(2), gdfHalfwords(0, 1000, 0, 600)])));
 
-  parts.push(gdfShortOrder(0x0A, COL_WHITE_GDF));
+  parts.push(gdfShortOrder(0x0A, COL_TURQ_GDF));
   parts.push(gdfOrder(0xC1, gdfHalfwords(...outline)));
+  for (const [x0, y0, x1, y1] of dividers) {
+    parts.push(gdfOrder(0xC1, gdfHalfwords(x0, y0, x1, y1)));
+  }
+  for (const [cx, cy] of triangles) {
+    parts.push(gdfOrder(0xC1, gdfHalfwords(...trianglePoints(cx, cy, 10))));
+  }
+
+  parts.push(gdfShortOrder(0x0A, COL_WHITE_GDF));
+  for (const [label, x, y] of zoneNumbers) {
+    parts.push(gdfOrder(0xC3, Buffer.concat([gdfHalfwords(x, y), toEbcdic(label)])));
+  }
+  parts.push(gdfOrder(0xC3, Buffer.concat([gdfHalfwords(GRAND_FORKS[0], GRAND_FORKS[1]), toEbcdic('GRAND FORKS')])));
+  parts.push(gdfOrder(0xC3, Buffer.concat([gdfHalfwords(NORAD[0] + 20, NORAD[1] - 5), toEbcdic('NORAD')])));
+
+  for (const { x, y, cols, rows } of siloClusters) {
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        gdfSolidSquare(parts, x + c * SILO_SPACING, y + r * SILO_SPACING, SILO_SIZE, COL_WHITE_GDF);
+      }
+    }
+  }
 
   parts.push(gdfShortOrder(0x0A, COL_YELLOW_GDF));
-  parts.push(gdfOrder(0xC2, gdfHalfwords(...ORIGIN))); // launch-site marker
+  parts.push(gdfOrder(0xC1, gdfHalfwords(...starPoints(NORAD[0], NORAD[1], 14, 6)))); // NORAD star
 
   parts.push(gdfShortOrder(0x0A, COL_RED_GDF));
-  for (const [mx, my, tx, ty] of trajectories) {
-    parts.push(gdfOrder(0xC6, gdfHalfwords(ORIGIN[0], ORIGIN[1], mx, my, tx, ty)));
+  for (const [x0, y0, x1, y1] of incoming) {
+    parts.push(gdfOrder(0xC1, gdfHalfwords(x0, y0, x1, y1)));
   }
 
   const gdfData = Buffer.concat(parts);
