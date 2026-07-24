@@ -210,8 +210,14 @@ export function decodeGdfStream(buf) {
       // At-current-position form — skipped, see header.
     } else if (code === ORDER_IMAGE_DATA) {
       // One row of WIDTH display points per order, packed 1 bit each,
-      // MSB first, padded to a byte boundary.
-      if (buildingImage) buildingImage.rows.push(operand);
+      // MSB first, padded to a byte boundary. Stored as a plain array,
+      // not the Buffer slice itself — decodeGdfStream's result crosses
+      // a JSON.stringify/WebSocket boundary (utils/send.js) on its way
+      // to the browser, and Buffer serializes there as
+      // {type:'Buffer',data:[...]}, silently breaking the renderer's
+      // row[c>>3] indexing (every byte read comes back undefined, so
+      // every image primitive draws as fully transparent).
+      if (buildingImage) buildingImage.rows.push([...operand]);
     } else if (code === ORDER_IMAGE_END) {
       if (buildingImage) {
         primitives.push({ type: 'image', ...buildingImage });
