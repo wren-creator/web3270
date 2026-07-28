@@ -134,6 +134,10 @@ function _sshConnectWs(sid) {
   };
 
   ws.onclose = () => {
+    // ssh.error (bad credentials, host refused/rate-limited the connection,
+    // etc.) already put us in 'error' state — never auto-reconnect onto that,
+    // or we hammer the host with the same password and trip its lockout.
+    const wasError = session.state === 'error';
     session.state = 'closed';
     _sshUpdateTabDot(sid, '#888');
     // If the tab was closed intentionally, sshCloseTab already deleted it
@@ -141,6 +145,7 @@ function _sshConnectWs(sid) {
     if (!state.sessions.has(sid)) return;
     const reason = session.lastDisconnectReason;
     session.lastDisconnectReason = null;
+    if (wasError) return;
     // No ssh.status message ever arrived (bridge restart, network blip killed
     // the socket outright) — treat that as an unexpected drop, same as 'remote close'.
     if (state.settings.autoReconnect && (reason === 'remote close' || reason === undefined)) {
