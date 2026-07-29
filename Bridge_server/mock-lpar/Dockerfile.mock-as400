@@ -2,8 +2,11 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Only copy what the mock AS/400 daemon needs — no bridge deps required
+# Only copy what the mock AS/400 daemon needs — no bridge deps required.
+# rpg/ is the RPG interpreter + its .rpgle/.dspf program source, both
+# require()'d and read from disk at startup by mock-as400.js.
 COPY mock-lpar/mock-as400.js ./mock-lpar/mock-as400.js
+COPY mock-lpar/rpg ./mock-lpar/rpg
 
 RUN addgroup -S mockas400 && adduser -S mockas400 -G mockas400
 USER mockas400
