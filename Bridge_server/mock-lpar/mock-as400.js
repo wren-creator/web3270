@@ -19,6 +19,11 @@
 'use strict';
 
 const net = require('net');
+const fs = require('fs');
+const path = require('path');
+const { parseDds } = require('./rpg/dds');
+const { parseRpgle } = require('./rpg/rpgle');
+const { runProgram } = require('./rpg/interpreter');
 
 const PORT    = parseInt(process.env.MOCK_AS400_PORT  || '3272', 10);
 const LOG     = (process.env.LOG_LEVEL || 'info') === 'debug';
@@ -486,7 +491,9 @@ const PDM_OBJECTS = {
   ],
   APPLIB: [
     { name: 'QRPGLESRC', type: '*FILE', attr: 'PF-SRC', text: 'RPGLE source physical file',   size: '256K' },
+    { name: 'QDDSSRC',   type: '*FILE', attr: 'PF-SRC', text: 'DDS source physical file',     size: '64K' },
     { name: 'PAYRPT',    type: '*PGM',  attr: 'RPGLE',  text: 'Payroll report program',       size: '184K' },
+    { name: 'ADVENTURE', type: '*PGM',  attr: 'RPGLE',  text: 'Text-adventure game',           size: '96K' },
     { name: 'CONFIG',    type: '*FILE', attr: 'PF',     text: 'Application config data',      size: '8K' },
   ],
 };
@@ -508,6 +515,12 @@ const SRCMEMBERS = {
       '     D balance         S              7P 2',
       '     C     eval      balance = balance + accrued',
     ] },
+    { name: 'ADVENTURE', type: 'RPGLE', text: 'Text-adventure game', changed: '07/28/26 21:00:00',
+      srcFile: path.join(__dirname, 'rpg/programs/adventure.rpgle') },
+  ],
+  'APPLIB/QDDSSRC': [
+    { name: 'ADVENTURE', type: 'DSPF', text: 'Text-adventure game display file', changed: '07/28/26 21:00:00',
+      srcFile: path.join(__dirname, 'rpg/programs/adventure.dspf') },
   ],
   'QGPL/QCLSRC': [
     { name: 'STRSBS', type: 'CLLE', text: 'Start subsystem wrapper', changed: '05/02/26 08:30:00', src: [
@@ -517,6 +530,20 @@ const SRCMEMBERS = {
       '             ENDPGM',
     ] },
   ],
+};
+
+// Real, runnable RPGLE programs -- CALL PGM(lib/name) or PDM option
+// 4=Run against a QRPGLESRC member looks a program up here, keyed by
+// "LIB/NAME". Unlike PAYRPT/LEAVCALC above (decorative source-only
+// members), these are parsed once at startup (mock-lpar/rpg/{dds,
+// rpgle,interpreter}.js) and actually executed by the RPG interpreter
+// -- real fixed-form RPG IV + DDS, the same source that should compile
+// and run unmodified on real hardware via CRTBNDRPG/CRTDSPF.
+const PROGRAMS = {
+  'APPLIB/ADVENTURE': {
+    ddsFormats: parseDds(fs.readFileSync(path.join(__dirname, 'rpg/programs/adventure.dspf'), 'utf8')),
+    rpgAst: parseRpgle(fs.readFileSync(path.join(__dirname, 'rpg/programs/adventure.rpgle'), 'utf8')),
+  },
 };
 
 // Tables queryable from STRSQL, keyed by "LIB/TABLE". QIWS/QCUSTCDT is IBM's
@@ -625,6 +652,12 @@ function runCommand(raw) {
       if (!file) return { type: 'error', message: 'CPD0043 - Keyword FILE required for WRKMBRPDM.' };
       if (!SRCMEMBERS[file]) return { type: 'error', message: `CPF9801 - Object ${file} not found.` };
       return { type: 'detail', screen: 'MBRPDM_LIST', target: file };
+    }
+    case 'CALL': {
+      const pgm = params.PGM;
+      if (!pgm) return { type: 'error', message: 'CPD0043 - Keyword PGM required for CALL.' };
+      if (!PROGRAMS[pgm]) return { type: 'error', message: `CPF9801 - Object ${pgm} not found.` };
+      return { type: 'call', pgm };
     }
     case 'SNDMSG': return { type: 'screen', screen: 'SNDMSG_COMPOSE' };
     case 'STRSQL': return { type: 'screen', screen: 'SQL' };
@@ -1322,7 +1355,7 @@ function screenMbrpdmList(fileKey, ctx) {
     { row: 0, col: 26, text: 'Work with Members Using PDM', input: false },
     { row: 0, col: 68, text: SYSNAME, input: false },
     { row: 2, col: 2,  text: 'Type options, press Enter.', input: false },
-    { row: 3, col: 4,  text: '5=Display', input: false },
+    { row: 3, col: 4,  text: '4=Run   5=Display', input: false },
     { row: 4, col: 2,  text: `File . . . . . . . :   ${fileKey}`, input: false },
     { row: 5, col: 2,  text: 'Opt  Member      Type     Text                       Changed', input: false },
   ];
@@ -1351,7 +1384,8 @@ function screenMbrDetail(compositeKey) {
     { row: 6, col: 2,  text: `Source last changed . . . . :  ${m.changed}`, input: false },
     { row: 8, col: 2,  text: 'Source (preview):', input: false },
   ];
-  m.src.forEach((line, i) => {
+  const srcLines = m.srcFile ? fs.readFileSync(m.srcFile, 'utf8').split('\n') : m.src;
+  srcLines.forEach((line, i) => {
     if (9 + i > 19) return;
     fields.push({ row: 9 + i, col: 2, text: line.slice(0, 76), input: false });
   });
@@ -1436,6 +1470,9 @@ function handleConnection(socket) {
   let cmdTarget = null;    // detail target: sysval name / profile name / object index
   let navStack = [];       // back-navigation stack for the WRK/DSP security panels
   let sqlResult = null;    // last STRSQL result: { cols, rows } or null
+  let rpgGen = null;       // running RPG program's generator (screen === 'RPG_RUN')
+  let rpgYield = null;     // its last-yielded { fields, cursor, inputMap }
+  let rpgPgmName = '';     // for the completion message once it ends
 
   // Navigate one level deeper (remember where we came from), back up one
   // level, or apply a parsed CL command's navigation result.
@@ -1458,7 +1495,21 @@ function handleConnection(socket) {
       case 'signoff':  screen = 'signon'; user = null; messages = []; unreadCount = 0; navStack = []; break;
       case 'error':    menuMessage = res.message; break;
       case 'none':     break;
+      case 'call':     goTo('RPG_RUN'); startRpgProgram(res.pgm); break;
     }
+  }
+
+  // Starts a real RPGLE program's interpreter generator and drives it
+  // to its first EXFMT yield. A program that ends (RETURN) before its
+  // first EXFMT -- not possible for ADVENTURE, but generically
+  // possible -- just returns immediately with a completion message.
+  function startRpgProgram(pgm) {
+    rpgPgmName = pgm;
+    const prog = PROGRAMS[pgm];
+    rpgGen = runProgram(prog.rpgAst, prog.ddsFormats);
+    const r = rpgGen.next();
+    if (r.done) { rpgGen = null; rpgYield = null; goBack(); menuMessage = `Program ${pgm} ended normally.`; return; }
+    rpgYield = r.value;
   }
 
   socket.on('data', chunk => { recvBuf = Buffer.concat([recvBuf, chunk]); processBuffer(); });
@@ -1627,6 +1678,8 @@ function handleConnection(socket) {
       ds = screenSndmsgCompose({ message: menuMessage });
     } else if (screen === 'SQL') {
       ds = screenSql({ message: menuMessage, resultCols: sqlResult && sqlResult.cols, resultRows: sqlResult && sqlResult.rows });
+    } else if (screen === 'RPG_RUN') {
+      ds = wrapPanel(rpgYield.fields, rpgYield.cursor);
     } else if (MENUS[screen]) {
       ds = screenMenu(screen, { user, unreadCount, message: menuMessage });
     } else {
@@ -1722,6 +1775,20 @@ function handleConnection(socket) {
         }
         // blank Enter just redraws the panel with whatever's already there
       }
+    } else if (screen === 'RPG_RUN') {
+      const key = aid === AID_F3 ? 'F3' : aid === AID_F12 ? 'F12' : 'ENTER';
+      const values = {};
+      for (const [row, fieldName] of Object.entries(rpgYield.inputMap)) {
+        values[fieldName] = fieldAt(runs, parseInt(row, 10));
+      }
+      const r = rpgGen.next({ key, values });
+      if (r.done) {
+        rpgGen = null; rpgYield = null;
+        goBack();
+        menuMessage = `Program ${rpgPgmName} ended normally.`;
+      } else {
+        rpgYield = r.value;
+      }
     } else if (LIST_META[screen]) {
       const meta = LIST_META[screen];
       const cmdLine = fieldAt(runs, LIST_CMD_ROW);
@@ -1730,9 +1797,20 @@ function handleConnection(socket) {
       } else if (cmdLine) {
         applyCommand(runCommand(cmdLine));
       } else if (meta.detail) {
-        // Any non-blank Opt acts as 5=Display in the mock.
+        // Any non-blank Opt acts as 5=Display in the mock, except on
+        // WRKMBRPDM: 4=Run actually CALLs the member's backing program
+        // (if it has one -- runCommand's CPF9801 covers the rest, same
+        // as PAYRPT/LEAVCALC which are still source-preview-only).
         const pick = pickOption(runs, LIST_START_ROW, meta.count(cmdTarget));
-        if (pick) { const [scr, tgt] = meta.detail(pick.index, cmdTarget); goTo(scr, tgt); }
+        if (pick && screen === 'MBRPDM_LIST' && pick.opt === '4') {
+          const mbrs = SRCMEMBERS[cmdTarget] || [];
+          const mbr = mbrs[pick.index];
+          const pgmKey = `${cmdTarget.split('/')[0]}/${mbr ? mbr.name : ''}`;
+          applyCommand(runCommand(`CALL PGM(${pgmKey})`));
+        } else if (pick) {
+          const [scr, tgt] = meta.detail(pick.index, cmdTarget);
+          goTo(scr, tgt);
+        }
         // bare Enter with no option typed → redraw as-is
       }
       // list-only panels (no meta.detail) ignore Opt and just redraw

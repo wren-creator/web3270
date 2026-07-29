@@ -1,0 +1,31 @@
+     A* ADVENTURE.DSPF -- WORKSTN display file for the ADVENTURE game
+     A* (mock-as400 RPG interpreter).
+
+     A                                      DSPSIZ(24 80 *DS3)
+
+     A          R MAIN                      CF03(03)
+     A                                  1 30'ADVENTURE'
+     A                                  3  3'Location:'
+     A            LOCTXT        30A  O  3 13
+     A                                  5  3'HP:'
+     A            PLRHP          3  0O  5 13
+     A 90         MSGTXT        40A  O  7  3
+     A                                 22  3'Command (M=Move, F3=Exit):'
+     A            CMD            1A  B 22 31
+
+     A          R COMBAT                    CF03(03)
+     A                                  1 33'COMBAT'
+     A                                  3  3'You face:'
+     A            MONNAM        10A  O  3 13
+     A                                  5  3'Monster HP:'
+     A            MONHP          3  0O  5 15
+     A                                  6  3'Your HP:'
+     A            PLRHP          3  0O  6 15
+     A 90         MSGTXT        40A  O  8  3
+     A                                 22  3'Command (F=Fight, R=Run):'
+     A            CMD            1A  B 22 30
+
+     A          R ENDGAME
+     A            MSGTXT        40A  O 10 20
+     A                                 22  3'Press Enter to exit'
+     A            CMD            1A  B 22 25
