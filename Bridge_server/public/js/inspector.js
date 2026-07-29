@@ -75,6 +75,7 @@ function _showInspector(x, y, ri, ci, fa, faAddr, cell, isFaCell) {
   const faBin  = fa.toString(2).padStart(8, '0');
   const addr   = faAddr !== null ? faAddr : '?';
   const row14  = faAddr !== null ? `R${String(Math.floor(faAddr / (state.liveScreen.cols||80)) + 1).padStart(2,'0')} C${String((faAddr % (state.liveScreen.cols||80)) + 1).padStart(2,'0')}` : '?';
+  const clickRC = `R${String(ri + 1).padStart(2,'0')} C${String(ci + 1).padStart(2,'0')}`;
   const field  = (state.liveScreen.fields || []).find(f => f.startAddr === faAddr);
   const contentLen = field ? field.content.trimEnd().length : '?';
   const bit = (n, label, val) =>
@@ -84,7 +85,7 @@ function _showInspector(x, y, ri, ci, fa, faAddr, cell, isFaCell) {
   el.innerHTML = `
     <div class="abi-header">
       <span class="abi-title">Field Attribute Byte</span>
-      <span class="abi-addr">${row14} · addr ${addr}</span>
+      <span class="abi-addr">clicked ${clickRC}${clickRC !== row14 ? ` · FA ${row14}` : ''} · addr ${addr}</span>
       <button class="abi-close" onclick="_dismissInspector()">✕</button>
     </div>
     <div class="abi-hex">
