@@ -12,6 +12,7 @@
  *   { op: "branch", condition: "text", row, col, text,
  *                   matchStep, noMatchStep }
  *   { op: "comment", text }
+ *   { op: "fail",    message }   — abort with an error, surfaced to the user
  *
  * Replay uses SCREEN SYNCHRONISATION — each step waits for the
  * keyboard to unlock (OIA READY) before proceeding.  No fixed timers.
@@ -268,6 +269,12 @@ class MacroEngine extends EventEmitter {
         // No-op — comments are for human readers of the macro JSON
         break;
 
+      case 'fail':
+        // Deliberately abort the macro with a message — e.g. a branch guard
+        // that lands here on a failed precondition. Surfaces to the user
+        // via the 'failed' event, unlike a silent comment step.
+        throw new Error(step.message || 'Macro aborted');
+
       default:
         logger.warn(`[macro] Unknown step op: "${step.op}" — skipping`);
     }
@@ -317,7 +324,7 @@ class MacroEngine extends EventEmitter {
    * Branch: check screen text, jump to a named step index.
    * { op: 'branch', row, col, text, matchStep, noMatchStep }
    * matchStep / noMatchStep can be a step index (number) or
-   * a label string matching a { op: 'comment', label: '...' } step.
+   * a label string matching any step's "label" field.
    */
   async _executeBranch(step, unlockTimeout) {
     const found = this._textAt(step.row, step.col, step.text);
@@ -351,9 +358,7 @@ class MacroEngine extends EventEmitter {
   }
 
   _findLabel(label) {
-    return this._currentMacro.steps.findIndex(
-      s => s.op === 'comment' && s.label === label
-    );
+    return this._currentMacro.steps.findIndex(s => s.label === label);
   }
 
   // ── Polling waiters ────────────────────────────────────────────
