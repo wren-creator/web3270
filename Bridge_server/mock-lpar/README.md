@@ -263,6 +263,55 @@ open-source [tn5250](https://github.com/hlandau/tn5250) project's
 `lib5250`, not reconstructed from memory — see the header comment in
 `../tn5250/session.js` for the specific files referenced.
 
+### A real RPG interpreter (`rpg/`)
+
+`WRKMBRPDM`'s `QRPGLESRC` member list isn't only a source-preview
+demo anymore. `APPLIB/ADVENTURE` is a genuine RPGLE program: option
+`4=Run` on its row (or `CALL PGM(APPLIB/ADVENTURE)` on any command
+line) invokes it against a real, if scoped-down, RPG IV interpreter,
+not canned output. It's a small text-adventure — explore, run into
+goblins, fight or flee, win by clearing three of them or lose if HP
+hits zero, F3 to quit anytime.
+
+The point isn't the game, it's that the *source* backing it is real
+and portable. `rpg/programs/adventure.rpgle` and `adventure.dspf` are
+fixed-form RPG IV and DDS, hand-column-aligned against IBM's
+documented spec layouts (verified against the ILE RPG Language
+Reference, SC09-2508, and the DDS Reference: Display Files manual,
+not reconstructed from memory — see the header comments in `rpg/dds.js`
+and `rpg/rpgle.js`). Copy either file to a real IBM i and
+`CRTBNDRPG`/`CRTDSPF` should accept it unmodified. Fixed-form only —
+free-form C-specs need V5R1+, and this project's real hardware target
+is V4R3.
+
+Architecture: real RPG's `EXFMT` ("write a format, then read it") maps
+almost exactly onto a JS generator that `yield`s the format to render
+and resumes via `.next({ key, values })` on the next AID key —
+see `rpg/interpreter.js`'s header comment. That's what lets a
+program's own execution state live entirely outside `mock-as400.js`;
+the daemon just treats a running program as one more `screen` value
+(`RPG_RUN`) whose render/input handling is "ask the generator what's
+next," same shape as every other panel in the file.
+
+Supported v1 subset (see `rpg/interpreter.js` for the exact list):
+`EVAL`, `IF`/`ELSE`/`ENDIF`, `DOW`/`ENDDO`/`LEAVE`,
+`SELECT`/`WHEN`/`OTHER`/`ENDSL`, `EXSR`/`BEGSR`/`ENDSR`, `EXFMT`,
+`DIV`/`MVR`, `RETURN`, plus `%TRIM`/`%LEN`/`%SUBST` in expressions.
+Random rolls use classic `DIV`/`MVR` for modulo rather than a compound
+expression, since RPG has no `%REM` until well past V4R3 and relying
+on intermediate-expression truncation inside a single `EVAL` isn't
+unambiguous real RPG behavior — `DIV` immediately followed by `MVR` is
+the classic, unambiguous way to get a remainder. One F-spec (a single
+externally-described `WORKSTN` file) and standalone D-spec fields only
+— no data structures, arrays, or file I/O opcodes yet, since the game
+doesn't need persistence.
+
+Adding a second program is: write real `.rpgle`/`.dspf` source under
+`rpg/programs/`, register it in `PROGRAMS` (keyed `LIB/NAME`) in
+`mock-as400.js`, and add a `SRCMEMBERS`/`PDM_OBJECTS` entry — the same
+"edit the table, nothing else changes" convention as the rest of this
+file.
+
 > **Note on the rest of this README:** the sections above (env vars like
 > `PROD01_HOST`, `public/tn3270-client.html`) predate the current
 > `lpars.txt`/`lpars.shipped.txt`-based profile system and the
