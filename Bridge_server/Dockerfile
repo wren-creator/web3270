@@ -37,10 +37,14 @@ USER tn3270
 # for those since they are outbound.
 EXPOSE 8081
 
-# Health-check: confirm the WS port is accepting connections
+# Health-check: confirm the WS port is accepting connections.
+# Uses 127.0.0.1, not localhost -- server.js binds 0.0.0.0 (IPv4 only),
+# but this image resolves "localhost" to ::1 first, so both wget and
+# the nc fallback would hit a socket nothing listens on and the
+# container would report unhealthy even while working correctly.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget -qO- http://localhost:8081/health 2>/dev/null || \
-      nc -z localhost 8081 || exit 1
+  CMD wget -qO- http://127.0.0.1:8081/health 2>/dev/null || \
+      nc -z 127.0.0.1 8081 || exit 1
 
 ENV NODE_ENV=production \
     BRIDGE_PORT=8081 \
