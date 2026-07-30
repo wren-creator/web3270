@@ -1,0 +1,17 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY mock-lpar/mock-claims.js ./mock-lpar/mock-claims.js
+
+RUN addgroup -S mockclaims && adduser -S mockclaims -G mockclaims
+USER mockclaims
+
+EXPOSE 3273
+
+ENV MOCK_CLAIMS_PORT=3273 \
+    MOCK_CLAIMS_SYSID=CLAIMSYS \
+    MOCK_CLAIMS_LU=CLAIMLU1 \
+    LOG_LEVEL=info
+
+CMD ["node", "mock-lpar/mock-claims.js"]
