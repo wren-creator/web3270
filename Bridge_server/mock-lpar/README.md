@@ -312,6 +312,64 @@ Adding a second program is: write real `.rpgle`/`.dspf` source under
 "edit the table, nothing else changes" convention as the rest of this
 file.
 
+## Mock claims daemon (`mock-claims.js`) — Rocket/Rumba migration POC fixture
+
+Simulates the "RM2P" 2nd-pass medical claims entry screen the legacy
+Rumba/VBA macro (`D9ATP_Override`, from the workbook being evaluated for
+the Rocket migration) drives. Built so that macro can be re-authored and
+tested against a fake claims system, not production data.
+
+```
+Main Menu
+      │  type RM2P + ENTER
+      ▼
+RM2P Entry  (trans type / sub type / claim number)
+      │  ENTER
+      ▼
+   ┌─────────────────────────────────────────────┐
+   │ known-bad claim → terminal status message    │
+   │ valid claim     → Line Number entry          │
+   └─────────────────────────────────────────────┘
+                              │  ENTER (line accepted)
+                              ▼
+                    ┌───────────────────────────┐
+                    │ ATTENDING/RENDERING on file│ → terminal message
+                    │ all 6 provider slots full  │ → FULL (client-side only)
+                    │ one slot open              │ → fill it, ENTER, PF2
+                    └───────────────────────────┘
+                                                        │  PF2
+                                                        ▼
+                                          override code rejected → terminal message
+                                          nothing flagged         → clean status (Complete)
+```
+
+Twelve synthetic claim numbers, `CLAIM9990001` through `CLAIM9990012`, each
+deterministically exercise exactly one of the eleven outcomes the VBA macro
+logs (not found, already processed, invalid pointer, needs support, WIP,
+invalid line number, attending/rendering on file, full, two distinct
+override rejections, and the clean success path). See the `MOCK_CLAIMS`
+table at the top of `mock-claims.js` for the full mapping — that table, and
+the field coordinates around it, are the single source of truth; add a new
+test claim by adding a row there.
+
+Field coordinates are taken directly from the VBA's `.GetDisplayText`/
+`.MoveCursor` calls, converted from HLLAPI's 1-based row/col to this
+bridge's 0-based convention (see the header comment in `mock-claims.js`
+for the conversion and for what's deliberately *not* modeled — the
+RMIM/RMIH wrong-menu retry loop the VBA guards against, since what
+actually triggers those two states isn't recoverable from the VBA alone
+and they aren't one of the macro's logged outcomes).
+
+Wired into `docker-compose.yml` as the `mock-claims` service (port 3273
+inside the Docker network) and registered in `../lpars.shipped.txt` (id
+`mock-claims`, protocol `3270`). Config env vars: `MOCK_CLAIMS_PORT`
+(default `3273`), `MOCK_CLAIMS_SYSID` (default `CLAIMSYS`),
+`MOCK_CLAIMS_LU` (default `CLAIMLU1`), `LOG_LEVEL`.
+
+```bash
+node mock-lpar/mock-claims.js
+```
+
 > **Note on the rest of this README:** the sections above (env vars like
 > `PROD01_HOST`, `public/tn3270-client.html`) predate the current
 > `lpars.txt`/`lpars.shipped.txt`-based profile system and the

@@ -45,6 +45,7 @@ services:
       - mock-zvm
       - mock-tpf
       - mock-as400
+      - mock-claims
 
     networks:
       - tn3270-net
@@ -115,6 +116,29 @@ services:
       MOCK_SYSID: "DEMOSYS"
       MOCK_LU:    "MOCKLU01"
       LOG_LEVEL:  "debug"
+
+    networks:
+      - tn3270-net
+
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+          cpus: "0.25"
+
+# Mock claims system — RM2P entry screen for the Rocket/Rumba migration POC, port 3273
+  mock-claims:
+    build:
+      context: .
+      dockerfile: mock-lpar/Dockerfile.mock-claims
+    container_name: mock-claims
+    restart: unless-stopped
+
+    environment:
+      MOCK_CLAIMS_PORT:  "3273"
+      MOCK_CLAIMS_SYSID: "CLAIMSYS"
+      MOCK_CLAIMS_LU:    "CLAIMLU1"
+      LOG_LEVEL:         "debug"
 
     networks:
       - tn3270-net
