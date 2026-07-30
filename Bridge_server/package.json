@@ -13,6 +13,8 @@
     "mock:zvm": "node mock-lpar/mock-zvm.js"
   },
   "dependencies": {
+    "kerberos": "^7.0.0",
+    "ldapts": "^8.2.0",
     "ssh2": "^1.17.0",
     "ws": "^8.21.0"
   },
