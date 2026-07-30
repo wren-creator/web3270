@@ -1,0 +1,85 @@
+{
+  "name": "RM2P Claim Override (Mock POC)",
+  "description": "Re-authoring of the legacy Rumba/VBA D9ATP_Override macro (~/git/my-code/vbcode/D9QC1ComeUp.bas) against mock-claims.js — proves the same claims-override flow can run headless through this bridge instead of Rocket/Rumba COM automation, with zero real medical data. Point this at MOCK-CLAIMS (port 3273) and try CLAIM9990001 through CLAIM9990012 to walk every outcome the original macro can produce.",
+  "created": "2026-07-30T00:00:00.000Z",
+  "steps": [
+    { "op": "comment", "text": "Expects to start on the mock claims main menu (MOCK-CLAIMS profile, port 3273)." },
+    { "op": "wait",    "condition": "text", "row": 0, "col": 1, "text": "MOCK BCBS", "timeoutMs": 5000 },
+
+    { "op": "prompt",  "var": "claimNumber",   "label": "Claim number (try CLAIM9990001 .. CLAIM9990012):" },
+    { "op": "prompt",  "var": "lineNumber",    "label": "Line number on the claim (e.g. 01):" },
+    { "op": "prompt",  "var": "providerNumber","label": "Provider number to enter in the open slot:" },
+
+    { "op": "comment", "text": "Enter the RM2P transaction — VBA: .TransmitANSI \"rm2p\" then Enter" },
+    { "op": "type",    "row": 2, "col": 13, "text": "RM2P" },
+    { "op": "aid",     "aid": "ENTER" },
+    { "op": "wait",    "condition": "screen", "timeoutMs": 5000 },
+    { "op": "wait",    "condition": "text", "row": 0, "col": 1, "text": "RM72M70", "timeoutMs": 5000 },
+
+    { "op": "comment", "text": "Trans type / sub type / claim number — VBA MoveCursor(4,31)/(8,31)/(14,31), 1-based" },
+    { "op": "type",    "row": 3,  "col": 30, "text": "2" },
+    { "op": "type",    "row": 7,  "col": 30, "text": "2" },
+    { "op": "type",    "row": 13, "col": 30, "text": "{claimNumber}" },
+    { "op": "aid",     "aid": "ENTER" },
+    { "op": "wait",    "condition": "screen", "timeoutMs": 5000 },
+
+    { "op": "comment", "text": "VBA: five sequential GetDisplayText(22,7,14) checks, each GoTo Jump100 on match" },
+    { "op": "branch",  "row": 21, "col": 6, "text": "CLAIM DOES NOT", "matchStep": "notfound" },
+    { "op": "branch",  "row": 21, "col": 6, "text": "CLAIM ALREADY ", "matchStep": "notfound" },
+    { "op": "branch",  "row": 21, "col": 6, "text": "INVALID CLAIM ", "matchStep": "pointer" },
+    { "op": "branch",  "row": 21, "col": 6, "text": "CLAIM CANNOT B", "matchStep": "support" },
+    { "op": "branch",  "row": 21, "col": 6, "text": "FUNCTION INVAL", "matchStep": "wip" },
+
+    { "op": "comment", "text": "Claim is valid — line number entry. VBA: TransmitANSI \"N\" then the line number" },
+    { "op": "type",    "row": 15, "col": 16, "text": "N{lineNumber}" },
+    { "op": "aid",     "aid": "ENTER" },
+    { "op": "wait",    "condition": "screen", "timeoutMs": 5000 },
+    { "op": "branch",  "row": 21, "col": 6, "text": "INVALID LINE N", "matchStep": "badline" },
+    { "op": "branch",  "row": 21, "col": 6, "text": "ATTEN", "matchStep": "attending" },
+    { "op": "branch",  "row": 21, "col": 6, "text": "RENDE", "matchStep": "rendering" },
+
+    { "op": "comment", "text": "VBA: six unrolled GetDisplayText(7,col,5) checks (cols 22/28/34/40/46/52, 1-based) for the first blank provider slot" },
+    { "op": "branch",  "row": 6, "col": 21, "text": "     ", "matchStep": "fillslot0" },
+    { "op": "branch",  "row": 6, "col": 27, "text": "     ", "matchStep": "fillslot1" },
+    { "op": "branch",  "row": 6, "col": 33, "text": "     ", "matchStep": "fillslot2" },
+    { "op": "branch",  "row": 6, "col": 39, "text": "     ", "matchStep": "fillslot3" },
+    { "op": "branch",  "row": 6, "col": 45, "text": "     ", "matchStep": "fillslot4" },
+    { "op": "branch",  "row": 6, "col": 51, "text": "     ", "matchStep": "fillslot5" },
+    { "op": "fail",    "message": "FULL" },
+
+    { "op": "comment", "text": "Each slot: type the provider number (VBA MoveCursor to the blank slot), then jump to the shared confirm sequence — VBA's own GoTo Jump3. The row0/col1 check is always true here; it's a plain unconditional jump, this engine has no dedicated goto op." },
+    { "label": "fillslot0", "op": "type", "row": 6, "col": 21, "text": "{providerNumber}" },
+    { "op": "branch",  "row": 0, "col": 1, "text": "RM72M70", "matchStep": "confirm" },
+    { "label": "fillslot1", "op": "type", "row": 6, "col": 27, "text": "{providerNumber}" },
+    { "op": "branch",  "row": 0, "col": 1, "text": "RM72M70", "matchStep": "confirm" },
+    { "label": "fillslot2", "op": "type", "row": 6, "col": 33, "text": "{providerNumber}" },
+    { "op": "branch",  "row": 0, "col": 1, "text": "RM72M70", "matchStep": "confirm" },
+    { "label": "fillslot3", "op": "type", "row": 6, "col": 39, "text": "{providerNumber}" },
+    { "op": "branch",  "row": 0, "col": 1, "text": "RM72M70", "matchStep": "confirm" },
+    { "label": "fillslot4", "op": "type", "row": 6, "col": 45, "text": "{providerNumber}" },
+    { "op": "branch",  "row": 0, "col": 1, "text": "RM72M70", "matchStep": "confirm" },
+    { "label": "fillslot5", "op": "type", "row": 6, "col": 51, "text": "{providerNumber}" },
+
+    { "label": "confirm", "op": "aid", "aid": "ENTER" },
+    { "op": "wait",    "condition": "screen", "timeoutMs": 5000 },
+    { "op": "aid",     "aid": "PF2" },
+    { "op": "wait",    "condition": "screen", "timeoutMs": 5000 },
+    { "op": "branch",  "row": 21, "col": 6, "text": "EE562", "matchStep": "override_ee562" },
+    { "op": "branch",  "row": 21, "col": 6, "text": "EI940", "matchStep": "override_ei940" },
+
+    { "op": "comment", "text": "Nothing flagged — this is 'Complete' by omission, exactly like the original VBA: it never checks for a positive success message, only the absence of every failure condition." },
+    { "op": "branch",  "row": 0, "col": 1, "text": "RM72M70", "matchStep": "macro_end" },
+
+    { "label": "notfound",        "op": "fail", "message": "NOT FOUND" },
+    { "label": "pointer",         "op": "fail", "message": "*Pointer*" },
+    { "label": "support",         "op": "fail", "message": "ITS SUPPORT" },
+    { "label": "wip",             "op": "fail", "message": "*WIP*" },
+    { "label": "badline",         "op": "fail", "message": "Invalid line number" },
+    { "label": "attending",       "op": "fail", "message": "ATTENDING" },
+    { "label": "rendering",       "op": "fail", "message": "RENDERING" },
+    { "label": "override_ee562",  "op": "fail", "message": "Invalid override" },
+    { "label": "override_ei940",  "op": "fail", "message": "Charges" },
+
+    { "label": "macro_end", "op": "comment", "text": "Complete" }
+  ]
+}
