@@ -22,9 +22,9 @@
  * the eleven distinct outcomes the VBA macro can produce, so a JSON macro
  * (or anything else) can be regression-tested against every branch without
  * ever touching real medical data. Field labels/screen dressing around the
- * verified coordinates are reasonable placeholders, not real BCBS screen
- * text — only the coordinates and the message strings' matched substrings
- * are taken from source.
+ * verified coordinates are reasonable placeholders, not the real host's
+ * screen text — only the coordinates and the message strings' matched
+ * substrings are taken from source.
  *
  * NOT modeled: the RMIM/RMIH "wrong menu" retry loop the VBA guards against
  * right after typing "rm2p" (GetDisplayText(1,28,4)/(1,30,4)). What actually
@@ -252,7 +252,7 @@ const F = {
 function screenMenu(note) {
   const fields = [
     { row: 0, col: 0, fa: FA_PROTECTED_HIGH, color: COL_GREEN, highlight: HL_INTENS },
-    { row: 0, col: 1, text: `MOCK BCBS CLAIMS SYSTEM - MAIN MENU  (${SYSNAME})` },
+    { row: 0, col: 1, text: `MOCK CLAIMS SYSTEM - MAIN MENU  (${SYSNAME})` },
     { row: 1, col: 0, fa: FA_PROTECTED, color: COL_YELLOW },
     { row: 1, col: 1, text: 'Test data only — no real claims. Type RM2P and press Enter.' },
     { row: F.MENU_CMD.row, col: 0, fa: FA_PROTECTED, color: COL_WHITE },
