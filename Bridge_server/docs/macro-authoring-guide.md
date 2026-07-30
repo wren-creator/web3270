@@ -2,7 +2,7 @@
 
 For anyone reworking one of the legacy Rumba/VBA claims macros into a JSON macro for this bridge. **You do not need this repository checked out, and you should not need to touch Bridge_server's source at all.** Everything here is either a data format (the macro JSON itself) or a network protocol (WebSocket messages, an HTTP API) that a running bridge instance already exposes. Point a WebSocket client, or the browser UI, at wherever Bridge_server is hosted and build from there.
 
-Every gotcha in this doc is something that actually broke while building the first real example (`RM2P Claim Override (Mock POC).macro.json`, see `docs/rocket-migration-statement-of-review.md` for why it exists), verified against the running engine, not theoretical.
+Every gotcha in this doc is something that actually broke while building the first real example (`RM2P Claim Override - Mock POC.macro.json`, see `docs/rocket-migration-statement-of-review.md` for why it exists), verified against the running engine, not theoretical.
 
 ---
 
@@ -14,7 +14,7 @@ The bridge's own web client has a macro panel with Record, Stop, Import, and Exp
 
 A JSON file: `name`, `description`, `steps`. A `MacroEngine` on the server replays those steps against a live terminal session. This is the direct replacement for what the old Rumba VBA workbooks did with `.TransmitANSI`, `.TransmitTerminalKey`, `.MoveCursor`, `.GetDisplayText`, and `.WaitForEvent`.
 
-Read two shipped examples for the shape of a simple macro: `TSO ISPF Login.macro.json` and `SDSF Job Query.macro.json` (ask the Bridge_server team for these if you don't have API access to list them yet — see §6). For a macro with real branching and prompts, `RM2P Claim Override (Mock POC).macro.json` is the reference.
+Read two shipped examples for the shape of a simple macro: `TSO ISPF Login.macro.json` and `SDSF Job Query.macro.json` (ask the Bridge_server team for these if you don't have API access to list them yet — see §6). For a macro with real branching and prompts, `RM2P Claim Override - Mock POC.macro.json` is the reference.
 
 ### Step vocabulary
 

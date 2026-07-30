@@ -1,5 +1,5 @@
 {
-  "name": "RM2P Claim Override (Mock POC)",
+  "name": "RM2P Claim Override - Mock POC",
   "description": "Re-authoring of the legacy Rumba/VBA D9ATP_Override macro (~/git/my-code/vbcode/D9QC1ComeUp.bas) against mock-claims.js — proves the same claims-override flow can run headless through this bridge instead of Rocket/Rumba COM automation, with zero real medical data. Point this at MOCK-CLAIMS (port 3273) and try CLAIM9990001 through CLAIM9990012 to walk every outcome the original macro can produce.",
   "created": "2026-07-30T00:00:00.000Z",
   "steps": [
