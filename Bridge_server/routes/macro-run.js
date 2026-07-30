@@ -30,13 +30,15 @@
  * Non-200 is reserved for things that mean the call itself didn't
  * work — bad request body, couldn't reach the host, macro not found.
  *
- * Auth: if MACRO_RUN_API_KEY is set in the environment, callers must
- * send it as the X-Macro-Run-Key header. Unset by default so the POC
- * runs locally with no setup, but this is a stub, not a real
- * credential model — see docs/rocket-migration-statement-of-review.md
- * §6, "what's the credential model for a server-side batch job," for
- * why that's still an open question before this goes anywhere near
- * production.
+ * Auth: fail-closed. MACRO_RUN_API_KEY must be set in the environment,
+ * or every request is rejected — there is no "unset means open" mode
+ * anymore. That used to be the default for local POC convenience; it's
+ * exactly the gap that let unauthenticated real-data calls through, so
+ * it's gone. A real claim went through this endpoint with no real auth
+ * behind it (2026-07-30) — see the incident note in
+ * docs/rocket-migration-statement-of-review.md §6 before treating a
+ * static shared key as sufficient going forward. windowsAuth.js is the
+ * intended real replacement; the shared key is a stopgap, not the plan.
  */
 
 import Tn3270Session from '../tn3270/session.js';
@@ -91,8 +93,18 @@ async function loadMacro(params) {
 export function handle(req, res, { config, logger }) {
   if (req.url !== '/api/macro-run' || req.method !== 'POST') return false;
 
+  // Fail closed: no configured key means no access, not open access.
+  // This used to default to open when MACRO_RUN_API_KEY was unset, for
+  // local POC convenience — that default is what let an unauthenticated
+  // call reach real claims data. See the note in
+  // docs/rocket-migration-statement-of-review.md §6.
   const apiKey = process.env.MACRO_RUN_API_KEY;
-  if (apiKey && req.headers['x-macro-run-key'] !== apiKey) {
+  if (!apiKey) {
+    logger.error('[api] macro-run rejected: MACRO_RUN_API_KEY is not configured — refusing all requests rather than defaulting to open.');
+    send(res, 503, { error: 'This endpoint is not configured for use — MACRO_RUN_API_KEY is unset.' });
+    return true;
+  }
+  if (req.headers['x-macro-run-key'] !== apiKey) {
     send(res, 401, { error: 'Missing or invalid X-Macro-Run-Key header' });
     return true;
   }

@@ -83,5 +83,17 @@ Two honest ways to look at it, and both matter. Against the *whole* workbook, mo
 3. What's the credential model for a server-side batch job acting against the mainframe, service account, pass-through, something else, and who signs off on it from a security standpoint?
 4. Does the batch endpoint need to exist as a queue from day one, or is a single-macro pilot allowed to be simpler, with the queue scoped as its own follow-on project?
 
+**Note, 2026-07-30:** question 3 above stopped being hypothetical. The
+pilot endpoint (`/api/macro-run`) was run against a real claim, on the
+internal network, from an official workstation, while its only auth was
+an optional shared-secret header, unset by default. No real
+authentication was in place at the time. The endpoint's default has
+since been changed to fail closed (a key is now required, not optional),
+and work is underway on real Windows-integrated authentication
+(`auth/windows-auth.js`), but the shared key alone should not be treated
+as sufficient for anything touching real claims data. Flagging here so
+this stays attached to the credential-model question it answers, not
+just in a commit message.
+
 ---
 *Bridge_server — internal review, draft for discussion — not a build plan*
