@@ -1033,7 +1033,7 @@ class Tn3270Session extends EventEmitter {
   /**
    * Sends a structured field Query Reply telling the host our capabilities.
    *
-   * Modeled after the QueryReply x3270 sends to BCBSSC's z/VM 7.3 host
+   * Modeled after the QueryReply x3270 sends to a z/VM 7.3 host
    * (captured via packet trace), with dimensions adjusted to match our
    * current model. Lengths are computed from actual content so there's no
    * room for length/content mismatch.

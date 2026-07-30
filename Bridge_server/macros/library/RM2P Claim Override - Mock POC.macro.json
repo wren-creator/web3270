@@ -4,7 +4,7 @@
   "created": "2026-07-30T00:00:00.000Z",
   "steps": [
     { "op": "comment", "text": "Expects to start on the mock claims main menu (MOCK-CLAIMS profile, port 3273)." },
-    { "op": "wait",    "condition": "text", "row": 0, "col": 1, "text": "MOCK BCBS", "timeoutMs": 5000 },
+    { "op": "wait",    "condition": "text", "row": 0, "col": 1, "text": "MOCK CLAIMS", "timeoutMs": 5000 },
 
     { "op": "prompt",  "var": "claimNumber",   "label": "Claim number (try CLAIM9990001 .. CLAIM9990012):" },
     { "op": "prompt",  "var": "lineNumber",    "label": "Line number on the claim (e.g. 01):" },

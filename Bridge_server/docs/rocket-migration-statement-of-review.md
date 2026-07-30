@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Re:** | `~/git/my-code/vbcode` (BCBS claims automation workbook) |
+| **Re:** | `~/git/my-code/vbcode` (claims automation workbook) |
 | **Prepared by:** | Britley Hoff, Technology Owner — zLinux |
 | **Date:** | 2026-07-30 |
 | **Status:** | Feasibility review — no build started |
@@ -17,7 +17,7 @@ Short version: it's possible, it's the right direction, and it's a bigger projec
 
 The driver isn't "the old macros are ugly," it's that the company is moving away from Rocket Software's Rumba product line, for licensing cost and to get off desktop COM automation entirely. That means the bar for this review isn't "can web3270 run these screens too." It's whether web3270 can become the standard tool *because* it removes Rocket and COM from the picture, while giving up nothing the people using it today depend on.
 
-The workbook reviewed, `BCBS_StandardModule_VBA.bas` and its supporting modules, automates BCBS claims-processing screens (`RM72M70` / `RM2P`, second-pass medical claims entry) through the Rumba COM object model: type into a coordinate, transmit an AID key, poll for keyboard unlock, read text back off the screen.
+The workbook reviewed, its shared VBA constants module and its supporting modules, automates the claims-processing screens (`RM72M70` / `RM2P`, second-pass medical claims entry) through the Rumba COM object model: type into a coordinate, transmit an AID key, poll for keyboard unlock, read text back off the screen.
 
 ## 02 — What was actually in the workbook
 
@@ -25,7 +25,7 @@ Sixteen files, 3,463 lines. Two of them carry unique business logic. The rest is
 
 | File | Lines | What it is |
 |---|--:|---|
-| `BCBS_StandardModule_VBA.bas` | 1,821 | **COM boilerplate.** ~1,600 lines of Rumba constant declarations, plus session bootstrap and a 26-branch letter→seat map (`SetRumbaParms`) |
+| Standard Module (shared constants) | 1,821 | **COM boilerplate.** ~1,600 lines of Rumba constant declarations, plus session bootstrap and a 26-branch letter→seat map (`SetRumbaParms`) |
 | `D9QC1ComeUp.bas` | 414 | **Live logic.** Claims override macro (`D9ATP_Override`) — the actual business process |
 | `Module4.bas` | 520 | **Live logic.** Work-deferral lookup + amount scraping (`RWLD_Lookup`) — the other actual business process |
 | `Module6.bas` | 328 | **Duplicate.** Superseded earlier copy of Module4's helpers, no live entry point |
