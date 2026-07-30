@@ -7,6 +7,7 @@ import * as logs      from '../routes/logs.js';
 import * as profiles  from '../routes/profiles.js';
 import * as sshHosts  from '../routes/ssh-hosts.js';
 import * as macros    from '../routes/macros.js';
+import * as macroRun  from '../routes/macro-run.js';
 import * as recording from '../routes/recording.js';
 import * as security  from '../routes/security.js';
 import * as negotiate from '../routes/negotiate.js';
@@ -25,7 +26,7 @@ const MIME = {
   '.svg':  'image/svg+xml',
 };
 
-const ROUTES = [traffic, logs, profiles, sshHosts, macros, recording, security, negotiate, wire];
+const ROUTES = [traffic, logs, profiles, sshHosts, macros, macroRun, recording, security, negotiate, wire];
 
 export function createRequestHandler({ config, logger, sessions }) {
   const ctx = { config, logger, sessions };
