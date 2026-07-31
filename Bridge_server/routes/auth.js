@@ -297,6 +297,14 @@ async function handleMe(req, res) {
 }
 
 export function handle(req, res, ctx) {
+  // Unauthenticated, non-sensitive — just tells the client whether it's
+  // talking to the hosted (account-gated) deployment or the internal
+  // one, so public/js/auth-gate.js knows whether to enforce a login
+  // redirect on the terminal client at all.
+  if (req.method === 'GET' && req.url === '/api/config') {
+    send(res, 200, { multiTenant: ctx.config.bridge.multiTenant });
+    return true;
+  }
   if (req.method === 'GET' && req.url === '/api/me') { guard(handleMe, 'me')(req, res, ctx); return true; }
   if (req.method !== 'POST') return false;
   if (req.url === '/api/signup')          { guard(handleSignup, 'signup')(req, res, ctx);         return true; }
