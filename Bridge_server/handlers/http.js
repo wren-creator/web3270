@@ -2,18 +2,19 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-import * as traffic   from '../routes/traffic.js';
-import * as logs      from '../routes/logs.js';
-import * as profiles  from '../routes/profiles.js';
-import * as sshHosts  from '../routes/ssh-hosts.js';
-import * as macros    from '../routes/macros.js';
-import * as macroRun  from '../routes/macro-run.js';
-import * as recording from '../routes/recording.js';
-import * as security  from '../routes/security.js';
-import * as negotiate from '../routes/negotiate.js';
-import * as wire      from '../routes/wire.js';
-import * as auth      from '../routes/auth.js';
-import * as billing   from '../routes/billing.js';
+import * as traffic    from '../routes/traffic.js';
+import * as logs       from '../routes/logs.js';
+import * as profiles   from '../routes/profiles.js';
+import * as sshHosts   from '../routes/ssh-hosts.js';
+import * as macros     from '../routes/macros.js';
+import * as macroRun   from '../routes/macro-run.js';
+import * as recording  from '../routes/recording.js';
+import * as security   from '../routes/security.js';
+import * as negotiate  from '../routes/negotiate.js';
+import * as wire       from '../routes/wire.js';
+import * as auth       from '../routes/auth.js';
+import * as billing    from '../routes/billing.js';
+import * as disclaimer from '../routes/disclaimer.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -28,7 +29,7 @@ const MIME = {
   '.svg':  'image/svg+xml',
 };
 
-const ROUTES = [traffic, logs, profiles, sshHosts, macros, macroRun, recording, security, negotiate, wire, auth, billing];
+const ROUTES = [traffic, logs, profiles, sshHosts, macros, macroRun, recording, security, negotiate, wire, auth, billing, disclaimer];
 
 export function createRequestHandler({ config, logger, sessions }) {
   const ctx = { config, logger, sessions };
