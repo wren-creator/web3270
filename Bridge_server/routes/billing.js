@@ -17,15 +17,16 @@
  *                               PayPal reports them, not just the one
  *                               moment the buyer lands back on our site.
  *
- * Full-tier note: activating sku='full' sets review_status='pending'
- * if it isn't already something further along — the actual disclaimer
- * gate and reach-out notification are wired in routes/disclaimer.js
- * (task 6), this only makes sure the flag exists so that gate has
- * something to act on the moment a full-tier subscription goes live.
+ * Full-tier note: checkout for sku='full' is gated on having accepted
+ * the current disclaimer version (routes/disclaimer.js), which is also
+ * where the reach-out notification to Britley fires. Once the
+ * subscription activates, applySkuUpdate() below sets review_status
+ * to 'pending' if it isn't already something further along.
  */
 
 import { getProfile, setSku, setPaypalSubscriptionId, setReviewStatus, findByPaypalSubscriptionId } from '../db/profiles.js';
 import { requireLogin } from './auth.js';
+import { hasAcceptedCurrent } from './disclaimer.js';
 import * as paypal from '../billing/paypal.js';
 
 const VALID_SKUS = new Set(['base', 'training', 'full']);
@@ -78,6 +79,11 @@ async function handleCheckout(req, res, { logger }) {
     const sku = params.sku;
     if (!VALID_SKUS.has(sku)) {
       send(res, 400, { error: `sku must be one of: ${[...VALID_SKUS].join(', ')}` });
+      return;
+    }
+
+    if (sku === 'full' && !(await hasAcceptedCurrent(email))) {
+      send(res, 403, { error: 'Accept the full-tier disclaimer before checkout', disclaimerRequired: true });
       return;
     }
 
