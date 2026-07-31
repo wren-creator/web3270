@@ -14,6 +14,19 @@ import { handleSshConnect } from '../features/ssh.js';
 import { handleFuzz } from '../features/fuzz.js';
 import * as mitm from '../features/mitm.js';
 import { createHandlers as createXferHandlers, screenToLinesMasked } from '../features/transfer.js';
+import { getSessionEmail } from '../auth/session.js';
+import { getProfile } from '../db/profiles.js';
+
+// Hosted-tier caps, direct analog of stock-alarm-service's SKU_CAPS map.
+// Only consulted when config.bridge.multiTenant is on — the internal/
+// OpenShift deployment has no account system and everything here stays
+// unlocked, same as before this gating existed.
+const SKU_CAPS = {
+  base:     { mockLpar: false, securityTools: false },
+  training: { mockLpar: true,  securityTools: false },
+  full:     { mockLpar: true,  securityTools: true  },
+};
+const UNGATED_CAPS = { mockLpar: true, securityTools: true };
 
 function buildTlsOptions(params, config) {
   const opts = { rejectUnauthorized: params.verifyTls ?? config.bridge.verifyTls };
@@ -29,12 +42,19 @@ export function createWsHandler({ config, logger, sessions, Ebcdic }) {
 
   const xfer = createXferHandlers({ logger, send, Ebcdic });
 
+  // Built-in mock LPARs (lpars.shipped.txt) are the "training" content —
+  // matched by host:port since the browser's connect message only ever
+  // carries those, not a profile id (public/js/profiles.js).
+  const MOCK_LPAR_HOSTS = new Set(
+    config.profiles.filter(p => p.source === 'shipped').map(p => `${p.host}:${p.port}`)
+  );
+
   return function handleConnection(ws, req) {
     const wsId   = nextId++;
     const origin = req.socket.remoteAddress;
     logger.info(`[ws:${wsId}] Browser connected from ${origin}`);
 
-    ws.once('message', rawMsg => {
+    ws.once('message', async rawMsg => {
       let params;
       try   { params = JSON.parse(rawMsg); }
       catch {
@@ -53,6 +73,29 @@ export function createWsHandler({ config, logger, sessions, Ebcdic }) {
         ws.close(); return;
       }
 
+      // ── Hosted-tier gating ────────────────────────────────────────
+      // Fails closed: a DB hiccup here rejects the connect rather than
+      // risking an unhandled rejection from an unawaited async handler
+      // (see the same fix in routes/auth.js — that one crashed the
+      // whole process, this one only needs to not silently open the
+      // gate).
+      let caps = UNGATED_CAPS;
+      if (config.bridge.multiTenant) {
+        const email = getSessionEmail(req);
+        if (!email) {
+          send(ws, { type: 'error', message: 'Log in required' });
+          ws.close(); return;
+        }
+        try {
+          const profile = await getProfile(email);
+          caps = SKU_CAPS[profile?.sku] || SKU_CAPS.base;
+        } catch (err) {
+          logger.error(`[ws:${wsId}] Could not load account for ${email}: ${err.message}`);
+          send(ws, { type: 'error', message: 'Could not verify your account — try again shortly' });
+          ws.close(); return;
+        }
+      }
+
       const { host, luName = null } = params;
       const port      = parseInt(params.port, 10) || 339;
       const useTls    = params.tls ?? (port === 992);
@@ -61,6 +104,11 @@ export function createWsHandler({ config, logger, sessions, Ebcdic }) {
 
       if (!host) {
         send(ws, { type: 'error', message: 'Missing required field: host' });
+        ws.close(); return;
+      }
+
+      if (MOCK_LPAR_HOSTS.has(`${host}:${port}`) && !caps.mockLpar) {
+        send(ws, { type: 'error', message: 'Mock LPARs require the Learning or Full plan — upgrade at /billing' });
         ws.close(); return;
       }
 
@@ -179,6 +227,11 @@ export function createWsHandler({ config, logger, sessions, Ebcdic }) {
           xfer.ensureCmsReady(session, ws, wsId)
             .then(() => send(ws, { type: 'xfer.cms-ready' }))
             .catch(err => send(ws, { type: 'xfer.error', message: err.message }));
+          return;
+        }
+
+        if (typeof msg.type === 'string' && msg.type.startsWith('sec.') && !caps.securityTools) {
+          send(ws, { type: 'error', message: 'Security tools require the Full plan — upgrade at /billing' });
           return;
         }
 

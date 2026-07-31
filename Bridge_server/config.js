@@ -99,6 +99,11 @@ export default {
     socketTimeoutMs: parseInt(process.env.BRIDGE_SOCKET_TIMEOUT_MS || '300000', 10),
     maxSessions: parseInt(process.env.BRIDGE_MAX_SESSIONS || '100', 10),
     corsOrigin: process.env.BRIDGE_CORS_ORIGIN || '*',
+    // Hosted webterm-3270.com deployment only. Leave unset for the
+    // internal/OpenShift deployment — it has no account system and
+    // stays on the shared config.securityPassword gate instead of
+    // per-account sku tiers (handlers/ws.js).
+    multiTenant: process.env.BRIDGE_MULTI_TENANT === 'true',
   },
 
   defaults: {
