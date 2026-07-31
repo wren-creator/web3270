@@ -16,8 +16,12 @@ export function captureRaw(wsId, host, port, dir, data) {
   cap.bytes += data.length;
 }
 
-export function clearCaptures() {
-  captures.clear();
+// wsIds omitted clears everything (single-tenant/unscoped); passed,
+// clears only those sessions' captures (hosted "clear my traffic" —
+// must not wipe other customers' in-progress captures).
+export function clearCaptures(wsIds = null) {
+  if (wsIds == null) { captures.clear(); return; }
+  for (const id of wsIds) captures.delete(id);
 }
 
 // Read-only accessor for the wire inspector: returns [{wsId, host, port, frames}]

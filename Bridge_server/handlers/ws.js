@@ -1,5 +1,6 @@
 import { WebSocket } from 'ws';
 import fs from 'fs';
+import path from 'path';
 import Tn3270Session from '../tn3270/session.js';
 import Tn5250Session from '../tn5250/session.js';
 import MacroHandler from '../macros/handler.js';
@@ -16,6 +17,8 @@ import * as mitm from '../features/mitm.js';
 import { createHandlers as createXferHandlers, screenToLinesMasked } from '../features/transfer.js';
 import { getSessionEmail } from '../auth/session.js';
 import { getProfile } from '../db/profiles.js';
+import { sessionOwners } from '../auth/session-owners.js';
+import { accountMacroDir } from '../utils/account-paths.js';
 
 // Hosted-tier caps, direct analog of stock-alarm-service's SKU_CAPS map.
 // Only consulted when config.bridge.multiTenant is on — the internal/
@@ -80,8 +83,9 @@ export function createWsHandler({ config, logger, sessions, Ebcdic }) {
       // whole process, this one only needs to not silently open the
       // gate).
       let caps = UNGATED_CAPS;
+      let email = null;
       if (config.bridge.multiTenant) {
-        const email = getSessionEmail(req);
+        email = getSessionEmail(req);
         if (!email) {
           send(ws, { type: 'error', message: 'Log in required' });
           ws.close(); return;
@@ -94,6 +98,7 @@ export function createWsHandler({ config, logger, sessions, Ebcdic }) {
           send(ws, { type: 'error', message: 'Could not verify your account — try again shortly' });
           ws.close(); return;
         }
+        sessionOwners.set(wsId, email);
       }
 
       const { host, luName = null } = params;
@@ -141,7 +146,14 @@ export function createWsHandler({ config, logger, sessions, Ebcdic }) {
 
       sessions.set(wsId, session);
 
-      const macroHandler = new MacroHandler(session, ws, wsId, macroStore);
+      // Hosted deployment: each account gets its own macro library
+      // directory instead of sharing the single global one (macroStore,
+      // module-scope above) — otherwise every customer's saved macros
+      // would be visible to every other customer.
+      const accountMacroStore = config.bridge.multiTenant
+        ? new MacroStore(path.join(accountMacroDir(email), 'library'))
+        : macroStore;
+      const macroHandler = new MacroHandler(session, ws, wsId, accountMacroStore);
       CopilotHandler.sendProviderInfo(ws);
 
       // ── Session → Browser events ─────────────────────────────────

@@ -1,21 +1,45 @@
 import { recordings } from '../features/recording.js';
+import { requireLogin } from './auth.js';
+import { sessionOwners } from '../auth/session-owners.js';
 
-export function handle(req, res, { sessions, logger }) {
+function send(res, code, body) {
+  res.writeHead(code, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+  res.end(JSON.stringify(body));
+}
+
+// wsId is a plain incrementing counter, trivially guessable — on the
+// hosted deployment, verify the caller's session actually owns the
+// wsId in the query string before starting/stopping/checking a
+// recording, or any logged-in customer could hijack another
+// customer's recording just by asking for a different session id.
+function authorizedForSession(req, res, config, wsId) {
+  if (!config.bridge.multiTenant) return true;
+  const email = requireLogin(req, res);
+  if (!email) return false;
+  if (sessionOwners.get(wsId) !== email) {
+    send(res, 404, { error: 'Session not found' });
+    return false;
+  }
+  return true;
+}
+
+export function handle(req, res, { config, sessions, logger }) {
   if (req.method === 'POST' && req.url.startsWith('/api/recording/start')) {
     const wsId = parseInt(new URL(req.url, 'http://x').searchParams.get('session'), 10);
-    if (!sessions.has(wsId)) { res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Session not found' })); return true; }
-    if (recordings.has(wsId)) { res.writeHead(409, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Already recording' })); return true; }
+    if (!authorizedForSession(req, res, config, wsId)) return true;
+    if (!sessions.has(wsId)) { send(res, 404, { error: 'Session not found' }); return true; }
+    if (recordings.has(wsId)) { send(res, 409, { error: 'Already recording' }); return true; }
     const sess = sessions.get(wsId);
     recordings.set(wsId, { start: Date.now(), meta: { host: sess.host, port: sess.port, lu: sess.negotiatedLu || null, model: sess.model || null }, events: [] });
     logger.info(`[rec:${wsId}] Recording started`);
-    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-    res.end(JSON.stringify({ ok: true, session: wsId }));
+    send(res, 200, { ok: true, session: wsId });
     return true;
   }
 
   if (req.method === 'POST' && req.url.startsWith('/api/recording/stop')) {
     const wsId = parseInt(new URL(req.url, 'http://x').searchParams.get('session'), 10);
-    if (!recordings.has(wsId)) { res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'No active recording for this session' })); return true; }
+    if (!authorizedForSession(req, res, config, wsId)) return true;
+    if (!recordings.has(wsId)) { send(res, 404, { error: 'No active recording for this session' }); return true; }
     const rec = recordings.get(wsId);
     recordings.delete(wsId);
     const payload = JSON.stringify({ version: 1, ...rec.meta, recorded: new Date(rec.start).toISOString(), events: rec.events }, null, 2);
@@ -28,8 +52,8 @@ export function handle(req, res, { sessions, logger }) {
 
   if (req.method === 'GET' && req.url.startsWith('/api/recording/status')) {
     const wsId = parseInt(new URL(req.url, 'http://x').searchParams.get('session'), 10);
-    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-    res.end(JSON.stringify({ recording: recordings.has(wsId) }));
+    if (!authorizedForSession(req, res, config, wsId)) return true;
+    send(res, 200, { recording: recordings.has(wsId) });
     return true;
   }
 
