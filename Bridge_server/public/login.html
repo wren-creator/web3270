@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WebTerm/3270 — Sign in</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap">
+<link rel="stylesheet" href="css/terminal.css">
+<style>
+  /* ── Auth page layout ─────────────────────────────────────────── */
+  /* Reuses terminal.css's variables/fonts (the app's single CSS
+     source of truth) but overrides body layout for a centered card
+     instead of the terminal chrome. */
+  body {
+    height: auto;
+    min-height: 100vh;
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 16px;
+    background:
+      radial-gradient(ellipse 900px 500px at 50% -10%, rgba(0,212,255,0.08), transparent),
+      var(--bg-primary);
+  }
+
+  .auth-wrap { width: 100%; max-width: 400px; }
+
+  .auth-brand { display: flex; align-items: center; justify-content: center; gap: 9px; margin-bottom: 22px; }
+  .auth-brand svg { flex-shrink: 0; border-radius: 4px; }
+  .auth-brand-text { font-family: 'IBM Plex Mono', monospace; font-size: 17px; font-weight: 600; letter-spacing: 0.03em; color: var(--accent-cyan); }
+  .auth-brand-text span { color: var(--text-dim); font-weight: 300; }
+
+  .auth-card {
+    background: var(--bg-panel);
+    border: 1px solid var(--border-bright);
+    border-radius: 8px;
+    box-shadow: 0 0 50px rgba(0,212,255,0.06), 0 20px 60px rgba(0,0,0,0.5);
+    overflow: hidden;
+  }
+
+  .auth-tabs { display: flex; border-bottom: 1px solid var(--border); }
+  .auth-tab {
+    flex: 1; text-align: center; padding: 13px 0; cursor: pointer;
+    font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600;
+    letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--text-muted); border-bottom: 2px solid transparent;
+    transition: all 0.15s; user-select: none;
+  }
+  .auth-tab:hover:not(.active) { color: var(--text-dim); }
+  .auth-tab.active { color: var(--accent-cyan); border-color: var(--accent-cyan); background: var(--bg-elevated); }
+
+  .auth-panel { display: none; padding: 22px; }
+  .auth-panel.active { display: block; }
+
+  .auth-title { font-size: 13px; color: var(--text-primary); font-weight: 500; margin-bottom: 4px; }
+  .auth-subtitle { font-size: 11px; color: var(--text-muted); margin-bottom: 18px; line-height: 1.5; }
+
+  .auth-field { margin-bottom: 13px; }
+  .auth-label { display: block; font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 5px; }
+  .auth-input {
+    width: 100%; background: #070d16; border: 1px solid var(--border-bright);
+    color: var(--text-primary); font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px; padding: 8px 10px; border-radius: 4px; outline: none;
+    transition: border-color 0.15s;
+  }
+  .auth-input:focus { border-color: var(--accent-cyan); }
+  .auth-input::placeholder { color: var(--text-muted); }
+
+  .auth-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+  .auth-tier-group { display: flex; flex-direction: column; gap: 6px; }
+  .auth-tier { display: flex; align-items: center; gap: 9px; padding: 9px 10px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 4px; cursor: pointer; transition: border-color 0.15s; }
+  .auth-tier:hover { border-color: var(--border-bright); }
+  .auth-tier.selected { border-color: var(--accent-cyan); background: rgba(0,212,255,0.05); }
+  .auth-tier input { accent-color: var(--accent-cyan); }
+  .auth-tier-name { font-size: 11.5px; color: var(--text-primary); font-weight: 500; }
+  .auth-tier-price { font-size: 10px; color: var(--accent-amber); margin-left: auto; font-family: 'IBM Plex Mono', monospace; }
+  .auth-tier-desc { font-size: 9.5px; color: var(--text-muted); }
+
+  .auth-btn {
+    width: 100%; padding: 10px 0; margin-top: 6px; border-radius: 4px; cursor: pointer;
+    font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600;
+    letter-spacing: 0.03em; border: 1px solid var(--accent-blue);
+    background: var(--accent-blue); color: white; transition: all 0.15s;
+  }
+  .auth-btn:hover:not(:disabled) { background: #3d8de2; }
+  .auth-btn:disabled { opacity: 0.5; cursor: default; }
+  .auth-btn.ghost { background: transparent; border-color: var(--border-bright); color: var(--text-dim); margin-top: 8px; }
+  .auth-btn.ghost:hover:not(:disabled) { border-color: var(--accent-cyan); color: var(--accent-cyan); }
+
+  .auth-msg { font-size: 10.5px; padding: 7px 10px; border-radius: 4px; border: 1px solid var(--border); margin-bottom: 13px; display: none; line-height: 1.5; }
+  .auth-msg.show { display: block; }
+  .auth-msg.error { color: var(--t-red); background: #1a0000; border-color: #3a0000; }
+  .auth-msg.info  { color: var(--accent-green); background: #001a08; border-color: #003a10; }
+
+  .auth-otp-input { text-align: center; letter-spacing: 0.5em; font-size: 18px; }
+  .auth-resend { font-size: 10.5px; color: var(--text-muted); text-align: center; margin-top: 12px; }
+  .auth-resend a { color: var(--accent-cyan); cursor: pointer; text-decoration: none; }
+  .auth-resend a:hover { text-decoration: underline; }
+  .auth-resend a.disabled { color: var(--text-muted); pointer-events: none; }
+
+  .auth-back { font-size: 10.5px; color: var(--text-muted); cursor: pointer; margin-bottom: 14px; display: inline-flex; align-items: center; gap: 4px; }
+  .auth-back:hover { color: var(--accent-cyan); }
+</style>
+</head>
+<body>
+
+<div class="auth-wrap">
+  <div class="auth-brand">
+    <svg width="26" height="26" viewBox="0 0 160 160" xmlns="http://www.w3.org/2000/svg">
+      <rect width="160" height="160" fill="var(--logo-bg)" rx="10"/>
+      <g transform="translate(68,80)">
+        <circle cx="0" cy="0" r="62" fill="none" stroke="var(--logo-ring)" stroke-width="4"/>
+        <circle cx="0" cy="0" r="16" fill="var(--logo-ring)"/>
+        <line x1="0" y1="-16" x2="0" y2="-62" stroke="var(--logo-ring)" stroke-width="4"/>
+        <line x1="0" y1="16" x2="0" y2="62" stroke="var(--logo-ring)" stroke-width="4"/>
+        <line x1="-16" y1="0" x2="-62" y2="0" stroke="var(--logo-ring)" stroke-width="4"/>
+        <line x1="16" y1="0" x2="62" y2="0" stroke="var(--logo-ring)" stroke-width="4"/>
+        <circle cx="32" cy="-32" r="9" fill="none" stroke="var(--logo-ring-light)" stroke-width="3.5"/>
+        <line x1="32" y1="-32" x2="76" y2="-6" stroke="var(--logo-ring-light)" stroke-width="3.5"/>
+        <circle cx="76" cy="-6" r="8" fill="var(--logo-ring)" stroke="var(--logo-ring-light)" stroke-width="2.5"/>
+      </g>
+    </svg>
+    <div class="auth-brand-text">WebTerm<span>/3270</span></div>
+  </div>
+
+  <div class="auth-card">
+    <div class="auth-tabs" id="authTabs">
+      <div class="auth-tab active" data-tab="login">Log In</div>
+      <div class="auth-tab" data-tab="signup">Sign Up</div>
+    </div>
+
+    <div class="auth-msg" id="authMsg"></div>
+
+    <!-- ── LOG IN ─────────────────────────────────────────────── -->
+    <div class="auth-panel active" id="panelLogin">
+      <div class="auth-title">Welcome back</div>
+      <div class="auth-subtitle">Sign in to reach your terminal sessions.</div>
+      <form id="formLogin">
+        <div class="auth-field">
+          <label class="auth-label">Email</label>
+          <input class="auth-input" type="email" id="loginEmail" placeholder="you@example.com" required>
+        </div>
+        <div class="auth-field">
+          <label class="auth-label">Password</label>
+          <input class="auth-input" type="password" id="loginPassword" placeholder="••••••••" required>
+        </div>
+        <button class="auth-btn" type="submit" id="loginSubmit">Log In</button>
+      </form>
+    </div>
+
+    <!-- ── SIGN UP ────────────────────────────────────────────── -->
+    <div class="auth-panel" id="panelSignup">
+      <div class="auth-title">Create an account</div>
+      <div class="auth-subtitle">We'll text a code to verify your phone before setting up billing.</div>
+      <form id="formSignup">
+        <div class="auth-row-2">
+          <div class="auth-field">
+            <label class="auth-label">First name</label>
+            <input class="auth-input" type="text" id="signupFirstName" placeholder="Jane">
+          </div>
+          <div class="auth-field">
+            <label class="auth-label">Last name</label>
+            <input class="auth-input" type="text" id="signupLastName" placeholder="Doe">
+          </div>
+        </div>
+        <div class="auth-field">
+          <label class="auth-label">Email</label>
+          <input class="auth-input" type="email" id="signupEmail" placeholder="you@example.com" required>
+        </div>
+        <div class="auth-field">
+          <label class="auth-label">Phone</label>
+          <input class="auth-input" type="tel" id="signupPhone" placeholder="+1 555 555 0100" required>
+        </div>
+        <div class="auth-field">
+          <label class="auth-label">Password</label>
+          <input class="auth-input" type="password" id="signupPassword" placeholder="••••••••" required>
+        </div>
+        <div class="auth-field">
+          <label class="auth-label">Plan</label>
+          <div class="auth-tier-group" id="tierGroup">
+            <label class="auth-tier selected">
+              <input type="radio" name="sku" value="base" checked>
+              <div>
+                <div class="auth-tier-name">Basic client</div>
+                <div class="auth-tier-desc">TN3270/5250 client only</div>
+              </div>
+              <div class="auth-tier-price">$9.99/mo</div>
+            </label>
+            <label class="auth-tier">
+              <input type="radio" name="sku" value="training">
+              <div>
+                <div class="auth-tier-name">Learning platform</div>
+                <div class="auth-tier-desc">+ mock LPARs</div>
+              </div>
+              <div class="auth-tier-price">$15.99/mo</div>
+            </label>
+            <label class="auth-tier">
+              <input type="radio" name="sku" value="full">
+              <div>
+                <div class="auth-tier-name">Full suite</div>
+                <div class="auth-tier-desc">+ security tools, reviewed manually</div>
+              </div>
+              <div class="auth-tier-price">$24.99/mo</div>
+            </label>
+          </div>
+        </div>
+        <button class="auth-btn" type="submit" id="signupSubmit">Send verification code</button>
+      </form>
+    </div>
+
+    <!-- ── PHONE VERIFY ───────────────────────────────────────── -->
+    <div class="auth-panel" id="panelVerify">
+      <div class="auth-back" id="verifyBack">‹ back</div>
+      <div class="auth-title">Verify your phone</div>
+      <div class="auth-subtitle" id="verifySubtitle">Enter the 6-digit code we texted you.</div>
+      <form id="formVerify">
+        <div class="auth-field">
+          <input class="auth-input auth-otp-input" type="text" id="verifyCode" placeholder="000000" maxlength="6" inputmode="numeric" required>
+        </div>
+        <button class="auth-btn" type="submit" id="verifySubmit">Verify &amp; create account</button>
+      </form>
+      <div class="auth-resend">
+        Didn't get it? <a id="resendLink">Resend code</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="js/auth.js"></script>
+</body>
+</html>

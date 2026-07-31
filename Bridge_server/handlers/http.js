@@ -49,6 +49,7 @@ export function createRequestHandler({ config, logger, sessions }) {
     const urlPath = req.url.split('?')[0];
     let filePath;
     if (urlPath === '/' || urlPath === '')                           filePath = path.join(PUBLIC_DIR, 'tn3270-client.html');
+    else if (urlPath === '/login' || urlPath === '/login.html')      filePath = path.join(PUBLIC_DIR, 'login.html');
     else if (urlPath === '/demo' || urlPath === '/demo.html')        filePath = path.join(PUBLIC_DIR, 'tn3270-client-demo.html');
     else if (urlPath === '/replay' || urlPath === '/replay.html')    filePath = path.join(PUBLIC_DIR, 'replay.html');
     else if (urlPath === '/logs' || urlPath === '/logs.html')        filePath = path.join(PUBLIC_DIR, 'logs.html');
