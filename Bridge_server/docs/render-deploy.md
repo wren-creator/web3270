@@ -26,11 +26,20 @@ most of the choices, this covers the setup steps.
 
 ## 2. Create the Blueprint
 
-In the Render dashboard: New → Blueprint → connect this repo → point the
-Blueprint file path at `Bridge_server/render.yaml` (this is a monorepo; the
-git root and this app's root aren't the same directory). Render provisions
-everything in `render.yaml`: the `webterm3270-bridge` web service, the
-`webterm3270-db` Postgres instance, and the five `mock-*` private services.
+In the Render dashboard: New → Blueprint → connect this repo → pick the
+branch to deploy → point the Blueprint file path at
+`Bridge_server/render.yaml` (this is a monorepo; the git root and this
+app's root aren't the same directory). Render provisions everything in
+`render.yaml`: the `webterm3270-bridge` web service, the `webterm3270-db`
+Postgres instance, and the five `mock-*` private services.
+
+Render can deploy from any branch, not just `main` — you don't need to
+merge a feature branch to `main` before it can go live on Render. Just be
+aware that with auto-deploy on (Render's default), the service keeps
+tracking whichever branch you picked here. If you later merge that branch
+into `main`, flip the branch setting on the `webterm3270-bridge` service
+over to `main` at that point, or Render will keep deploying pushes to the
+feature branch instead of what actually landed on `main`.
 
 First sync will fail to fully come up — the `sync: false` env vars (PayPal,
 Telnyx, SMTP secrets, `ADMIN_NOTIFY_EMAIL`) have no value yet. That's
