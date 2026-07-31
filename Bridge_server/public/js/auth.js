@@ -61,7 +61,13 @@ document.getElementById('formLogin').addEventListener('submit', async (e) => {
   submitBtn.disabled = true;
   try {
     await postJson('/api/login', { email, password });
-    window.location.href = '/';
+    // If they just came from signing up for a paid tier, send them
+    // straight to checkout instead of the terminal client — the
+    // account itself always starts on 'base' (routes/auth.js), so
+    // whatever they asked for still needs a subscription to activate.
+    const requestedSku = sessionStorage.getItem('requestedSku');
+    sessionStorage.removeItem('requestedSku');
+    window.location.href = (requestedSku && requestedSku !== 'base') ? '/billing' : '/';
   } catch (err) {
     showMsg(err.message, 'error');
   } finally {
@@ -103,7 +109,8 @@ document.getElementById('formVerify').addEventListener('submit', async (e) => {
 
   submitBtn.disabled = true;
   try {
-    await postJson('/api/verify-phone', { email: pendingSignupEmail, code });
+    const { requestedSku } = await postJson('/api/verify-phone', { email: pendingSignupEmail, code });
+    if (requestedSku && requestedSku !== 'base') sessionStorage.setItem('requestedSku', requestedSku);
     showTab('login');
     document.getElementById('loginEmail').value = pendingSignupEmail;
     showMsg('Account created — log in to continue.', 'info');

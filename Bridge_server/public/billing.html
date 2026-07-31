@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WebTerm/3270 — Billing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap">
+<link rel="stylesheet" href="css/terminal.css">
+<style>
+  /* Same auth-page layout approach as login.html — terminal.css stays
+     the single CSS source of truth for the palette/fonts, this just
+     overrides body layout for a centered page instead of app chrome. */
+  body {
+    height: auto;
+    min-height: 100vh;
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 16px;
+    background:
+      radial-gradient(ellipse 900px 500px at 50% -10%, rgba(0,212,255,0.08), transparent),
+      var(--bg-primary);
+  }
+
+  .bill-wrap { width: 100%; max-width: 460px; }
+
+  .bill-brand { display: flex; align-items: center; justify-content: center; gap: 9px; margin-bottom: 22px; }
+  .bill-brand svg { flex-shrink: 0; border-radius: 4px; }
+  .bill-brand-text { font-family: 'IBM Plex Mono', monospace; font-size: 17px; font-weight: 600; letter-spacing: 0.03em; color: var(--accent-cyan); }
+  .bill-brand-text span { color: var(--text-dim); font-weight: 300; }
+
+  .bill-card {
+    background: var(--bg-panel);
+    border: 1px solid var(--border-bright);
+    border-radius: 8px;
+    box-shadow: 0 0 50px rgba(0,212,255,0.06), 0 20px 60px rgba(0,0,0,0.5);
+    padding: 22px;
+  }
+
+  .bill-title { font-size: 13px; color: var(--text-primary); font-weight: 500; margin-bottom: 4px; }
+  .bill-subtitle { font-size: 11px; color: var(--text-muted); margin-bottom: 18px; line-height: 1.5; }
+
+  .bill-msg { font-size: 10.5px; padding: 7px 10px; border-radius: 4px; border: 1px solid var(--border); margin-bottom: 16px; display: none; line-height: 1.5; }
+  .bill-msg.show { display: block; }
+  .bill-msg.error { color: var(--t-red); background: #1a0000; border-color: #3a0000; }
+  .bill-msg.info  { color: var(--accent-green); background: #001a08; border-color: #003a10; }
+  .bill-msg.warn  { color: var(--accent-amber); background: #1a1000; border-color: #3a2800; }
+
+  .bill-plans { display: flex; flex-direction: column; gap: 10px; }
+  .bill-plan { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 6px; padding: 14px; }
+  .bill-plan.current { border-color: var(--accent-green); background: rgba(0,255,136,0.04); }
+  .bill-plan-hdr { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+  .bill-plan-name { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+  .bill-plan-price { font-size: 11px; color: var(--accent-amber); font-family: 'IBM Plex Mono', monospace; margin-left: auto; }
+  .bill-plan-desc { font-size: 10.5px; color: var(--text-muted); margin-bottom: 10px; line-height: 1.5; }
+  .bill-plan-badge { font-size: 9px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--accent-green); border: 1px solid #1a4a2a; background: rgba(0,255,136,0.08); border-radius: 3px; padding: 2px 6px; }
+  .bill-plan-review { font-size: 9.5px; color: var(--accent-amber); margin-top: 6px; }
+
+  .bill-btn {
+    width: 100%; padding: 9px 0; border-radius: 4px; cursor: pointer;
+    font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; font-weight: 600;
+    letter-spacing: 0.03em; border: 1px solid var(--accent-blue);
+    background: var(--accent-blue); color: white; transition: all 0.15s;
+  }
+  .bill-btn:hover:not(:disabled) { background: #3d8de2; }
+  .bill-btn:disabled { opacity: 0.5; cursor: default; }
+
+  .bill-disclaimer { display: none; margin-top: 12px; padding: 12px; background: #070d16; border: 1px solid var(--border-bright); border-radius: 5px; }
+  .bill-disclaimer.show { display: block; }
+  .bill-disclaimer-text { font-size: 10.5px; color: var(--text-dim); line-height: 1.6; margin-bottom: 10px; }
+  .bill-disclaimer-accept { display: flex; align-items: flex-start; gap: 7px; font-size: 10.5px; color: var(--text-dim); margin-bottom: 10px; cursor: pointer; }
+  .bill-disclaimer-accept input { margin-top: 2px; accent-color: var(--accent-cyan); }
+
+  .bill-footer { text-align: center; margin-top: 16px; font-size: 10.5px; color: var(--text-muted); }
+  .bill-footer a { color: var(--accent-cyan); cursor: pointer; text-decoration: none; }
+  .bill-footer a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<div class="bill-wrap">
+  <div class="bill-brand">
+    <svg width="26" height="26" viewBox="0 0 160 160" xmlns="http://www.w3.org/2000/svg">
+      <rect width="160" height="160" fill="var(--logo-bg)" rx="10"/>
+      <g transform="translate(68,80)">
+        <circle cx="0" cy="0" r="62" fill="none" stroke="var(--logo-ring)" stroke-width="4"/>
+        <circle cx="0" cy="0" r="16" fill="var(--logo-ring)"/>
+        <line x1="0" y1="-16" x2="0" y2="-62" stroke="var(--logo-ring)" stroke-width="4"/>
+        <line x1="0" y1="16" x2="0" y2="62" stroke="var(--logo-ring)" stroke-width="4"/>
+        <line x1="-16" y1="0" x2="-62" y2="0" stroke="var(--logo-ring)" stroke-width="4"/>
+        <line x1="16" y1="0" x2="62" y2="0" stroke="var(--logo-ring)" stroke-width="4"/>
+        <circle cx="32" cy="-32" r="9" fill="none" stroke="var(--logo-ring-light)" stroke-width="3.5"/>
+        <line x1="32" y1="-32" x2="76" y2="-6" stroke="var(--logo-ring-light)" stroke-width="3.5"/>
+        <circle cx="76" cy="-6" r="8" fill="var(--logo-ring)" stroke="var(--logo-ring-light)" stroke-width="2.5"/>
+      </g>
+    </svg>
+    <div class="bill-brand-text">WebTerm<span>/3270</span></div>
+  </div>
+
+  <div class="bill-card">
+    <div class="bill-title">Your plan</div>
+    <div class="bill-subtitle" id="billSubtitle">Loading account…</div>
+
+    <div class="bill-msg" id="billMsg"></div>
+
+    <div class="bill-plans" id="billPlans">
+      <div class="bill-plan" data-sku="base">
+        <div class="bill-plan-hdr">
+          <span class="bill-plan-name">Basic client</span>
+          <span class="bill-plan-price">$9.99/mo</span>
+        </div>
+        <div class="bill-plan-desc">TN3270/5250 client only.</div>
+        <button class="bill-btn" data-sku="base">Subscribe</button>
+      </div>
+      <div class="bill-plan" data-sku="training">
+        <div class="bill-plan-hdr">
+          <span class="bill-plan-name">Learning platform</span>
+          <span class="bill-plan-price">$15.99/mo</span>
+        </div>
+        <div class="bill-plan-desc">Everything in Basic, plus mock LPARs.</div>
+        <button class="bill-btn" data-sku="training">Subscribe</button>
+      </div>
+      <div class="bill-plan" data-sku="full">
+        <div class="bill-plan-hdr">
+          <span class="bill-plan-name">Full suite</span>
+          <span class="bill-plan-price">$24.99/mo</span>
+        </div>
+        <div class="bill-plan-desc">Everything in Learning, plus security/recon/fuzzing tools. Reviewed manually before those tools are enabled.</div>
+        <button class="bill-btn" data-sku="full">Subscribe</button>
+        <div class="bill-disclaimer" id="fullDisclaimer">
+          <div class="bill-disclaimer-text" id="fullDisclaimerText"></div>
+          <label class="bill-disclaimer-accept">
+            <input type="checkbox" id="fullDisclaimerCheck">
+            <span>I understand and accept the terms above.</span>
+          </label>
+          <button class="bill-btn" id="fullDisclaimerContinue" disabled>Accept &amp; continue to checkout</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="bill-footer"><a id="logoutLink">Log out</a></div>
+  </div>
+</div>
+
+<script type="module" src="js/billing.js"></script>
+</body>
+</html>

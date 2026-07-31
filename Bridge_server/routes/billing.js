@@ -4,9 +4,12 @@
  * POST /api/billing/checkout — logged-in user picks a tier, we create
  *                               a PayPal subscription and hand back an
  *                               approval URL to redirect them to.
- * GET  /api/billing/return    — PayPal's return_url after approval.
- *                               Fallback reconciliation: check the
- *                               subscription's real status directly.
+ * GET  /api/billing/return    — PayPal's return_url after approval. The
+ *                               buyer's browser lands here directly, so
+ *                               this reconciles the subscription's real
+ *                               status and redirects to /billing with
+ *                               the outcome rather than handing back
+ *                               raw JSON.
  * POST /api/billing/webhook   — PayPal's async event delivery. This is
  *                               the primary path — unlike
  *                               stock-alarm-service, which only
@@ -117,13 +120,18 @@ async function handleCheckout(req, res, { logger }) {
   });
 }
 
+function redirectToBilling(res, status) {
+  res.writeHead(302, { Location: `/billing?status=${status}` });
+  res.end();
+}
+
 async function handleReturn(req, res, { logger }) {
   const email = requireLogin(req, res);
   if (!email) return;
 
   const profile = await getProfile(email);
   if (!profile?.paypal_subscription_id) {
-    send(res, 400, { error: 'No pending subscription on file' });
+    redirectToBilling(res, 'error');
     return;
   }
 
@@ -132,11 +140,13 @@ async function handleReturn(req, res, { logger }) {
     if (ACTIVE_STATUSES.has(status)) {
       const sku = paypal.skuForPlanId(planId);
       if (sku) await applySkuUpdate(email, sku, logger);
+      redirectToBilling(res, 'active');
+    } else {
+      redirectToBilling(res, 'pending');
     }
-    send(res, 200, { status });
   } catch (err) {
     logger.error(`[billing] return-url reconciliation failed for ${email}: ${err.message}`);
-    send(res, 502, { error: 'Could not confirm subscription status' });
+    redirectToBilling(res, 'error');
   }
 }
 
