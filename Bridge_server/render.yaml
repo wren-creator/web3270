@@ -13,7 +13,9 @@
 
 databases:
   - name: webterm3270-db
-    plan: starter
+    # Render retired the legacy "starter" Postgres plan name; basic-256mb
+    # is the current closest equivalent (smallest paid tier).
+    plan: basic-256mb
     postgresMajorVersion: "16"
 
 services:
