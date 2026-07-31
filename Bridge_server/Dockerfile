@@ -2,6 +2,11 @@
 FROM node:20-alpine AS deps
 WORKDIR /app
 
+# kerberos (auth/windows-auth.js) is a native module built via node-gyp
+# at install time — Alpine's base node image has neither Python nor a
+# C++ toolchain nor the Kerberos headers node-gyp links against.
+RUN apk add --no-cache python3 make g++ krb5-dev
+
 # Copy package files and install production deps only
 COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev
