@@ -10,6 +10,9 @@
  * POST /api/logout        — clears the session cookie.
  * POST /api/send-email-code — post-login, emails a verification code.
  * POST /api/verify-email  — confirms that code, sets profiles.email_verified.
+ * GET  /api/me             — current session's account/profile summary,
+ *                             for the billing page to render current
+ *                             plan/review status against.
  *
  * Security note: `sku` captured at signup is intent only (which
  * pricing button the user clicked), not entitlement. The account
@@ -21,7 +24,7 @@
  */
 
 import { createAccount, getAccount } from '../db/accounts.js';
-import { createProfile, setEmailVerified } from '../db/profiles.js';
+import { createProfile, setEmailVerified, getProfile } from '../db/profiles.js';
 import { createPendingSignup, getPendingSignup, updateOtp, deletePendingSignup } from '../db/pending-signups.js';
 import { setCode, getCode, deleteCode } from '../db/verification-codes.js';
 import { hashPassword, verifyPassword } from '../auth/password.js';
@@ -279,7 +282,22 @@ async function handleVerifyEmail(req, res) {
   send(res, 200, { status: 'email_verified' });
 }
 
+async function handleMe(req, res) {
+  const email = requireLogin(req, res);
+  if (!email) return;
+
+  const profile = await getProfile(email);
+  send(res, 200, {
+    email,
+    sku: profile?.sku || 'base',
+    reviewStatus: profile?.review_status || 'n/a',
+    phoneVerified: Boolean(profile?.phone_verified),
+    emailVerified: Boolean(profile?.email_verified),
+  });
+}
+
 export function handle(req, res, ctx) {
+  if (req.method === 'GET' && req.url === '/api/me') { guard(handleMe, 'me')(req, res, ctx); return true; }
   if (req.method !== 'POST') return false;
   if (req.url === '/api/signup')          { guard(handleSignup, 'signup')(req, res, ctx);         return true; }
   if (req.url === '/api/verify-phone')    { guard(handleVerifyPhone, 'verify-phone')(req, res, ctx);    return true; }
