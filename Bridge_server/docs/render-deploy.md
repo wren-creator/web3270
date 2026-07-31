@@ -57,6 +57,14 @@ npm run db:migrate
 extra flags. Every statement in `schema.sql` is `CREATE TABLE/INDEX IF NOT
 EXISTS`, so re-running this later (after a schema change) is safe.
 
+While in that same Shell, create your own admin account (grants `is_admin`
+for `/api/logs/*` plus pre-approved full-tier access, skipping the PayPal
+checkout and manual review a paying customer would go through):
+
+```sh
+npm run admin:create -- you@example.com 'a-real-password'
+```
+
 ## 5. Point the domain at it
 
 Add `webterm-3270.com` as a custom domain on the `webterm3270-bridge`
