@@ -4,6 +4,7 @@ node_modules/
 
 # User macros — local data, never commit
 macros/local/
+macros/accounts/
 
 # Private connection profiles — user's own hosts, never commit
 ssh-hosts.txt
