@@ -39,6 +39,21 @@ function send(res, code, body) {
   res.end(JSON.stringify(body));
 }
 
+// Handlers below don't wrap every DB call in try/catch — a rejected
+// promise from an async route handler that nothing awaits is an
+// unhandled rejection, which crashes the whole process by default in
+// modern Node, not just this one request. Routing every handler
+// through this keeps a DB hiccup (or an unset DATABASE_URL) a 500 for
+// one caller instead of an outage for everyone connected.
+function guard(fn, label) {
+  return (req, res, ctx) => {
+    fn(req, res, ctx).catch(err => {
+      ctx.logger.error(`[auth] ${label} failed: ${err.stack || err.message}`);
+      if (!res.headersSent) send(res, 500, { error: 'Internal server error' });
+    });
+  };
+}
+
 function readJsonBody(req) {
   return new Promise((resolve, reject) => {
     let body = '';
@@ -266,12 +281,12 @@ async function handleVerifyEmail(req, res) {
 
 export function handle(req, res, ctx) {
   if (req.method !== 'POST') return false;
-  if (req.url === '/api/signup')          { handleSignup(req, res, ctx);         return true; }
-  if (req.url === '/api/verify-phone')    { handleVerifyPhone(req, res, ctx);    return true; }
-  if (req.url === '/api/resend-code')     { handleResendCode(req, res, ctx);     return true; }
-  if (req.url === '/api/login')           { handleLogin(req, res, ctx);          return true; }
-  if (req.url === '/api/logout')          { handleLogout(req, res, ctx);         return true; }
-  if (req.url === '/api/send-email-code') { handleSendEmailCode(req, res, ctx);  return true; }
-  if (req.url === '/api/verify-email')    { handleVerifyEmail(req, res, ctx);    return true; }
+  if (req.url === '/api/signup')          { guard(handleSignup, 'signup')(req, res, ctx);         return true; }
+  if (req.url === '/api/verify-phone')    { guard(handleVerifyPhone, 'verify-phone')(req, res, ctx);    return true; }
+  if (req.url === '/api/resend-code')     { guard(handleResendCode, 'resend-code')(req, res, ctx);     return true; }
+  if (req.url === '/api/login')           { guard(handleLogin, 'login')(req, res, ctx);          return true; }
+  if (req.url === '/api/logout')          { guard(handleLogout, 'logout')(req, res, ctx);         return true; }
+  if (req.url === '/api/send-email-code') { guard(handleSendEmailCode, 'send-email-code')(req, res, ctx);  return true; }
+  if (req.url === '/api/verify-email')    { guard(handleVerifyEmail, 'verify-email')(req, res, ctx);    return true; }
   return false;
 }
