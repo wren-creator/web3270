@@ -32,6 +32,18 @@ function send(res, code, body) {
   res.end(JSON.stringify(body));
 }
 
+// See the matching comment in routes/auth.js: an async handler nobody
+// awaits turns a rejected DB call into an unhandled rejection, which
+// crashes the whole process, not just this request.
+function guard(fn, label) {
+  return (req, res, ctx) => {
+    fn(req, res, ctx).catch(err => {
+      ctx.logger.error(`[disclaimer] ${label} failed: ${err.stack || err.message}`);
+      if (!res.headersSent) send(res, 500, { error: 'Internal server error' });
+    });
+  };
+}
+
 function readJsonBody(req) {
   return new Promise((resolve, reject) => {
     let body = '';
@@ -99,6 +111,6 @@ export async function hasAcceptedCurrent(email) {
 
 export function handle(req, res, ctx) {
   if (req.method === 'GET'  && req.url === '/api/disclaimer') { handleGet(req, res); return true; }
-  if (req.method === 'POST' && req.url === '/api/disclaimer/accept') { handleAccept(req, res, ctx); return true; }
+  if (req.method === 'POST' && req.url === '/api/disclaimer/accept') { guard(handleAccept, 'accept')(req, res, ctx); return true; }
   return false;
 }

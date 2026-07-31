@@ -42,6 +42,19 @@ function send(res, code, body) {
   res.end(JSON.stringify(body));
 }
 
+// See the matching comment in routes/auth.js: an async handler nobody
+// awaits turns a rejected DB call into an unhandled rejection, which
+// crashes the whole process, not just this request. handleWebhook is
+// the sharpest edge here since PayPal calls it unattended.
+function guard(fn, label) {
+  return (req, res, ctx) => {
+    fn(req, res, ctx).catch(err => {
+      ctx.logger.error(`[billing] ${label} failed: ${err.stack || err.message}`);
+      if (!res.headersSent) send(res, 500, { error: 'Internal server error' });
+    });
+  };
+}
+
 function readRawBody(req) {
   return new Promise((resolve) => {
     let body = '';
@@ -170,8 +183,8 @@ async function handleWebhook(req, res, { logger }) {
 }
 
 export function handle(req, res, ctx) {
-  if (req.method === 'POST' && req.url === '/api/billing/checkout') { handleCheckout(req, res, ctx); return true; }
-  if (req.method === 'GET'  && req.url.startsWith('/api/billing/return')) { handleReturn(req, res, ctx); return true; }
-  if (req.method === 'POST' && req.url === '/api/billing/webhook') { handleWebhook(req, res, ctx); return true; }
+  if (req.method === 'POST' && req.url === '/api/billing/checkout') { guard(handleCheckout, 'checkout')(req, res, ctx); return true; }
+  if (req.method === 'GET'  && req.url.startsWith('/api/billing/return')) { guard(handleReturn, 'return')(req, res, ctx); return true; }
+  if (req.method === 'POST' && req.url === '/api/billing/webhook') { guard(handleWebhook, 'webhook')(req, res, ctx); return true; }
   return false;
 }
