@@ -74,3 +74,38 @@ CREATE TABLE IF NOT EXISTS disclaimer_acceptances (
 );
 
 CREATE INDEX IF NOT EXISTS idx_disclaimer_acceptances_email ON disclaimer_acceptances(email);
+
+-- Per-account session/SSH profiles, hosted (BRIDGE_MULTI_TENANT) deploy
+-- only. The internal/OpenShift deployment has no accounts and keeps
+-- storing these in lpars.txt/ssh-hosts.txt (a single shared file is
+-- fine there — one trusted team, no other tenants to leak profiles
+-- to). Hosted has paying customers who are strangers to each other,
+-- so this is scoped per email instead of being one global list.
+CREATE TABLE IF NOT EXISTS session_profiles (
+  email      TEXT NOT NULL REFERENCES accounts(email) ON DELETE CASCADE,
+  id         TEXT NOT NULL,
+  name       TEXT NOT NULL,
+  host       TEXT NOT NULL,
+  port       INTEGER NOT NULL,
+  tls        BOOLEAN NOT NULL DEFAULT FALSE,
+  type       TEXT NOT NULL DEFAULT 'TSO',
+  model      TEXT,
+  tn3270e    BOOLEAN NOT NULL DEFAULT TRUE,
+  protocol   TEXT NOT NULL DEFAULT '3270',
+  codepage   INTEGER NOT NULL DEFAULT 37,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (email, id)
+);
+
+CREATE TABLE IF NOT EXISTS ssh_host_profiles (
+  email      TEXT NOT NULL REFERENCES accounts(email) ON DELETE CASCADE,
+  id         TEXT NOT NULL,
+  name       TEXT NOT NULL,
+  host       TEXT NOT NULL,
+  port       INTEGER NOT NULL DEFAULT 22,
+  ssh_user   TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (email, id)
+);
