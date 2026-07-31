@@ -11,7 +11,8 @@
     "mock:lpar": "node mock-lpar/mock-lpar.js",
     "mock:as400": "node mock-lpar/mock-as400.js",
     "mock:zvm": "node mock-lpar/mock-zvm.js",
-    "db:migrate": "node db/migrate.js"
+    "db:migrate": "node db/migrate.js",
+    "admin:create": "node db/create-admin.js"
   },
   "dependencies": {
     "kerberos": "^7.0.0",
