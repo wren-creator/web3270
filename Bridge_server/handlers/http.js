@@ -13,6 +13,7 @@ import * as security  from '../routes/security.js';
 import * as negotiate from '../routes/negotiate.js';
 import * as wire      from '../routes/wire.js';
 import * as auth      from '../routes/auth.js';
+import * as billing   from '../routes/billing.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -27,7 +28,7 @@ const MIME = {
   '.svg':  'image/svg+xml',
 };
 
-const ROUTES = [traffic, logs, profiles, sshHosts, macros, macroRun, recording, security, negotiate, wire, auth];
+const ROUTES = [traffic, logs, profiles, sshHosts, macros, macroRun, recording, security, negotiate, wire, auth, billing];
 
 export function createRequestHandler({ config, logger, sessions }) {
   const ctx = { config, logger, sessions };
