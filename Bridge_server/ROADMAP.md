@@ -24,6 +24,19 @@ Feedback from the 2026-07-23 company meeting, ahead of opening the tool up beyon
   - **System-admin** — no access to security tools, but the password field/prompt is still present in their view.
 - [ ] VBScript-to-macro converter — a tool to convert an existing VBScript macro into the macro library's JSON format (see `state.macros` step/name/description shape in `public/js/macros.js`). Lets users bring macros over from legacy TN3270 emulators instead of rebuilding them by hand.
 
+## Hosted Paid-Tier Product (webterm-3270.com)
+Extends the "opening the tool up beyond the original one-group user base" push above into a commercial, self-serve direction: three paid tiers (base/training/full) with PayPal billing, gated behind `BRIDGE_MULTI_TENANT` so the internal/OpenShift deployment is completely unaffected. Domain `webterm-3270.com`.
+- [x] Postgres accounts/billing schema (`db/schema.sql`) — `accounts`, `profiles` (sku/review_status), `pending_signups`, `verification_codes`, `disclaimer_acceptances`, `session_profiles`, `ssh_host_profiles`.
+- [x] Signup + phone-OTP verification (Telnyx SMS) and login/session cookies + post-login email verification (SMTP).
+- [x] PayPal subscription billing (`billing/paypal.js`, `routes/billing.js`) — checkout, return-url reconciliation, and a real webhook receiver (unlike the internal reference implementation this was modeled on, which only reconciles on return-url and misses async status changes like renewal failures).
+- [x] Full-tier disclaimer gate + admin reach-out notification (`routes/disclaimer.js`) — full tier (security/recon/fuzzing tools against real hosts) isn't pure self-serve; checkout 403s until the current disclaimer version is accepted, and accepting it emails an admin to review the account.
+- [x] Themed login/signup (`public/login.html`) and billing/checkout (`public/billing.html`) pages, styled off `terminal.css` (the project's existing CSS source of truth) rather than a separate look.
+- [x] `handlers/ws.js` tier gating — a `SKU_CAPS` map (base: client only, training: + shipped mock LPARs, full: + security tools) enforced on the WS connect handshake.
+- [x] Per-account data isolation — session/SSH profiles, traffic log + pcap captures, recordings, and macros were all single shared file/in-memory structures with little to no auth check; scoped per account (`auth/session-owners.js`, `db/session-profiles.js`, `db/ssh-host-profiles.js`, `utils/account-paths.js`) so hosted customers can't see each other's connections, live screen traffic, or saved macros. Server logs (`routes/logs.js`) went admin-only instead, since they aren't scopeable per-account.
+- [x] Anonymous visitors on `/` redirect to `/login` on the hosted deployment (`public/js/auth-gate.js`, `GET /api/config`) — a no-op on the internal deployment.
+- [x] Render deploy config (`render.yaml`, `docs/render-deploy.md`) — bridge + managed Postgres + the five mock LPARs as private services, reusing the existing Dockerfile.
+- [x] `db/create-admin.js` (`npm run admin:create`) — CLI tool to create/promote an admin account (`is_admin`, pre-approved full tier), since nothing set that column before.
+
 ## Dataset Export
 - [ ] Excel (.xlsx) export for dataset search/recon results, alongside the existing CSV export (`reconExportCsv()` in `public/js/recon.js`). Covers both the Dataset Recon Scanner output and general dataset search, so results can be handed off in the format most teams actually open.
 
