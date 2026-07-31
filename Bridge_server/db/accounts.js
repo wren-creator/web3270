@@ -19,3 +19,7 @@ export async function setPasswordHash(email, passwordHash) {
 export async function setFrozen(email, frozen) {
   await getPool().query(`UPDATE accounts SET frozen = $2 WHERE email = $1`, [email, frozen]);
 }
+
+export async function setAdmin(email, isAdmin) {
+  await getPool().query(`UPDATE accounts SET is_admin = $2 WHERE email = $1`, [email, isAdmin]);
+}
