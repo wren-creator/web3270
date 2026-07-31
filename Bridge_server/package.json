@@ -10,11 +10,13 @@
     "test": "node --test",
     "mock:lpar": "node mock-lpar/mock-lpar.js",
     "mock:as400": "node mock-lpar/mock-as400.js",
-    "mock:zvm": "node mock-lpar/mock-zvm.js"
+    "mock:zvm": "node mock-lpar/mock-zvm.js",
+    "db:migrate": "node db/migrate.js"
   },
   "dependencies": {
     "kerberos": "^7.0.0",
     "ldapts": "^8.2.0",
+    "pg": "^8.22.0",
     "ssh2": "^1.17.0",
     "ws": "^8.21.0"
   },
