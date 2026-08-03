@@ -24,6 +24,7 @@ services:
 
     environment:
       BRIDGE_PORT: "8081"
+      MACRO_RUN_API_KEY: "${MACRO_RUN_API_KEY:?MACRO_RUN_API_KEY must be set in .env — see .env.example}"
       LOG_LEVEL: "debug"
         # Set this if you are using non-self signed cert.
         # BRIDGE_VERIFY_TLS: "true"
