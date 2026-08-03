@@ -48,6 +48,12 @@ export function toggleShowPassword(el) {
   if (state.liveScreen) renderLiveScreen(state.liveScreen);
 }
 
+export function toggleCapsOff(el) {
+  el.classList.toggle('on');
+  state.settings.capsOff = el.classList.contains('on');
+  saveSettings();
+}
+
 export function toggleAutoReconnect(el) {
   el.classList.toggle('on');
   state.settings.autoReconnect = el.classList.contains('on');
@@ -79,6 +85,8 @@ export function setSshFontSize(input) {
 export function initConnectionSettingsUI() {
   const toggle = document.getElementById('autoReconnectToggle');
   if (toggle) toggle.classList.toggle('on', !!state.settings.autoReconnect);
+  const capsToggle = document.getElementById('capsOffToggle');
+  if (capsToggle) capsToggle.classList.toggle('on', !!state.settings.capsOff);
   const input = document.getElementById('keepAliveInput');
   if (input) input.value = state.settings.keepAliveSec;
   const fontInput = document.getElementById('sshFontSizeInput');
@@ -91,11 +99,11 @@ export function initConnectionSettingsUI() {
 }
 
 const THEMES = {
-  green: { bg:'#000810', fg:'#33ff66', cursor:'#33ff66', blue:'#5599ff', red:'#ff5555', turq:'#33ccaa', white:'#e0e0e0' },
-  blue:  { bg:'#000a1a', fg:'#66aaff', cursor:'#66aaff', blue:'#88ccff', red:'#ff7766', turq:'#66ddff', white:'#e0e8f0' },
-  amber: { bg:'#100800', fg:'#ffaa33', cursor:'#ffaa33', blue:'#ffcc66', red:'#ff5533', turq:'#ffdd88', white:'#fff0d0' },
-  white: { bg:'#0a0a0a', fg:'#e0e0e0', cursor:'#ffffff', blue:'#aabbdd', red:'#ff6666', turq:'#88ddcc', white:'#ffffff' },
-  teal:  { bg:'#001818', fg:'#33ddcc', cursor:'#33ddcc', blue:'#55aacc', red:'#ff5577', turq:'#66ffee', white:'#d0ffff' },
+  green: { bg:'#000810', fg:'#33ff66', cursor:'#33ff66', blue:'#5599ff', red:'#ff5555', turq:'#33ccaa', white:'#e0e0e0', pink:'#ff77cc' },
+  blue:  { bg:'#000a1a', fg:'#66aaff', cursor:'#66aaff', blue:'#88ccff', red:'#ff7766', turq:'#66ddff', white:'#e0e8f0', pink:'#dd99ff' },
+  amber: { bg:'#100800', fg:'#ffaa33', cursor:'#ffaa33', blue:'#ffcc66', red:'#ff5533', turq:'#ffdd88', white:'#fff0d0', pink:'#ff99cc' },
+  white: { bg:'#0a0a0a', fg:'#e0e0e0', cursor:'#ffffff', blue:'#aabbdd', red:'#ff6666', turq:'#88ddcc', white:'#ffffff', pink:'#ffb3d9' },
+  teal:  { bg:'#001818', fg:'#33ddcc', cursor:'#33ddcc', blue:'#55aacc', red:'#ff5577', turq:'#66ffee', white:'#d0ffff', pink:'#ff7fb2' },
 };
 
 export function setTheme(name, swatchEl) {
@@ -108,10 +116,11 @@ export function setTheme(name, swatchEl) {
   root.setProperty('--t-red',       t.red);
   root.setProperty('--t-turquoise', t.turq);
   root.setProperty('--t-white',     t.white);
+  root.setProperty('--t-pink',      t.pink);
   if (swatchEl) { swatchEl.parentNode.querySelectorAll('.theme-swatch').forEach(s => s.classList.remove('active')); swatchEl.classList.add('active'); }
 }
 
 Object.assign(window, {
-  setZoom, setFontSize, setTnFontSize, toggleScanlines, toggleCursorBlink, toggleFieldHighlights, toggleShowPassword, setTheme,
+  setZoom, setFontSize, setTnFontSize, toggleScanlines, toggleCursorBlink, toggleFieldHighlights, toggleShowPassword, toggleCapsOff, setTheme,
   toggleAutoReconnect, setKeepAlive, setSshFontSize, initConnectionSettingsUI,
 });

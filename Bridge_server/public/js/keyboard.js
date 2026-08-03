@@ -78,7 +78,7 @@ export function sendType(row, col, text) {
     // lowercase input silently fails there even though it round-trips fine
     // against permissive mock hosts. Match hardware default; nondisplay
     // (password) fields are left alone since those are case-sensitive by design.
-    if (!(cell && cell.nondisplay)) text = text.toUpperCase();
+    if (!(cell && cell.nondisplay) && !state.settings.capsOff) text = text.toUpperCase();
     if (cell && cell.fa === undefined) {
       cell.char = text; cell.modified = true;
     }

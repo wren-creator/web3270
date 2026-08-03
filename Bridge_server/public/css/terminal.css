@@ -21,6 +21,7 @@
   --t-red:         #ff4444;
   --t-turquoise:   #00ffdd;
   --t-yellow:      #ffee44;
+  --t-pink:        #ff88cc;
   --t-white:       #eeeeff;
   --t-field-bg:    #001a08;
   --t-cursor:      #33ff66;
@@ -200,7 +201,7 @@ body.no-highlights .field-dim          { color:var(--t-green); font-weight:norma
 /* ── 3270 Extended Colors (SA/SFE type 0x42) ─────────────────────── */
 .c-blue   { color: var(--t-blue)       !important; }
 .c-red    { color: var(--t-red)        !important; }
-.c-pink   { color: #ff88cc             !important; }
+.c-pink   { color: var(--t-pink)       !important; }
 .c-green  { color: var(--t-green)      !important; }
 .c-turq   { color: var(--t-turquoise)  !important; }
 .c-yellow { color: var(--t-yellow)     !important; }
