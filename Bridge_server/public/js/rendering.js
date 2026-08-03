@@ -8,6 +8,14 @@ export const COLOR_CLASS = {
   0xF4: 'c-green',0xF5: 'c-turq',  0xF6: 'c-yellow', 0xF7: 'c-white',
 };
 
+// Reverse-video (hl-reverse) needs the field's own color as its background
+// instead of always falling back to the theme's default green — see the
+// cell.highlight handling below.
+const COLOR_VAR = {
+  0xF1: '--t-blue', 0xF2: '--t-red',       0xF3: '--t-pink',
+  0xF4: '--t-green',0xF5: '--t-turquoise', 0xF6: '--t-yellow', 0xF7: '--t-white',
+};
+
 export const HIGHLIGHT_CLASS = {
   0xF1: 'hl-blink', 0xF2: 'hl-reverse', 0xF4: 'hl-under', 0xF8: 'hl-intens',
 };
@@ -83,7 +91,13 @@ export function renderLiveScreen(screenData, termEl) {
       }
       if (cell.nondisplay)                               cellEl.classList.add('field-nondisplay');
       if (cell.color     && COLOR_CLASS[cell.color])     cellEl.classList.add(COLOR_CLASS[cell.color]);
-      if (cell.highlight && HIGHLIGHT_CLASS[cell.highlight]) cellEl.classList.add(HIGHLIGHT_CLASS[cell.highlight]);
+      if (cell.highlight && HIGHLIGHT_CLASS[cell.highlight]) {
+        const hlClass = HIGHLIGHT_CLASS[cell.highlight];
+        cellEl.classList.add(hlClass);
+        if (hlClass === 'hl-reverse' && cell.color && COLOR_VAR[cell.color]) {
+          cellEl.style.background = `var(${COLOR_VAR[cell.color]})`;
+        }
+      }
       if (fmo) {
         if (cell.fa !== undefined) {
           const d = _decodeFa(cell.fa);
