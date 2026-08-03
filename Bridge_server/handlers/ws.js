@@ -15,21 +15,8 @@ import { handleSshConnect } from '../features/ssh.js';
 import { handleFuzz } from '../features/fuzz.js';
 import * as mitm from '../features/mitm.js';
 import { createHandlers as createXferHandlers, screenToLinesMasked } from '../features/transfer.js';
-import { getSessionEmail } from '../auth/session.js';
-import { getProfile } from '../db/profiles.js';
-import { sessionOwners } from '../auth/session-owners.js';
-import { accountMacroDir } from '../utils/account-paths.js';
 
-// Hosted-tier caps, direct analog of stock-alarm-service's SKU_CAPS map.
-// Only consulted when config.bridge.multiTenant is on — the internal/
-// OpenShift deployment has no account system and everything here stays
-// unlocked, same as before this gating existed.
-const SKU_CAPS = {
-  base:     { mockLpar: false, securityTools: false },
-  training: { mockLpar: true,  securityTools: false },
-  full:     { mockLpar: true,  securityTools: true  },
-};
-const UNGATED_CAPS = { mockLpar: true, securityTools: true };
+const CAPS = { mockLpar: true, securityTools: true };
 
 function buildTlsOptions(params, config) {
   const opts = { rejectUnauthorized: params.verifyTls ?? config.bridge.verifyTls };
@@ -76,30 +63,7 @@ export function createWsHandler({ config, logger, sessions, Ebcdic }) {
         ws.close(); return;
       }
 
-      // ── Hosted-tier gating ────────────────────────────────────────
-      // Fails closed: a DB hiccup here rejects the connect rather than
-      // risking an unhandled rejection from an unawaited async handler
-      // (see the same fix in routes/auth.js — that one crashed the
-      // whole process, this one only needs to not silently open the
-      // gate).
-      let caps = UNGATED_CAPS;
-      let email = null;
-      if (config.bridge.multiTenant) {
-        email = getSessionEmail(req);
-        if (!email) {
-          send(ws, { type: 'error', message: 'Log in required' });
-          ws.close(); return;
-        }
-        try {
-          const profile = await getProfile(email);
-          caps = SKU_CAPS[profile?.sku] || SKU_CAPS.base;
-        } catch (err) {
-          logger.error(`[ws:${wsId}] Could not load account for ${email}: ${err.message}`);
-          send(ws, { type: 'error', message: 'Could not verify your account — try again shortly' });
-          ws.close(); return;
-        }
-        sessionOwners.set(wsId, email);
-      }
+      const caps = CAPS;
 
       const { host, luName = null } = params;
       const port      = parseInt(params.port, 10) || 339;
@@ -146,14 +110,7 @@ export function createWsHandler({ config, logger, sessions, Ebcdic }) {
 
       sessions.set(wsId, session);
 
-      // Hosted deployment: each account gets its own macro library
-      // directory instead of sharing the single global one (macroStore,
-      // module-scope above) — otherwise every customer's saved macros
-      // would be visible to every other customer.
-      const accountMacroStore = config.bridge.multiTenant
-        ? new MacroStore(path.join(accountMacroDir(email), 'library'))
-        : macroStore;
-      const macroHandler = new MacroHandler(session, ws, wsId, accountMacroStore);
+      const macroHandler = new MacroHandler(session, ws, wsId, macroStore);
       CopilotHandler.sendProviderInfo(ws);
 
       // ── Session → Browser events ─────────────────────────────────

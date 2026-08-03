@@ -12,9 +12,6 @@ import * as recording  from '../routes/recording.js';
 import * as security   from '../routes/security.js';
 import * as negotiate  from '../routes/negotiate.js';
 import * as wire       from '../routes/wire.js';
-import * as auth       from '../routes/auth.js';
-import * as billing    from '../routes/billing.js';
-import * as disclaimer from '../routes/disclaimer.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -29,7 +26,7 @@ const MIME = {
   '.svg':  'image/svg+xml',
 };
 
-const ROUTES = [traffic, logs, profiles, sshHosts, macros, macroRun, recording, security, negotiate, wire, auth, billing, disclaimer];
+const ROUTES = [traffic, logs, profiles, sshHosts, macros, macroRun, recording, security, negotiate, wire];
 
 export function createRequestHandler({ config, logger, sessions }) {
   const ctx = { config, logger, sessions };
@@ -49,8 +46,6 @@ export function createRequestHandler({ config, logger, sessions }) {
     const urlPath = req.url.split('?')[0];
     let filePath;
     if (urlPath === '/' || urlPath === '')                           filePath = path.join(PUBLIC_DIR, 'tn3270-client.html');
-    else if (urlPath === '/login' || urlPath === '/login.html')      filePath = path.join(PUBLIC_DIR, 'login.html');
-    else if (urlPath === '/billing' || urlPath === '/billing.html')  filePath = path.join(PUBLIC_DIR, 'billing.html');
     else if (urlPath === '/demo' || urlPath === '/demo.html')        filePath = path.join(PUBLIC_DIR, 'tn3270-client-demo.html');
     else if (urlPath === '/replay' || urlPath === '/replay.html')    filePath = path.join(PUBLIC_DIR, 'replay.html');
     else if (urlPath === '/logs' || urlPath === '/logs.html')        filePath = path.join(PUBLIC_DIR, 'logs.html');
