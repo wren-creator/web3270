@@ -24,7 +24,12 @@ services:
 
     environment:
       BRIDGE_PORT: "8081"
-      MACRO_RUN_API_KEY: "${MACRO_RUN_API_KEY:?MACRO_RUN_API_KEY must be set in .env — see .env.example}"
+      # Optional at build/start time so a fresh clone without .env configured
+      # still builds — routes/macro-run.js itself fails closed (503) on an
+      # empty key, so this doesn't reopen the auth gap, it just moves where
+      # the missing-key error surfaces from "compose won't start" to "the
+      # endpoint refuses requests until you set one."
+      MACRO_RUN_API_KEY: "${MACRO_RUN_API_KEY:-}"
       LOG_LEVEL: "debug"
         # Set this if you are using non-self signed cert.
         # BRIDGE_VERIFY_TLS: "true"
