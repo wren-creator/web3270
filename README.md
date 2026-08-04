@@ -349,6 +349,20 @@ If that fails but works from WSL2 or PowerShell, switch to the WSL2/Node option.
 **Stale code still running after rebuild**
 → `docker compose down` first, then rebuild. If still wrong, do a full Docker Desktop restart.
 
+**Docker build fails on `apk add ... krb5-dev` (or any `apk add` step)**
+→ Some corporate networks block outbound access to Alpine's package mirror (`dl-cdn.alpinelinux.org`), often through an SSL-inspecting proxy, so the build hangs or fails partway through the `apk add` line even though everything else about your setup is fine. Confirm it's this and not something else in your repo state:
+```bash
+docker run --rm node:20-alpine apk add --no-cache python3 make g++ krb5-dev
+```
+If that fails the same way outside the build context too, switch to a Debian-based image instead of fighting the proxy. **Both** `FROM node:20-alpine` lines in `Bridge_server/Dockerfile` need to change together (native modules built in one stage won't run in the other if the C library differs, glibc vs musl), plus a few Alpine-specific lines:
+- `FROM node:20-alpine AS deps` → `FROM node:20-bookworm AS deps`
+- `FROM node:20-alpine AS runtime` → `FROM node:20-bookworm-slim AS runtime`
+- `apk add --no-cache python3 make g++ krb5-dev` → `apt-get update && apt-get install -y --no-install-recommends python3 make g++ libkrb5-dev && rm -rf /var/lib/apt/lists/*`
+- `addgroup -S tn3270 && adduser -S tn3270 -G tn3270` → `groupadd -r tn3270 && useradd -r -g tn3270 tn3270`
+- The `HEALTHCHECK` uses `wget`/`nc`, which ship with Alpine by default but not `bookworm-slim`. Swap it for a Node-based check instead of adding another package: `CMD node -e "require('http').get('http://127.0.0.1:8081/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"`
+
+This is a local workaround for restrictive networks, not the project default (Alpine keeps the image small for everyone else), so keep it as an uncommitted change on affected machines rather than editing the Dockerfile in a PR.
+
 **VPN users — WSL2 vs Docker**
 → WSL2 shares the Windows network stack, so VPN routing works natively. Use `node server.js` inside WSL2 if Docker can't reach your mainframe.
 
