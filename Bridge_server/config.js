@@ -50,9 +50,14 @@ function parseLparFile(filePath, source) {
       const parts = line.split(',').map(s => s.trim());
       const [id, name, host, port, tls, type, model] = parts;
       if (!id) return null;
-      // protocol is appended as an optional trailing field so existing
-      // lpars.txt/lpars.shipped.txt lines (3270-only) keep working
-      // unchanged — absent means '3270'.
+      // protocol and tlsServername are appended as optional trailing fields
+      // so existing lpars.txt/lpars.shipped.txt lines keep working unchanged
+      // — protocol absent means '3270', tlsServername absent means "verify
+      // the TLS cert against whatever's in the host column".
+      // tlsServername matters when host is an IP but the cert's SAN list
+      // only has DNS names (the usual case with IP-addressed lpars.txt
+      // entries and hostname-issued certs) — it dials the IP but checks
+      // the cert against this name instead.
       const protocol = (parts[8] || '3270').toLowerCase();
       return {
         id,
@@ -65,6 +70,7 @@ function parseLparFile(filePath, source) {
         model: model || process.env.DEFAULT_MODEL || (protocol === '5250' ? '3179-2' : '3278-2'),
         codepage: 37,
         tn3270e: parts[7] !== undefined ? parts[7] === 'true' : true,
+        tlsServername: parts[9] || undefined,
         source,
       };
     })

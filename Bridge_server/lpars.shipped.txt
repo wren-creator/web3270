@@ -9,8 +9,12 @@
 # If you add an entry to lpars.txt with the same id as one here,
 # your entry takes precedence and the built-in is hidden.
 #
-# Columns: id, name, host/IP, port, tls, type, model, tn3270e, protocol
-# protocol (optional, trailing): '3270' (default when omitted) or '5250'
+# Columns: id, name, host/IP, port, tls, type, model, tn3270e, protocol, tlsServername
+# protocol (optional, col 9): '3270' (default when omitted) or '5250'
+# tlsServername (optional, col 10): set when host/IP is an IP address and the
+# target's cert was issued to a DNS name instead — dials the IP but verifies
+# the cert against this name, fixing "Hostname/IP does not match
+# certificate's altnames". Leave blank when host is already the right name.
 #
 mock-zos,    MOCK-ZOS,    mock-lpar,   3270,  false,  TSO,    3278-2,  true
 mock-zvm,    MOCK-ZVM,    mock-zvm,    3271,  false,  ZVM,    3278-2,  true
