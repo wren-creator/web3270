@@ -231,7 +231,8 @@ Set in `docker-compose.yml` (Docker) or `.env` (Node/WSL2):
 |---|---|---|
 | `BRIDGE_PORT` | `8081` | Port the HTTP + WebSocket server listens on |
 | `LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error` |
-| `BRIDGE_VERIFY_TLS` | `true` | Set `false` for self-signed mainframe certs |
+| `BRIDGE_VERIFY_TLS` | `true` | Set `false` to skip TLS cert verification for ALL outbound connections — a blunt fallback, prefer `NODE_EXTRA_CA_CERTS` below |
+| `NODE_EXTRA_CA_CERTS` | unset | Path to a PEM file (or bundle) trusting a self-signed/internal CA. Node ignores the OS trust store, this is the only way it picks up a cert that isn't in its bundled list. See Troubleshooting → TLS certificate errors |
 | `BRIDGE_SOCKET_TIMEOUT_MS` | `300000` | Idle session timeout (ms) |
 | `BRIDGE_MAX_SESSIONS` | `100` | Max concurrent sessions |
 | `DEFAULT_MODEL` | `3278-2` | Default 3270 terminal model |
@@ -344,7 +345,9 @@ docker compose exec tn3270-bridge sh -c "nc -zv 10.x.x.x 23"
 If that fails but works from WSL2 or PowerShell, switch to the WSL2/Node option.
 
 **TLS certificate errors**
-→ Set `BRIDGE_VERIFY_TLS=false` temporarily to confirm the issue is the cert, then obtain the correct CA certificate from your mainframe team.
+→ Two different errors, two different fixes:
+- `self-signed certificate in certificate chain` means Node doesn't trust the issuer. Get the CA cert from your mainframe team and set `NODE_EXTRA_CA_CERTS` to its path (Node ignores the OS trust store, so copying the cert into the container's `ca-certificates` and running `update-ca-certificates` does nothing on its own). `BRIDGE_VERIFY_TLS=false` "fixes" this too, but it disables verification for every outbound connection, not just the one host, use it only to confirm the cert is the actual problem, then switch to `NODE_EXTRA_CA_CERTS`.
+- `Hostname/IP does not match certificate's altnames` means the host in `lpars.txt` (often an IP) doesn't match the DNS name the cert was issued to. Set the `tlsServername` column (col 10) in `lpars.txt` to that DNS name, see `lpars.txt.example` and `scripts/lpars-tls-servernames.sh`, which pulls it from each host's cert automatically.
 
 **Stale code still running after rebuild**
 → `docker compose down` first, then rebuild. If still wrong, do a full Docker Desktop restart.
