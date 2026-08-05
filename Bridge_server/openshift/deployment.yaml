@@ -81,6 +81,14 @@ spec:
             # Leave BRIDGE_VERIFY_TLS unset (defaults to true — verify certs)
             # since this points at real hosts, not the mock/demo LPARs.
             # Set to "false" only if a target host uses a self-signed cert.
+            #
+            # Prefer this over BRIDGE_VERIFY_TLS=false when a target host
+            # (e.g. zVM) presents a self-signed cert: it keeps verification
+            # ON and trusts only that one CA, instead of trusting nothing.
+            # Node ignores the OS trust store, so the CA has to be handed to
+            # it explicitly this way. See openshift/README.md step 8.
+            # - name: NODE_EXTRA_CA_CERTS
+            #   value: /etc/ssl/custom-ca/ca.pem
           volumeMounts:
             - name: data
               mountPath: /app/lpars.txt
@@ -91,6 +99,9 @@ spec:
             - name: data
               mountPath: /app/macros/local
               subPath: macros-local
+            # - name: ca-cert
+            #   mountPath: /etc/ssl/custom-ca
+            #   readOnly: true
           readinessProbe:
             httpGet:
               path: /health
@@ -114,3 +125,6 @@ spec:
         - name: data
           persistentVolumeClaim:
             claimName: web3270-bridge-data
+        # - name: ca-cert
+        #   configMap:
+        #     name: web3270-bridge-ca-certs
