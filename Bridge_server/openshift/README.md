@@ -106,6 +106,52 @@ password later, update the secret (`oc create secret ... --dry-run=client -o
 yaml | oc apply -f -`) and roll out again, mounted-as-env secrets aren't
 live-reloaded on their own.
 
+## 8. Trust a self-signed CA on a target host
+
+If connecting to a target host (e.g. zVM) fails with `Bridge error:
+self-signed certificate in certificate chain`, that's Node's TLS stack
+rejecting a cert it doesn't recognize. `BRIDGE_VERIFY_TLS=false` (see the
+note in `deployment.yaml`) "fixes" it by turning off verification for
+*every* outbound bridge connection, not just that host. The better fix is
+to hand Node that host's CA cert explicitly so it can keep verifying
+everything else normally:
+
+1. Grab the cert chain from the target host (replace host/port with the
+   real ones from your `lpars.txt` entry):
+
+   ```sh
+   openssl s_client -connect zvm.example.internal:992 -showcerts </dev/null \
+     2>/dev/null | awk '/BEGIN CERTIFICATE/,/END CERTIFICATE/' > ca.pem
+   ```
+
+   If that chain has more than one `BEGIN/END CERTIFICATE` block, keep
+   them all in `ca.pem`, Node accepts a bundle.
+
+2. Load it as a ConfigMap (a CA cert is public, not a secret, so a
+   ConfigMap is fine here rather than an OpenShift Secret):
+
+   ```sh
+   oc create configmap web3270-bridge-ca-certs \
+     --from-file=ca.pem=./ca.pem \
+     -n tenant-mgmt-web3270-test
+   ```
+
+3. In `deployment.yaml`, uncomment the three `NODE_EXTRA_CA_CERTS` /
+   `ca-cert` blocks (under `env`, `volumeMounts`, and `volumes`), then:
+
+   ```sh
+   oc apply -f openshift/deployment.yaml
+   oc rollout restart deployment/web3270-bridge
+   ```
+
+To rotate the cert later: regenerate `ca.pem`, re-run the `oc create
+configmap ... --dry-run=client -o yaml | oc apply -f -` update pattern, and
+roll out again, no image rebuild needed since the cert is mounted, not baked
+in. **Baking it into the image instead (`COPY certs/* /usr/local/share/
+ca-certificates/` + `RUN update-ca-certificates`) doesn't work for this app**
+even if you get that far: Node ignores the OS trust store entirely and only
+reads `NODE_EXTRA_CA_CERTS`, so that route silently does nothing.
+
 ## Notes / things worth knowing
 
 - **Single replica by design.** Session state (the live mainframe/SSH
