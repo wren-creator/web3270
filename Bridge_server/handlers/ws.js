@@ -18,8 +18,12 @@ import { createHandlers as createXferHandlers, screenToLinesMasked } from '../fe
 
 const CAPS = { mockLpar: true, securityTools: true };
 
-function buildTlsOptions(params, config) {
+function buildTlsOptions(params, config, servername) {
   const opts = { rejectUnauthorized: params.verifyTls ?? config.bridge.verifyTls };
+  // Dial by IP, verify against the cert's DNS SAN: lets a profile whose
+  // host column is an IP still pass hostname verification when the cert
+  // was only issued for a DNS name. See tlsServername in config.js.
+  if (servername)        opts.servername = servername;
   if (params.clientCert) opts.cert = fs.readFileSync(params.clientCert);
   if (params.clientKey)  opts.key  = fs.readFileSync(params.clientKey);
   if (params.caCert)     opts.ca   = fs.readFileSync(params.caCert);
@@ -37,6 +41,13 @@ export function createWsHandler({ config, logger, sessions, Ebcdic }) {
   // carries those, not a profile id (public/js/profiles.js).
   const MOCK_LPAR_HOSTS = new Set(
     config.profiles.filter(p => p.source === 'shipped').map(p => `${p.host}:${p.port}`)
+  );
+
+  // Same host:port matching as MOCK_LPAR_HOSTS, keyed to the full profile
+  // so a TLS connect can pick up tlsServername (see config.js) — the
+  // connect message only ever carries host:port, not a profile id.
+  const PROFILE_BY_HOST_PORT = new Map(
+    config.profiles.map(p => [`${p.host}:${p.port}`, p])
   );
 
   return function handleConnection(ws, req) {
@@ -86,6 +97,7 @@ export function createWsHandler({ config, logger, sessions, Ebcdic }) {
       // ── Create session (protocol-specific engine, shared event API) ──
       let session;
       const keepAliveSec = parseInt(params.keepAliveSec, 10) || 0;
+      const tlsServername = params.tlsServername || PROFILE_BY_HOST_PORT.get(`${host}:${port}`)?.tlsServername;
 
       if (protocol === '5250') {
         const model = params.model || '3179-2';
@@ -94,7 +106,7 @@ export function createWsHandler({ config, logger, sessions, Ebcdic }) {
           wsId, host, port, useTls, luName, model, codepage,
           user: params.user,
           keepAliveSec,
-          tlsOptions: buildTlsOptions(params, config),
+          tlsOptions: buildTlsOptions(params, config, tlsServername),
         });
       } else {
         const model = params.model || config.defaults.model;
@@ -104,7 +116,7 @@ export function createWsHandler({ config, logger, sessions, Ebcdic }) {
           wsId, host, port, useTls, luName, model, codepage,
           useTn3270e,
           keepAliveSec,
-          tlsOptions: buildTlsOptions(params, config),
+          tlsOptions: buildTlsOptions(params, config, tlsServername),
         });
       }
 
