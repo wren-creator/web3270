@@ -1,0 +1,20 @@
+     A* SALESRPT.DSPF -- WORKSTN display file for the SALESRPT report
+     A* (mock-as400 RPG interpreter).
+
+     A                                      DSPSIZ(24 80 *DS3)
+
+     A          R DETAIL                    CF03(03)
+     A                                  1 25'QUARTERLY SALES REPORT'
+     A                                  3  3'Region:'
+     A            REGNAME       12   O  3 13
+     A                                  5  3'Amount: $'
+     A            REGAMT         9  2O  5 14
+     A                                 22  3'Press Enter for next region, F3=Exit'
+
+     A          R TOTAL                     CF03(03)
+     A                                  1 28'FINAL TOTALS'
+     A                                  3  3'Total Revenue: $'
+     A            GRANDTOT       9  2O  3 21
+     A                                  5  3'Average per Region: $'
+     A            AVGAMT         9  2O  5 25
+     A                                 22  3'Press Enter or F3 to exit'

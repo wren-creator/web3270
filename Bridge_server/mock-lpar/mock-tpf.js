@@ -186,6 +186,21 @@ const POOL_TABLE = [
   { name:'XPOOL',   addr:'06000000', size: '64M', used:' 62M', pct:97  },
 ];
 
+// In-memory PNR store for the ZBOOK/ZLOOK/ZCXL "simple ticketing system"
+// 101 exercise -- keyed by a generated 6-char locator. Data shape is
+// inspired by (not ported from) a PNR/reservation record model used
+// elsewhere in this user's projects, written fresh here for the mock.
+const PNR_TABLE = {};
+const PNR_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O, 1/I -- avoids ambiguity
+
+function genPnr() {
+  let pnr;
+  do {
+    pnr = Array.from({ length: 6 }, () => PNR_CHARS[Math.floor(Math.random() * PNR_CHARS.length)]).join('');
+  } while (PNR_TABLE[pnr]);
+  return pnr;
+}
+
 // ── Command dispatch ──────────────────────────────────────────────────────
 function dispatchCommand(raw, priv) {
   const upper = raw.trim().toUpperCase();
@@ -201,11 +216,21 @@ function dispatchCommand(raw, priv) {
         case 'T': return cmdZshowTrans();
         case 'O': return cmdZshowOper();
         case 'V': return cmdZshowVersion();
-        default:  return [`ZTPF001E ZSHOW ${args[0] || ''} — unknown subcommand. Use E P S T O V`];
+        case 'B': return cmdZshowBookings();
+        default:  return [`ZTPF001E ZSHOW ${args[0] || ''} — unknown subcommand. Use E P S T O V B`];
       }
     case 'ZTEST':
       if (args[0] === 'ENTRY' && args[1]) return cmdZtestEntry(args[1]);
       return ['ZTPF002E Syntax: ZTEST ENTRY,<ecbname>'];
+    case 'ZBOOK':
+      if (args.length < 4) return ['ZTPF851E Syntax: ZBOOK passenger,flight,date,seat'];
+      return cmdZbook(args[0], args[1], args[2], args[3]);
+    case 'ZLOOK':
+      if (!args[0]) return ['ZTPF861E Syntax: ZLOOK pnr'];
+      return cmdZlook(args[0]);
+    case 'ZCXL':
+      if (!args[0]) return ['ZTPF871E Syntax: ZCXL pnr'];
+      return cmdZcxl(args[0]);
     case 'ZSTOP':
       if (priv < 2) return authFail(verb, 'SYSOP');
       return cmdZstop(args.join(','));
@@ -308,6 +333,49 @@ function cmdZshowVersion() {
   ];
 }
 
+function cmdZshowBookings() {
+  const pnrs = Object.values(PNR_TABLE);
+  const lines = [
+    `ZTPF880I ACTIVE BOOKING DIRECTORY — ${pnrs.length} RECORD${pnrs.length === 1 ? '' : 'S'}`,
+    `ZTPF880I ${'PNR   '} PASSENGER       FLIGHT DATE     SEAT STATUS`,
+    `ZTPF880I ${'------'} --------------- ------ -------- ---- ---------`,
+  ];
+  for (const p of pnrs) {
+    lines.push(`ZTPF880I ${p.pnr.padEnd(6)} ${p.passenger.padEnd(15)} ${p.flight.padEnd(6)} ${p.date.padEnd(8)} ${p.seat.padEnd(4)} ${p.status}`);
+  }
+  lines.push(`ZTPF882I END OF BOOKING DIRECTORY`);
+  return lines;
+}
+
+function cmdZbook(passenger, flight, date, seat) {
+  const pnr = genPnr();
+  PNR_TABLE[pnr] = { pnr, passenger, flight, date, seat, status: 'ACTIVE', created: new Date().toISOString() };
+  return [
+    `ZTPF850I BOOKING CONFIRMED — PNR: ${pnr}`,
+    `ZTPF850I PASSENGER: ${passenger}  FLIGHT: ${flight}  DATE: ${date}  SEAT: ${seat}`,
+  ];
+}
+
+function cmdZlook(pnrArg) {
+  const pnr = pnrArg.toUpperCase();
+  const rec = PNR_TABLE[pnr];
+  if (!rec) return [`ZTPF861E PNR NOT FOUND: ${pnr}`];
+  return [
+    `ZTPF860I PNR: ${rec.pnr}  STATUS: ${rec.status}`,
+    `ZTPF860I PASSENGER: ${rec.passenger}  FLIGHT: ${rec.flight}  DATE: ${rec.date}  SEAT: ${rec.seat}`,
+    `ZTPF860I CREATED: ${rec.created}`,
+  ];
+}
+
+function cmdZcxl(pnrArg) {
+  const pnr = pnrArg.toUpperCase();
+  const rec = PNR_TABLE[pnr];
+  if (!rec) return [`ZTPF871E PNR NOT FOUND: ${pnr}`];
+  if (rec.status === 'CANCELLED') return [`ZTPF872W PNR ${pnr} ALREADY CANCELLED`];
+  rec.status = 'CANCELLED';
+  return [`ZTPF870I PNR ${pnr} CANCELLED`];
+}
+
 function cmdZtestEntry(name) {
   const ecb = ECB_TABLE.find(e => e.name === name.toUpperCase());
   if (!ecb) {
@@ -367,7 +435,11 @@ function cmdHelp(priv) {
     `ZTPF000I ZSHOW T         — Show transaction monitor`,
     `ZTPF000I ZSHOW O         — Show active operators`,
     `ZTPF000I ZSHOW V         — Show system version`,
+    `ZTPF000I ZSHOW B         — Show active bookings`,
     `ZTPF000I ZTEST ENTRY,ecb — Test entry point response`,
+    `ZTPF000I ZBOOK passenger,flight,date,seat — Create a PNR`,
+    `ZTPF000I ZLOOK pnr       — Look up a PNR`,
+    `ZTPF000I ZCXL pnr        — Cancel a PNR`,
   ];
   if (priv >= 2) {
     lines.push(`ZTPF000I ZSTOP,RPRT      — Report stoppable entry points (SYSOP)`);
