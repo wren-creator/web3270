@@ -51,6 +51,15 @@ const TN3E_REJECT       = 0x06;
 const TN3E_REQUEST      = 0x07;
 const TN3E_SEND         = 0x08;
 
+// TN3270E FUNCTIONS capability codes (RFC 2355) — a separate byte-value
+// space from the sub-option codes above; these are what actually goes in
+// the FUNCTIONS REQUEST/IS payload list.
+const TN3E_FN_BIND_IMAGE      = 0x00;
+const TN3E_FN_DATA_STREAM_CTL = 0x01;
+const TN3E_FN_RESPONSES       = 0x02; // requires sending RESPONSE (data-type 0x02) records back — not implemented, never request this
+const TN3E_FN_SCS_CTL_CODES   = 0x03;
+const TN3E_FN_SYSREQ          = 0x04;
+
 // TN3270E negotiation log helpers
 const TN3E_FUNC_NAMES = {
   0x00: 'ASSOCIATE', 0x01: 'CONNECT',     0x02: 'DEVICE-TYPE',
@@ -729,20 +738,47 @@ class Tn3270Session extends EventEmitter {
         logger.info(`[ws:${this.wsId}] TN3270E active, LU=${this.negotiatedLu}`);
         this.emit('lu', this.negotiatedLu);
       }
-      const fnReq = Buffer.from([TN3E_FUNCTIONS, TN3E_REQUEST, 0x00, 0x02]);
+      // BIND-IMAGE only. RESPONSES (0x02) is deliberately excluded:
+      // negotiating it obligates us to send TN3270E RESPONSE (data-type
+      // 0x02) records back to the host, which _sendDataRecord never does
+      // (see #18) — a real z/OS/VTAM host that grants RESPONSES can end up
+      // stalled mid-session waiting on an ack that never comes, e.g. right
+      // after a BIND-IMAGE rebind, such as the alternate-size screen swap
+      // on a RACF passphrase prompt. DATA-STREAM-CTL (0x01) is dropped too
+      // — nothing in this codebase implements SCS/printer handling, and at
+      // least one real host refuses it outright (see below).
+      const fnReq = Buffer.from([TN3E_FUNCTIONS, TN3E_REQUEST, TN3E_FN_BIND_IMAGE]);
       this.tn3270eLog.push({ dir: 'sent', raw: fnReq.toString('hex'), decoded: _decodeTn3270eSubneg(fnReq), ts: Date.now() });
-      this._send(Buffer.from([IAC, SB, OPT_TN3270E, TN3E_FUNCTIONS, TN3E_REQUEST, 0x00, 0x02, IAC, SE]));
+      this._send(Buffer.from([IAC, SB, OPT_TN3270E, TN3E_FUNCTIONS, TN3E_REQUEST, TN3E_FN_BIND_IMAGE, IAC, SE]));
       return;
-    } 
-    
+    }
+
     if (func === TN3E_DEVICE_TYPE && data[2] === TN3E_REJECT) {
       logger.warn(`[ws:${this.wsId}] TN3270E device-type rejected`);
       this._initClassicTn3270();
       return;
-    } 
-    
+    }
+
     if (func === TN3E_FUNCTIONS && data[2] === TN3E_IS) {
       logger.debug(`[ws:${this.wsId}] TN3270E functions negotiated`);
+      return;
+    }
+
+    // Per RFC 2355: if the host doesn't want to grant everything we asked
+    // for in our FUNCTIONS REQUEST, it counters with its own FUNCTIONS
+    // REQUEST listing the (possibly smaller, possibly empty) set it's
+    // actually willing to use. We MUST echo that exact list back as
+    // FUNCTIONS IS to finish the handshake — we don't get to negotiate
+    // further. Without this, a host that counters (rather than just
+    // accepting our request outright) gets no reply at all and drops the
+    // connection immediately (see #18 — this is what broke a real z/OS
+    // host once we stopped over-requesting functions it wouldn't grant).
+    if (func === TN3E_FUNCTIONS && data[2] === TN3E_REQUEST) {
+      const granted = data.slice(3);
+      const isReply = Buffer.from([TN3E_FUNCTIONS, TN3E_IS, ...granted]);
+      this.tn3270eLog.push({ dir: 'sent', raw: isReply.toString('hex'), decoded: _decodeTn3270eSubneg(isReply), ts: Date.now() });
+      this._send(Buffer.from([IAC, SB, OPT_TN3270E, TN3E_FUNCTIONS, TN3E_IS, ...granted, IAC, SE]));
+      logger.debug(`[ws:${this.wsId}] Host countered FUNCTIONS REQUEST [${[...granted].map(b=>'0x'+b.toString(16)).join(',')}] — echoed back as IS`);
       return;
     }
   }
