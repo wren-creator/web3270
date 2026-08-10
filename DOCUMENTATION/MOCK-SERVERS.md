@@ -312,9 +312,18 @@ Type commands into the input field and press **Enter**.
 |---------|---------|-------------|--------|
 | `FILELIST` | `FL` | List files on your A-disk | FILELIST screen with 8 sample files |
 | `RDRLIST` | `RL` | List files in your reader | RDRLIST screen with 3 spool entries |
-| `XEDIT filename` | `X filename` | Edit a file | XEDIT screen with sample REXX content |
+| `XEDIT filename` | `X filename` | Edit a file | XEDIT screen showing that file's real source, when tracked (see below) |
 
-> `XEDIT` accepts any filename — the screen always shows `DEMO REXX A` content as the sample file body, but the title bar reflects the name you typed.
+> `XEDIT` looks the filename up in a small shared exec table (`mock-lpar/rexx/execs.js`) and shows real source for `DEMO REXX` and `GREET EXEC` — the same source `DEMO`/`GREET` actually execute, see below. Any other filename gets a generic placeholder body.
+
+**Running a REXX exec**
+
+| Command | Description | Result |
+|---------|-------------|--------|
+| `DEMO` | Run the DEMO REXX exec | Prints a greeting, the system name, and counts 1 to 5 |
+| `GREET [name]` | Run the GREET EXEC | Prints `Hello, <name>` (or `Hello, STUDENT` with no argument) — exercises `PARSE ARG` |
+
+> Real CMS auto-executes a file whose filetype is EXEC or REXX just by typing its name — this mock does the same for `DEMO` and `GREET`, the two execs it has real source and a real (deliberately scoped) REXX interpreter for. See `mock-lpar/rexx/interpreter.js` for exactly what subset of REXX is supported.
 
 **Mode / session commands**
 
@@ -437,7 +446,13 @@ Commands are typed at the `OPERID ==>` prompt. Privilege level is set at logon.
 | `ZSHOW O` | Active operator list |
 | `ZSHOW V` | System version and uptime |
 | `ZTEST ENTRY,<ecb>` | Test an individual entry point — response time and status |
+| `ZSHOW B` | List active bookings (see the ticketing commands below) |
+| `ZBOOK passenger,flight,date,seat` | Book a PNR, e.g. `ZBOOK SMITH,AA100,25DEC,14A` — returns a generated 6-character locator |
+| `ZLOOK <pnr>` | Look up a PNR by locator |
+| `ZCXL <pnr>` | Cancel a PNR — sets its status to CANCELLED rather than deleting the record |
 | `HELP` or `?` | Show available commands for current privilege level |
+
+> `ZBOOK`/`ZLOOK`/`ZCXL` are available at plain OPER level, same as `ZSHOW`/`ZTEST` — booking and cancelling is front-line agent work, not gated the way stopping an entry point is.
 
 **SYSOP commands — require priv ≥ 2**
 

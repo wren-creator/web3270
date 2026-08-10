@@ -494,6 +494,7 @@ const PDM_OBJECTS = {
     { name: 'QDDSSRC',   type: '*FILE', attr: 'PF-SRC', text: 'DDS source physical file',     size: '64K' },
     { name: 'PAYRPT',    type: '*PGM',  attr: 'RPGLE',  text: 'Payroll report program',       size: '184K' },
     { name: 'ADVENTURE', type: '*PGM',  attr: 'RPGLE',  text: 'Text-adventure game',           size: '96K' },
+    { name: 'SALESRPT',  type: '*PGM',  attr: 'RPGLE',  text: 'Quarterly sales report (101 exercise)', size: '80K' },
     { name: 'CONFIG',    type: '*FILE', attr: 'PF',     text: 'Application config data',      size: '8K' },
   ],
 };
@@ -517,10 +518,14 @@ const SRCMEMBERS = {
     ] },
     { name: 'ADVENTURE', type: 'RPGLE', text: 'Text-adventure game', changed: '07/28/26 21:00:00',
       srcFile: path.join(__dirname, 'rpg/programs/adventure.rpgle') },
+    { name: 'SALESRPT', type: 'RPGLE', text: 'Quarterly sales report (101 exercise)', changed: '08/10/26 00:00:00',
+      srcFile: path.join(__dirname, 'rpg/programs/salesrpt.rpgle') },
   ],
   'APPLIB/QDDSSRC': [
     { name: 'ADVENTURE', type: 'DSPF', text: 'Text-adventure game display file', changed: '07/28/26 21:00:00',
       srcFile: path.join(__dirname, 'rpg/programs/adventure.dspf') },
+    { name: 'SALESRPT', type: 'DSPF', text: 'Quarterly sales report display file', changed: '08/10/26 00:00:00',
+      srcFile: path.join(__dirname, 'rpg/programs/salesrpt.dspf') },
   ],
   'QGPL/QCLSRC': [
     { name: 'STRSBS', type: 'CLLE', text: 'Start subsystem wrapper', changed: '05/02/26 08:30:00', src: [
@@ -543,6 +548,10 @@ const PROGRAMS = {
   'APPLIB/ADVENTURE': {
     ddsFormats: parseDds(fs.readFileSync(path.join(__dirname, 'rpg/programs/adventure.dspf'), 'utf8')),
     rpgAst: parseRpgle(fs.readFileSync(path.join(__dirname, 'rpg/programs/adventure.rpgle'), 'utf8')),
+  },
+  'APPLIB/SALESRPT': {
+    ddsFormats: parseDds(fs.readFileSync(path.join(__dirname, 'rpg/programs/salesrpt.dspf'), 'utf8')),
+    rpgAst: parseRpgle(fs.readFileSync(path.join(__dirname, 'rpg/programs/salesrpt.rpgle'), 'utf8')),
   },
 };
 

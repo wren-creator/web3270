@@ -26,12 +26,18 @@
 'use strict';
 
 const net = require('net');
+const { runRexx } = require('./rexx/interpreter');
+const { buildExecs } = require('./rexx/execs');
 
 const PORT    = parseInt(process.env.MOCK_ZVM_PORT || '3271', 10);
 const LOG     = (process.env.LOG_LEVEL || 'info') === 'debug';
 const LU_NAME = process.env.MOCK_ZVM_LU    || 'ZVMLU01';
 const SYSNAME = process.env.MOCK_ZVM_SYSID || 'ZVMPROD';
 const VMID    = process.env.MOCK_ZVM_VMID  || 'ZVMSYS1';   // z/VM system name shown on banner
+
+// CMS "EXEC" content — single source of truth shared between the XEDIT
+// display (screenXedit, below) and actually running one (case 'cms': dispatch).
+const CMS_EXECS = buildExecs(SYSNAME);
 
 // ── Telnet / TN3270(E) constants ─────────────────────────────────
 const IAC  = 0xFF, DONT = 0xFE, DO   = 0xFD;
@@ -262,12 +268,17 @@ function screenCPReady(userid, lastMsg = '') {
 function screenCMSReady(userid, lastMsg = '') {
   const timeStr = new Date().toLocaleTimeString('en-US', { hour12: false });
 
+  // lastMsg can now be a multi-line REXX transcript -- split on \n into
+  // one row each (same pattern screenCPQuery already uses for its own
+  // multi-line QUERY responses), rather than baking embedded newline
+  // bytes into a single field, and cap the row count so a longer exec's
+  // output can't run past the row-20 separator into the input line.
   const outputLines = [
     `IPL CMS`,
     `z/VM CMS Level ${SYSNAME}`,
     `Ready; T=0.01/0.01 ${timeStr}`,
-    lastMsg,
-  ].filter(Boolean);
+    ...(lastMsg ? lastMsg.split('\n') : []),
+  ].filter(Boolean).slice(-16);
 
   const fields = [
     { row:0,  col:0,  fa: FA_PROTECTED_HIGH },
@@ -368,9 +379,21 @@ function screenRdrlist(userid) {
 }
 
 function screenXedit(userid, filename = 'DEMO REXX A') {
-  return buildScreen(true, [
+  // Filename's first token (e.g. "DEMO" from "DEMO REXX A") is the
+  // CMS_EXECS lookup key -- the same source shown here is what
+  // case 'cms' below actually runs, so XEDITing a file and running it
+  // are never out of sync.
+  const execName = filename.trim().split(/\s+/)[0].toUpperCase();
+  const source = CMS_EXECS[execName];
+  const bodyLines = source
+    ? source.map((line, i) => `${String(i + 1).padStart(5, '0')} ${line}`)
+    : [
+        '00001 * * * This mock only has real source for DEMO REXX and GREET EXEC * * *',
+      ];
+
+  const fields = [
     { row:0,  col:0,  fa: FA_PROTECTED_HIGH },
-    { row:0,  col:1,  text: `${filename.padEnd(24)} V 80  Trunc=80 Size=12 Line=0 Col=1 Alt=0` },
+    { row:0,  col:1,  text: `${filename.padEnd(24)} V 80  Trunc=80 Size=${bodyLines.length}  Line=0 Col=1 Alt=0` },
     { row:1,  col:0,  fa: FA_PROTECTED },
     { row:1,  col:1,  text: '====>                                                          ' },
     { row:1,  col:6,  fa: FA_UNPROTECTED },
@@ -381,15 +404,12 @@ function screenXedit(userid, filename = 'DEMO REXX A') {
     { row:2,  col:0,  fa: FA_PROTECTED },
     { row:2,  col:1,  text: '       |...+....1....+....2....+....3....+....4....+....5....+....6....+....7...|' },
     { row:3,  col:1,  text: '00000 * * * Top of File * * *' },
-    { row:4,  col:1,  text: "00001 /* DEMO REXX EXEC */" },
-    { row:5,  col:1,  text: "00002 say 'Hello from z/VM CMS!'" },
-    { row:6,  col:1,  text: "00003 say 'Running on " + SYSNAME + "'" },
-    { row:7,  col:1,  text: "00004 do i = 1 to 5" },
-    { row:8,  col:1,  text: "00005   say 'Iteration' i" },
-    { row:9,  col:1,  text: "00006 end" },
-    { row:10, col:1,  text: "00007 exit 0" },
-    { row:11, col:1,  text: '00000 * * * End of File * * *' },
+  ];
 
+  bodyLines.forEach((line, i) => fields.push({ row: 4 + i, col: 1, text: line.slice(0, 78) }));
+  fields.push({ row: 4 + bodyLines.length, col: 1, text: '00000 * * * End of File * * *' });
+
+  fields.push(
     { row:21, col:0,  fa: FA_PROTECTED },
     { row:21, col:0,  text: '1= Help  2= Add  3= Quit  4= Tab  5= Cchar  6= ?  7= Bkwd  8= Fwd  9= Repeat' },
     { row:22, col:0,  text: '10= Rgtleft  11= Spltjoin  12= Power input' },
@@ -397,7 +417,9 @@ function screenXedit(userid, filename = 'DEMO REXX A') {
     { row:23, col:0,  text: `XEDIT     ${SYSNAME}` },
     { row:23, col:30, fa: FA_PROTECTED },
     { row:23, col:30, text: 'PF3=Quit  PF7=Bkwd  PF8=Fwd' },
-  ]);
+  );
+
+  return buildScreen(true, fields);
 }
 
 function screenCPQuery(userid, queryResult = '') {
@@ -847,6 +869,13 @@ function handleConnection(socket) {
             socket.end();
           } else if (cmd === 'CMS') {
             lastCMSMsg = 'Already in CMS.  Ready; T=0.01/0.01';
+            sendCurrentScreen();
+          } else if (CMS_EXECS[cmd.split(/\s+/)[0]]) {
+            // Bare filename (real CMS auto-execs EXEC/REXX filetypes) --
+            // run it through the interpreter and show the SAY transcript.
+            const [execName, ...argTokens] = inputText.trim().split(/\s+/);
+            const { output, rc } = runRexx(CMS_EXECS[execName.toUpperCase()], argTokens.join(' '));
+            lastCMSMsg = [...output, `Ready(${rc}); T=0.01/0.01`].join('\n');
             sendCurrentScreen();
           } else {
             lastCMSMsg = `DMSEXT002S Command not found: ${inputText}\nReady(00002); T=0.01/0.01`;
