@@ -1,0 +1,22 @@
+version: 2
+updates:
+  - package-ecosystem: "docker"
+    directory: "/Bridge_server"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "docker"
+    directory: "/Bridge_server/mock-lpar"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "npm"
+    directory: "/Bridge_server"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "npm"
+    directory: "/Bridge_server/copilot"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "npm"
+    directory: "/Bridge_server/mock-lpar"
+    schedule:
+      interval: "weekly"
