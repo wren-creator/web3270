@@ -1276,21 +1276,35 @@ class Tn3270Session extends EventEmitter {
   }
 
   _bufferToRows() {
-    // First pass: stamp each cell with the nondisplay flag of its
-    // enclosing field. We track current state as we walk the entire
-    // buffer (fields cross row boundaries).
+    // First pass: stamp each cell with the nondisplay flag, color, and
+    // highlight of its enclosing field. We track current state as we walk
+    // the entire buffer (fields cross row boundaries). Per 3270 semantics,
+    // SF/SFE stash the field's color/highlight on the FA byte's own cell,
+    // but it's the *content* cells that follow it that should render with
+    // it, all the way up to the next FA byte. A content cell's own
+    // color/highlight (stamped by SA during datastream parsing) still
+    // takes priority over the field's, since SA is a narrower per-character
+    // override.
     const len = this.buffer.length;
     const ndMap = new Array(len).fill(false);
+    const colorMap = new Array(len).fill(0x00);
+    const highlightMap = new Array(len).fill(0x00);
     let currentND = false;
+    let currentColor = 0x00;
+    let currentHighlight = 0x00;
     for (let a = 0; a < len; a++) {
       const cell = this.buffer[a];
       if (cell && cell.fa !== undefined) {
-        // SF byte itself is rendered as a space and doesn't need masking;
-        // it also sets the state for following content cells.
+        // SF byte itself is rendered as a space and doesn't need masking
+        // or coloring; it also sets the state for following content cells.
         currentND = isNonDisplayFa(cell.fa);
+        currentColor = cell.color || 0x00;
+        currentHighlight = cell.highlight || 0x00;
         ndMap[a] = false;
       } else {
         ndMap[a] = currentND;
+        colorMap[a] = (cell && cell.color) || currentColor;
+        highlightMap[a] = (cell && cell.highlight) || currentHighlight;
       }
     }
 
@@ -1305,8 +1319,8 @@ class Tn3270Session extends EventEmitter {
           fa:        cell.fa,
           modified:  cell.modified,
           nondisplay: ndMap[addr],
-          color:     cell.color     || 0x00,
-          highlight: cell.highlight || 0x00,
+          color:     colorMap[addr],
+          highlight: highlightMap[addr],
         });
       }
       rows.push(cells);
