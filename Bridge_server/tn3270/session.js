@@ -51,6 +51,15 @@ const TN3E_REJECT       = 0x06;
 const TN3E_REQUEST      = 0x07;
 const TN3E_SEND         = 0x08;
 
+// TN3270E FUNCTIONS capability codes (RFC 2355) — a separate byte-value
+// space from the sub-option codes above; these are what actually goes in
+// the FUNCTIONS REQUEST/IS payload list.
+const TN3E_FN_BIND_IMAGE      = 0x00;
+const TN3E_FN_DATA_STREAM_CTL = 0x01;
+const TN3E_FN_RESPONSES       = 0x02; // requires sending RESPONSE (data-type 0x02) records back — not implemented, never request this
+const TN3E_FN_SCS_CTL_CODES   = 0x03;
+const TN3E_FN_SYSREQ          = 0x04;
+
 // TN3270E negotiation log helpers
 const TN3E_FUNC_NAMES = {
   0x00: 'ASSOCIATE', 0x01: 'CONNECT',     0x02: 'DEVICE-TYPE',
@@ -729,9 +738,16 @@ class Tn3270Session extends EventEmitter {
         logger.info(`[ws:${this.wsId}] TN3270E active, LU=${this.negotiatedLu}`);
         this.emit('lu', this.negotiatedLu);
       }
-      const fnReq = Buffer.from([TN3E_FUNCTIONS, TN3E_REQUEST, 0x00, 0x02]);
+      // BIND-IMAGE + DATA-STREAM-CTL only. RESPONSES (0x02) is deliberately
+      // excluded: negotiating it obligates us to send TN3270E RESPONSE
+      // (data-type 0x02) records back to the host, which _sendDataRecord
+      // never does (see #18) — a real z/OS/VTAM host that grants RESPONSES
+      // can end up stalled mid-session waiting on an ack that never comes,
+      // e.g. right after a BIND-IMAGE rebind, such as the alternate-size
+      // screen swap on a RACF passphrase prompt.
+      const fnReq = Buffer.from([TN3E_FUNCTIONS, TN3E_REQUEST, TN3E_FN_BIND_IMAGE, TN3E_FN_DATA_STREAM_CTL]);
       this.tn3270eLog.push({ dir: 'sent', raw: fnReq.toString('hex'), decoded: _decodeTn3270eSubneg(fnReq), ts: Date.now() });
-      this._send(Buffer.from([IAC, SB, OPT_TN3270E, TN3E_FUNCTIONS, TN3E_REQUEST, 0x00, 0x02, IAC, SE]));
+      this._send(Buffer.from([IAC, SB, OPT_TN3270E, TN3E_FUNCTIONS, TN3E_REQUEST, TN3E_FN_BIND_IMAGE, TN3E_FN_DATA_STREAM_CTL, IAC, SE]));
       return;
     } 
     
