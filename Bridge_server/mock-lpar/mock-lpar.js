@@ -149,8 +149,20 @@ function buildScreen(eraseFirst, fields) {
   // or a conforming client (x3270, our bridge) will decode at stride 80.
   const eraseCmd = mockCols !== 80 ? CMD_ERASE_WRITE_ALT : CMD_ERASE_WRITE;
   const parts = [eraseFirst ? eraseCmd : CMD_WRITE, 0xC3];
+  // Screens below commonly declare a field's attribute and its label text as
+  // two separate entries at the SAME row/col (attribute occupies that cell;
+  // the label is meant to start right after it). Track the most recent FA
+  // placement so a text-only entry reusing those exact coordinates skips its
+  // own SBA and lands on the content cell the FA's implicit advance already
+  // points at, instead of re-targeting the FA byte's own cell and stepping
+  // on it — which used to just silently eat the label's first character, but
+  // now (session.js clearing stale .fa on overwrite, see #19) blows away the
+  // field boundary itself and lets one field's color bleed across the rest
+  // of the screen.
+  let lastFaPos = null;
   for (const f of fields) {
-    parts.push(...sba(f.row, f.col));
+    const attachedToFa = f.fa === undefined && lastFaPos && f.row === lastFaPos.row && f.col === lastFaPos.col;
+    if (!attachedToFa) parts.push(...sba(f.row, f.col));
     if (f.fa !== undefined) {
       if (f.color !== undefined || f.highlight !== undefined) {
         // SFE: pair count, then [type, value] pairs
@@ -162,6 +174,9 @@ function buildScreen(eraseFirst, fields) {
       } else {
         parts.push(ORDER_SF, f.fa);
       }
+      lastFaPos = { row: f.row, col: f.col };
+    } else if (!attachedToFa) {
+      lastFaPos = null;
     }
     if (f.ic) parts.push(ORDER_IC);
     // Inline SA — character-level color/highlight before text, reset after
