@@ -24,6 +24,7 @@ const MIME = {
   '.ico':  'image/x-icon',
   '.png':  'image/png',
   '.svg':  'image/svg+xml',
+  '.woff2':'font/woff2',
 };
 
 const ROUTES = [traffic, logs, profiles, sshHosts, macros, macroRun, recording, security, negotiate, wire];
