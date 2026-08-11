@@ -4,6 +4,7 @@ WORKDIR /app
 
 # Only copy what the mock z/VM daemon needs — no bridge deps required
 COPY mock-lpar/mock-zvm.js ./mock-lpar/mock-zvm.js
+COPY mock-lpar/rexx/ ./mock-lpar/rexx/
 
 RUN addgroup -S mockzvm && adduser -S mockzvm -G mockzvm
 USER mockzvm
