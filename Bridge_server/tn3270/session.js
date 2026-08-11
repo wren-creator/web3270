@@ -935,7 +935,15 @@ class Tn3270Session extends EventEmitter {
         const charByte = data[i + 2];
         i += 3;
         while (addr !== toAddr) {
+          // A fill character always lands on plain content, even if this
+          // address held a field attribute byte (or its stashed SFE
+          // color/highlight) from an earlier non-erased write. Clear both
+          // so _bufferToRows/_extractFields don't keep treating the cell
+          // as a phantom field boundary.
+          this.buffer[addr].fa = undefined;
           this.buffer[addr].char = charByte;
+          this.buffer[addr].color = 0x00;
+          this.buffer[addr].highlight = 0x00;
           addr = (addr + 1) % (this.rows * this.cols);
         }
 
@@ -1011,11 +1019,17 @@ class Tn3270Session extends EventEmitter {
         addr = (addr + 1) % (this.rows * this.cols);
 
       } else {
-        // Regular character — store in buffer; stamp any active SA color/highlight
+        // Regular character — store in buffer; stamp any active SA color/highlight.
+        // A character order always means this address is no longer a field
+        // attribute byte, even if a stale one (or its stashed SFE color/
+        // highlight) was left here by an earlier non-erased write. Clear
+        // both unconditionally so _bufferToRows/_extractFields don't keep
+        // treating this cell as a phantom field boundary.
         this.buffer[addr] = this.buffer[addr] || {};
+        this.buffer[addr].fa = undefined;
         this.buffer[addr].char = b;
-        if (saColor)     this.buffer[addr].color     = saColor;
-        if (saHighlight) this.buffer[addr].highlight = saHighlight;
+        this.buffer[addr].color     = saColor;
+        this.buffer[addr].highlight = saHighlight;
         addr = (addr + 1) % (this.rows * this.cols);
         i++;
       }
