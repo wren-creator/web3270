@@ -16,7 +16,7 @@
     "kerberos": "^7.0.0",
     "ldapts": "^8.2.0",
     "ssh2": "^1.17.0",
-    "ws": "^8.21.0"
+    "ws": "^8.21.3"
   },
   "devDependencies": {
     "@fontsource/ibm-plex-mono": "^5.3.0",
