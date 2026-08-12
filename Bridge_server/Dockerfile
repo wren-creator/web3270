@@ -1,5 +1,5 @@
 # ── Stage 1: deps ─────────────────────────────────────────────────
-FROM node:20-alpine AS deps
+FROM node:26-alpine AS deps
 WORKDIR /app
 
 # kerberos (auth/windows-auth.js) is a native module built via node-gyp
@@ -12,7 +12,7 @@ COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev
 
 # ── Stage 2: runtime image ────────────────────────────────────────
-FROM node:20-alpine AS runtime
+FROM node:26-alpine AS runtime
 WORKDIR /app
 
 RUN addgroup -S tn3270 && adduser -S tn3270 -G tn3270
