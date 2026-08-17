@@ -158,6 +158,39 @@ The mock LPAR implements:
 
 ---
 
+## Real JCL: dataset member browsing and SUBMIT (mock-lpar.js)
+
+ISPF 3.4's dataset list isn't only a static row anymore. `DEMO.JCL.CNTL`
+supports drilling into a real member list (type `S` on that row): `MYJOB`
+(mirrors the pre-existing static Edit/SDSF demo below, unchanged), `QTRRPT`
+(a 2-step success case), and `BADJOB` (a deliberate non-zero return code,
+for teaching how to read a real failure). Source lives in
+`jcl/programs/*.jcl`, real fixed-form JCL, parsed at startup for
+`//stepname EXEC PGM=x` lines only — not a JCL language interpreter, no
+conditionals, no DD-level processing, the same scoped-real approach as the
+AS/400 mock's RPG interpreter. A known `PGM=` name maps to a canned
+condition code and JES message via the `PGM_OUTCOMES` table near the top
+of `mock-lpar.js`; add a program name there to give a new step a real
+outcome.
+
+`SUBMIT`/`SUB`/`S` followed by a member name (bare, or the real ISPF
+`'DSN(MEMBER)'` quoted form), typed at TSO READY, the TSO command shell, or
+the member list itself, assigns a real job number and queues it. Status
+(`QUEUED` → `ACTIVE` → `OUTPUT`) is computed off elapsed time since
+submission rather than mutated by a timer, so checking back a few seconds
+later genuinely shows the job having moved along.
+
+SDSF gained a job list: type `ST` or `DA` at the existing SDSF screen's
+`COMMAND INPUT ===>` line (real SDSF primary commands for status/display
+active). It's seeded with a short job history (`BADRUN`, `NIGHTBAK`,
+`PAYRUN`) alongside the pre-existing static `JOB07432`/`MYJOB` entry and
+anything submitted this session; type `S jobname` to view a job's detail.
+This is purely additive — pressing Enter/PF3 straight out of ISPF option
+`M` still lands on the original static `JOB07432` detail screen exactly as
+before, nothing about that path changed.
+
+---
+
 ## Mock AS/400 daemon (TN5250)
 
 `mock-as400.js` is the same idea as the mock LPAR above, but speaks
