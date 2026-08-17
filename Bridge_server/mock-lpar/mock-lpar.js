@@ -6,7 +6,9 @@
 
 'use strict';
 
-const net = require('net');
+const net  = require('net');
+const fs   = require('fs');
+const path = require('path');
 
 const PORT    = parseInt(process.env.MOCK_PORT  || '3270', 10);
 const LOG     = (process.env.LOG_LEVEL || 'info') === 'debug';
@@ -188,6 +190,94 @@ function buildScreen(eraseFirst, fields) {
   return Buffer.from(parts);
 }
 
+// ── JCL / SUBMIT / SDSF ─────────────────────────────────────────────
+// Real fixed-form JCL on disk (jcl/programs/*.jcl), parsed at startup for
+// //stepname EXEC PGM=x lines. This is not a JCL language interpreter, no
+// conditionals, no DD-level processing, just enough of one that a known
+// PGM name maps to a canned return code, the same scoped-real approach as
+// the AS/400 mock's RPG interpreter: edit a step's EXEC PGM= to a
+// different known program in PGM_OUTCOMES, restart the mock, resubmit,
+// and SDSF's output actually changes.
+const PGM_OUTCOMES = {
+  IEFBR14:  { rc: 0,  msg: null },
+  IEBGENER: { rc: 0,  msg: 'KEPT' },
+  SORT:     { rc: 0,  msg: null },
+  REPORT:   { rc: 0,  msg: 'KEPT' },
+  VALIDATE: { rc: 0,  msg: null },
+  PROCESS:  { rc: 12, msg: 'RETURN CODE 0012 -- CHECK PROCESS STEP INPUT' },
+};
+
+function parseJclSteps(jclText) {
+  const steps = [];
+  const re = /^\/\/(\S+)\s+EXEC\s+PGM=(\S+)/gm;
+  let m;
+  while ((m = re.exec(jclText)) !== null) {
+    const [, stepName, pgm] = m;
+    const outcome = PGM_OUTCOMES[pgm] || { rc: 0, msg: null };
+    steps.push({ name: stepName, pgm, rc: outcome.rc, msg: outcome.msg });
+  }
+  return steps;
+}
+
+function loadJclMember(file) {
+  const text = fs.readFileSync(path.join(__dirname, 'jcl/programs', file), 'utf8');
+  return { text, steps: parseJclSteps(text) };
+}
+
+// Submittable members under DEMO.JCL.CNTL. MYJOB's real source mirrors the
+// pre-existing static Edit/SDSF demo screens below (unchanged, so Book 1's
+// documented MYJOB/JOB07432 walkthrough stays exactly accurate) — this is
+// a second, independently-submittable path to the same JCL, not a
+// replacement for it. QTRRPT and BADJOB are new.
+const JCL_MEMBERS = {
+  MYJOB:   { ...loadJclMember('myjob.jcl'),  desc: 'Demo batch job (IEBGENER copy)' },
+  QTRRPT:  { ...loadJclMember('qtrrpt.jcl'), desc: 'Quarterly report (2-step)' },
+  BADJOB:  { ...loadJclMember('badjob.jcl'), desc: 'Return code demo (non-zero RC)' },
+};
+
+// Job queue is module-level/shared, same convention as the AS/400 mock's
+// SPLFILES/BCHJOBS tables — system-wide, not per-connection. Seeded with a
+// short history so SDSF has real breadth before anyone submits anything;
+// JOB07432/MYJOB deliberately is NOT in here, it stays the pre-existing
+// static screenSDSF() detail reached via ISPF option M exactly as before.
+let nextJobNum = 7433;
+const JOB_QUEUE = [
+  { jobnum: 'JOB07429', name: 'BADRUN',   user: 'APPUSR',  submittedAt: Date.now() - 3600_000,
+    steps: [{ name: 'STEP1', pgm: 'VALIDATE', rc: 0, msg: null },
+            { name: 'STEP2', pgm: 'PROCESS',  rc: 12, msg: 'RETURN CODE 0012 -- CHECK PROCESS STEP INPUT' }] },
+  { jobnum: 'JOB07430', name: 'NIGHTBAK', user: 'SYSPROG', submittedAt: Date.now() - 3600_000,
+    steps: [{ name: 'STEP1', pgm: 'IEBGENER', rc: 0, msg: 'KEPT' }] },
+  { jobnum: 'JOB07431', name: 'PAYRUN',   user: 'APPUSR',  submittedAt: Date.now() - 3600_000,
+    steps: [{ name: 'STEP1', pgm: 'SORT', rc: 0, msg: null },
+            { name: 'STEP2', pgm: 'REPORT', rc: 0, msg: 'KEPT' }] },
+];
+
+// Status is computed off elapsed time since submission rather than mutated
+// by a timer, so re-checking SDSF a few seconds after SUBMIT genuinely
+// shows the job having moved along the pipeline with no extra plumbing.
+function jobStatus(job) {
+  const elapsed = Date.now() - job.submittedAt;
+  if (elapsed < 1500) return 'QUEUED';
+  if (elapsed < 3000) return 'ACTIVE';
+  return 'OUTPUT';
+}
+
+function maxRc(steps) { return steps.reduce((m, s) => Math.max(m, s.rc), 0); }
+
+// Accepts SUBMIT/SUB/S followed by a bare member name or the real ISPF
+// 'DSN(MEMBER)' quoted form. Returns the confirmation/error string, or
+// null if the input isn't a submit-shaped command at all.
+function trySubmit(cmd, user = 'DEMO') {
+  const m = cmd.match(/^(SUBMIT|SUB|S)\s+(?:'?[\w.]+\(([\w]+)\)'?|([\w]+))$/i);
+  if (!m) return null;
+  const member = (m[2] || m[3] || '').toUpperCase();
+  const jcl = JCL_MEMBERS[member];
+  if (!jcl) return `IKJ54317I DATA SET DEMO.JCL.CNTL(${member}) NOT FOUND`;
+  const jobnum = `JOB0${nextJobNum++}`;
+  JOB_QUEUE.push({ jobnum, name: member, user, submittedAt: Date.now(), steps: jcl.steps });
+  return `${jobnum} SUBMITTED`;
+}
+
 function screenLogon() {
   const now = new Date();
   const timeStr = now.toLocaleTimeString('en-US', { hour12: false });
@@ -287,8 +377,10 @@ function screenISPF34(userid = 'DEMO', dsLevel = '') {
     { row:3,  col:1,  text: 'Volume serial .        Optionally enter a volume serial' },
     { row:4,  col:0,  fa: FA_PROTECTED_HIGH, color: COL_YELLOW },
     { row:4,  col:1,  text: 'Name                             Tracks  XT Used  XT Dsorg Recfm Lrecl BlkSz' },
-    { row:5,  col:0,  fa: FA_PROTECTED, color: COL_TURQ },
-    { row:5,  col:1,  text: ' ' + level + '.JCL.CNTL                       15   1   15   1 PO    FB       80 27920' },
+    { row:5,  col:0,  fa: FA_UNPROTECTED, color: COL_GREEN, ic: true },
+    { row:5,  col:0,  text: ' ' },
+    { row:5,  col:2,  fa: FA_PROTECTED, color: COL_TURQ },
+    { row:5,  col:2,  text: level + '.JCL.CNTL                       15   1   15   1 PO    FB       80 27920' },
     { row:6,  col:1,  text: ' ' + level + '.REXX.EXEC                        5   1    5   1 PO    VB       80  6160' },
     { row:7,  col:1,  text: ' ' + level + '.DATA.INPUT                      20   1   18   1 PS    FB       80 27920' },
     { row:8,  col:1,  text: ' ' + level + '.DATA.OUTPUT                     20   1    0   0 PS    FB       80 27920' },
@@ -303,6 +395,44 @@ function screenISPF34(userid = 'DEMO', dsLevel = '') {
     { row:23, col:0,  fa: FA_PROTECTED, color: COL_BLUE },
     { row:23, col:0,  text: 'F1=Help  F2=Split  F3=Exit  F5=Reset  F7=Up  F8=Down  F10=Left  F11=Right' },
   ]);
+}
+
+// Member list for DEMO.JCL.CNTL, reached by typing S on that dataset's row
+// in ISPF 3.4. Only this one dataset gets real member content, the same
+// "don't fake depth you don't have" restraint the AS/400 mock applies to
+// which libraries got real PDM content. Selection is a single typed
+// "S membername" on the Command line rather than a per-row Opt column —
+// deriving which row a per-row field belongs to would mean decoding this
+// mock's own simplified cursor-address encoding against whatever a real
+// client actually sends back, not something to guess at.
+function screenJclMembers(msg) {
+  const names = Object.keys(JCL_MEMBERS);
+  const fields = [
+    { row:0,  col:0,  fa: FA_PROTECTED_HIGH, color: COL_WHITE, highlight: HL_INTENS },
+    { row:0,  col:1,  text: 'Edit Entry Panel -- DEMO.JCL.CNTL' },
+    { row:2,  col:0,  fa: FA_PROTECTED, color: COL_WHITE },
+    { row:2,  col:1,  text: 'Command ===>' },
+    { row:2,  col:13, fa: FA_UNPROTECTED, color: COL_GREEN, ic: true },
+    { row:2,  col:13, text: '                                    ' },
+    { row:3,  col:0,  fa: FA_PROTECTED, color: COL_TURQ },
+    { row:3,  col:1,  text: 'Type S membername to submit, e.g. S QTRRPT' },
+    { row:5,  col:0,  fa: FA_PROTECTED_HIGH, color: COL_YELLOW },
+    { row:5,  col:1,  text: 'Member    Description' },
+  ];
+  names.forEach((name, idx) => {
+    const row = 7 + idx;
+    fields.push({ row, col: 0, fa: FA_PROTECTED, color: COL_TURQ });
+    fields.push({ row, col: 1, text: `${name.padEnd(9)} ${JCL_MEMBERS[name].desc}` });
+  });
+  if (msg) {
+    fields.push({ row: 20, col: 0, fa: FA_PROTECTED, color: COL_GREEN });
+    fields.push({ row: 20, col: 1, text: msg });
+  }
+  fields.push(
+    { row:23, col:0,  fa: FA_PROTECTED, color: COL_BLUE },
+    { row:23, col:0,  text: 'F3=Exit  F12=Cancel' },
+  );
+  return buildScreen(true, fields);
 }
 
 function screenEdit() {
@@ -369,6 +499,102 @@ function screenSDSF() {
     { row:23, col:0,  fa: FA_PROTECTED, color: COL_BLUE },
     { row:23, col:0,  text: 'F1=Help  F3=End  F5=RFind  F7=Up  F8=Down  F10=Left  F11=Right' },
   ]);
+}
+
+// Job list, reached by typing ST or DA at the existing SDSF screen's
+// COMMAND INPUT line (real SDSF primary commands for "status"/"display
+// active"). Includes the pre-existing static JOB07432/MYJOB alongside the
+// real queue so there's one list covering everything, but selecting
+// JOB07432 routes to the original unchanged screenSDSF() detail. Selection
+// is "S jobname" typed on the command line, same reasoning as
+// screenJclMembers on why this isn't a per-row Opt column.
+function screenSdsfList(msg) {
+  const rows = [
+    { jobnum: 'JOB07432', name: 'MYJOB', user: 'DEMO', status: 'OUTPUT', rc: 0 },
+    ...JOB_QUEUE.map(j => ({ jobnum: j.jobnum, name: j.name, user: j.user, status: jobStatus(j), rc: maxRc(j.steps) })),
+  ];
+  const fields = [
+    { row:0,  col:0,  fa: FA_PROTECTED_HIGH, color: COL_WHITE, highlight: HL_INTENS },
+    { row:0,  col:1,  text: `SDSF STATUS DISPLAY ALL CLASSES                          LINE 0 OF ${rows.length}` },
+    { row:1,  col:1,  fa: FA_PROTECTED, color: COL_WHITE },
+    { row:1,  col:1,  text: 'COMMAND INPUT ===>' },
+    { row:1,  col:20, fa: FA_UNPROTECTED, color: COL_GREEN, ic: true },
+    { row:1,  col:20, text: '                              ' },
+    { row:1,  col:49, fa: FA_PROTECTED, color: COL_WHITE },
+    { row:1,  col:49, text: 'SCROLL ===> PAGE' },
+    { row:2,  col:1,  fa: FA_PROTECTED, color: COL_TURQ },
+    { row:2,  col:1,  text: 'Type S jobname to view, e.g. S MYJOB' },
+    { row:3,  col:0,  fa: FA_PROTECTED_HIGH, color: COL_YELLOW },
+    { row:3,  col:1,  text: 'JOBNAME  JobID     Owner    Status   C RC' },
+  ];
+  rows.forEach((r, idx) => {
+    const row = 5 + idx;
+    const rcText = r.status === 'OUTPUT' ? String(r.rc).padStart(4, '0') : '----';
+    fields.push({ row, col: 1, fa: FA_PROTECTED, color: r.rc > 0 && r.status === 'OUTPUT' ? COL_RED : COL_TURQ });
+    fields.push({ row, col: 1, text: `${r.name.padEnd(9)}${r.jobnum.padEnd(10)}${r.user.padEnd(9)}${r.status.padEnd(9)}${rcText}` });
+  });
+  if (msg) {
+    fields.push({ row: 18, col: 1, fa: FA_PROTECTED, color: COL_RED });
+    fields.push({ row: 18, col: 1, text: msg });
+  } else {
+    fields.push(
+      { row:18, col:1, fa: FA_PROTECTED_HIGH, color: COL_YELLOW },
+      { row:18, col:1, text: '*** END OF DATA ***' },
+    );
+  }
+  fields.push(
+    { row:23, col:0, fa: FA_PROTECTED, color: COL_BLUE },
+    { row:23, col:0, text: 'F1=Help  F3=Return  F5=RFind  F7=Up  F8=Down' },
+  );
+  return buildScreen(true, fields);
+}
+
+// Generic detail screen for anything in JOB_QUEUE (not the static
+// JOB07432/MYJOB, which keeps using the original screenSDSF() below
+// unchanged). Built from the job's own real steps, parsed off its JCL
+// source, not hardcoded per job.
+function screenSdsfDetail(job) {
+  const status = jobStatus(job);
+  const fields = [
+    { row:0,  col:0,  fa: FA_PROTECTED_HIGH, color: COL_WHITE, highlight: HL_INTENS },
+    { row:0,  col:1,  text: `SDSF OUTPUT DISPLAY ${job.name.padEnd(8)} ${job.jobnum}  DSID   2 LINE 0    COLUMNS 02-81` },
+    { row:1,  col:1,  fa: FA_PROTECTED, color: COL_WHITE },
+    { row:1,  col:1,  text: 'COMMAND INPUT ===>' },
+    { row:1,  col:20, fa: FA_UNPROTECTED, color: COL_GREEN },
+    { row:1,  col:20, text: '                              ' },
+    { row:1,  col:49, fa: FA_PROTECTED, color: COL_WHITE },
+    { row:1,  col:49, text: 'SCROLL ===> PAGE' },
+    { row:3,  col:0,  fa: FA_PROTECTED, color: COL_TURQ },
+    { row:3,  col:9,  text: `1 //${job.name}   JOB (DEMO),CLASS=A,MSGCLASS=X` },
+    { row:4,  col:9,  text: '2 //*' },
+  ];
+  let row = 6;
+  if (status === 'QUEUED') {
+    fields.push({ row, col: 1, saColor: COL_YELLOW, text: `$HASP373 ${job.name.padEnd(8)} STARTED -- JOB IS ON THE QUEUE, NOT YET RUNNING` });
+  } else if (status === 'ACTIVE') {
+    fields.push({ row, col: 1, saColor: COL_YELLOW, text: `$HASP373 ${job.name.padEnd(8)} STARTED -- INIT 1 -- CLASS A` });
+  } else {
+    job.steps.forEach(s => {
+      fields.push({ row, col: 1, saColor: s.rc > 0 ? COL_RED : COL_GREEN,
+        text: `IEF142I ${job.name} ${s.name} - STEP WAS EXECUTED - COND CODE ${String(s.rc).padStart(4, '0')}` });
+      row++;
+      if (s.msg) {
+        fields.push({ row, col: 1, saColor: COL_GREEN, text: `IEF285I   ${s.msg}` });
+        row++;
+      }
+    });
+    row++;
+    const rc = maxRc(job.steps);
+    fields.push({ row, col: 1, fa: FA_PROTECTED_HIGH, color: rc > 0 ? COL_RED : COL_GREEN,
+      text: `${job.name} ${job.jobnum} ENDED -- MAXIMUM CONDITION CODE ${String(rc).padStart(4, '0')}` });
+  }
+  fields.push(
+    { row:18, col:1,  fa: FA_PROTECTED_HIGH, color: COL_YELLOW },
+    { row:18, col:1,  text: '*** END OF DATA ***' },
+    { row:23, col:0,  fa: FA_PROTECTED, color: COL_BLUE },
+    { row:23, col:0,  text: 'F1=Help  F3=Return  F5=RFind  F7=Up  F8=Down  F10=Left  F11=Right' },
+  );
+  return buildScreen(true, fields);
 }
 
 function screenError(cmd) {
@@ -903,12 +1129,14 @@ function handleConnection(socket) {
   let lastEnteredUser = '';   // last-typed logon fields, for buffer-bleed cache on disconnect
   let lastEnteredPass = '';
   let firstScreenSent = false;
+  let selectedJob      = null;  // jobnum currently shown by sdsfDetail
+  let sdsfViaList      = false; // true if 'sdsf' was reached from sdsfList (JOB07432 row), not directly from ISPF option M — decides where its own PF3 goes back to, without touching lastScreen
 
   // Track what we've agreed to
   let clientWillTN3270E  = false;
   let clientFunctionsDone = false;
 
-  const state = { record: [], errorCmd: '', tsoOutput: '' };
+  const state = { record: [], errorCmd: '', tsoOutput: '', jclMsg: '', sdsfMsg: '' };
   let loginAttempts = 0;
   let accountLocked = false;
   const MAX_ATTEMPTS = 3;
@@ -1238,6 +1466,9 @@ function handleConnection(socket) {
           } else if (cmd.startsWith('PROFILE')) {
             state.tsoOutput = `PROFILE NOINTERCOM MSGID NOPROMPT SIZE(32767) LINE(24)\n  MODE(LINE) WTPMSG INTERCOM NOHIGHLIGHT`;
             currentScreen = 'tsoCmd'; sendCurrentScreen();
+          } else if (cmd.startsWith('SUBMIT') || cmd.startsWith('SUB ')) {
+            state.tsoOutput = trySubmit(cmd, userid) || `IKJ56500I COMMAND ${cmd} NOT FOUND`;
+            currentScreen = 'tsoCmd'; sendCurrentScreen();
           } else {
             state.tsoOutput = `IKJ56500I COMMAND ${cmd} NOT FOUND\nIKJ56501I ENTER HELP for list of valid commands`;
             currentScreen = 'tsoCmd'; sendCurrentScreen();
@@ -1271,6 +1502,9 @@ function handleConnection(socket) {
           } else if (cmd === 'USA') {
             currentScreen = 'usa'; sendCurrentScreen();
             writeRaw(buildUsaObjectDataWsf());
+          } else if (cmd.startsWith('SUBMIT') || cmd.startsWith('SUB ')) {
+            state.tsoOutput = trySubmit(cmd, userid) || `IKJ56500I COMMAND ${cmd} NOT FOUND`;
+            sendCurrentScreen();
           } else {
             state.tsoOutput = `IKJ56500I COMMAND ${cmd} NOT FOUND`;
             sendCurrentScreen();
@@ -1296,13 +1530,85 @@ function handleConnection(socket) {
         break;
 
       case 'edit':
-      case 'ispf34':
-      case 'sdsf':
       case 'error':
         if (aid === AID_PF3 || aid === AID_ENTER) {
           currentScreen = lastScreen || 'ispf';
           sendCurrentScreen();
         } else if (aid === AID_PF7 || aid === AID_PF8) {
+          sendCurrentScreen();
+        }
+        break;
+
+      case 'ispf34':
+        if (aid === AID_ENTER && inputText.trim().toUpperCase() === 'S') {
+          // Deliberately NOT touching lastScreen here — jclMembers always
+          // returns to ispf34 (hardcoded below), so reusing lastScreen for
+          // this would clobber the ispf->ispf34 pointer this same case
+          // depends on for its own PF3 a moment later.
+          currentScreen = 'jclMembers'; state.jclMsg = '';
+          sendCurrentScreen();
+        } else if (aid === AID_PF3 || aid === AID_ENTER) {
+          currentScreen = lastScreen || 'ispf';
+          sendCurrentScreen();
+        } else if (aid === AID_PF7 || aid === AID_PF8) {
+          sendCurrentScreen();
+        }
+        break;
+
+      case 'jclMembers':
+        if (aid === AID_ENTER && inputText.trim()) {
+          const result = trySubmit(inputText.trim().toUpperCase(), userid);
+          state.jclMsg = result || `Unknown command: ${inputText.trim()}`;
+          sendCurrentScreen();
+        } else if (aid === AID_PF3 || aid === AID_ENTER) {
+          currentScreen = 'ispf34';
+          sendCurrentScreen();
+        }
+        break;
+
+      case 'sdsf':
+        if (aid === AID_ENTER && (inputText.trim().toUpperCase() === 'ST' || inputText.trim().toUpperCase() === 'DA')) {
+          // Same reasoning as ispf34 above — sdsfList always returns to
+          // sdsf (hardcoded below), lastScreen stays untouched so a plain
+          // PF3 straight out of 'sdsf' (reached directly via ISPF option M,
+          // Book 1's documented path) still works exactly as before.
+          currentScreen = 'sdsfList';
+          sendCurrentScreen();
+        } else if (aid === AID_PF3 || aid === AID_ENTER) {
+          if (sdsfViaList) { sdsfViaList = false; currentScreen = 'sdsfList'; }
+          else { currentScreen = lastScreen || 'ispf'; }
+          sendCurrentScreen();
+        } else if (aid === AID_PF7 || aid === AID_PF8) {
+          sendCurrentScreen();
+        }
+        break;
+
+      case 'sdsfList': {
+        const sel = inputText.trim().toUpperCase().match(/^S\s+(\S+)$/);
+        if (aid === AID_ENTER && sel) {
+          const target = sel[1];
+          const rows = [{ jobnum: 'JOB07432', name: 'MYJOB' }, ...JOB_QUEUE];
+          const picked = rows.find(r => r.name === target || r.jobnum === target);
+          if (!picked) {
+            state.sdsfMsg = `Job not found: ${target}`;
+            sendCurrentScreen();
+          } else if (picked.jobnum === 'JOB07432') {
+            sdsfViaList = true; currentScreen = 'sdsf'; state.sdsfMsg = '';
+            sendCurrentScreen();
+          } else {
+            selectedJob = picked.jobnum; currentScreen = 'sdsfDetail'; state.sdsfMsg = '';
+            sendCurrentScreen();
+          }
+        } else if (aid === AID_PF3 || aid === AID_ENTER) {
+          currentScreen = 'sdsf';
+          sendCurrentScreen();
+        }
+        break;
+      }
+
+      case 'sdsfDetail':
+        if (aid === AID_PF3 || aid === AID_ENTER) {
+          currentScreen = 'sdsfList';
           sendCurrentScreen();
         }
         break;
@@ -1358,7 +1664,10 @@ function handleConnection(socket) {
       case 'ispf':      ds = screenISPF(userid);                     break;
       case 'edit':      ds = screenEdit();                           break;
       case 'ispf34':    ds = screenISPF34(userid);                   break;
+      case 'jclMembers':ds = screenJclMembers(state.jclMsg);         break;
       case 'sdsf':      ds = screenSDSF();                           break;
+      case 'sdsfList':  ds = screenSdsfList(state.sdsfMsg);          break;
+      case 'sdsfDetail':ds = screenSdsfDetail(JOB_QUEUE.find(j => j.jobnum === selectedJob));break;
       case 'error':     ds = screenError(state.errorCmd);            break;
       case 'gddm':      ds = screenGDDM(userid);                     break;
       case 'usa':       ds = screenUSA(userid);                      break;
