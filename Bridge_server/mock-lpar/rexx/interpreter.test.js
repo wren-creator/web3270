@@ -59,3 +59,25 @@ test('a runtime error produces a DMSREX-style message and nonzero rc, not a cras
   assert.ok(rc !== 0);
   assert.ok(output[0].startsWith('DMSREX1041E'));
 });
+
+test('MAXVAL: finds the largest of three, counts down flagging low values', () => {
+  const { output, rc } = runRexx(CMS_EXECS.MAXVAL, '42 17 99');
+  assert.equal(rc, 0);
+  assert.deepEqual(output, [
+    'Comparing 42, 17, 99',
+    'Largest value is 99',
+    'Counting down from the largest value:',
+    ...Array.from({ length: 96 }, (_, i) => String(99 - i)),
+    '3 *** LOW ***',
+    '2 *** LOW ***',
+    '1 *** LOW ***',
+    'Countdown complete.',
+  ]);
+});
+
+test('MAXVAL: missing args default to 0, so a lone value wins as the max', () => {
+  const { output, rc } = runRexx(CMS_EXECS.MAXVAL, '10');
+  assert.equal(rc, 0);
+  assert.equal(output[0], 'Comparing 10, 0, 0');
+  assert.equal(output[1], 'Largest value is 10');
+});

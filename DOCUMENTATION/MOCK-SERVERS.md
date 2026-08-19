@@ -314,7 +314,7 @@ Type commands into the input field and press **Enter**.
 | `RDRLIST` | `RL` | List files in your reader | RDRLIST screen with 3 spool entries |
 | `XEDIT filename` | `X filename` | Edit a file | XEDIT screen showing that file's real source, when tracked (see below) |
 
-> `XEDIT` looks the filename up in a small shared exec table (`mock-lpar/rexx/execs.js`) and shows real source for `DEMO REXX` and `GREET EXEC` — the same source `DEMO`/`GREET` actually execute, see below. Any other filename gets a generic placeholder body.
+> `XEDIT` looks the filename up in a small shared exec table (`mock-lpar/rexx/execs.js`) and shows real source for `DEMO REXX`, `GREET EXEC`, and `MAXVAL EXEC` — the same source those three actually execute, see below. Any other filename gets a generic placeholder body.
 
 **Running a REXX exec**
 
@@ -322,8 +322,9 @@ Type commands into the input field and press **Enter**.
 |---------|-------------|--------|
 | `DEMO` | Run the DEMO REXX exec | Prints a greeting, the system name, and counts 1 to 5 |
 | `GREET [name]` | Run the GREET EXEC | Prints `Hello, <name>` (or `Hello, STUDENT` with no argument) — exercises `PARSE ARG` |
+| `MAXVAL [a] [b] [c]` | Run the MAXVAL EXEC | Finds the largest of up to three numbers, then counts down from it to 1, flagging values 3 and under as `*** LOW ***` — exercises `IF`/`ELSE`, `DO`/`TO`/`BY`, and `\|\|` concatenation together |
 
-> Real CMS auto-executes a file whose filetype is EXEC or REXX just by typing its name — this mock does the same for `DEMO` and `GREET`, the two execs it has real source and a real (deliberately scoped) REXX interpreter for. See `mock-lpar/rexx/interpreter.js` for exactly what subset of REXX is supported.
+> Real CMS auto-executes a file whose filetype is EXEC or REXX just by typing its name — this mock does the same for `DEMO`, `GREET`, and `MAXVAL`, the three execs it has real source and a real (deliberately scoped) REXX interpreter for. See `mock-lpar/rexx/interpreter.js` for exactly what subset of REXX is supported.
 
 **Mode / session commands**
 

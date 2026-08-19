@@ -28,6 +28,24 @@ function buildExecs(sysname) {
       "say 'Hello,' name",
       'exit 0',
     ],
+    MAXVAL: [
+      '/* MAXVAL EXEC -- pass up to three numbers: MAXVAL 42 17 99 */',
+      'parse arg a b c',
+      "if a = '' then a = 0",
+      "if b = '' then b = 0",
+      "if c = '' then c = 0",
+      "say 'Comparing' a || ',' b || ',' c",
+      'max = a',
+      'if b > max then max = b',
+      'if c > max then max = c',
+      "say 'Largest value is' max",
+      "say 'Counting down from the largest value:'",
+      'do n = max to 1 by -1',
+      "  if n <= 3 then say n || ' *** LOW ***' else say n",
+      'end',
+      "say 'Countdown complete.'",
+      'exit 0',
+    ],
   };
 }
 
