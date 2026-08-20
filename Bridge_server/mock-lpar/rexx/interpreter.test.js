@@ -81,3 +81,15 @@ test('MAXVAL: missing args default to 0, so a lone value wins as the max', () =>
   assert.equal(output[0], 'Comparing 10, 0, 0');
   assert.equal(output[1], 'Largest value is 10');
 });
+
+test('VERIFY: correct RCC prints the System Authorization Value', () => {
+  const { output, rc } = runRexx(CMS_EXECS.VERIFY, 'RCC-4419');
+  assert.equal(rc, 0);
+  assert.deepEqual(output, ['SYSTEM AUTHORIZATION VALUE: SAV-2081']);
+});
+
+test('VERIFY: wrong RCC is rejected by name, not silently ignored', () => {
+  const { output, rc } = runRexx(CMS_EXECS.VERIFY, 'RCC-9999');
+  assert.equal(rc, 0);
+  assert.deepEqual(output, ['DMSVER002E Resource Clearance Code not recognized: RCC-9999']);
+});

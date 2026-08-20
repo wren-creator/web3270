@@ -167,6 +167,17 @@ function wrapEOR(payload) {
   return Buffer.from(out);
 }
 
+// Mainframe 105 (Book 5) cross-platform token chain, hop 4 of 4: ZBOOK
+// requires both the Batch Control Number (from the z/OS mock's DATACHK
+// job, validated by the AS/400 mock's CHKBCN) and the System
+// Authorization Value (from the z/VM mock's VERIFY REXX exec) before it
+// will finalize a booking. Both values are fixed, not derived from
+// anything at runtime, so this mock can validate independently with no
+// shared datastore between mocks — see Bridge_server/ROADMAP.md's
+// "Cross-Platform Token Chain" section.
+const EXPECTED_BCN = 'BCN-7742';
+const EXPECTED_SAV = 'SAV-2081';
+
 // ── z/TPF system data ─────────────────────────────────────────────────────
 const CREDENTIALS = {
   TPFOP01: { pass: 'TPF1',  role: 'OPER',    priv: 1 },
@@ -238,8 +249,8 @@ function dispatchCommand(raw, priv) {
       if (args[0] === 'ENTRY' && args[1]) return cmdZtestEntry(args[1]);
       return ['ZTPF002E Syntax: ZTEST ENTRY,<ecbname>'];
     case 'ZBOOK':
-      if (args.length < 4) return ['ZTPF851E Syntax: ZBOOK passenger,flight,date,seat'];
-      return cmdZbook(args[0], args[1], args[2], args[3]);
+      if (args.length < 4) return ['ZTPF851E Syntax: ZBOOK passenger,flight,date,seat[,bcn,sav]'];
+      return cmdZbook(args[0], args[1], args[2], args[3], args[4], args[5]);
     case 'ZLOOK':
       if (!args[0]) return ['ZTPF861E Syntax: ZLOOK pnr'];
       return cmdZlook(args[0]);
@@ -362,7 +373,16 @@ function cmdZshowBookings() {
   return lines;
 }
 
-function cmdZbook(passenger, flight, date, seat) {
+// bcn/sav are optional — omitted entirely, ZBOOK books exactly as it
+// always has (Book 1 and Book 4 both document and teach the plain
+// 4-argument form; that path is untouched, byte-for-byte, same
+// discipline as the z/OS mock's JCL_MEMBERS additions). Supplied, they
+// gate the booking on the Mainframe 105 token chain.
+function cmdZbook(passenger, flight, date, seat, bcn, sav) {
+  if (bcn !== undefined || sav !== undefined) {
+    if (bcn !== EXPECTED_BCN) return [`ZTPF852E BOOKING REJECTED — BATCH CONTROL NUMBER ${bcn} NOT RECOGNIZED`];
+    if (sav !== EXPECTED_SAV) return [`ZTPF853E BOOKING REJECTED — SYSTEM AUTHORIZATION VALUE ${sav} NOT RECOGNIZED`];
+  }
   const pnr = genPnr();
   PNR_TABLE[pnr] = { pnr, passenger, flight, date, seat, status: 'ACTIVE', created: new Date().toISOString() };
   return [
@@ -452,7 +472,7 @@ function cmdHelp(priv) {
     `ZTPF000I ZSHOW V         — Show system version`,
     `ZTPF000I ZSHOW B         — Show active bookings`,
     `ZTPF000I ZTEST ENTRY,ecb — Test entry point response`,
-    `ZTPF000I ZBOOK passenger,flight,date,seat — Create a PNR`,
+    `ZTPF000I ZBOOK passenger,flight,date,seat[,bcn,sav] — Create a PNR`,
     `ZTPF000I ZLOOK pnr       — Look up a PNR`,
     `ZTPF000I ZCXL pnr        — Cancel a PNR`,
   ];

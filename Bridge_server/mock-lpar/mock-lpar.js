@@ -205,6 +205,13 @@ const PGM_OUTCOMES = {
   REPORT:   { rc: 0,  msg: 'KEPT' },
   VALIDATE: { rc: 0,  msg: null },
   PROCESS:  { rc: 12, msg: 'RETURN CODE 0012 -- CHECK PROCESS STEP INPUT' },
+  // Mainframe 105 (Book 5) cross-platform token chain, hop 1 of 4: this
+  // fixed Batch Control Number is what a student carries into the IBM i
+  // mock's CHKBCN command next. Fixed, not derived from anything at
+  // runtime, so every hop can validate it independently with no shared
+  // datastore between mocks — see Bridge_server/ROADMAP.md's "Cross-
+  // Platform Token Chain" section.
+  DATACHK:  { rc: 0,  msg: 'BATCH CONTROL NUMBER BCN-7742 ISSUED -- DATA INTEGRITY CHECK COMPLETE' },
 };
 
 function parseJclSteps(jclText) {
@@ -230,9 +237,10 @@ function loadJclMember(file) {
 // a second, independently-submittable path to the same JCL, not a
 // replacement for it. QTRRPT and BADJOB are new.
 const JCL_MEMBERS = {
-  MYJOB:   { ...loadJclMember('myjob.jcl'),  desc: 'Demo batch job (IEBGENER copy)' },
-  QTRRPT:  { ...loadJclMember('qtrrpt.jcl'), desc: 'Quarterly report (2-step)' },
-  BADJOB:  { ...loadJclMember('badjob.jcl'), desc: 'Return code demo (non-zero RC)' },
+  MYJOB:    { ...loadJclMember('myjob.jcl'),    desc: 'Demo batch job (IEBGENER copy)' },
+  QTRRPT:   { ...loadJclMember('qtrrpt.jcl'),   desc: 'Quarterly report (2-step)' },
+  BADJOB:   { ...loadJclMember('badjob.jcl'),   desc: 'Return code demo (non-zero RC)' },
+  DATACHK:  { ...loadJclMember('datachk.jcl'),  desc: 'Data Integrity Night check (issues a Batch Control Number)' },
 };
 
 // Job queue is module-level/shared, same convention as the AS/400 mock's

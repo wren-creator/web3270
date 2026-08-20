@@ -555,6 +555,16 @@ const PROGRAMS = {
   },
 };
 
+// Mainframe 105 (Book 5) cross-platform token chain, hop 2 of 4: CHKBCN
+// validates the Batch Control Number a student carries over from the
+// z/OS mock's DATACHK job, and on a match issues the Resource Clearance
+// Code they carry into the z/VM mock's VERIFY REXX exec next. Both
+// values are fixed, not derived from anything at runtime, so this mock
+// can validate independently with no shared datastore between mocks —
+// see Bridge_server/ROADMAP.md's "Cross-Platform Token Chain" section.
+const EXPECTED_BCN = 'BCN-7742';
+const ISSUED_RCC    = 'RCC-4419';
+
 // Tables queryable from STRSQL, keyed by "LIB/TABLE". QIWS/QCUSTCDT is IBM's
 // real out-of-box sample customer table -- the same one that ships on every
 // physical IBM i, so `SELECT * FROM QIWS.QCUSTCDT` here is the same command
@@ -669,6 +679,12 @@ function runCommand(raw) {
       return { type: 'call', pgm };
     }
     case 'SNDMSG': return { type: 'screen', screen: 'SNDMSG_COMPOSE' };
+    case 'CHKBCN': {
+      const bcn = params.BCN;
+      if (!bcn) return { type: 'error', message: 'CPD0043 - Keyword BCN required for CHKBCN.' };
+      if (bcn !== EXPECTED_BCN) return { type: 'error', message: `CPF9899 - Batch Control Number ${bcn} not recognized.` };
+      return { type: 'error', message: `RESOURCE CLEARANCE CODE ${ISSUED_RCC} ISSUED FOR ${bcn}.` };
+    }
     case 'STRSQL': return { type: 'screen', screen: 'SQL' };
     case 'DSPMSG':  return { type: 'messages' };
     case 'SIGNOFF': return { type: 'signoff' };

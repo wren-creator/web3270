@@ -163,8 +163,11 @@ The mock LPAR implements:
 ISPF 3.4's dataset list isn't only a static row anymore. `DEMO.JCL.CNTL`
 supports drilling into a real member list (type `S` on that row): `MYJOB`
 (mirrors the pre-existing static Edit/SDSF demo below, unchanged), `QTRRPT`
-(a 2-step success case), and `BADJOB` (a deliberate non-zero return code,
-for teaching how to read a real failure). Source lives in
+(a 2-step success case), `BADJOB` (a deliberate non-zero return code,
+for teaching how to read a real failure), and `DATACHK` (a single-step job
+whose SDSF output issues a fixed Batch Control Number, hop 1 of the
+Mainframe 105 cross-platform token chain — see `Bridge_server/ROADMAP.md`'s
+"Cross-Platform Token Chain" section). Source lives in
 `jcl/programs/*.jcl`, real fixed-form JCL, parsed at startup for
 `//stepname EXEC PGM=x` lines only — not a JCL language interpreter, no
 conditionals, no DD-level processing, the same scoped-real approach as the
@@ -344,6 +347,17 @@ Adding a second program is: write real `.rpgle`/`.dspf` source under
 `mock-as400.js`, and add a `SRCMEMBERS`/`PDM_OBJECTS` entry — the same
 "edit the table, nothing else changes" convention as the rest of this
 file.
+
+### `CHKBCN` — Mainframe 105 cross-platform token chain, hop 2 of 4
+
+`CHKBCN BCN(bcn)` validates the Batch Control Number a student carries
+over from the z/OS mock's `DATACHK` job (hop 1) and, on a match, issues a
+Resource Clearance Code they carry into the z/VM mock's `VERIFY` REXX exec
+next (hop 3). Both values are fixed constants (`EXPECTED_BCN`/`ISSUED_RCC`
+near the top of `mock-as400.js`), not derived from anything at runtime, so
+this mock validates independently with no shared datastore between mocks
+— see `Bridge_server/ROADMAP.md`'s "Cross-Platform Token Chain" section
+for the full four-hop design.
 
 ## Mock claims daemon (`mock-claims.js`) — Rocket/Rumba migration POC fixture
 

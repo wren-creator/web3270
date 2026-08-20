@@ -46,6 +46,21 @@ function buildExecs(sysname) {
       "say 'Countdown complete.'",
       'exit 0',
     ],
+    // Mainframe 105 (Book 5) cross-platform token chain, hop 3 of 4:
+    // VERIFY checks the Resource Clearance Code carried over from the
+    // AS/400 mock's CHKBCN command, and on a match prints the System
+    // Authorization Value carried into the z/TPF mock's ZBOOK next.
+    // Both values are fixed, not derived from anything at runtime, so
+    // this mock can validate independently with no shared datastore
+    // between mocks -- see Bridge_server/ROADMAP.md's "Cross-Platform
+    // Token Chain" section.
+    VERIFY: [
+      '/* VERIFY EXEC -- pass the Resource Clearance Code: VERIFY RCC-4419 */',
+      'parse arg rcc',
+      "if rcc = 'RCC-4419' then say 'SYSTEM AUTHORIZATION VALUE: SAV-2081'",
+      "if rcc \\= 'RCC-4419' then say 'DMSVER002E Resource Clearance Code not recognized:' rcc",
+      'exit 0',
+    ],
   };
 }
 
