@@ -448,12 +448,16 @@ Commands are typed at the `OPERID ==>` prompt. Privilege level is set at logon.
 | `ZSHOW V` | System version and uptime |
 | `ZTEST ENTRY,<ecb>` | Test an individual entry point — response time and status |
 | `ZSHOW B` | List active bookings (see the ticketing commands below) |
-| `ZBOOK passenger,flight,date,seat` | Book a PNR, e.g. `ZBOOK SMITH,AA100,25DEC,14A` — returns a generated 6-character locator |
+| `ZBOOK passenger,flight,date,seat[,bcn,sav]` | Book a PNR, e.g. `ZBOOK SMITH,AA100,25DEC,14A` — returns a generated 6-character locator. The trailing `bcn,sav` pair is optional; omitted, ZBOOK books exactly as it always has. Supplied, both must match the fixed values the Mainframe 105 cross-platform token chain issues (see below) or the booking is rejected with `ZTPF852E`/`ZTPF853E` |
 | `ZLOOK <pnr>` | Look up a PNR by locator |
 | `ZCXL <pnr>` | Cancel a PNR — sets its status to CANCELLED rather than deleting the record |
 | `HELP` or `?` | Show available commands for current privilege level |
 
 > `ZBOOK`/`ZLOOK`/`ZCXL` are available at plain OPER level, same as `ZSHOW`/`ZTEST` — booking and cancelling is front-line agent work, not gated the way stopping an entry point is.
+
+**Mainframe 105 (Book 5) cross-platform token chain — hop 4 of 4**
+
+`ZBOOK`'s optional `bcn,sav` parameters are the last link in a four-hop chain across the whole mock fleet: the z/OS mock's `DATACHK` job issues a Batch Control Number, the AS/400 mock's `CHKBCN` command validates it and issues a Resource Clearance Code, the z/VM mock's `VERIFY` REXX exec checks that and computes a System Authorization Value, and `ZBOOK` here requires both the BCN and SAV to finalize a booking. All four values are fixed, not derived from anything at runtime, so each mock validates independently with no shared datastore between them — see `Bridge_server/ROADMAP.md`'s "Cross-Platform Token Chain" section for the full design and current status.
 
 **SYSOP commands — require priv ≥ 2**
 
