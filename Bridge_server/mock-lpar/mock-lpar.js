@@ -212,6 +212,13 @@ const PGM_OUTCOMES = {
   // datastore between mocks — see Bridge_server/ROADMAP.md's "Cross-
   // Platform Token Chain" section.
   DATACHK:  { rc: 0,  msg: 'BATCH CONTROL NUMBER BCN-7742 ISSUED -- DATA INTEGRITY CHECK COMPLETE' },
+  // Mainframe 201 (200 series) Differential-Diagnosis vignette: RC=04 is
+  // real MVS's own "completed with warnings" convention, not a hard
+  // failure. The dataset in STEP2's DISP=(NEW,CATLG,...) already exists
+  // from an earlier run, a genuinely common, usually-harmless real-world
+  // RC=4 cause — the point of this job is that the RC alone doesn't say
+  // that, the student has to read the real JCL source to find it.
+  CATLGCHK: { rc: 4,  msg: 'PROD.NIGHTLY.OUTPUT ALREADY CATALOGED -- STEP COMPLETED RC=04' },
 };
 
 function parseJclSteps(jclText) {
@@ -241,6 +248,7 @@ const JCL_MEMBERS = {
   QTRRPT:   { ...loadJclMember('qtrrpt.jcl'),   desc: 'Quarterly report (2-step)' },
   BADJOB:   { ...loadJclMember('badjob.jcl'),   desc: 'Return code demo (non-zero RC)' },
   DATACHK:  { ...loadJclMember('datachk.jcl'),  desc: 'Data Integrity Night check (issues a Batch Control Number)' },
+  NIGHTRUN: { ...loadJclMember('nightrun.jcl'), desc: 'Nightly refresh (RC=04, not the job it looks like next to)' },
 };
 
 // Job queue is module-level/shared, same convention as the AS/400 mock's

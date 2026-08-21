@@ -484,6 +484,15 @@ function simulateLink(userid, cmd) {
   const m = cmd.match(/^LINK\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)(?:\s+(\S+))?/i);
   if (!m) return null;
   const [, owner, fromVdev, toVdev, mode] = m;
+  // Mainframe 201 (200 series) Differential-Diagnosis vignette: vdev 193
+  // is always already linked, on purpose, regardless of what password is
+  // supplied — the point is that ANY password produces this same message,
+  // not a password-specific rejection, so a student who assumes "wrong
+  // password" (the natural Book 4 callback) is chasing the wrong lead.
+  // The real cause is discoverable via Q DASD, see simulateCPQuery below.
+  if (toVdev === '193') {
+    return `HCPLNM097E DEVICE 193 ALREADY LINKED\nReady(00097); T=0.01/0.01`;
+  }
   const ro = /^R(D|R)?$/i.test(mode) || /^RO$/i.test(mode) || /^R$/i.test(mode);
   return `DASD ${toVdev.toUpperCase()} LINKED R/${ro ? 'O' : 'W'}; R/${ro ? 'O' : 'W'} BY ${owner.toUpperCase()}\nReady; T=0.01/0.01`;
 }
@@ -505,7 +514,7 @@ function simulateCPQuery(cmd) {
     return `VIRTUAL STORAGE = 256M\nCORE 0 SIZE = 512M\nEXPANDED STORAGE = 1G`;
   }
   if (upper.includes('DASD') || upper.includes('DISK')) {
-    return `DASD 191 3390 MFT191  R/W  CYL 3339  BLK 555  EXT 1  LABEL SPOOL\nDASD 192 3390 MFT192  R/O  CYL 1669  BLK 0    EXT 1  LABEL WORK`;
+    return `DASD 191 3390 MFT191  R/W  CYL 3339  BLK 555  EXT 1  LABEL SPOOL\nDASD 192 3390 MFT192  R/O  CYL 1669  BLK 0    EXT 1  LABEL WORK\nDASD 193 3390 MFT193  R/W  CYL 2210  BLK 0    EXT 1  LINKED TO OPERATOR`;
   }
   return `HCPCQV003E Invalid option - ${cmd.split(' ').slice(2).join(' ')}\nReady(00003); T=0.01/0.01`;
 }
