@@ -391,6 +391,12 @@ const ACTJOBS = [
   { sbs: 'QSYSWRK', job: 'QZDASOINIT', user: 'QUSER',    type: 'PJ',  func: 'PGM-QZDASO',    status: 'ACTIVE' },
   { sbs: 'QCMN',    job: 'QRWTSRVR',   user: 'QUSER',    type: 'PJ',  func: '*',             status: 'ACTIVE' },
   { sbs: 'QSYSWRK', job: 'MAINTJOB',   user: 'QSECOFR',  type: 'BCH', func: 'PGM-MAINT',     status: 'ACTIVE' },
+  // Mainframe 202 (200 series) Differential-Diagnosis vignette: MSGW is
+  // a real, distinct IBM i job status, waiting on a reply to an inquiry
+  // message the program itself sent, not stuck and not crashed. The
+  // message explaining what it's waiting on is seeded in seedMessages()
+  // below, discoverable via DSPMSG.
+  { sbs: 'QBATCH',  job: 'MTHCLOSE',   user: 'APPADMIN', type: 'BCH', func: 'PGM-MTHCLOSE',  status: 'MSGW' },
 ];
 
 // Subsystems (WRKSBS) — mostly informational context for the active-job view.
@@ -1145,6 +1151,11 @@ function seedMessages(user) {
   return [
     { from: 'QSYSOPR', date, time, text: `Welcome to ${SYSNAME}, ${user}.` },
     { from: 'QSYSOPR', date, time, text: 'System backup scheduled for 23:00 tonight.' },
+    // Mainframe 202 vignette: the real explanation for MTHCLOSE's MSGW
+    // status in ACTJOBS above, a program-issued inquiry message, the
+    // same reason a real batch job goes MSGW, waiting on a human, not
+    // a crash and not a hang.
+    { from: 'MTHCLOSE', date, time, text: 'Prior period totals unbalanced. Reply Y or N.' },
   ];
 }
 
