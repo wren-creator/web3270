@@ -219,7 +219,55 @@ const PGM_OUTCOMES = {
   // RC=4 cause — the point of this job is that the RC alone doesn't say
   // that, the student has to read the real JCL source to find it.
   CATLGCHK: { rc: 4,  msg: 'PROD.NIGHTLY.OUTPUT ALREADY CATALOGED -- STEP COMPLETED RC=04' },
+  // Mainframe 203 (200 series) Differential-Diagnosis vignette: RC=8 plus a
+  // real "DATA SET NOT FOUND" message reads like the payroll master file
+  // itself is gone. It isn't — PAYROLL.MASTER.FILE is sitting fine in the
+  // catalog (confirmed via the new LISTCAT LEVEL() support below). This
+  // job's own PAYIN DD just points at PAYROLL.MASTER.CURRENT, a name that
+  // stopped existing when the real file got renamed and nobody updated
+  // this JCL, a coordination gap, not a data-loss incident.
+  PAYVER:   { rc: 8,  msg: 'IEF212I PAYVER STEP1 PAYIN - DATA SET NOT FOUND' },
 };
+
+// Mainframe 203 (200 series) light security touch: canned dataset catalog
+// backing LISTCAT LEVEL(prefix), matching public/js/recon.js's Dataset
+// Recon Scanner, which already issues this exact command but had nothing
+// server-side to answer it. Prefixes match recon.js's own
+// _DATASET_PREFIXES default list. PROD.NIGHTLY.OUTPUT is a deliberate
+// callback to Book 201's CATLGCHK message. SECURITY.AUDIT.LOG is a
+// deliberate non-hit: an ominous-sounding qualifier that doesn't itself
+// contain a sensitive keyword, proving the scanner flags real content,
+// not just scary-looking names.
+const CATALOG = {
+  SYS1:     ['SYS1.PARMLIB', 'SYS1.PROCLIB'],
+  SYS2:     ['SYS2.LINKLIB'],
+  IBMUSER:  ['IBMUSER.PRIVATE.KEYS'],
+  ADMIN:    ['ADMIN.CONFIG.PARMS'],
+  PROD:     ['PROD.NIGHTLY.OUTPUT', 'PROD.APPL.LOADLIB'],
+  PAYROLL:  ['PAYROLL.MASTER.FILE'],
+  FINANCE:  ['FINANCE.LEDGER.CURRENT'],
+  HR:       ['HR.EMPLOYEE.SSN.FILE'],
+  SECURITY: ['SECURITY.AUDIT.LOG'],
+};
+
+// Recognizes LISTCAT LEVEL(prefix), the one real IDCAMS command the
+// Dataset Recon Scanner issues. Returns null for anything else so callers
+// can fall through to the generic COMMAND NOT FOUND response.
+function tryListcat(cmd) {
+  const m = cmd.match(/^LISTCAT\s+LEVEL\(([\w$#@]+)\)$/i);
+  if (!m) return null;
+  const prefix = m[1].toUpperCase();
+  const entries = CATALOG[prefix] || [];
+  const lines = [
+    'IDCAMS  SYSTEM SERVICES',
+    `LISTCAT LEVEL(${prefix})`,
+    ...entries,
+    entries.length
+      ? `THE NUMBER OF ENTRIES PROCESSED WAS ${entries.length}`
+      : `IDC3012I ENTRY ${prefix} NOT FOUND`,
+  ];
+  return lines.join('\n');
+}
 
 function parseJclSteps(jclText) {
   const steps = [];
@@ -249,6 +297,7 @@ const JCL_MEMBERS = {
   BADJOB:   { ...loadJclMember('badjob.jcl'),   desc: 'Return code demo (non-zero RC)' },
   DATACHK:  { ...loadJclMember('datachk.jcl'),  desc: 'Data Integrity Night check (issues a Batch Control Number)' },
   NIGHTRUN: { ...loadJclMember('nightrun.jcl'), desc: 'Nightly refresh (RC=04, not the job it looks like next to)' },
+  PAYVER:   { ...loadJclMember('payver.jcl'),   desc: 'Payroll verification (RC=8 -- is the data really missing?)' },
 };
 
 // Job queue is module-level/shared, same convention as the AS/400 mock's
@@ -595,7 +644,13 @@ function screenSdsfDetail(job) {
         text: `IEF142I ${job.name} ${s.name} - STEP WAS EXECUTED - COND CODE ${String(s.rc).padStart(4, '0')}` });
       row++;
       if (s.msg) {
-        fields.push({ row, col: 1, saColor: COL_GREEN, text: `IEF285I   ${s.msg}` });
+        // Most canned messages are plain text meant to sit under the
+        // generic IEF285I "step disposition" wrapper (e.g. "KEPT",
+        // "PROD.NIGHTLY.OUTPUT ALREADY CATALOGED..."). A few (PAYVER's
+        // IEF212I) are real, complete messages with their own message ID
+        // and shouldn't get double-wrapped with a second one.
+        const hasOwnMsgId = /^[A-Z]{2,4}\d{3,4}[A-Z]?\s/.test(s.msg);
+        fields.push({ row, col: 1, saColor: COL_GREEN, text: hasOwnMsgId ? s.msg : `IEF285I   ${s.msg}` });
         row++;
       }
     });
@@ -1485,6 +1540,9 @@ function handleConnection(socket) {
           } else if (cmd.startsWith('SUBMIT') || cmd.startsWith('SUB ')) {
             state.tsoOutput = trySubmit(cmd, userid) || `IKJ56500I COMMAND ${cmd} NOT FOUND`;
             currentScreen = 'tsoCmd'; sendCurrentScreen();
+          } else if (cmd.startsWith('LISTCAT')) {
+            state.tsoOutput = tryListcat(cmd) || `IKJ56500I COMMAND ${cmd} NOT FOUND`;
+            currentScreen = 'tsoCmd'; sendCurrentScreen();
           } else {
             state.tsoOutput = `IKJ56500I COMMAND ${cmd} NOT FOUND\nIKJ56501I ENTER HELP for list of valid commands`;
             currentScreen = 'tsoCmd'; sendCurrentScreen();
@@ -1520,6 +1578,9 @@ function handleConnection(socket) {
             writeRaw(buildUsaObjectDataWsf());
           } else if (cmd.startsWith('SUBMIT') || cmd.startsWith('SUB ')) {
             state.tsoOutput = trySubmit(cmd, userid) || `IKJ56500I COMMAND ${cmd} NOT FOUND`;
+            sendCurrentScreen();
+          } else if (cmd.startsWith('LISTCAT')) {
+            state.tsoOutput = tryListcat(cmd) || `IKJ56500I COMMAND ${cmd} NOT FOUND`;
             sendCurrentScreen();
           } else {
             state.tsoOutput = `IKJ56500I COMMAND ${cmd} NOT FOUND`;
