@@ -493,12 +493,22 @@ function simulateLink(userid, cmd) {
   if (toVdev === '193') {
     return `HCPLNM097E DEVICE 193 ALREADY LINKED\nReady(00097); T=0.01/0.01`;
   }
+  // Mainframe 204 (200 series) Differential-Diagnosis vignette: vdev 294
+  // is a genuinely different failure shape from 193's "someone else already
+  // has it" story — this rejection has nothing to do with PRODUSR's disk at
+  // all, it's that the REQUESTER already has something of their own defined
+  // at local address 294. Q DASD (below) shows PRODUSR's 294 sitting fine,
+  // unlinked, ruling out the Book 201-style red herring; QUERY VIRTUAL
+  // (also below) is where the real cause actually shows up.
+  if (toVdev === '294') {
+    return `HCPLNM090E DEVICE 294 ALREADY DEFINED\nReady(00090); T=0.01/0.01`;
+  }
   const ro = /^R(D|R)?$/i.test(mode) || /^RO$/i.test(mode) || /^R$/i.test(mode);
   return `DASD ${toVdev.toUpperCase()} LINKED R/${ro ? 'O' : 'W'}; R/${ro ? 'O' : 'W'} BY ${owner.toUpperCase()}\nReady; T=0.01/0.01`;
 }
 
 // ── CP QUERY simulator ────────────────────────────────────────────
-function simulateCPQuery(cmd) {
+function simulateCPQuery(cmd, userid = 'DEMO') {
   const upper = cmd.toUpperCase();
   if (upper.includes('TIME')) {
     const t = new Date();
@@ -511,10 +521,16 @@ function simulateCPQuery(cmd) {
     return `STORAGE = 1G`;
   }
   if (upper.includes('VIRTUAL') || upper.includes('V ')) {
-    return `VIRTUAL STORAGE = 256M\nCORE 0 SIZE = 512M\nEXPANDED STORAGE = 1G`;
+    // Mainframe 204 vignette: this is the one query that's actually caller-
+    // aware, since it lists the requester's OWN virtual device
+    // configuration, not system-wide state the way Q DASD is. Every user
+    // already has 294 defined as their own scratch work disk here, which
+    // is the real reason LINK ... 294 (see simulateLink) fails, nothing to
+    // do with PRODUSR's disk at all.
+    return `VIRTUAL STORAGE = 256M\nCORE 0 SIZE = 512M\nEXPANDED STORAGE = 1G\nDASD 190 3390 CMS190   R/O  CYL 400  BLK 0    EXT 1  LABEL CMS\nDASD 191 3390 ${userid.padEnd(8)}R/W  CYL 200  BLK 0    EXT 1  LABEL A-DISK\nDASD 294 3390 ${userid.padEnd(8)}R/W  CYL 50   BLK 0    EXT 1  LABEL SCRATCH`;
   }
   if (upper.includes('DASD') || upper.includes('DISK')) {
-    return `DASD 191 3390 MFT191  R/W  CYL 3339  BLK 555  EXT 1  LABEL SPOOL\nDASD 192 3390 MFT192  R/O  CYL 1669  BLK 0    EXT 1  LABEL WORK\nDASD 193 3390 MFT193  R/W  CYL 2210  BLK 0    EXT 1  LINKED TO OPERATOR`;
+    return `DASD 191 3390 MFT191  R/W  CYL 3339  BLK 555  EXT 1  LABEL SPOOL\nDASD 192 3390 MFT192  R/O  CYL 1669  BLK 0    EXT 1  LABEL WORK\nDASD 193 3390 MFT193  R/W  CYL 2210  BLK 0    EXT 1  LINKED TO OPERATOR\nDASD 294 3390 PRDWK294 R/W CYL 1000 BLK 0    EXT 1  LABEL PRODWK`;
   }
   return `HCPCQV003E Invalid option - ${cmd.split(' ').slice(2).join(' ')}\nReady(00003); T=0.01/0.01`;
 }
@@ -838,7 +854,7 @@ function handleConnection(socket) {
             lastCPMsg = result || `HCPLNM119E Invalid LINK operand\nReady(00119); T=0.01/0.01`;
             sendCurrentScreen();
           } else if (cmd.startsWith('Q ') || cmd.startsWith('QUERY ') || cmd === 'QUERY' || cmd === 'Q') {
-            cpQueryResult = simulateCPQuery(inputText);
+            cpQueryResult = simulateCPQuery(inputText, userid);
             currentScreen = 'cpquery';
             sendCurrentScreen();
           } else if (cmd === 'LOGOFF' || cmd === 'LOG' || cmd === 'DISC') {
