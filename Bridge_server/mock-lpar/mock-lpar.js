@@ -227,6 +227,16 @@ const PGM_OUTCOMES = {
   // stopped existing when the real file got renamed and nobody updated
   // this JCL, a coordination gap, not a data-loss incident.
   PAYVER:   { rc: 8,  msg: 'IEF212I PAYVER STEP1 PAYIN - DATA SET NOT FOUND' },
+  // Mainframe 205 (200 series capstone) vignette: RC=4, real MVS's own
+  // "completed with warnings" convention (same as CATLGCHK), reads like
+  // routine texture next to it. The real story is sequencing, not a
+  // technical failure: this job reads FINANCE.LEDGER.CURRENT (the LISTCAT
+  // entry seeded for Book 203, never otherwise used) before IBM i's
+  // MAINTJOB, running long that same night under the same CYC-0826 label
+  // (see mock-as400.js's seedMessages()), has actually finished refreshing
+  // it. Confirmed via LISTCAT LEVEL(FINANCE) that the dataset itself is
+  // fine, just not current yet.
+  MENDFEED: { rc: 4,  msg: 'FINANCE.LEDGER.CURRENT READ AT CYC-0826 -- REFRESH NOT YET COMPLETE' },
 };
 
 // Mainframe 203 (200 series) light security touch: canned dataset catalog
@@ -298,6 +308,7 @@ const JCL_MEMBERS = {
   DATACHK:  { ...loadJclMember('datachk.jcl'),  desc: 'Data Integrity Night check (issues a Batch Control Number)' },
   NIGHTRUN: { ...loadJclMember('nightrun.jcl'), desc: 'Nightly refresh (RC=04, not the job it looks like next to)' },
   PAYVER:   { ...loadJclMember('payver.jcl'),   desc: 'Payroll verification (RC=8 -- is the data really missing?)' },
+  MENDFEED: { ...loadJclMember('mendfeed.jcl'), desc: 'Month-end feed, CYC-0826 (RC=04, timing not technical)' },
 };
 
 // Job queue is module-level/shared, same convention as the AS/400 mock's

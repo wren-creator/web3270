@@ -515,7 +515,15 @@ function simulateCPQuery(cmd, userid = 'DEMO') {
     return `TIME IS ${t.toLocaleTimeString('en-US', { hour12: false })}  DATE IS ${t.toLocaleDateString('en-US')}\nCPU TIME = 00:00:00.12  CONNECT TIME = 00:05:37`;
   }
   if (upper.includes('NAMES')) {
-    return `USERS:  ${SYSNAME.padEnd(8)} ZVMOP    MAINT    TCPIP    OPERATOR\nTOTAL USERS LOGGED ON = 5`;
+    // Mainframe 205 (200 series capstone) vignette: TCPIP has sat in this
+    // roster since Book 1 as pure decoration, never individually examined.
+    // Its connect time here is the real "smoking gun" screen for the
+    // z/VM leg of the capstone incident -- CYC-0826 is the same run label
+    // independently hardcoded into mock-lpar.js (z/OS), mock-tpf.js
+    // (z/TPF), and mock-as400.js's seedMessages() (IBM i, the actual
+    // origin). No shared state between mocks, same discipline as the
+    // Book 5 token chain.
+    return `USERS:  ${SYSNAME.padEnd(8)} ZVMOP    MAINT    TCPIP    OPERATOR\nTOTAL USERS LOGGED ON = 5\nUSERID    CONNECT-TIME  NOTE\nZVMOP     00:42:10      -\nMAINT     02:15:03      -\nTCPIP     04:52:47      CYC-0826\nOPERATOR  01:03:22      -`;
   }
   if (upper.includes('STORAGE') || upper.includes('STOR')) {
     return `STORAGE = 1G`;

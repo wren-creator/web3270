@@ -1156,6 +1156,14 @@ function seedMessages(user) {
     // same reason a real batch job goes MSGW, waiting on a human, not
     // a crash and not a hang.
     { from: 'MTHCLOSE', date, time, text: 'Prior period totals unbalanced. Reply Y or N.' },
+    // Mainframe 205 (200 series capstone) vignette: the actual origin of
+    // the whole cross-platform incident. MAINTJOB (ACTJOBS above) is
+    // genuinely still running, no timestamp field exists on that table,
+    // so this message is where the honest "since when, and why" detail
+    // actually lives, discoverable via DSPMSG. CYC-0826 is the shared
+    // run label independently hardcoded into z/OS, z/VM, and z/TPF's own
+    // mocks too, see Bridge_server/ROADMAP.md's "Mainframe 205" section.
+    { from: 'MAINTJOB', date, time, text: 'CYC-0826 running since 22:00, high volume.' },
   ];
 }
 
@@ -1901,3 +1909,4 @@ const server = net.createServer(handleConnection);
 server.listen(PORT, '0.0.0.0', () => {
   log(`Mock AS/400 (TN5250) listening on 0.0.0.0:${PORT}`);
 });
+

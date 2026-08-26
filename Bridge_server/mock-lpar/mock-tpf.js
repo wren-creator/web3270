@@ -418,12 +418,24 @@ function cmdZtestEntry(name) {
   }
   const ms   = 1 + Math.floor(Math.random() * 8);
   const priv = ecb.priv ? ' [HANDLES PRIVILEGED DATA]' : '';
-  return [
+  const lines = [
     `ZTPF710I ENTRY POINT TEST: ${ecb.name}`,
     `ZTPF711I STATUS : ${ecb.status}   TYPE: ${ecb.type}${priv}`,
     `ZTPF712I RESPONDED IN ${ms}ms`,
     `ZTPF713I TRANSACTIONS: ${ecb.txn}`,
   ];
+  // Mainframe 205 (200 series capstone) vignette: PAYM has sat in
+  // ECB_TABLE since Book 1, real, privileged, never individually probed.
+  // This is where the incident is actually felt first -- responds fine
+  // (STATUS/RESPONDED above are completely normal), the backlog is a
+  // queue problem, not an entry-point failure. CYC-0826 is the same run
+  // label independently hardcoded into mock-lpar.js (z/OS), mock-zvm.js
+  // (z/VM), and mock-as400.js's seedMessages() (IBM i, the real origin).
+  if (ecb.name === 'PAYM') {
+    lines.push(`ZTPF714I QUEUE DEPTH: 1,842 (RISING)`);
+    lines.push(`ZTPF715I AWAITING CONFIRMATION FEED -- CYC-0826`);
+  }
+  return lines;
 }
 
 function cmdZstop(arg) {
