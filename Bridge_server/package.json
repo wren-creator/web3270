@@ -9,6 +9,8 @@
     "dev": "nodemon server.js",
     "test": "node --test",
     "mock:lpar": "node mock-lpar/mock-lpar.js",
+    "mock:lpar:acf2": "MOCK_ESM=ACF2 node mock-lpar/mock-lpar.js",
+    "mock:lpar:tss": "MOCK_ESM=TOPSECRET node mock-lpar/mock-lpar.js",
     "mock:as400": "node mock-lpar/mock-as400.js",
     "mock:zvm": "node mock-lpar/mock-zvm.js"
   },

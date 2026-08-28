@@ -12,6 +12,7 @@ import * as recording  from '../routes/recording.js';
 import * as security   from '../routes/security.js';
 import * as negotiate  from '../routes/negotiate.js';
 import * as wire       from '../routes/wire.js';
+import * as esm        from '../routes/esm.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -27,7 +28,7 @@ const MIME = {
   '.woff2':'font/woff2',
 };
 
-const ROUTES = [traffic, logs, profiles, sshHosts, macros, macroRun, recording, security, negotiate, wire];
+const ROUTES = [traffic, logs, profiles, sshHosts, macros, macroRun, recording, security, negotiate, wire, esm];
 
 export function createRequestHandler({ config, logger, sessions }) {
   const ctx = { config, logger, sessions };

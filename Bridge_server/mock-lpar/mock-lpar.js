@@ -15,6 +15,45 @@ const LOG     = (process.env.LOG_LEVEL || 'info') === 'debug';
 const LU_NAME = process.env.MOCK_LU    || 'MOCKLU01';
 const SYSNAME = process.env.MOCK_SYSID || 'MOCKPROD';
 
+// Which external security manager this mock simulates: RACF (default), ACF2,
+// or TOPSECRET. Only the logon-panel header and the wrong-password / lockout
+// message IDs change — enough for the ESM Fingerprint classifier to tell them
+// apart.  MOCK_ESM=ACF2 npm run mock:lpar
+const MOCK_ESM = (process.env.MOCK_ESM || 'RACF').toUpperCase();
+const ESM_TEXT = {
+  RACF: {
+    logonHeader: 'RACF LOGON parameters:',
+    badPassword: 'IKJ56425I PASSWORD NOT CORRECT',
+    remaining:   n => `IKJ56477I ${n} ATTEMPT${n !== 1 ? 'S' : ''} REMAINING BEFORE RACF LOCKOUT`,
+    lockout: u => [
+      'IKJ56421I RACF AUTHORIZATION FAILURE',
+      `IKJ56422I USERID ${u} HAS BEEN REVOKED`,
+      'IKJ56423I CONTACT YOUR SECURITY ADMINISTRATOR TO RESET',
+    ],
+  },
+  ACF2: {
+    logonHeader: 'ACF2 LOGON       LOGONID ===>',
+    badPassword: 'ACF01004 INVALID PASSWORD',
+    remaining:   n => `ACF01013 ${n} ATTEMPT${n !== 1 ? 'S' : ''} LEFT BEFORE LOGONID SUSPEND`,
+    lockout: u => [
+      `ACF01013 LOGONID ${u} SUSPENDED`,
+      'ACF01234 SECURITY VIOLATION HAS BEEN LOGGED',
+      'ACF00002 CONTACT YOUR ACF2 SECURITY ADMINISTRATOR',
+    ],
+  },
+  TOPSECRET: {
+    logonHeader: 'TOP SECRET/MVS LOGON',
+    badPassword: 'TSS7101E PASSWORD IS INCORRECT',
+    remaining:   n => `TSS7102E ${n} VIOLATION${n !== 1 ? 'S' : ''} BEFORE ACCESSORID SUSPEND`,
+    lockout: u => [
+      `TSS7000E ACCESSORID ${u} HAS BEEN SUSPENDED`,
+      'TSS7051E SECURITY VIOLATION - ACCESS DENIED',
+      'TSS9999I CONTACT YOUR TOP SECRET ADMINISTRATOR',
+    ],
+  },
+};
+const ESM = ESM_TEXT[MOCK_ESM] || ESM_TEXT.RACF;
+
 const IAC  = 0xFF, DONT = 0xFE, DO   = 0xFD;
 const WONT = 0xFC, WILL = 0xFB, SB   = 0xFA, SE = 0xF0;
 const EOR  = 0xEF, NOP  = 0xF1;
@@ -363,7 +402,7 @@ function screenLogon() {
     { row:1,  col:21, text: `IBM z/OS  -  ${SYSNAME}  -  TSO/E LOGON` },
     { row:3,  col:2,  fa: FA_PROTECTED, color: COL_TURQ },
     { row:3,  col:2,  text: 'Enter LOGON parameters below:' },
-    { row:3,  col:40, text: 'RACF LOGON parameters:' },
+    { row:3,  col:40, text: ESM.logonHeader },
     { row:5,  col:2,  fa: FA_PROTECTED, color: COL_BLUE },
     { row:5,  col:2,  text: 'Userid  ===>' },
     { row:5,  col:14, fa: FA_UNPROTECTED, color: COL_GREEN, ic: true },
@@ -777,9 +816,9 @@ function screenLogonError(userid, attempts, maxAttempts = 3) {
     { row:0,  col:0,  fa: FA_PROTECTED_HIGH, color: COL_WHITE, highlight: HL_INTENS },
     { row:0,  col:1,  text: `IBM z/OS  -  ${SYSNAME}  -  TSO/E LOGON` },
     { row:2,  col:2,  fa: FA_PROTECTED_HIGH, color: COL_RED, highlight: HL_INTENS },
-    { row:2,  col:2,  text: 'IKJ56425I PASSWORD NOT CORRECT' },
+    { row:2,  col:2,  text: ESM.badPassword },
     { row:3,  col:2,  fa: FA_PROTECTED, color: COL_RED },
-    { row:3,  col:2,  text: `IKJ56477I ${remaining} ATTEMPT${remaining !== 1 ? 'S' : ''} REMAINING BEFORE RACF LOCKOUT` },
+    { row:3,  col:2,  text: ESM.remaining(remaining) },
     { row:5,  col:2,  fa: FA_PROTECTED, color: COL_BLUE },
     { row:5,  col:2,  text: 'Userid  ===>' },
     { row:5,  col:14, fa: FA_UNPROTECTED, color: COL_GREEN },
@@ -795,21 +834,24 @@ function screenLogonError(userid, attempts, maxAttempts = 3) {
   ]);
 }
 
-function screenRacfLockout(userid) {
+function screenEsmLockout(userid) {
+  const [l1, l2, l3] = ESM.lockout(userid.toUpperCase().padEnd(8));
   return buildScreen(true, [
     { row:0,  col:0,  fa: FA_PROTECTED_HIGH, color: COL_WHITE, highlight: HL_INTENS },
     { row:0,  col:1,  text: `IBM z/OS  -  ${SYSNAME}  -  TSO/E LOGON` },
     { row:3,  col:2,  fa: FA_PROTECTED_HIGH, color: COL_RED, highlight: HL_REVERSE },
-    { row:3,  col:2,  text: 'IKJ56421I RACF AUTHORIZATION FAILURE' },
+    { row:3,  col:2,  text: l1 },
     { row:4,  col:2,  fa: FA_PROTECTED, color: COL_RED },
-    { row:4,  col:2,  text: `IKJ56422I USERID ${userid.toUpperCase().padEnd(8)} HAS BEEN REVOKED` },
-    { row:5,  col:2,  saColor: COL_RED, text: 'IKJ56423I CONTACT YOUR SECURITY ADMINISTRATOR TO RESET' },
+    { row:4,  col:2,  text: l2 },
+    { row:5,  col:2,  saColor: COL_RED, text: l3 },
     { row:8,  col:2,  fa: FA_PROTECTED_HIGH, color: COL_RED, highlight: HL_BLINK },
     { row:8,  col:2,  text: '*** LOGON REJECTED - ACCOUNT LOCKED ***' },
     { row:23, col:0,  fa: FA_PROTECTED, color: COL_BLUE },
     { row:23, col:0,  text: 'PF3=Exit' },
   ]);
 }
+// Back-compat alias — the old name is used elsewhere in this file.
+const screenRacfLockout = screenEsmLockout;
 
 // ── GDDM graphics demo ──────────────────────────────────────────────
 // Alphanumeric frame only in rows 0/23 — the graphics area (rows 1-22)

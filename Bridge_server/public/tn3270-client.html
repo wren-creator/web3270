@@ -924,6 +924,19 @@
         </div>
       </div>
 
+      <!-- ESM FINGERPRINT section -->
+      <div class="sec-section">
+        <div class="sec-section-hdr">ESM FINGERPRINT</div>
+        <div class="sec-section-body">
+          <div class="sec-panel-hint" style="margin-bottom:8px">Passive. Identifies the external security manager (RACF / ACF2 / Top Secret) from message-ID prefixes and banners already on screen. Sends nothing to the host.</div>
+          <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px">
+            <button onclick="esmFingerprintReset()"  class="sec-inject-btn" style="background:#2a1a1a">✕ Reset</button>
+            <button onclick="esmFingerprintExport()" class="sec-inject-btn" style="background:#1a1a2a">↓ Export CSV</button>
+          </div>
+          <div id="esmFpBody" style="font-size:10px"></div>
+        </div>
+      </div>
+
       <!-- RECON TOOLS section -->
       <div class="sec-section">
         <div class="sec-section-hdr">RECON TOOLS</div>

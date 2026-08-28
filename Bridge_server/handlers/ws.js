@@ -11,6 +11,8 @@ import send from '../utils/send.js';
 import { logTraffic } from '../features/traffic.js';
 import { captureRaw } from '../features/pcap.js';
 import { recordings } from '../features/recording.js';
+import { esmFingerprints } from '../features/esm-store.js';
+import { EsmFingerprint } from '../features/esm-fingerprint.js';
 import { handleSshConnect } from '../features/ssh.js';
 import { handleFuzz } from '../features/fuzz.js';
 import * as mitm from '../features/mitm.js';
@@ -121,6 +123,7 @@ export function createWsHandler({ config, logger, sessions, Ebcdic }) {
       }
 
       sessions.set(wsId, session);
+      esmFingerprints.set(wsId, new EsmFingerprint());
 
       const macroHandler = new MacroHandler(session, ws, wsId, macroStore);
       CopilotHandler.sendProviderInfo(ws);
@@ -151,6 +154,20 @@ export function createWsHandler({ config, logger, sessions, Ebcdic }) {
       });
 
       session.on('raw', ({ dir, data }) => captureRaw(wsId, host, port, dir, data));
+
+      // ── Passive ESM fingerprint ─────────────────────────────────
+      // Read-only: watches each redraw, never sends anything. Emits only
+      // when the verdict actually moves.
+      let esmLastEmit = '';
+      session.on('screen', screenData => {
+        const fp = esmFingerprints.get(wsId);
+        if (!fp) return;
+        const v = fp.observe(screenData);
+        const key = `${v.product}|${v.confidence}|${v.evidence.length}`;
+        if (key === esmLastEmit) return;
+        esmLastEmit = key;
+        send(ws, { type: 'esm.fingerprint', wsId, ...v });
+      });
 
       session.on('oia',          oiaData => { send(ws, { type: 'oia', ...oiaData }); });
       session.on('gddm',         gddmData => { send(ws, { type: 'gddm', ...gddmData }); });
@@ -256,6 +273,12 @@ export function createWsHandler({ config, logger, sessions, Ebcdic }) {
             }
             break;
 
+          case 'sec.esm.reset': {
+            const fp = esmFingerprints.get(wsId);
+            if (fp) { fp.reset(); send(ws, { type: 'esm.fingerprint', wsId, ...fp.verdict() }); }
+            break;
+          }
+
           case 'sec.mitm.toggle':   mitm.toggle(wsId, ws, send, logger);   break;
           case 'sec.mitm.release':  mitm.release(wsId, ws, session, msg, send, logger, logTraffic);  break;
           case 'sec.mitm.drop':     mitm.drop(wsId, ws, send, logger);     break;
@@ -286,6 +309,7 @@ export function createWsHandler({ config, logger, sessions, Ebcdic }) {
         logger.info(`[ws:${wsId}] Browser disconnected`);
         session.disconnect('browser closed');
         sessions.delete(wsId);
+        esmFingerprints.delete(wsId);
         mitm.cleanup(wsId);
       });
 

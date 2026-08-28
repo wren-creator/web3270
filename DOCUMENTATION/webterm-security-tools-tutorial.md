@@ -385,6 +385,38 @@ The **APP** field in the OIA bar (bottom status bar) automatically identifies th
 
 ---
 
+### ESM Fingerprint
+
+**ESM Fingerprint** (🔒 Sec tab → **ESM FINGERPRINT** section) is the same idea taken further: it works out which **external security manager** is installed, IBM RACF, Broadcom ACF2, or Broadcom Top Secret, from what is already on screen. It is fully passive. Nothing is sent to the host; it only reads the screens the session is already receiving.
+
+It runs on every screen update and accumulates weighted evidence over the life of the session:
+
+| Evidence kind | Example | Weight |
+|---|---|---|
+| Message-ID prefix (definitive) | `ICHnnnnI` / `IRRnnnnI` → RACF, `ACF0nnnn` → ACF2, `TSSnnnnE` → Top Secret | high |
+| Product banner / logon label | `RACF LOGON parameters`, `LOGONID ===>`, `TOP SECRET/MVS LOGON` | medium |
+| Product-typical wording | `HAS BEEN REVOKED`, `ACCESSOR ID`, `TSSUTIL` | low |
+
+The panel shows the current product, a confidence bar, the runner-up, the raw per-product scores, and an evidence table (which screen, where on it, what matched, which rule). A product-specific message ID floors confidence at 85%, since those identifiers belong to exactly one product. **Reset** clears the running tally for the session; **Export CSV** dumps the evidence trail.
+
+A read-only HTTP endpoint returns the same verdict for every live session:
+
+```
+GET /api/esm-fingerprint
+[ { "wsId": 1, "host": "...", "product": "ACF2", "confidence": 0.85,
+    "runnerUp": null, "scores": { "RACF": 0, "ACF2": 23, "TopSecret": 0 },
+    "evidence": [ ... ], "firstSeen": 1787952098435 } ]
+```
+
+**Demo it:** the z/OS mock simulates all three. `MOCK_ESM=ACF2 npm run mock:lpar` (or `npm run mock:lpar:acf2` / `mock:lpar:tss`, default is RACF) swaps the logon header and the wrong-password / lockout message IDs. Connect to `MOCK-ZOS`, open the panel, and enter a wrong password, the verdict lands on the logon screen and firms up as the error message appears.
+
+**Teaching use cases:**
+- Show that the security product is inferable from ordinary screen output, no privileged command needed.
+- Contrast passive fingerprinting (this) with an active probe (RACF Auto-Probe): one leaves no trace, the other sends logon attempts.
+- Explain why message-ID prefixes are a reliable tell, they are assigned per product and don't overlap.
+
+---
+
 ### Session Broadcast
 
 **Session Broadcast** (INJECT section → `📡 Session Broadcast`) sends every keystroke and AID record to **all open sessions simultaneously** — not just the active one.
