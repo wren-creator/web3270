@@ -46,7 +46,20 @@ work; plain TSO `READY` stays `unknown`; full `npm test` green (27 tests).
 
 ---
 
-## Phase 2 — MCP Tool Surface  ·  TODO
+## Phase 2 — MCP Tool Surface  ·  DONE
+
+Built as designed below. `Bridge_server/mcp/` (own `package.json`, `npm install`
+there): `bridge-client.js` (one WS session + typed HTTP helpers + screen
+formatting), `server.js` (16 tools over stdio), `README.md`,
+`bridge-client.test.js` (skips without a live bridge), `mcp-smoke.mjs`.
+`.claude/skills/webterm-mcp/SKILL.md` + `.cursor/skills/` copy, `.mcp.json`,
+`.cursor/mcp.json`, `DOCUMENTATION/webterm-mcp.md`, a README section. VS Code
+`.vscode/mcp.json` is documented but not committed (the path is gitignored).
+Verified end to end: 16 tools list over the real MCP stdio protocol,
+`connect_lpar` → `send_keys` → `send_aid` → `esm_fingerprint` all work against a
+live bridge + mock (returns the right ESM per `MOCK_ESM`).
+
+### Original design
 
 A Node MCP server, a **client of the bridge** over its existing WebSocket + HTTP,
 mirroring hack3270's `MCPs/` layout. stdio transport for local IDE use. v1 is

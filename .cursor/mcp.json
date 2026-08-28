@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "webterm-3270": {
+      "command": "node",
+      "args": ["Bridge_server/mcp/server.js"],
+      "env": {
+        "BRIDGE_URL": "ws://127.0.0.1:8081"
+      }
+    }
+  }
+}

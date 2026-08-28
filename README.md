@@ -260,6 +260,23 @@ See `AI-notes.md` for corporate policy guidance and per-provider setup details.
 
 ---
 
+## MCP Server (drive the bridge from an AI assistant)
+
+`Bridge_server/mcp/` is an MCP server that lets Claude Code, Cursor, or VS Code +
+Copilot drive the bridge, connect to an LPAR, read the screen and its field
+attributes, send keys and AID keys, run macros, and read the analysis routes
+(negotiation report, wire decode, passive ESM fingerprint).
+
+```bash
+cd Bridge_server/mcp && npm install
+```
+
+`.mcp.json` (Claude Code) and `.cursor/mcp.json` (Cursor) already declare the
+server; start the bridge and it connects over stdio. Full tool list, the rules
+of engagement, and the security note are in `DOCUMENTATION/webterm-mcp.md`.
+
+---
+
 ## Connecting to GIBSON
 
 If you are using [GIBSON](https://github.com/wren-creator/GIBSON) as your TN3270 target, both repos share a Docker network (`gibson-net`) so the bridge reaches GIBSON directly by container name — no IP address needed. This works on Linux, WSL2, and macOS.
