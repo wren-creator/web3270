@@ -174,7 +174,9 @@ conditionals, no DD-level processing, the same scoped-real approach as the
 AS/400 mock's RPG interpreter. A known `PGM=` name maps to a canned
 condition code and JES message via the `PGM_OUTCOMES` table near the top
 of `mock-lpar.js`; add a program name there to give a new step a real
-outcome.
+outcome. These files are read from disk at module load, so the Docker
+image has to ship them, `mock-lpar/Dockerfile` copies `mock-lpar/jcl/`
+alongside the script.
 
 `SUBMIT`/`SUB`/`S` followed by a member name (bare, or the real ISPF
 `'DSN(MEMBER)'` quoted form), typed at TSO READY, the TSO command shell, or
