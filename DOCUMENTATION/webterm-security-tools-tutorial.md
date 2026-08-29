@@ -408,7 +408,9 @@ GET /api/esm-fingerprint
     "evidence": [ ... ], "firstSeen": 1787952098435 } ]
 ```
 
-**Demo it:** the z/OS mock simulates all three. `MOCK_ESM=ACF2 npm run mock:lpar` (or `npm run mock:lpar:acf2` / `mock:lpar:tss`, default is RACF) swaps the logon header and the wrong-password / lockout message IDs. Connect to `MOCK-ZOS`, open the panel, and enter a wrong password, the verdict lands on the logon screen and firms up as the error message appears.
+**Demo it:** the z/OS mock simulates all three. `MOCK_ESM=ACF2 npm run mock:lpar` (or `npm run mock:lpar:acf2` / `mock:lpar:tss`, default is RACF) sets the one it starts with, swapping the logon header and the wrong-password / lockout message IDs. Connect to `MOCK-ZOS`, open the panel, and enter a wrong password, the verdict lands on the logon screen and firms up as the error message appears.
+
+To cycle through all three in one session without restarting the daemon: log in, then at the TSO `READY` prompt type **`ESM ACF2`** (or `RACF` / `TOPSECRET` / `TSS`). The mock switches and drops you back at the logon screen with the new product's banner. `ESM` on its own reports the current one. The bridge-side verdict latches evidence, so hit **Reset** in the panel after switching to watch it re-decide from scratch.
 
 **Teaching use cases:**
 - Show that the security product is inferable from ordinary screen output, no privileged command needed.

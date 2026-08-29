@@ -52,7 +52,11 @@ const ESM_TEXT = {
     ],
   },
 };
-const ESM = ESM_TEXT[MOCK_ESM] || ESM_TEXT.RACF;
+// `let`, not `const`: the `ESM` command at the TSO READY prompt switches this
+// at runtime so you can test the ESM Fingerprint classifier against all three
+// products in one session without restarting the daemon.
+let ESM_NAME = ESM_TEXT[MOCK_ESM] ? MOCK_ESM : 'RACF';
+let ESM = ESM_TEXT[ESM_NAME];
 
 const IAC  = 0xFF, DONT = 0xFE, DO   = 0xFD;
 const WONT = 0xFC, WILL = 0xFB, SB   = 0xFA, SE = 0xF0;
@@ -1578,6 +1582,26 @@ function handleConnection(socket) {
             currentScreen = 'listapf'; sendCurrentScreen();
           } else if (cmd === 'LISTA' || cmd === 'LISTA STATUS') {
             currentScreen = 'lista'; sendCurrentScreen();
+          } else if (cmd === 'ESM' || cmd.startsWith('ESM ') || cmd.startsWith('SET ESM ')) {
+            // Switch which external security manager this mock simulates,
+            // then re-present the logon screen so the new product's banner
+            // and message IDs are visible to the ESM Fingerprint classifier.
+            //   ESM            → report the current setting
+            //   ESM ACF2       → switch (RACF | ACF2 | TOPSECRET, or TSS)
+            let want = cmd.replace(/^SET\s+/, '').replace(/^ESM\s*/, '').replace(/\s+/g, '');
+            if (want === 'TSS' || want === 'TOPSECRET') want = 'TOPSECRET';
+            if (!want) {
+              state.readyMsg = `EXTERNAL SECURITY MANAGER IS ${ESM_NAME}`;
+              currentScreen = 'readyOutput'; sendCurrentScreen();
+            } else if (ESM_TEXT[want]) {
+              ESM = ESM_TEXT[want]; ESM_NAME = want;
+              loginAttempts = 0;
+              log(`[${id}] ESM switched to ${want} — presenting logon`);
+              currentScreen = 'logon'; sendCurrentScreen();
+            } else {
+              state.readyMsg = `ESM "${want}" NOT RECOGNIZED — TRY RACF, ACF2, OR TOPSECRET`;
+              currentScreen = 'readyOutput'; sendCurrentScreen();
+            }
           } else if (cmd === 'GDDM') {
             currentScreen = 'gddm'; sendCurrentScreen();
             writeRaw(buildGddmObjectDataWsf());

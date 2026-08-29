@@ -73,6 +73,7 @@ You will see the TSO/E Logon screen. Type any userid and press Enter.
 | `MOCK_PORT` | `3270` | TCP port to listen on |
 | `MOCK_SYSID` | `MOCKPROD` | System name shown on screens |
 | `MOCK_LU` | `MOCKLU01` | LU name reported during TN3270E negotiation |
+| `MOCK_ESM` | `RACF` | External security manager to simulate: `RACF`, `ACF2`, or `TOPSECRET`. Sets the logon-panel banner and the wrong-password / lockout message IDs (for the ESM Fingerprint tool). |
 | `LOG_LEVEL` | `info` | Set to `debug` for full Telnet byte-level logging |
 
 Example with custom port and system name:
@@ -80,6 +81,11 @@ Example with custom port and system name:
 ```bash
 MOCK_PORT=339 MOCK_SYSID=DEVLPAR1 node mock-lpar/mock-lpar.js
 ```
+
+`MOCK_ESM` is only the starting value. At the TSO `READY` prompt, `ESM ACF2`
+(or `RACF` / `TOPSECRET` / `TSS`) switches it at runtime and re-presents the
+logon screen, so you can test the ESM Fingerprint classifier against all three
+in one session. `ESM` with no argument reports the current setting.
 
 ---
 
