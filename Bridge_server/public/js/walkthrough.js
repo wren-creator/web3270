@@ -2395,6 +2395,270 @@ const _WALKTHROUGHS = [
     ],
   },
 
+  // ── FUNC KEY Inject ──────────────────────────────────────────────
+  {
+    id:       'func-key-inject',
+    category: 'security',
+    title:    'FUNC KEY Inject',
+    desc:     'Fire any 3270 AID key — ENTER, CLEAR, SYSREQ, PA1–PA3, PF1–PF24 — straight to the host from the Security toolbar, with no matching physical key.',
+    steps: [
+      {
+        title: 'Why inject an AID key',
+        body:  'A PC keyboard stops at F12, but a real 3270 has PF1–PF24 plus PA1–PA3 and SYSREQ. FUNC KEY Inject sends the raw Attention Identifier for any of them, and only the AID — no field data. It is the clean way to answer a "PRESS PF7 TO PAGE BACK" prompt, or to probe how a screen reacts to a key it never mentions.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click the 🔒 button in the OIA status bar and enter the security password (default: 2970) to reveal the Security tab.',
+        highlight: 'secBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Find the INJECT section',
+        body:  'Scroll to the INJECT section of the Security panel. It has a single dropdown of every AID key, grouped into Transmit (ENTER/CLEAR/SYSREQ), PA keys, PF1–PF12, and PF13–PF24.',
+        highlight: 'keyInjectSelect',
+        autoFn: null,
+      },
+      {
+        title: 'Pick a key',
+        body:  'Choose the AID key to send. PF13–PF24 are the ones worth knowing about — on a real terminal they are Shift+PF1 through Shift+PF12, and most PC keyboards cannot produce them at all, so this dropdown is often the only way to send one.',
+        highlight: 'keyInjectSelect',
+        autoFn: null,
+      },
+      {
+        title: 'Inject it',
+        body:  'Click ▶ INJECT. The AID goes to the host on the active session exactly as if you had pressed the key. The status text confirms "✓ injected PFn", or shows "not connected" when there is no live session.',
+        highlight: 'keyInjectFeedback',
+        autoFn: 'secInjectKey',
+        autoLabel: 'Inject the selected key',
+      },
+      {
+        title: 'Read the host response',
+        body:  'Watch the terminal repaint. Injecting a key a screen does not use is a quick, low-noise way to fingerprint an application: some panels ignore an undefined PF key, some return an error message, some drop the session.',
+        highlight: null,
+        autoFn: null,
+      },
+    ],
+  },
+
+  // ── ESM Fingerprint ─────────────────────────────────────────────
+  {
+    id:       'esm-fingerprint',
+    category: 'security',
+    title:    'ESM Fingerprint',
+    desc:     'Passively identifies the external security manager — RACF, ACF2, or Top Secret — from message-ID prefixes and banners already on screen. Sends nothing to the host.',
+    steps: [
+      {
+        title: 'What this identifies',
+        body:  'z/OS runs one of three external security managers: IBM RACF, Broadcom ACF2, or Broadcom Top Secret. Each stamps its own message-ID prefixes (ICH/IRR for RACF, ACFxx for ACF2, TSSxx for Top Secret) and logon banners. Knowing which one is in play tells you which command syntax, default profiles, and known weaknesses apply before you touch anything.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click the 🔒 button in the OIA status bar and enter the security password (default: 2970) to reveal the Security tab.',
+        highlight: 'secBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Open the ESM FINGERPRINT section',
+        body:  'Scroll to the ESM FINGERPRINT section. There is nothing to start — the classifier runs on the bridge and pushes a verdict whenever the evidence moves. The panel just renders the current verdict.',
+        highlight: 'esmFpBody',
+        autoFn: null,
+      },
+      {
+        title: 'Give it something to read',
+        body:  'Connect a session and reach a logon screen, or trigger an authentication error (a bad password is enough). Those screens carry the message IDs the classifier keys on. Until then the panel reads "No external security manager identified yet."',
+        highlight: 'esmFpBody',
+        autoFn: null,
+      },
+      {
+        title: 'Read the verdict',
+        body:  'The panel shows the product, a confidence bar, the runner-up, the raw per-product scores, and an evidence table: every matched string with its screen number, row/column, match kind, and the rule ID that fired. The verdict is cumulative — more matching screens raise confidence.',
+        highlight: 'esmFpBody',
+        autoFn: null,
+      },
+      {
+        title: 'Reset or export',
+        body:  '✕ Reset clears the accumulated evidence on the bridge and starts the fingerprint over — do this after switching the mock z/OS ESM with the ESM command, or when moving to a different host. ↓ Export CSV writes the full evidence list (screen, row, col, product, kind, weight, matched text, rule, timestamp) for your report.',
+        highlight: 'esmFpBody',
+        autoFn: 'esmFingerprintExport',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
+  // ── z/TPF: ECB Enumerator ───────────────────────────────────────
+  {
+    id:       'tpf-ecb-enumerator',
+    category: 'security',
+    title:    'z/TPF: ECB Enumerator',
+    desc:     'Runs ZSHOW E on a z/TPF operator console and parses the ECB directory — every loaded entry point, its type, status, transaction count, and privilege flag.',
+    steps: [
+      {
+        title: 'Prerequisites',
+        body:  'Connect to a z/TPF target (the bundled mock on port 3274, or a session profile with host type TPF), sign on at the operator logon screen, and stop at the ENTER TPF COMMAND console. The z/TPF CONSOLE section only appears once a z/TPF console is detected on screen.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click the 🔒 button in the OIA status bar and enter the security password (default: 2970) to reveal the Security tab.',
+        highlight: 'secBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Find the z/TPF CONSOLE section',
+        body:  'Scroll to the z/TPF CONSOLE section — it carries a DETECTED badge and, once known, a privilege badge (OPER / SYSOP / SYSPROG). The ECB Enumerator is the first tool in it.',
+        highlight: 'tpfEnumBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Run the enumerator',
+        body:  'Click ⊞ ECB Enumerator. The tool types ZSHOW E on the console command line, waits for the reply, and parses the directory between the ZTPF200I header and the ZTPF202I end marker. It is a read-only query.',
+        highlight: 'tpfEnumBtn',
+        autoFn: 'tpfEnumEcbs',
+        autoLabel: 'Run it for me',
+      },
+      {
+        title: 'Read the directory',
+        body:  'Each ECB shows name, type (APPL or SYSTEM), status (ACTIVE / IDLE / STOPPED), and lifetime transaction count. Rows tagged PRIV handle privileged data and are highlighted; the footer counts privileged and active entry points. On the mock, AUTH, CCARD, LOGR, PAYM, and SECU are the privileged SYSTEM handlers — the ones where a misconfiguration exposes an authentication or cardholder-data path, not just a fares lookup.',
+        highlight: 'tpfResults',
+        autoFn: null,
+      },
+      {
+        title: 'Feed the Entry Point Prober',
+        body:  'The parsed list is cached for this session. Run the Entry Point Prober next and it will probe exactly these ECBs instead of its built-in fallback list.',
+        highlight: 'tpfProbeBtn',
+        autoFn: null,
+      },
+    ],
+  },
+
+  // ── z/TPF: Privilege Boundary Scanner ───────────────────────────
+  {
+    id:       'tpf-privilege-scanner',
+    category: 'security',
+    title:    'z/TPF: Privilege Boundary Scanner',
+    desc:     'Maps the OPER → SYSOP → SYSPROG boundary on a z/TPF console by attempting one representative command at each level and reading the refusals.',
+    steps: [
+      {
+        title: 'Prerequisites',
+        body:  'Be signed on to a z/TPF operator console at the ENTER TPF COMMAND prompt. The mock ships three logons, one per level: TPFOP01/TPF1 (OPER), SYSOP01/SYS1 (SYSOP), ADMIN01/ADMIN (SYSPROG). Sign on as each in turn to see the scanner report a different boundary.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click the 🔒 button in the OIA status bar and enter the security password (default: 2970).',
+        highlight: 'secBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Find the Privilege Scanner',
+        body:  'In the z/TPF CONSOLE section, the Privilege Scanner is the second tool.',
+        highlight: 'tpfPrivBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Run the scan',
+        body:  'Click ⚡ Privilege Scanner. It sends three commands in sequence: ZSHOW S (needs OPER), ZSTOP,RPRT (needs SYSOP, and is report-only — it takes no action), and ZEND CHECK (needs SYSPROG — a preview, nothing is quiesced). Each response is classified as allowed or AUTHORIZATION FAILURE.',
+        highlight: 'tpfPrivBtn',
+        autoFn: 'tpfScanPriv',
+        autoLabel: 'Run it for me',
+      },
+      {
+        title: 'Read the boundary',
+        body:  'The highest command that succeeded sets the level and updates the privilege badge in the section header. OPER — read-only, low risk. SYSOP — can stop entry points and load modules, medium risk; a compromised SYSOP session can disrupt transaction processing. SYSPROG — full control, critical; ZEND QUIESCE from here halts all transactions. Every refusal the scan triggers is itself an audit record on the host.',
+        highlight: 'tpfResults',
+        autoFn: null,
+      },
+    ],
+  },
+
+  // ── z/TPF: Entry Point Prober ──────────────────────────────────
+  {
+    id:       'tpf-entry-prober',
+    category: 'security',
+    title:    'z/TPF: Entry Point Prober',
+    desc:     'Runs ZTEST ENTRY against each ECB on a z/TPF console to confirm it responds and to see whether it self-reports as handling privileged data.',
+    steps: [
+      {
+        title: 'Prerequisites',
+        body:  'Be signed on to a z/TPF operator console at the ENTER TPF COMMAND prompt. Run the ECB Enumerator first — the prober will then work the real directory rather than its built-in fallback list of ten common entry-point names.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click the 🔒 button in the OIA status bar and enter the security password (default: 2970).',
+        highlight: 'secBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Find the Entry Point Prober',
+        body:  'In the z/TPF CONSOLE section, the Entry Point Prober is the third tool.',
+        highlight: 'tpfProbeBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Run the probe',
+        body:  'Click ⬡ Entry Point Prober. For each target it sends ZTEST ENTRY,<name>, reads the response status and the RESPONDED IN Nms timing, and flags the entry when the reply says HANDLES PRIVILEGED DATA. The footer totals how many responded and how many are privileged.',
+        highlight: 'tpfProbeBtn',
+        autoFn: 'tpfProbeEntries',
+        autoLabel: 'Run it for me',
+      },
+      {
+        title: 'Read the results',
+        body:  'Every ACTIVE entry point answers in a few milliseconds; IDLE ones (SCHD, UPGD on the mock) still respond but report zero transactions. The five privileged handlers come back tagged PRIV. Probing PAYM also surfaces a rising queue depth and an AWAITING CONFIRMATION FEED note — that is a seeded cross-platform incident storyline, a queue backlog rather than an entry-point fault, and the normal STATUS and RESPONDED lines above it are what make that distinction the lesson.',
+        highlight: 'tpfResults',
+        autoFn: null,
+      },
+    ],
+  },
+
+  // ── z/TPF: Pool Monitor ───────────────────────────────────────
+  {
+    id:       'tpf-pool-monitor',
+    category: 'security',
+    title:    'z/TPF: Pool Monitor',
+    desc:     'Runs ZSHOW P on a z/TPF console and flags any memory pool at or above 90% capacity — a denial-of-service surface.',
+    steps: [
+      {
+        title: 'Prerequisites',
+        body:  'Be signed on to a z/TPF operator console at the ENTER TPF COMMAND prompt. Any privilege level works — ZSHOW P is an OPER-level query.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click the 🔒 button in the OIA status bar and enter the security password (default: 2970).',
+        highlight: 'secBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Find the Pool Monitor',
+        body:  'In the z/TPF CONSOLE section, the Pool Monitor is the fourth tool.',
+        highlight: 'tpfPoolBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Run the check',
+        body:  'Click ≣ Pool Monitor. It sends ZSHOW P and reads each pool row (ECBPOOL, FPOOL, GPOOL, IPOOL, TPOOL, XPOOL) for size, used, and percent, marking any pool at 90% or above as a warning.',
+        highlight: 'tpfPoolBtn',
+        autoFn: 'tpfCheckPools',
+        autoLabel: 'Run it for me',
+      },
+      {
+        title: 'Read the results',
+        body:  'Pool exhaustion is a denial-of-service surface: a z/TPF system already running its ECB or frame pools near capacity can be tipped into transaction rejection by a modest traffic burst, no exploit required. On the mock, IPOOL (95%) and XPOOL (97%) trip the warning while GPOOL (62%) and TPOOL (70%) are shown but clear. Note that ZSHOW S can report "SYSTEM HEALTH: NORMAL" at the same time two pools are one bad afternoon from rejecting work.',
+        highlight: 'tpfResults',
+        autoFn: null,
+      },
+    ],
+  },
+
 ];
 
 // ── Engine state ───────────────────────────────────────────────────

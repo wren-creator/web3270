@@ -878,25 +878,25 @@
             z/TPF operator console detected. Tools inject ZSHOW/ZTEST commands and parse responses. Connect as TPFOP01, SYSOP01, or ADMIN01 to test privilege boundaries. FOR AUTHORIZED USE ONLY.
           </div>
           <div class="sec-row">
-            <button class="sec-panel-btn" onclick="tpfEnumEcbs()">
+            <button id="tpfEnumBtn" class="sec-panel-btn" onclick="tpfEnumEcbs()">
               <span class="sec-panel-btn-label">⊞ ECB Enumerator</span>
               <span class="sec-panel-btn-sub">ZSHOW E — list all loaded entry control blocks + privilege flags</span>
             </button>
           </div>
           <div class="sec-row">
-            <button class="sec-panel-btn" onclick="tpfScanPriv()">
+            <button id="tpfPrivBtn" class="sec-panel-btn" onclick="tpfScanPriv()">
               <span class="sec-panel-btn-label">⚡ Privilege Scanner</span>
               <span class="sec-panel-btn-sub">Probe OPER / SYSOP / SYSPROG boundary with ZSTOP + ZEND</span>
             </button>
           </div>
           <div class="sec-row">
-            <button class="sec-panel-btn" onclick="tpfProbeEntries()">
+            <button id="tpfProbeBtn" class="sec-panel-btn" onclick="tpfProbeEntries()">
               <span class="sec-panel-btn-label">⬡ Entry Point Prober</span>
               <span class="sec-panel-btn-sub">ZTEST each ECB — response time, status, privilege flags</span>
             </button>
           </div>
           <div class="sec-row">
-            <button class="sec-panel-btn" onclick="tpfCheckPools()">
+            <button id="tpfPoolBtn" class="sec-panel-btn" onclick="tpfCheckPools()">
               <span class="sec-panel-btn-label">≣ Pool Monitor</span>
               <span class="sec-panel-btn-sub">ZSHOW P — flag memory pools above 90% capacity</span>
             </button>
