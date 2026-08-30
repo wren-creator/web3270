@@ -1,5 +1,5 @@
 # WebTerm/3270 — Security Tools Tutorial
-## FMO · ABI · FA Mutation · FUNC KEY Inject · Session Viewer · Proxy Viewer · Traffic Recorder · Replay Viewer · Anomaly Annotations · Security Macros · Mock LPAR
+## Field analysis · Traffic capture · Live intercept · Protocol fuzzing · Host recon · z/OS · IBM i · z/TPF
 
 **Prerequisites:** WebTerm/3270 running at `http://localhost:8081`
 
@@ -18,7 +18,35 @@ All security tools live in the **🔒 Sec** tab of the right panel — hidden by
 
 > Every unlock attempt is logged server-side with the session LU name, client IP address, and UTC timestamp. Failed attempts are logged as warnings. The password is set via the `SECURITY_TOOLS_PASSWORD` environment variable (default: `2970`).
 
-Once unlocked, the Security panel is organised into five accordion sections: **FIELD ANALYSIS**, **TRAFFIC**, **INTERCEPT**, **MONITOR**, and **INJECT**. Each tool is described in the parts below.
+Once unlocked, the Security panel is organised into collapsible accordion sections. The first five — **FIELD ANALYSIS**, **TRAFFIC**, **INTERCEPT**, **MONITOR**, **INJECT** — hold the original tool set. Later waves added their own sections: **WALKTHROUGHS**, **RACF PROBE**, **PROTOCOL FUZZER**, **SESSION HYGIENE**, **VM MINIDISK SECURITY**, **IN-TRANSIT MONITOR**, **ESM FINGERPRINT**, **RECON TOOLS**, **SYSTEM ACCESS CHECKS**, **DB2 TOOLS**, **SDSF JOB & STC SCANNER**, **TN3270E NEGOTIATION ANALYZER**, and the platform consoles **IBM i SECURITY (AS/400)** and **z/TPF CONSOLE**. The two platform consoles stay hidden until that host type is detected on screen — connect to an IBM i or z/TPF target and the matching section appears on its own.
+
+### Guided walkthroughs
+
+The app ships **51 built-in narrated walkthroughs** (`public/js/walkthrough.js`). Open the **WALKTHROUGHS** section at the top of the Security panel, pick one from the dropdown, and click **▶ Start** — an overlay steps through the tool one instruction at a time, highlighting the control it's talking about, with an optional **"Do it for me"** button that fires the action. Six are general (connecting, multi-session tabs, split screen, macros, file transfer, AI assist); the other 45 map almost one-to-one to the parts in this document. The **z/TPF CONSOLE** section has its own separate tour, launched with the **`?`** button in that section's header. These in-app walkthroughs and this document cover the same ground — use the walkthroughs for hands-on lab time, this document for reference and lesson planning.
+
+### Contents
+
+| Part | Tool | Part | Tool |
+|---|---|---|---|
+| 1 | Field Map Overlay (FMO) | 18 | In-Transit Encryption Monitor |
+| 2 | Attribute Byte Inspector (ABI) | 19 | CICS Transaction Scanner |
+| 3 | FA Mutation (via ABI) | 20 | System Access Checks (APF · PARMLIB) |
+| 4 | FUNC KEY Inject | 21 | Encryption At Rest Audit Scanner |
+| 5 | Session Viewer | 22 | DB2 Security Tools |
+| 6 | Proxy Viewer | 23 | TN3270E Negotiation Analyzer |
+| 7 | Extended Field Attribute Rendering (SFE / SA) | 24 | SDSF Job Scanner |
+| 8 | MITM Live Traffic Modification | 25 | STC Profile Scanner |
+| 9 | Screen Fingerprinting · Session Broadcast · Color Reveal | 26 | LU Name Fixation |
+| 10 | Traffic Recorder | 27 | TN3270E Handshake Trace |
+| 11 | Session Anomaly Annotations (ANOM) | 28 | Field Length Disclosure |
+| 12 | RACF Auto-Probe | 29 | Cross-Session Buffer Bleed |
+| 13 | Macro Recorder | 30 | VM Minidisk Password Exposure |
+| 14 | Protocol Fuzzer | 31 | Wire Inspector |
+| 15 | Security Macros | 32 | **z/TPF Security Console** |
+| 16 | Mock z/OS LPAR | 33 | IBM i (AS/400) Security Tools — 33A/B/C |
+| 17 | Recon Tools | 34 | IBM i Security Tools, Wave 2 — 34A/B/C/D |
+
+Appendix — The `.rec.json` format.
 
 ---
 
@@ -89,7 +117,7 @@ The inspector works on any cell, not just FA cells. Clicking a regular data cell
 
 ---
 
-## Part 2B — FA Mutation (via ABI)
+## Part 3 — FA Mutation (via ABI)
 
 The ABI inspector includes a live **MUTATE FA →** row at the bottom of every popup. These buttons write directly to the bridge session buffer — the change is real and persists until the host redraws that field with a Write command.
 
@@ -127,7 +155,7 @@ The ABI inspector includes a live **MUTATE FA →** row at the bottom of every p
 
 ---
 
-## Part 2C — FUNC KEY Inject
+## Part 4 — FUNC KEY Inject
 
 The **FUNC KEY** dropdown and **INJECT** button let you fire any 3270 AID key directly to the host from the security toolbar — no need to press a physical key.
 
@@ -158,7 +186,7 @@ A standard PC keyboard only has F1–F12. A real IBM 3270 terminal has PF1–PF2
 
 ---
 
-## Part 2D — Session Viewer
+## Part 5 — Session Viewer
 
 The **Session Viewer** shows a live-queryable table of every AID key sent to the host and every screen received from the host during the current bridge session.
 
@@ -196,7 +224,7 @@ Click **⇄ SESSION Viewer** in the Security panel. A popup opens bottom-right (
 
 ---
 
-## Part 2E — Proxy Viewer
+## Part 6 — Proxy Viewer
 
 The **Proxy Viewer** streams the bridge's internal log in real time — every connection event, TN3270 negotiation step, screen parse, and error — as it happens.
 
@@ -226,7 +254,7 @@ Click **≡ PROXY Viewer** in the Security panel. A popup opens bottom-right (76
 
 ---
 
-## Part 2F — Extended Field Attribute Rendering (SFE / SA Colors)
+## Part 7 — Extended Field Attribute Rendering (SFE / SA Colors)
 
 Wave 3 adds full rendering support for **ORDER_SFE** (Start Field Extended) and **ORDER_SA** (Set Attribute) — the 3270 orders that carry color and highlight metadata alongside field definitions. Real mainframe applications (ISPF, SDSF, TSO, vendor panels) use these orders extensively. Before Wave 3, WebTerm rendered all fields in the default terminal green regardless of what the host sent.
 
@@ -303,7 +331,7 @@ Use the **ABI** to confirm extended attributes are being parsed:
 
 ---
 
-## Part 2G — MITM Live Traffic Modification
+## Part 8 — MITM Live Traffic Modification
 
 Wave 4 adds the most powerful tool in the security toolbar: a live **man-in-the-middle intercept** that sits between the browser and the mainframe host. When active, every outbound AID record (keypress + field data) is held by the bridge before it reaches the host. The instructor can inspect it, edit any field value, then release (original or modified), drop it entirely, or replay a previous record.
 
@@ -359,7 +387,7 @@ Browser ──key──► server.js ──(MITM active)──► HOLD ──►
 
 ---
 
-## Part 2H — Screen Fingerprinting, Session Broadcast & Color Reveal
+## Part 9 — Screen Fingerprinting, Session Broadcast & Color Reveal
 
 Wave 6 adds three tools to the Security panel (🔒 Sec tab → right panel).
 
@@ -454,7 +482,7 @@ Toggle on/off with the button — screen re-renders immediately. The setting per
 
 ---
 
-## Part 3 — Traffic Recorder
+## Part 10 — Traffic Recorder
 
 The Traffic Recorder captures every screen update from the host and every keypress from the user into a `.rec.json` file you can replay later — frame by frame.
 
@@ -501,7 +529,7 @@ Clicking any event in the right-hand panel jumps directly to the screen state at
 
 ---
 
-## Part 4 — Session Anomaly Annotations (ANOM)
+## Part 11 — Session Anomaly Annotations (ANOM)
 
 The anomaly detector watches the raw 3270 datastream as it arrives and flags unusual command codes and Write Control Character (WCC) bit patterns. Anomalies accumulate in a session log accessible via the `ANOM` button.
 
@@ -536,7 +564,7 @@ A brief flash bar also appears above the OIA bar showing the most recent anomali
 
 ---
 
-## Part 2I — RACF Auto-Probe
+## Part 12 — RACF Auto-Probe
 
 Wave 7 adds a reactive credential probe that iterates a wordlist against live TSO, z/VM, or CICS logon screens and classifies each response — faster and more informative than hand-editing the static security macros.
 
@@ -596,7 +624,7 @@ Results are shown in a live table (userid, masked password, result). Click **↓
 
 ---
 
-## Part 2J — Macro Recorder
+## Part 13 — Macro Recorder
 
 Wave 7 adds a UI-driven macro recorder that captures real interactions with the terminal and saves them as reusable JSON macros — no hand-editing required.
 
@@ -641,7 +669,7 @@ Click the **✎** button on any macro to open it in the JSON editor. Recorded ma
 
 ---
 
-## Part 2K — Protocol Fuzzer
+## Part 14 — Protocol Fuzzer
 
 The Protocol Fuzzer sends intentionally malformed or mutated 3270 AID records directly to the host and classifies each response. This surfaces host-side parsing anomalies, unusual handling of invalid AID bytes, and how the host responds to buffer-address attacks — without modifying a production session.
 
@@ -709,7 +737,7 @@ Sends an ENTER AID with a single field whose SBA (Set Buffer Address) contains a
 
 ---
 
-## Part 5 — Security Macros
+## Part 15 — Security Macros
 
 Security macros live in `macros-security.json` — a separate file from the main `macros.json`. They are **hidden from the macro sidebar and menu unless the security panel is unlocked** — this keeps sensitive attack automation invisible to students browsing the tool.
 
@@ -746,7 +774,7 @@ Edit `macros-security.json` directly — it is bind-mounted so changes take effe
 
 ---
 
-## Part 6 — Mock z/OS LPAR
+## Part 16 — Mock z/OS LPAR
 
 The mock z/OS LPAR (port 3270) is a fully interactive TN3270 server that simulates a real z/OS environment for training. It was made fully functional in the security branch — previously it was display-only and did not process keystrokes.
 
@@ -790,7 +818,7 @@ TSO/E LOGON → TSO READY prompt → ISPF (type ISPF) or TSO commands directly
 
 ### Color scheme
 
-The mock LPAR sends full SFE/SA color attributes on every screen (Wave 3). Screen titles render in bright white, labels in blue, input fields in green, info text in turquoise, and function key bars in blue — matching real IBM equipment. Error conditions use red with intensify or blink highlights. See **Part 2F** for a full breakdown.
+The mock LPAR sends full SFE/SA color attributes on every screen (Wave 3). Screen titles render in bright white, labels in blue, input fields in green, info text in turquoise, and function key bars in blue — matching real IBM equipment. Error conditions use red with intensify or blink highlights. See **Part 7** for a full breakdown.
 
 ### Notable APF output
 
@@ -798,7 +826,7 @@ The mock LPAR sends full SFE/SA color attributes on every screen (Wave 3). Scree
 
 ---
 
-## Part 2M — Recon Tools (Wave 11)
+## Part 17 — Recon Tools (Wave 11)
 
 Wave 11 adds a **RECON TOOLS** section to the Security panel with three host reconnaissance tools, a timing extension to the RACF probe, and ACF2/TopSecret detection in the screen fingerprinter. All tools operate from a TSO READY prompt and require no elevated RACF authority.
 
@@ -957,7 +985,7 @@ All three Recon tools share a single CSV export via **↓ Export all Recon resul
 
 ---
 
-## Part 2O — In-Transit Encryption Monitor (Wave 12)
+## Part 18 — In-Transit Encryption Monitor (Wave 12)
 
 Classic TN3270 runs over raw TCP on port 23 — no encryption, no integrity protection. Every keystroke, every screen update, every RACF password and DB2 query crosses the wire in plaintext. TN3270E on port 992 adds TLS, but legacy port-23 connections, misconfigured TLS, or admin oversight leaves sessions exposed. The In-Transit Monitor makes this visible by capturing traffic with TLS state and surfacing plaintext data as "exposed bytes."
 
@@ -1037,7 +1065,7 @@ Connect to the same mainframe host twice — once on port 23 (TN3270, no TLS) an
 
 ---
 
-## Part 2Q — CICS Transaction Scanner (Wave 13)
+## Part 19 — CICS Transaction Scanner (Wave 13)
 
 CICS returns different error codes for "transaction not defined" vs "transaction exists but not authorized." The scanner exploits this distinction: DFHAC2001 ("not authorized") proves a transaction is defined without needing authority to run it. DFHAC2206 ("not defined") means it genuinely does not exist.
 
@@ -1073,7 +1101,7 @@ Run the scanner against a CICS development region. Point out that CEDA DENIED is
 
 ---
 
-## Part 2P — System Access Checks (Wave 13)
+## Part 20 — System Access Checks (Wave 13)
 
 Two TSO-based checks that probe system library protection: APF library RACF coverage and SYS1.PARMLIB member read access.
 
@@ -1123,7 +1151,7 @@ Two TSO-based checks that probe system library protection: APF library RACF cove
 
 ---
 
-## Part 2N — Encryption At Rest Audit Scanner (Wave 12)
+## Part 21 — Encryption At Rest Audit Scanner (Wave 12)
 
 Most z/OS shops have enabled DFSMS at-rest encryption for new datasets but never went back to encrypt older ones. The Encryption Audit Scanner surfaces exactly this gap: it runs `LISTCAT ENT(dsname) ALL` against a list of datasets and looks for the `ENCRYPTION-KEY-LABEL` field that indicates DFSMS encryption is active.
 
@@ -1205,7 +1233,7 @@ Run Dataset Recon on prefixes PAYROLL, FINANCE, HR. Import the flagged results i
 
 ---
 
-## Part 2L — DB2 Security Tools
+## Part 22 — DB2 Security Tools
 
 Wave 10 adds three DB2-focused tools to the Security panel under a dedicated **DB2 TOOLS** section. All three operate from a TSO READY prompt and require no SPUFI dataset configuration — they issue standard TSO and RACF commands through the live terminal session.
 
@@ -1328,7 +1356,7 @@ All three tools write to a shared CSV via **↓ Export all DB2 results CSV** at 
 
 ---
 
-## Part 2R — TN3270E Negotiation Analyzer (Wave 14)
+## Part 23 — TN3270E Negotiation Analyzer (Wave 14)
 
 The TN3270E Negotiation Analyzer reads live TLS socket state from the bridge server and surfaces cipher suite, certificate details, and TN3270E protocol negotiation flags for every active session.
 
@@ -1379,7 +1407,7 @@ The bridge server's `/api/negotiate` endpoint iterates active sessions and calls
 
 ---
 
-## Part 2S — SDSF Job Scanner (Wave 14)
+## Part 24 — SDSF Job Scanner (Wave 14)
 
 The SDSF Job Scanner parses the visible SDSF ST or DA panel to enumerate running jobs and started tasks (STCs). No SDSF line commands are issued — the tool reads the current terminal screen passively.
 
@@ -1415,7 +1443,7 @@ The parser looks for rows matching the SDSF job line format: `[NP] JOBNAME JOBID
 
 ---
 
-## Part 2T — STC Profile Scanner (Wave 14)
+## Part 25 — STC Profile Scanner (Wave 14)
 
 The STC Profile Scanner issues `RLIST STARTED stcname.* ALL` at a TSO READY prompt for each started task in a wordlist. A missing RACF STARTED class profile means the STC runs under the default user — a common misconfiguration that creates unaudited privilege and RACF bypass paths.
 
@@ -1462,7 +1490,7 @@ After running the SDSF Job Scanner, click "⇦ Import STCs from SDSF" to populat
 
 ---
 
-## Part 2U — LU Name Fixation (Wave 15)
+## Part 26 — LU Name Fixation (Wave 15)
 
 LU Name Fixation tests whether the mainframe honors the LU name a client requests during TN3270E DEVICE-TYPE negotiation. If fixation is accepted, the client controls its own terminal identity in RACF audit logs, SMF records, and VTAM accounting.
 
@@ -1502,7 +1530,7 @@ In a lab environment with TN3270E, connect without a LU name (REJECTED baseline)
 
 ---
 
-## Part 2V — TN3270E Handshake Trace (Wave 15)
+## Part 27 — TN3270E Handshake Trace (Wave 15)
 
 The TN3270E Handshake Trace captures and decodes every Telnet sub-option (IAC SB) exchange during TN3270E negotiation — DEVICE-TYPE and FUNCTIONS exchanges — showing the exact bytes and their decoded meaning.
 
@@ -1554,7 +1582,7 @@ The `/api/negotiate` route includes this log. The client renders it in order wit
 
 ---
 
-## Part 2W — Field Length Disclosure
+## Part 28 — Field Length Disclosure
 
 A nondisplay field masks its *characters*, not its *length*. The MDT (Modified Data Tag) bit plus the field's buffer-address span are ordinary, unmasked datastream metadata — anything reading the wire can measure exactly how many characters were typed into a "hidden" field without ever seeing what they were. This is a structural side-channel in the 3270 datastream itself, not a timing attack, and it applies to any nondisplay field on any screen — password prompts, PIN entry, API keys typed into a masked field, anything.
 
@@ -1578,7 +1606,7 @@ Navigate to a TSO logon screen (or the bundled mock, which now correctly masks i
 
 ---
 
-## Part 2X — Cross-Session Buffer Bleed
+## Part 29 — Cross-Session Buffer Bleed
 
 A real 3270 controller buffer is only guaranteed clear after an Erase/Write. If a Logical Unit (LU) is pooled and handed to a new logical session before the host application issues its own fresh Erase/Write, whatever the previous occupant left in the buffer — including unprotected or nondisplay fields with the MDT bit still set — can still be present for a brief window before the new session's screen paints over it.
 
@@ -1608,7 +1636,7 @@ Run the test twice: once reconnecting within the 90s window (expect a hit agains
 
 ---
 
-## Part 2Y — VM Minidisk Password Exposure
+## Part 30 — VM Minidisk Password Exposure
 
 z/VM's CP LOGON PASSWORD field is masked exactly like a TSO password field — but CP has no concept of "this command argument is a secret." A minidisk `LINK` password typed at the ordinary CP READ command line lands in a normal, display-intensity, unprotected field and renders in cleartext the instant it's typed, before ENTER is even pressed.
 
@@ -1634,7 +1662,7 @@ Connect to a z/VM CP session (the bundled mock or type `ZVM` target) and log on.
 
 ---
 
-## Part 2Z — Wire Inspector
+## Part 31 — Wire Inspector
 
 A 3270-aware packet inspector, in the same spirit as Wireshark but decoding the *protocol*, not just the bytes. Wireshark has no native TN3270 dissector — piped raw bytes only ever show Telnet/TCP framing. The Wire Inspector decodes every SF/SFE/SBA/AID order into plain language, color-codes by direction and security relevance, and can replay a captured outbound record back into its live session.
 
@@ -1680,9 +1708,94 @@ The E2E test for this feature caught a real bug before it shipped: outbound reco
 
 ---
 
-## Part 3 — IBM i (AS/400) Security Tools
+## Part 32 — z/TPF Security Console
 
-The tools in Parts 1–2 target z/OS over TN3270. Part 3 covers the first tools that target **IBM i (AS/400) over TN5250**. They audit the three foundations of IBM i security — system values, user profiles with their special authorities, and object *PUBLIC authority — against the seeded weak posture in the mock IBM i host (`mock-lpar/mock-as400.js`).
+z/TPF (Transaction Processing Facility) is the operating system behind airline reservation systems and card-payment authorization networks, tuned for tens of thousands of transactions per second. Its operator interface is nothing like TSO or CP: a scrolling command console where every action is a `Z`-prefixed operator command, and authority is a numeric privilege level (OPER, SYSOP, SYSPROG) rather than a RACF-style profile database. The z/TPF Security Console is four read-only tools that enumerate the running system and map that privilege boundary from the operator console.
+
+All four live in the **z/TPF CONSOLE** section of the Security panel, implemented in `public/js/tpf-security.js`. The section stays hidden until a z/TPF console is detected on screen, then appears on its own. Everything the tools send is a standard `ZSHOW` / `ZTEST` query; nothing changes system state. The one restricted command any tool issues, `ZSTOP,RPRT`, is z/TPF's own report-only mode and takes no action by design.
+
+---
+
+### How the z/TPF tools drive the terminal
+
+- **Auto-detection.** Every screen is matched against `z/TPF`, a `ZTPFnnn` message ID, or the literal `ENTER TPF COMMAND` prompt. First match reveals the section and sets `state.tpfDetected`. Navigating on to a TSO, ISPF, z/VM, or CICS screen hides it again and clears any results.
+- **Commands go in one at a time.** Each tool pushes its commands onto an async queue. The runner fills the console's single unprotected input field, presses Enter, and waits for the next screen event before sending the next command, so multi-command scans (the Privilege Scanner, the Entry Point Prober) stay in step with the host.
+- **Output is screen-scraped from the scroll log.** z/TPF replies are lines of `ZTPFnnnI` / `W` / `E` text in the console output area. Each tool parses the fixed-column tables in that text; there are no field attributes to read.
+- **Privilege level is inferred, then confirmed.** A plain `AUTHORIZATION FAILURE` reply tells the tools you are below SYSOP; one that names `SYSPROG AUTHORITY` places you at SYSOP. The Privilege Scanner then confirms the level directly by probing.
+
+**Prerequisite for all four:** connect to a z/TPF target (the bundled mock, `mock-lpar/mock-tpf.js` on port 3274, or a session profile with host type `TPF`), sign on at the operator logon screen, and stop at the `ENTER TPF COMMAND` console. The mock ships three logons, one per privilege level: `TPFOP01/TPF1` (OPER), `SYSOP01/SYS1` (SYSOP), `ADMIN01/ADMIN` (SYSPROG).
+
+The section header also carries a **`?`** button that launches an eight-step in-app tour of these tools (`public/js/tpf-tour.js`), separate from the main walkthrough list.
+
+---
+
+### ECB Enumerator
+
+Runs `ZSHOW E` and parses the ECB directory: every Entry Control Block (the z/TPF equivalent of a loaded program or transaction handler), its type, run status, and lifetime transaction count.
+
+**Location:** Security panel → z/TPF CONSOLE → ECB ENUMERATOR
+
+**How it works:** sends `ZSHOW E`, reads the lines between the `ZTPF200I` header and the `ZTPF202I` end marker, and splits each row into name, type (`APPL` or `SYSTEM`), status (`ACTIVE` / `IDLE` / `STOPPED`), entry count and transaction total. A trailing `[PRIV]` marker flags an ECB that handles privileged data. The parsed list is cached in `state.tpfEcbList` so the Entry Point Prober can reuse it.
+
+**What it flags:** privileged rows are highlighted and the footer counts privileged and active ECBs. Against the mock, five of the fifteen entry points are privileged `SYSTEM` handlers: `AUTH` (authentication), `CCARD` (card processing), `LOGR` (system logger), `PAYM` (payments) and `SECU` (security). Those five are where a misconfigured entry point exposes an authentication or cardholder-data path, not just a fares lookup.
+
+---
+
+### Privilege Boundary Scanner
+
+Maps the OPER → SYSOP → SYSPROG boundary by actually attempting one representative command at each level and recording whether it was accepted or refused.
+
+**Location:** Security panel → z/TPF CONSOLE → PRIVILEGE SCANNER
+
+**How it works:** sends three commands in sequence and classifies each response.
+
+| Command | Authority it needs | Read as "allowed" when |
+|---|---|---|
+| `ZSHOW S` (system status) | OPER | reply contains `ZTPF100I` |
+| `ZSTOP,RPRT` (report stoppable entry points) | SYSOP | reply is **not** `AUTHORIZATION FAILURE` |
+| `ZEND CHECK` (preview a system quiesce) | SYSPROG | reply is **not** `AUTHORIZATION FAILURE` |
+
+The highest command that succeeded sets the level: `ZEND` → SYSPROG, else `ZSTOP` → SYSOP, else `ZSHOW S` → OPER. The result updates the privilege badge in the section header.
+
+**Risk levels:**
+
+| Level | Reading |
+|---|---|
+| OPER | Read-only console access. Can enumerate ECBs and pools, cannot change system state. Low risk. |
+| SYSOP | Can stop entry points and load program modules. A compromised SYSOP session can disrupt transaction processing. Medium risk. |
+| SYSPROG | Full system control. `ZEND QUIESCE` from here halts all transaction processing. Critical. |
+
+**Teaching scenario:** sign on three times, once per credential, and run the scanner each time. As `TPFOP01` the two restricted commands come back `ZTPF900E AUTHORIZATION FAILURE ... THIS ATTEMPT HAS BEEN LOGGED` and the badge reads OPER. As `SYSOP01`, `ZSTOP,RPRT` now reports how many active entry points would be stopped and the badge moves to SYSOP. As `ADMIN01` all three succeed and the badge goes to SYSPROG. The point for students: on z/TPF there is no per-object authority list to scrape, the privilege *is* the command set, so you map it by trying commands and reading the refusals, and every refusal is an audit record.
+
+---
+
+### Entry Point Prober
+
+Runs `ZTEST ENTRY,<name>` against each ECB to check that it responds and to see whether it self-reports as handling privileged data.
+
+**Location:** Security panel → z/TPF CONSOLE → ENTRY POINT PROBER
+
+**How it works:** the target list is `state.tpfEcbList` from the ECB Enumerator if you have run it, otherwise a built-in list of ten common entry-point names. For each, it sends `ZTEST ENTRY,<name>`, treats a `ZTPF71x` reply as "responded", pulls the `RESPONDED IN Nms` timing and the `STATUS :` value, and flags the entry when the reply says `HANDLES PRIVILEGED DATA`. The footer totals how many responded and how many are privileged.
+
+**Teaching scenario:** run the ECB Enumerator first so the prober works the real directory rather than its fallback list. Every `ACTIVE` entry point answers in a few milliseconds; the `IDLE` ones (`SCHD`, `UPGD` on the mock) still respond but report zero transactions. The five privileged handlers come back tagged `PRIV`. Probing `PAYM` also surfaces a rising queue depth and an `AWAITING CONFIRMATION FEED` note, part of the cross-platform incident storyline seeded across all four mock hosts; it is a queue backlog, not an entry-point fault, and the normal `STATUS` and `RESPONDED` lines above it are what make that distinction the lesson.
+
+---
+
+### Pool Monitor
+
+Runs `ZSHOW P` and reads memory-pool utilization, flagging any pool at or above 90 percent.
+
+**Location:** Security panel → z/TPF CONSOLE → POOL MONITOR
+
+**How it works:** sends `ZSHOW P`, matches each pool row (`ECBPOOL`, `FPOOL`, `GPOOL`, `IPOOL`, `TPOOL`, `XPOOL`) for size, used and percent, and marks any pool at 90 percent or higher as a warning. The footer states whether any pool is over the line.
+
+**Why it belongs in a security panel:** pool exhaustion is a denial-of-service surface. A z/TPF system already running its ECB or frame pools near capacity can be tipped into transaction rejection by a modest traffic burst, no exploit required. Against the mock, `IPOOL` (95%) and `XPOOL` (97%) both trip the warning while `GPOOL` (62%) and `TPOOL` (70%) are shown but clear. The teaching point is that "the system is healthy" from `ZSHOW S` and "two pools are one bad afternoon from rejecting transactions" are both true at the same time.
+
+---
+
+## Part 33 — IBM i (AS/400) Security Tools
+
+The tools in Parts 1–32 target z/OS, z/VM and z/TPF over TN3270. Part 33 covers the first tools that target **IBM i (AS/400) over TN5250**. They audit the three foundations of IBM i security — system values, user profiles with their special authorities, and object *PUBLIC authority — against the seeded weak posture in the mock IBM i host (`mock-lpar/mock-as400.js`).
 
 All three live in the **IBM i SECURITY (AS/400)** section of the Security panel and share one implementation: `public/js/as400sec.js` (a push-driven screen state machine) plus `public/js/as400sec-parse.js` (pure, browser-free parsing and risk classification). They are read-only — every finding comes from a `WRK*`/`DSP*` display command; nothing is changed on the host.
 
@@ -1701,7 +1814,7 @@ IBM i tools differ from the z/OS tools in a few protocol-level ways worth unders
 
 ---
 
-## Part 3A — System Value Security Analyzer
+## Part 33A — System Value Security Analyzer
 
 Reads the security-relevant system values with `WRKSYSVAL` and rates each against a recommended value. Everything is on the single Work-with-System-Values list screen, so no drill-down is needed.
 
@@ -1729,7 +1842,7 @@ Run the analyzer against the mock and note that `QSECURITY 30` is HIGH — level
 
 ---
 
-## Part 3B — User Profile & Special-Authority Enumerator
+## Part 33B — User Profile & Special-Authority Enumerator
 
 Enumerates user profiles with `WRKUSRPRF`, then reads each one with `DSPUSRPRF` to surface privileged accounts, default passwords, and weak limit-capability settings.
 
@@ -1757,7 +1870,7 @@ Run the enumerator against the mock. `QSECOFR` is CRITICAL on three counts at on
 
 ---
 
-## Part 3C — Object / *PUBLIC Authority Scanner
+## Part 33C — Object / *PUBLIC Authority Scanner
 
 Enumerates objects with `WRKOBJ`, then reads each one's full authority with `DSPOBJAUT` to flag over-permissive `*PUBLIC` authority **and** risky private grants, raising severity for sensitive objects.
 
@@ -1787,13 +1900,13 @@ Run the scanner against the mock. `PAYROLL/EMPMAST` at `*PUBLIC *ALL` is the hea
 
 ---
 
-## Part 4 — IBM i (AS/400) Security Tools, Wave 2
+## Part 34 — IBM i (AS/400) Security Tools, Wave 2
 
-Part 3 covered the IBM i core trio (system values, user profiles, object authority). Wave 2 adds four tools that target the extended surfaces of the mock IBM i host: network attributes, job descriptions, authorization lists, and active jobs. They live in the same **IBM i SECURITY (AS/400)** panel section and share the `as400sec.js` state machine — three are single-screen, one (authorization lists) drills like the object scanner. Same prerequisite as Part 3: connect over TN5250, sign on, and stop at a menu with a "Selection or command" line.
+Part 33 covered the IBM i core trio (system values, user profiles, object authority). Wave 2 adds four tools that target the extended surfaces of the mock IBM i host: network attributes, job descriptions, authorization lists, and active jobs. They live in the same **IBM i SECURITY (AS/400)** panel section and share the `as400sec.js` state machine — three are single-screen, one (authorization lists) drills like the object scanner. Same prerequisite as Part 33: connect over TN5250, sign on, and stop at a menu with a "Selection or command" line.
 
 ---
 
-## Part 4A — Network Attributes Analyzer
+## Part 34A — Network Attributes Analyzer
 
 Reads the network attributes with `DSPNETA` (one display screen) and flags inbound-request settings that enable remote execution.
 
@@ -1815,7 +1928,7 @@ Security panel → IBM i SECURITY (AS/400) → NETWORK ATTRIBUTES ANALYZER
 
 ---
 
-## Part 4B — Job Description Privesc Scanner
+## Part 34B — Job Description Privesc Scanner
 
 Uses `WRKUSRPRF`-style single-screen parsing of `WRKJOBD` to find the classic IBM i privilege-escalation path: a job description that names a fixed `USER()` and is usable by `*PUBLIC`.
 
@@ -1841,7 +1954,7 @@ Security panel → IBM i SECURITY (AS/400) → JOB DESCRIPTION PRIVESC SCANNER
 
 ---
 
-## Part 4C — Authorization List Scanner
+## Part 34C — Authorization List Scanner
 
 Enumerates authorization lists with `WRKAUTL`, then drills each with `DSPAUTL` (like the object scanner) to flag over-permissive `*PUBLIC` authority and show the objects it cascades to.
 
@@ -1870,7 +1983,7 @@ For a flagged list the finding names the secured objects it exposes.
 
 ---
 
-## Part 4D — Active Job Scanner
+## Part 34D — Active Job Scanner
 
 Uses `WRKACTJOB` to flag jobs running under a privileged profile and network host servers. It cross-references the User Profile Enumerator's results, so running that tool first sharpens this one.
 
