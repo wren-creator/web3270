@@ -13,8 +13,8 @@
  *   {
  *     "host": "mock-claims", "port": 3273, "tls": false,
  *     "protocol": "3270",                    // or "5250"
- *     "macroName": "RM2P Claim Override (Mock POC)",
- *     "vars": { "claimNumber": "CLAIM9990012", "lineNumber": "01", "providerNumber": "99999" },
+ *     "macroName": "My Saved Macro",
+ *     "vars": { "userId": "IBMUSER", "jobName": "PAYROLL01" },
  *     "timeoutMs": 30000                      // optional, default 30000
  *   }
  *
