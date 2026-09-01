@@ -723,6 +723,9 @@
             <span style="font-size:10px;color:var(--text-muted);flex-shrink:0">Delay (ms)</span>
             <input id="probeDelay" type="number" value="1500" min="500" max="10000" step="100"
               style="width:68px;background:#000;border:1px solid #333;border-radius:3px;color:#ccc;font-family:inherit;font-size:10px;padding:2px 6px;outline:none">
+            <label style="font-size:10px;color:var(--text-muted);display:flex;align-items:center;gap:4px;cursor:pointer" title="On each match, sign the account off and keep trying the rest of the list">
+              <input type="checkbox" id="probeEnumAll" style="margin:0"> Keep going after a match
+            </label>
             <div style="flex:1"></div>
             <button id="probeStartBtn" class="sec-inject-btn" onclick="startProbe()" style="background:#1a2a1a">▶ START</button>
             <button id="probeStopBtn"  class="sec-inject-btn" onclick="stopProbe()"  style="background:#2a1a1a;display:none">■ STOP</button>

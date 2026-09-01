@@ -578,7 +578,7 @@ The probe sends each credential pair through the active session's WebSocket conn
 | **FAILURE** | ICH error codes, "LOGON unsuccessful", wrong-password messages, `ZTPF901E INVALID OPER ID OR PASSWORD` (z/TPF) |
 | **LOCKOUT** | IKJ56421I, AUTHORIZATION FAILURE, REVOKED, "User revoked". z/TPF has no sign-on lockout. On IBM i only `CPF1393` (profile disabled *by* failed attempts) counts — a pre-disabled profile (`CPF1394`), `*NONE` password (`CPF1118`) or unknown user (`CPF1120`) is a FAILURE and the probe keeps going. |
 
-On LOCKOUT or SUCCESS the probe stops immediately. Each attempt is spaced by a configurable delay (default 1500 ms) to avoid rapid-fire lockout triggers.
+On LOCKOUT the probe stops immediately. On SUCCESS it stops too, unless **Keep going after a match** is checked — then it signs the account off (`LOGOFF` for TSO, `SIGNOFF` for IBM i, `#CP LOGOFF` for z/VM, `CESF LOGOFF` for CICS, `PF3` for z/TPF), waits to land back on the logon screen, and carries on with the rest of the list, enumerating every set of valid default credentials. Each attempt is spaced by a configurable delay (default 1500 ms).
 
 ### Subsystem detection
 

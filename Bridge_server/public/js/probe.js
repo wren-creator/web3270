@@ -9,6 +9,7 @@ const _PROBE_PROFILES = {
     success: t => /\bREADY\b|ISPF PRIMARY|ICH70002I/i.test(t),
     lockout: t => /IKJ56421I|AUTHORIZATION FAILURE|REVOKED/i.test(t),
     logon:   t => /TSO\/E LOGON|ENTER USERID/i.test(t),
+    logoff:  { cmd: 'LOGOFF' },
     defaults: [
       'IBMUSER,SYS1', 'IBMUSER,IBMUSER', 'MAINT,MAINT', 'MAINT,SYS1',
       'SYSPROG,SYSPROG', 'SYSADM,SYSADM', 'TSTADMIN,TSTADMIN',
@@ -22,6 +23,7 @@ const _PROBE_PROFILES = {
     success: t => /LOGON AT|CMS READY|CP READ|Ready;/i.test(t),
     lockout: t => /revoked|suspended|not authorized to log on/i.test(t),
     logon:   t => /z\/VM|USERID\s*==>/i.test(t),
+    logoff:  { cmd: '#CP LOGOFF' },
     defaults: [
       'OPERATOR,OPERATOR', 'MAINT,MAINT', 'MAINT730,MAINT730',
       'PMAINT,PMAINT', 'TCPMAINT,TCPMAINT', 'AUTOLOG1,AUTOLOG1',
@@ -34,6 +36,7 @@ const _PROBE_PROFILES = {
     success: t => /DFH\w{4} SIGNON|CICS APPLICATION/i.test(t),
     lockout: t => /revoked|AEIS|user.*lock|account.*lock/i.test(t),
     logon:   t => /CESN|SIGN ON TO CICS/i.test(t),
+    logoff:  { cmd: 'CESF LOGOFF' },
     defaults: [
       'CICSUSER,CICSUSER', 'CICS,CICS', 'ADMIN,ADMIN',
       'IBMUSER,SYS1', 'SYSADM,SYSADM',
@@ -51,6 +54,7 @@ const _PROBE_PROFILES = {
     success: t => /ENTER TPF COMMAND|PF3=LOGOFF/i.test(t),
     lockout: t => /OPER ID\s+(REVOKED|DISABLED|LOCKED)|ZTPF9\d{2}E.*(REVOK|LOCK)/i.test(t),
     logon:   t => /OPER ID\s*==>/i.test(t),
+    logoff:  { aid: 'PF3' },
     defaults: [
       'TPFOP01,TPF1', 'SYSOP01,SYS1', 'ADMIN01,ADMIN',
       'PRIME,PRIME', 'CRAS,CRAS', 'OPER,OPER',
@@ -73,6 +77,7 @@ const _PROBE_PROFILES = {
     // *NONE / unknown user (CPF1118 / CPF1120) is just a FAILURE.
     lockout: t => /CPF1393|has been disabled because|disabled.*sign-on attempts/i.test(t),
     logon:   t => /\bSign On\b/.test(t) && /Password/i.test(t),
+    logoff:  { cmd: 'SIGNOFF' },
     defaults: [
       'QSECOFR,QSECOFR', 'QSRV,QSRV', 'QUSER,QUSER',
       'QPGMR,QPGMR', 'QSYSOPR,QSYSOPR', 'QSECADM,QSECADM',
@@ -81,10 +86,11 @@ const _PROBE_PROFILES = {
   },
 };
 
-let _probeRunning  = false;
-let _probeAborted  = false;
-let _probeResults  = [];
-let _probeScreenCb = null;
+let _probeRunning   = false;
+let _probeAborted   = false;
+let _probeResults   = [];
+let _probeSuccesses = [];
+let _probeScreenCb  = null;
 
 export function probeOnScreen(msg) {
   if (_probeScreenCb) {
@@ -110,6 +116,46 @@ function _probeSend(obj) {
   const s = state.sessions.get(state.activeSession);
   if (!s || s.ws.readyState !== WebSocket.OPEN) throw new Error('No active session');
   s.ws.send(JSON.stringify(obj));
+}
+
+// Type text into the first unprotected input field on the current screen —
+// used for the post-login logoff command (LOGOFF / SIGNOFF / #CP LOGOFF),
+// whose field position varies by subsystem, unlike the fixed logon fields.
+function _probeFillFirstInput(text) {
+  const scr  = state.liveScreen;
+  const cols = scr?.cols || 80;
+  const f = scr?.fields?.find(fld => !fld.protected && !fld.nondisplay);
+  if (!f || f.startAddr == null) return false;
+  const da = f.startAddr + 1;
+  _probeSend({ type: 'fillField', row: Math.floor(da / cols), col: da % cols, text });
+  return true;
+}
+
+// After a SUCCESS: send the subsystem's logoff and wait to land back on the
+// logon screen so the sweep can carry on with the next credential. Returns
+// true if the logon screen came back, false otherwise.
+async function _probeLogoff(profile) {
+  const lo = profile.logoff;
+  if (!lo) return false;
+  try {
+    if (lo.aid) {
+      _probeSend({ type: 'key', aid: lo.aid, fields: [] });
+    } else if (lo.cmd) {
+      if (!_probeFillFirstInput(lo.cmd)) return false;
+      await new Promise(r => setTimeout(r, 150));
+      _probeSend({ type: 'key', aid: 'ENTER', fields: [] });
+    } else {
+      return false;
+    }
+  } catch { return false; }
+
+  for (let i = 0; i < 4; i++) {
+    try {
+      const s = await _probeWaitScreen(5000);
+      if (profile.logon(_probeText(s))) return true;
+    } catch { return false; }
+  }
+  return false;
 }
 
 function _probeSetStatus(msg) {
@@ -181,14 +227,19 @@ export async function startProbe() {
 
   if (!pairs.length) { _probeSetStatus('Add credentials in USERID,PASSWORD format'); return; }
 
-  _probeRunning = true;
-  _probeAborted = false;
-  _probeResults = [];
+  // "Keep going after a match": on each SUCCESS, sign the account off and
+  // carry on with the rest of the list instead of stopping at the first hit.
+  const enumAll = !!document.getElementById('probeEnumAll')?.checked;
+
+  _probeRunning   = true;
+  _probeAborted   = false;
+  _probeResults   = [];
+  _probeSuccesses = [];
   _probeRenderResults();
 
   document.getElementById('probeStartBtn').style.display = 'none';
   document.getElementById('probeStopBtn').style.display  = '';
-  _probeSetStatus(`Probing ${sysName} — ${pairs.length} pair(s)`);
+  _probeSetStatus(`Probing ${sysName} — ${pairs.length} pair(s)${enumAll ? ' (enumerate all)' : ''}`);
 
   let consecErr = 0;
   for (let i = 0; i < pairs.length; i++) {
@@ -217,7 +268,24 @@ export async function startProbe() {
       _probeRenderResults();
 
       if (result === 'LOCKOUT') { _probeSetStatus(`🔴 LOCKOUT — ${userid} is locked. Stopped.`); break; }
-      if (result === 'SUCCESS') { _probeSetStatus(`✅ SUCCESS — ${userid}`); break; }
+
+      if (result === 'SUCCESS') {
+        _probeSuccesses.push(userid);
+        const last = i === pairs.length - 1;
+        if (!enumAll || last) {
+          _probeSetStatus(enumAll
+            ? `Done — ${_probeSuccesses.length} valid credential(s): ${_probeSuccesses.join(', ')}`
+            : `✅ SUCCESS — ${userid}`);
+          break;
+        }
+        _probeSetStatus(`✅ ${userid} — signing off, continuing…`);
+        const back = await _probeLogoff(profile);
+        if (!back) {
+          _probeSetStatus(`✅ SUCCESS — ${userid}. Still signed on (could not return to the logon screen). Reconnect to keep enumerating. Valid so far: ${_probeSuccesses.join(', ')}`);
+          break;
+        }
+        continue;
+      }
 
       if (i < pairs.length - 1 && !_probeAborted) {
         await new Promise(r => setTimeout(r, delay));
@@ -247,7 +315,11 @@ export async function startProbe() {
   document.getElementById('probeStopBtn').style.display  = 'none';
 
   const last = _probeResults[_probeResults.length - 1];
-  if (!_probeAborted && last && !['SUCCESS', 'LOCKOUT'].includes(last.result)) {
+  if (_probeAborted) {
+    /* stopProbe already set the status */
+  } else if (enumAll && _probeSuccesses.length) {
+    _probeSetStatus(`Done — ${_probeResults.length} attempt(s), ${_probeSuccesses.length} valid: ${_probeSuccesses.join(', ')}`);
+  } else if (last && !['SUCCESS', 'LOCKOUT'].includes(last.result)) {
     _probeSetStatus(`Done — ${_probeResults.length} attempt(s), no match found`);
   }
 }

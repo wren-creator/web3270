@@ -287,6 +287,12 @@ const _WALKTHROUGHS = [
         autoFn: null,
       },
       {
+        title: 'Keep going after a match (optional)',
+        body:  'By default the probe stops at the first SUCCESS. Check "Keep going after a match" to have it sign that account off instead (LOGOFF / SIGNOFF / #CP LOGOFF / CESF LOGOFF / PF3, per subsystem), wait to land back on the logon screen, and continue the wordlist in order — enumerating every valid default credential rather than just the first. LOCKOUT still stops the run.',
+        highlight: 'probeEnumAll',
+        autoFn: null,
+      },
+      {
         title: 'Start the probe',
         body:  'Click ▶ START. For each credential pair the probe types the username, tabs to the password field, types the password, and presses Enter. It waits for the screen to update and then classifies the response as SUCCESS, FAILURE, or LOCKOUT.',
         highlight: 'probeStartBtn',
@@ -294,7 +300,7 @@ const _WALKTHROUGHS = [
       },
       {
         title: 'Read the live results',
-        body:  'Each row appears as responses arrive. SUCCESS (green) — credentials accepted. FAILURE (amber) — rejected, probe continues. LOCKOUT (red) — RACF suspended the user; the probe stops immediately to prevent further lockouts. Against a z/TPF or IBM i logon there is no attempt lockout modelled, so the probe runs the full wordlist unless it hits a SUCCESS first — on the mocks, TPFOP01/TPF1 (z/TPF) and QSECOFR/QSECOFR (IBM i) each succeed on the first try.',
+        body:  'Each row appears as responses arrive. SUCCESS (green) — credentials accepted. FAILURE (amber) — rejected, probe continues. LOCKOUT (red) — RACF suspended the user; the probe stops immediately to prevent further lockouts. A plain run stops at the first SUCCESS; with "Keep going after a match" checked, every valid pair shows green and the final status lists them all. Against a z/TPF or IBM i logon there is no attempt lockout modelled — on the mocks, TPFOP01/TPF1 (z/TPF) and QSECOFR/QSECOFR (IBM i) each succeed on the first try.',
         highlight: 'probeResultsTable',
         autoFn: null,
       },

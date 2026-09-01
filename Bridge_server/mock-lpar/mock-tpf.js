@@ -1338,7 +1338,14 @@ function createSession(socket) {
     const aid = d[0];
 
     if (aid === AID_CLEAR) { showConsole(); return; }
-    if (aid === AID_PF3)   { socket.end(); return; }
+    if (aid === AID_PF3) {
+      // PF3 = LOGOFF. From the console, return to the operator logon screen
+      // (the line stays up, matching a VTAM-connected 3270 and letting a
+      // credential sweep sign off and try the next id). From the logon
+      // screen itself, drop the connection.
+      if (loggedIn) { loggedIn = false; operId = ''; role = 'OPER'; priv = 1; outputLog = []; showLogon(); return; }
+      socket.end(); return;
+    }
 
     if (aid !== AID_ENTER) return;
 
