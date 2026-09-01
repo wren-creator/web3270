@@ -10,6 +10,7 @@ const _PROBE_PROFILES = {
     lockout: t => /IKJ56421I|AUTHORIZATION FAILURE|REVOKED/i.test(t),
     logon:   t => /TSO\/E LOGON|ENTER USERID/i.test(t),
     logoff:  { cmd: 'LOGOFF' },
+    failure: t => /IKJ56425I|IKJ56420I|IKJ56421I|LOGON (rejected|unable|unsuccessful|denied)|not authorized|password.*(not correct|incorrect|expired)/i.test(t),
     defaults: [
       'IBMUSER,SYS1', 'IBMUSER,IBMUSER', 'MAINT,MAINT', 'MAINT,SYS1',
       'SYSPROG,SYSPROG', 'SYSADM,SYSADM', 'TSTADMIN,TSTADMIN',
@@ -24,6 +25,7 @@ const _PROBE_PROFILES = {
     lockout: t => /revoked|suspended|not authorized to log on/i.test(t),
     logon:   t => /z\/VM|USERID\s*==>/i.test(t),
     logoff:  { cmd: '#CP LOGOFF' },
+    failure: t => /not in CP directory|Password incorrect|not authorized to log on|already logged on|HCP\w+E/i.test(t),
     defaults: [
       'OPERATOR,OPERATOR', 'MAINT,MAINT', 'MAINT730,MAINT730',
       'PMAINT,PMAINT', 'TCPMAINT,TCPMAINT', 'AUTOLOG1,AUTOLOG1',
@@ -37,6 +39,7 @@ const _PROBE_PROFILES = {
     lockout: t => /revoked|AEIS|user.*lock|account.*lock/i.test(t),
     logon:   t => /CESN|SIGN ON TO CICS/i.test(t),
     logoff:  { cmd: 'CESF LOGOFF' },
+    failure: t => /DFHCE350[45]|not valid|rejected|Your userid|Please retype/i.test(t),
     defaults: [
       'CICSUSER,CICSUSER', 'CICS,CICS', 'ADMIN,ADMIN',
       'IBMUSER,SYS1', 'SYSADM,SYSADM',
@@ -55,6 +58,7 @@ const _PROBE_PROFILES = {
     lockout: t => /OPER ID\s+(REVOKED|DISABLED|LOCKED)|ZTPF9\d{2}E.*(REVOK|LOCK)/i.test(t),
     logon:   t => /OPER ID\s*==>/i.test(t),
     logoff:  { aid: 'PF3' },
+    failure: t => /ZTPF901E|INVALID OPER ID OR PASSWORD/i.test(t),
     defaults: [
       'TPFOP01,TPF1', 'SYSOP01,SYS1', 'ADMIN01,ADMIN',
       'PRIME,PRIME', 'CRAS,CRAS', 'OPER,OPER',
@@ -78,6 +82,7 @@ const _PROBE_PROFILES = {
     lockout: t => /CPF1393|has been disabled because|disabled.*sign-on attempts/i.test(t),
     logon:   t => /\bSign On\b/.test(t) && /Password/i.test(t),
     logoff:  { cmd: 'SIGNOFF' },
+    failure: t => /CPF1107|CPF1120|CPF1118|CPF1392|CPF1394|not correct|does not exist|no password|cannot sign on/i.test(t),
     defaults: [
       'QSECOFR,QSECOFR', 'QSRV,QSRV', 'QUSER,QUSER',
       'QPGMR,QPGMR', 'QSYSOPR,QSYSOPR', 'QSECADM,QSECADM',
@@ -214,6 +219,13 @@ export async function probeLoadList() {
 export async function startProbe() {
   if (_probeRunning) return;
 
+  // MITM Intercept holds every outbound AID mid-flight, so the probe's Enter
+  // never reaches the host and every attempt times out. Refuse up front.
+  if (document.getElementById('mitmBtn')?.classList.contains('sec-panel-btn-active')) {
+    _probeSetStatus('Turn off ⚡ MITM Intercept first — it holds the probe\'s Enter key.');
+    return;
+  }
+
   const det = probeDetectSubsystem();
   if (!det) { _probeSetStatus('Navigate to a TSO, z/VM, CICS, or z/TPF logon screen first'); return; }
   const { name: sysName, profile } = det;
@@ -254,14 +266,29 @@ export async function startProbe() {
       const t0 = Date.now();
       _probeSend({ type: 'key', aid: 'ENTER', fields: [] });
 
-      const screen  = await _probeWaitScreen(8000);
-      const elapsed = Date.now() - t0;
-      const txt     = _probeText(screen);
-
-      let result;
-      if      (profile.lockout(txt)) result = 'LOCKOUT';
-      else if (profile.success(txt)) result = 'SUCCESS';
-      else                           result = 'FAILURE';
+      // Typing emits echo screens, so the response after ENTER may not be the
+      // very next screen. Consume screens until one is definitive — the
+      // subsystem's success marker, a lockout, or its explicit auth-failure
+      // message — or the budget runs out. A bare echo (logon screen, no error
+      // text) is ignored and we keep reading.
+      let result = null, elapsed = 0, sawAny = false;
+      const deadline = t0 + 9000;
+      while (Date.now() < deadline) {
+        let s;
+        try { s = await _probeWaitScreen(Math.max(500, deadline - Date.now())); }
+        catch { break; }
+        sawAny = true;
+        const txt = _probeText(s);
+        if      (profile.lockout(txt))            { result = 'LOCKOUT'; }
+        else if (profile.success(txt))            { result = 'SUCCESS'; }
+        else if (profile.failure && profile.failure(txt)) { result = 'FAILURE'; }
+        if (result) { elapsed = Date.now() - t0; break; }
+      }
+      if (!result) {
+        if (!sawAny) throw new Error('timeout');   // nothing came back at all
+        result = 'FAILURE';                         // echoes only, no success/error marker
+        elapsed = Date.now() - t0;
+      }
 
       consecErr = 0;
       _probeResults.push({ userid, password, result, elapsed, ts: new Date().toISOString() });
