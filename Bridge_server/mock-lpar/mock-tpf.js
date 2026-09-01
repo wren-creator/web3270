@@ -212,6 +212,64 @@ const POOL_TABLE = [
   { name:'XPOOL',   addr:'06000000', size: '64M', used:' 62M', pct:97  },
 ];
 
+// ── ZTEST interactive debugger state ──────────────────────────────────────
+// Real z/TPF ZTEST attaches to one program at a time, so the mock keeps a
+// single module-level session. DISPLAY / STEP / GO / REG / STOR all read and
+// mutate the same registers between console commands. Fake register and
+// storage values are derived deterministically from the program name and the
+// address, so a given walkthrough always sees the same numbers.
+const ZTEST_SESSION = {
+  active: false,
+  prog:   '',
+  base:   0,   // load address of the entry point
+  pc:     0,   // next-instruction address (low 31 bits of the PSW)
+  regs:   new Array(16).fill(0),
+  bps:    [],  // breakpoint addresses, ascending
+  trace:  false,
+  steps:  0,   // instructions executed this session
+};
+
+const ZTEST_INSTRS = [
+  'L     R1,0(,R2)',
+  'LA    R1,4(,R1)',
+  'CLC   0(8,R1),0(,R4)',
+  'BC    7,SCAN',
+  'MVC   WORK(16),0(,R5)',
+  'ST    R1,72(,R13)',
+  'LR    R15,R1',
+  'AHI   R3,-1',
+  'BCT   R3,SCAN',
+  'BR    R14',
+];
+
+function hex8(n) { return (n >>> 0).toString(16).toUpperCase().padStart(8, '0'); }
+function hex2(n) { return (n & 0xFF).toString(16).toUpperCase().padStart(2, '0'); }
+
+// Deterministic pseudo-bytes from a 32-bit seed — the same address always
+// dumps the same storage, within a session and across restarts.
+function ztestBytes(seed, n) {
+  let x = seed >>> 0;
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    x = (Math.imul(x, 1103515245) + 12345) >>> 0;
+    out.push((x >>> 16) & 0xFF);
+  }
+  return out;
+}
+
+function ztestSeedRegs(name) {
+  let x = 0x0001B845 >>> 0;
+  for (const ch of name) x = (Math.imul(x, 31) + ch.charCodeAt(0)) >>> 0;
+  const regs = [];
+  for (let i = 0; i < 16; i++) { x = (Math.imul(x, 1103515245) + 12345) >>> 0; regs.push(x >>> 0); }
+  regs[13] = (0x00A04000 + (regs[13] & 0xFFF)) >>> 0;  // R13 → save area
+  regs[14] = 0x80C12A6C;                               // R14 → return address
+  regs[15] = 0x00000000;                               // R15 → return code
+  return regs;
+}
+
+function instrAt(pc) { return ZTEST_INSTRS[(pc >>> 2) % ZTEST_INSTRS.length]; }
+
 // In-memory PNR store for the ZBOOK/ZLOOK/ZCXL "simple ticketing system"
 // 101 exercise -- keyed by a generated 6-char locator. Data shape is
 // inspired by (not ported from) a PNR/reservation record model used
@@ -236,18 +294,23 @@ function dispatchCommand(raw, priv) {
   switch (verb) {
     case 'ZSHOW':
       switch (args[0]) {
-        case 'E': return cmdZshowEntry();
-        case 'P': return cmdZshowPools();
-        case 'S': return cmdZshowSystem();
-        case 'T': return cmdZshowTrans();
-        case 'O': return cmdZshowOper();
-        case 'V': return cmdZshowVersion();
-        case 'B': return cmdZshowBookings();
-        default:  return [`ZTPF001E ZSHOW ${args[0] || ''} — unknown subcommand. Use E P S T O V B`];
+        case 'E': case 'ENTRY':               return cmdZshowEntry();
+        case 'P': case 'POOL': case 'POOLS':  return cmdZshowPools();
+        case 'S': case 'SYS': case 'SYSTEM':  return cmdZshowSystem();
+        case 'T': case 'TRANS':               return cmdZshowTrans();
+        case 'O': case 'OPER':                return cmdZshowOper();
+        case 'V': case 'VERSION':             return cmdZshowVersion();
+        case 'B': case 'BOOK': case 'BOOKINGS': return cmdZshowBookings();
+        case 'UTIL':                          return cmdZshowUtil();
+        case 'LOCK': case 'LOCKS':            return cmdZshowLock();
+        case 'PROG': case 'APPL':             return cmdZshowProg();
+        case 'MQP': case 'QUEUE':             return cmdZshowMqp();
+        case 'ALLOC':                         return cmdZshowAlloc();
+        default:  return [`ZTPF001E ZSHOW ${args[0] || ''} — unknown subcommand. Use E P S T O V B UTIL LOCK PROG MQP ALLOC`];
       }
     case 'ZTEST':
       if (args[0] === 'ENTRY' && args[1]) return cmdZtestEntry(args[1]);
-      return ['ZTPF002E Syntax: ZTEST ENTRY,<ecbname>'];
+      return cmdZtest(args);
     case 'ZBOOK':
       if (args.length < 4) return ['ZTPF851E Syntax: ZBOOK passenger,flight,date,seat[,bcn,sav]'];
       return cmdZbook(args[0], args[1], args[2], args[3], args[4], args[5]);
@@ -373,6 +436,78 @@ function cmdZshowBookings() {
   return lines;
 }
 
+function cmdZshowUtil() {
+  return [
+    `ZTPF110I CPU UTILIZATION — 16 I-STREAMS ONLINE`,
+    `ZTPF110I  RANGE       I-STREAMS`,
+    `ZTPF110I  ---------   ---------`,
+    `ZTPF110I  0 - 25%         3`,
+    `ZTPF110I  26 - 50%        9`,
+    `ZTPF110I  51 - 75%        4`,
+    `ZTPF110I  76 - 100%       0`,
+    `ZTPF111I SYSTEM AVERAGE: 38%   BUSIEST: CP07 AT 61%`,
+    `ZTPF112I CPU-LOOP DETECTION: NONE   MPIF: LOOSELY-COUPLED (1 PROC)`,
+  ];
+}
+
+function cmdZshowLock() {
+  return [
+    `ZTPF120I LOCK TABLE — HELD RECORD / RESOURCE LOCKS`,
+    `ZTPF120I HOLDER  RESOURCE           TYPE   WAITERS  HELD-MS`,
+    `ZTPF120I ------  -----------------  -----  -------  -------`,
+    `ZTPF120I BKNG    PNR#00A4F210       EXCL         0       12`,
+    `ZTPF120I FARES   FARE#0117C088      SHARE        2       88`,
+    `ZTPF120I RSVP    SEAT#00C41A90      EXCL         1       41`,
+    `ZTPF120I PAYM    ACCT#00920C14      EXCL         7    4,210`,
+    `ZTPF122I 4 LOCKS HELD   10 ECB(S) WAITING`,
+    `ZTPF123W PAYM HAS HELD ACCT#00920C14 FOR 4,210ms — LONGEST HOLD`,
+  ];
+}
+
+function cmdZshowProg() {
+  const lines = [
+    `ZTPF130I PROGRAM ALLOCATION TABLE — ${ECB_TABLE.length} LOADED`,
+    `ZTPF130I NAME    TYPE    BASE-ADDR  VERSION   STATE`,
+    `ZTPF130I ------  ------  ---------  --------  ------`,
+  ];
+  for (const e of ECB_TABLE) {
+    const base = 0x00C10000
+               + ((e.name.charCodeAt(0) & 0x0F) << 12)
+               + ((e.name.charCodeAt(1) & 0x0F) << 6);
+    const ver = `1.${String((e.name.charCodeAt(0) % 9) + 1).padStart(2, '0')}.${String(e.name.charCodeAt(e.name.length - 1) % 9).padStart(2, '0')}`;
+    const priv = e.priv ? ' [PRIV]' : '';
+    lines.push(`ZTPF130I ${e.name.padEnd(6)}  ${e.type.padEnd(6)}  ${hex8(base).slice(2)}   ${ver.padEnd(8)}  ${e.status.padEnd(6)}${priv}`);
+  }
+  lines.push(`ZTPF132I END OF PROGRAM ALLOCATION TABLE`);
+  return lines;
+}
+
+function cmdZshowMqp() {
+  return [
+    `ZTPF140I MESSAGE / PROCESSOR QUEUE STATUS`,
+    `ZTPF141I INPUT LIST     :        12 ENTRIES`,
+    `ZTPF142I READY LIST     :         4 ENTRIES`,
+    `ZTPF143I DEFERRED LIST  :     1,842 ENTRIES   <-- ELEVATED`,
+    `ZTPF144I CROSS LIST     :         0 ENTRIES`,
+    `ZTPF145I SUSPEND LIST   :         3 ENTRIES`,
+    `ZTPF146W DEFERRED LIST DEPTH ABNORMAL — RUN ZTEST ENTRY,PAYM`,
+  ];
+}
+
+function cmdZshowAlloc() {
+  return [
+    `ZTPF150I FIXED-FILE RECORD ALLOCATION`,
+    `ZTPF150I REC-TYPE   SIZE   PRIME     OVERFLOW   USED%`,
+    `ZTPF150I ---------  -----  --------  ---------  -----`,
+    `ZTPF150I #PNRREC     1055   400,000     40,000     72%`,
+    `ZTPF150I #FARREC      381   120,000     12,000     54%`,
+    `ZTPF150I #SEATREC     224   250,000     25,000     63%`,
+    `ZTPF150I #ACCREC      767   200,000     20,000     91%  ***`,
+    `ZTPF152I END OF ALLOCATION DISPLAY`,
+    `ZTPF153W #ACCREC AT 91% — PAYMENT POSTING WILL FAIL IF PRIME FILLS`,
+  ];
+}
+
 // bcn/sav are optional — omitted entirely, ZBOOK books exactly as it
 // always has (Book 1 and Book 4 both document and teach the plain
 // 4-argument form; that path is untouched, byte-for-byte, same
@@ -438,6 +573,205 @@ function cmdZtestEntry(name) {
   return lines;
 }
 
+// ── ZTEST interactive debugger ───────────────────────────────────────────
+// Everything except `ZTEST ENTRY,<ecb>` (still handled in dispatchCommand)
+// lands here. Models the real z/TPF debugger: START attaches to a program,
+// then BP / STEP / GO / DISPLAY / REG / STOR / TRACE / STOP.
+function cmdZtest(args) {
+  switch (args[0] || '') {
+    case 'START':                       return ztestStart(args[1]);
+    case 'STOP': case 'END': case 'QUIT': return ztestStop();
+    case 'DISPLAY': case 'D': case 'STATUS': return ztestDisplay();
+    case 'BP': case 'AT': case 'BREAK':  return ztestBp(args[1]);
+    case 'CLEAR': case 'DELETE':         return ztestClear(args[1]);
+    case 'STEP':                         return ztestStep();
+    case 'GO': case 'G': case 'RUN':     return ztestGo();
+    case 'REG': case 'GPR':              return ztestReg(args[1], args[2]);
+    case 'STOR': case 'STORAGE': case 'DUMP': return ztestStor(args[1], args[2]);
+    case 'TRACE':                        return ztestTrace(args[1]);
+    default:
+      return [
+        `ZTPF002E Syntax: ZTEST ENTRY,<ecbname>   (entry-point probe)`,
+        `ZTPF002I    or   ZTEST START,<prog> | DISPLAY | BP,addr | CLEAR,addr|ALL`,
+        `ZTPF002I         ZTEST STEP | GO | REG,n[,val] | STOR,addr[,len] | TRACE ON|OFF | STOP`,
+      ];
+  }
+}
+
+function ztestNotActive() {
+  return [`ZTPF720E NO ZTEST DEBUG SESSION ACTIVE — ZTEST START,<prog> FIRST`];
+}
+
+function ztestParseAddr(s) {
+  if (!s) return NaN;
+  return parseInt(String(s).replace(/^0X/, ''), 16);
+}
+
+function ztestStart(name) {
+  if (!name) return [`ZTPF720E Syntax: ZTEST START,<prog>`];
+  const prog = name.toUpperCase();
+  const ecb = ECB_TABLE.find(e => e.name === prog);
+  if (!ecb) return [`ZTPF720E PROGRAM ${prog} NOT FOUND IN DIRECTORY`];
+  if (ZTEST_SESSION.active) {
+    return [`ZTPF720E DEBUG SESSION ALREADY ACTIVE ON ${ZTEST_SESSION.prog} — ZTEST STOP FIRST`];
+  }
+  const base = (0x00C10000 + ((prog.charCodeAt(0) & 0x0F) << 12)) >>> 0;
+  const len  = 0x200 + ((prog.charCodeAt(prog.length - 1) & 0x0F) << 5);
+  Object.assign(ZTEST_SESSION, {
+    active: true, prog, base, pc: base,
+    regs: ztestSeedRegs(prog), bps: [], trace: false, steps: 0,
+  });
+  return [
+    `ZTPF720I ZTEST DEBUG SESSION STARTED — PROGRAM: ${prog} (${ecb.type})`,
+    `ZTPF720I ENTRY POINT LOADED @ ${hex8(base)}   LENGTH ${hex8(len).slice(2)}`,
+    `ZTPF720I EXECUTION SUSPENDED AT ENTRY — NEXT: ${instrAt(base)}`,
+    `ZTPF720I SET BREAKPOINTS WITH ZTEST BP,addr THEN ZTEST GO — ZTEST DISPLAY FOR STATE`,
+  ];
+}
+
+function ztestStop() {
+  if (!ZTEST_SESSION.active) return ztestNotActive();
+  const { prog, steps } = ZTEST_SESSION;
+  ZTEST_SESSION.active = false;
+  ZTEST_SESSION.prog = '';
+  return [`ZTPF726I ZTEST DEBUG SESSION ENDED — PROGRAM: ${prog}   ${steps} INSTRUCTION(S) STEPPED`];
+}
+
+function ztestDisplay() {
+  if (!ZTEST_SESSION.active) return ztestNotActive();
+  const s = ZTEST_SESSION;
+  const r = s.regs.map(hex8);
+  const lines = [
+    `ZTPF721I ZTEST SESSION — PROGRAM: ${s.prog}   STATE: ${s.pc === s.base ? 'AT ENTRY' : 'STOPPED'}`,
+    `ZTPF721I PSW: 070C0000 ${hex8(0x80000000 | s.pc)}   NEXT: ${instrAt(s.pc)}`,
+    `ZTPF721I GPR  0-3 : ${r[0]} ${r[1]} ${r[2]} ${r[3]}`,
+    `ZTPF721I GPR  4-7 : ${r[4]} ${r[5]} ${r[6]} ${r[7]}`,
+    `ZTPF721I GPR  8-11: ${r[8]} ${r[9]} ${r[10]} ${r[11]}`,
+    `ZTPF721I GPR 12-15: ${r[12]} ${r[13]} ${r[14]} ${r[15]}`,
+    s.bps.length
+      ? `ZTPF721I BREAKPOINTS: ${s.bps.map(hex8).join('  ')}   (${s.bps.length})`
+      : `ZTPF721I BREAKPOINTS: NONE SET`,
+    `ZTPF721I TRACE: ${s.trace ? 'ON' : 'OFF'}   STEPPED: ${s.steps}`,
+  ];
+  if (s.prog === 'PAYM') {
+    lines.push(`ZTPF721W R13 SAVE-AREA CHAIN SHOWS 1,842 UNPOSTED ITEMS — CYC-0826`);
+  }
+  return lines;
+}
+
+function ztestBp(addrArg) {
+  if (!ZTEST_SESSION.active) return ztestNotActive();
+  if (!addrArg) return [`ZTPF727E Syntax: ZTEST BP,<hex-address>`];
+  const addr = ztestParseAddr(addrArg);
+  if (Number.isNaN(addr)) return [`ZTPF727E INVALID ADDRESS: ${addrArg}`];
+  const a = addr >>> 0;
+  if (ZTEST_SESSION.bps.includes(a)) return [`ZTPF727W BREAKPOINT ALREADY SET @ ${hex8(a)}`];
+  ZTEST_SESSION.bps.push(a);
+  ZTEST_SESSION.bps.sort((x, y) => x - y);
+  return [`ZTPF727I BREAKPOINT SET @ ${hex8(a)}   (${ZTEST_SESSION.bps.length} ACTIVE)`];
+}
+
+function ztestClear(addrArg) {
+  if (!ZTEST_SESSION.active) return ztestNotActive();
+  if (!addrArg) return [`ZTPF728E Syntax: ZTEST CLEAR,<hex-address>|ALL`];
+  if (addrArg === 'ALL' || addrArg === '*') {
+    const n = ZTEST_SESSION.bps.length;
+    ZTEST_SESSION.bps = [];
+    return [`ZTPF728I ALL BREAKPOINTS CLEARED   (${n} REMOVED)`];
+  }
+  const a = ztestParseAddr(addrArg) >>> 0;
+  const idx = ZTEST_SESSION.bps.indexOf(a);
+  if (idx === -1) return [`ZTPF728W NO BREAKPOINT AT ${hex8(a)}`];
+  ZTEST_SESSION.bps.splice(idx, 1);
+  return [`ZTPF728I BREAKPOINT CLEARED @ ${hex8(a)}   (${ZTEST_SESSION.bps.length} REMAINING)`];
+}
+
+function ztestStep() {
+  if (!ZTEST_SESSION.active) return ztestNotActive();
+  const s = ZTEST_SESSION;
+  const at = s.pc;
+  const executed = instrAt(at);
+  s.regs[1] = (s.regs[1] + 4) >>> 0;   // move a register so DISPLAY changes
+  s.pc = (s.pc + 4) >>> 0;
+  s.steps++;
+  const lines = [
+    `ZTPF722I STEP @ ${hex8(at)}   EXECUTED: ${executed}`,
+    `ZTPF722I R1 = ${hex8(s.regs[1])}   PSW NOW 070C0000 ${hex8(0x80000000 | s.pc)}`,
+    `ZTPF722I NEXT: ${instrAt(s.pc)}`,
+  ];
+  if (s.bps.includes(s.pc)) lines.push(`ZTPF722W NEXT INSTRUCTION IS A BREAKPOINT @ ${hex8(s.pc)}`);
+  return lines;
+}
+
+function ztestGo() {
+  if (!ZTEST_SESSION.active) return ztestNotActive();
+  const s = ZTEST_SESSION;
+  const from = s.pc;
+  const ahead = s.bps.filter(b => b > s.pc).sort((a, b) => a - b);
+  if (ahead.length) {
+    const hit = ahead[0];
+    const count = (hit - s.pc) >> 2;
+    s.pc = hit;
+    s.steps += count;
+    s.regs[1] = (s.regs[1] + count * 4) >>> 0;
+    return [
+      `ZTPF723I GO — RESUMING FROM ${hex8(from)}`,
+      `ZTPF723W BREAKPOINT REACHED @ ${hex8(hit)}   (AFTER ${count} INSTRUCTION(S))`,
+      `ZTPF723I NEXT: ${instrAt(hit)} — ZTEST DISPLAY FOR STATE`,
+    ];
+  }
+  s.pc = s.base;
+  s.regs[15] = 0x00000000;
+  return [
+    `ZTPF723I GO — RESUMING FROM ${hex8(from)}`,
+    `ZTPF723I PROGRAM ${s.prog} RAN TO COMPLETION — R15 = 00000000 (EXIT OK)`,
+    `ZTPF723I SESSION STILL ACTIVE, PC RESET TO ENTRY — ZTEST STOP TO END`,
+  ];
+}
+
+function ztestReg(numArg, valArg) {
+  if (!ZTEST_SESSION.active) return ztestNotActive();
+  if (numArg === undefined) return [`ZTPF729E Syntax: ZTEST REG,<0-15>[,<hex-value>]`];
+  const n = parseInt(numArg, 10);
+  if (Number.isNaN(n) || n < 0 || n > 15) return [`ZTPF729E REGISTER OUT OF RANGE: ${numArg} (0-15)`];
+  if (valArg === undefined) return [`ZTPF729I GPR ${n} = ${hex8(ZTEST_SESSION.regs[n])}`];
+  const v = ztestParseAddr(valArg);
+  if (Number.isNaN(v)) return [`ZTPF729E INVALID VALUE: ${valArg}`];
+  const old = ZTEST_SESSION.regs[n];
+  ZTEST_SESSION.regs[n] = v >>> 0;
+  return [`ZTPF729I GPR ${n} SET TO ${hex8(v)}   (WAS ${hex8(old)})`];
+}
+
+function ztestStor(addrArg, lenArg) {
+  if (!ZTEST_SESSION.active) return ztestNotActive();
+  if (!addrArg) return [`ZTPF724E Syntax: ZTEST STOR,<hex-address>[,<len>]`];
+  const base = ztestParseAddr(addrArg);
+  if (Number.isNaN(base)) return [`ZTPF724E INVALID ADDRESS: ${addrArg}`];
+  let len = parseInt(lenArg, 10);
+  if (Number.isNaN(len) || len <= 0) len = 32;
+  len = Math.min(len, 128);
+  const bytes = ztestBytes(base >>> 0, len);
+  const lines = [`ZTPF725I STORAGE @ ${hex8(base)}   ${len} BYTE(S)`];
+  for (let off = 0; off < len; off += 8) {
+    const row = bytes.slice(off, off + 8);
+    const hexpart = row.map(hex2).join(' ');
+    const chrpart = row.map(b => {
+      const c = EBCDIC_TO_ASCII[b];
+      return (c >= 0x20 && c < 0x7F) ? String.fromCharCode(c) : '.';
+    }).join('');
+    lines.push(`ZTPF725I ${hex8((base >>> 0) + off)}  ${hexpart.padEnd(23)}  *${chrpart}*`);
+  }
+  return lines;
+}
+
+function ztestTrace(arg) {
+  if (!ZTEST_SESSION.active) return ztestNotActive();
+  const a = (arg || '').toUpperCase();
+  if (a !== 'ON' && a !== 'OFF') return [`ZTPF722E Syntax: ZTEST TRACE ON|OFF`];
+  ZTEST_SESSION.trace = (a === 'ON');
+  return [`ZTPF722I INSTRUCTION TRACE ${a}${a === 'ON' ? ' — STEP/GO WILL LOG EACH INSTRUCTION' : ''}`];
+}
+
 function cmdZstop(arg) {
   if (arg === 'RPRT') {
     return [
@@ -483,7 +817,18 @@ function cmdHelp(priv) {
     `ZTPF000I ZSHOW O         — Show active operators`,
     `ZTPF000I ZSHOW V         — Show system version`,
     `ZTPF000I ZSHOW B         — Show active bookings`,
+    `ZTPF000I ZSHOW UTIL      — CPU utilization detail`,
+    `ZTPF000I ZSHOW LOCK      — Held record/resource locks`,
+    `ZTPF000I ZSHOW PROG      — Program allocation table`,
+    `ZTPF000I ZSHOW MQP       — Message/processor queue status`,
+    `ZTPF000I ZSHOW ALLOC     — Fixed-file record allocation`,
     `ZTPF000I ZTEST ENTRY,ecb — Test entry point response`,
+    `ZTPF000I ZTEST START,prog — Attach the interactive debugger`,
+    `ZTPF000I ZTEST DISPLAY   — Show debugger registers and state`,
+    `ZTPF000I ZTEST BP,addr / CLEAR,addr|ALL — Manage breakpoints`,
+    `ZTPF000I ZTEST STEP / GO — Single-step / run to breakpoint or exit`,
+    `ZTPF000I ZTEST REG,n[,v] / STOR,addr[,len] — Registers / storage`,
+    `ZTPF000I ZTEST TRACE ON|OFF / STOP — Trace toggle / end session`,
     `ZTPF000I ZBOOK passenger,flight,date,seat[,bcn,sav] — Create a PNR`,
     `ZTPF000I ZLOOK pnr       — Look up a PNR`,
     `ZTPF000I ZCXL pnr        — Cancel a PNR`,
@@ -571,7 +916,7 @@ function screenConsole(operId, role, outputLog) {
     const line = logLines[i] || '';
     let color = COL_WHITE;
     if (/ZTPF[89]\d{2}[EW]/.test(line)) color = COL_RED;
-    else if (/ZTPF[3][0-9]{2}W/.test(line)) color = COL_YELLOW;
+    else if (/ZTPF\d{3}W/.test(line)) color = COL_YELLOW;
     else if (/ZTPF\d{3}I/.test(line))    color = COL_TURQ;
     fields.push({ row: 2 + i, col: 0, fa: FA_PROTECTED, color });
     fields.push({ row: 2 + i, col: 1, text: line.slice(0,78) });
