@@ -2191,6 +2191,72 @@ const _WALKTHROUGHS = [
     ],
   },
 
+  // ── IBM i (AS/400) Shipped Profile Audit ─────────────────────────
+  {
+    id:       'as400-shipped-profile-audit',
+    category: 'security',
+    title:    'IBM i: Shipped Profile Audit',
+    desc:     'Audits every IBM-supplied (Q*) user profile with DSPUSRPRF and flags the ones that can still sign on interactively or still hold a default password — the profiles a hardening pass must render non-interactive.',
+    steps: [
+      {
+        title: 'Why this is separate from the profile enumerator',
+        body:  'The User Profile Enumerator hunts privilege-escalation paths across every profile. This tool has one job: check the IBM-supplied Q* profiles against a single rule. IBM ships QSECOFR, QSYSOPR, QPGMR, QUSER, QSYS, QSRV, QTMHHTTP and more because daemons and base services run under them, so you cannot delete them. The control is to make them non-interactive: STATUS(*DISABLED) or PASSWORD(*NONE). Background subsystem jobs still run under a *NONE profile; only 5250, FTP, and SSH sign-on is blocked.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Prerequisites',
+        body:  'Connect to a TN5250 (IBM i / AS/400) target, sign on, and stop at a menu with a "Selection or command" line. The tool issues WRKUSRPRF and one DSPUSRPRF per Q* profile from that command line. It is fully read-only.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click the 🔒 button in the OIA status bar and enter the security password (default: 2970) to reveal the Security tab.',
+        highlight: 'secBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Find the Shipped Profile Audit',
+        body:  'Scroll to the IBM i SECURITY (AS/400) section. The Shipped Profile Audit is directly below the User Profile & Special-Authority Enumerator.',
+        highlight: 'as400ShipprfBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Run the audit',
+        body:  'Click ▶ AUDIT SHIPPED PROFILES. The tool issues WRKUSRPRF, keeps only the names starting with Q, then returns to the menu and issues DSPUSRPRF for each one, reading Status, the No password (*NONE) line, the date the password was last changed, the special-authority list, and the default-password warning. The status line shows progress.',
+        highlight: 'as400ShipprfBtn',
+        autoFn: 'startAs400ShippedAudit',
+        autoLabel: 'Run it for me',
+      },
+      {
+        title: 'Read the findings',
+        body:  'CRITICAL — password equals the profile name (QSECOFR and QSRV on the mock). HIGH — a privileged Q* profile still enabled with a password. MEDIUM — a non-privileged Q* profile still enabled with a password (QPGMR, QSYSOPR, QUSER, QTMHHTTP). OK — non-interactive already: QSYS ships *DISABLED and PASSWORD(*NONE) even though it holds every special authority, which is exactly the target state for the rest. QSECOFR is judged as the break-glass account — a non-default password is expected there, only a default password or a missing change date is flagged.',
+        highlight: 'as400ShipprfOut',
+        autoFn: null,
+      },
+      {
+        title: 'Cross-check: service tools and QAUTOVRT',
+        body:  'Two checks this tool does not cover, both worth doing by hand. Type STRSST on the command line to see the Service Tools user IDs — QSECOFR, 22222222, and QSRV all still hold their shipped default password. Then run the System Value Security Analyzer: QAUTOVRT is *NOMAX on the mock, which lets the system auto-create unlimited virtual sign-on devices — set it to 0. Type ANZDFTPWD ACTION(*NONE) for IBM\'s own default-password report.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Remediate and re-run',
+        body:  'On the mock you can harden a profile and watch the finding clear. Type CHGUSRPRF USRPRF(QUSER) PASSWORD(*NONE) STATUS(*DISABLED) on the command line, then run the audit again — QUSER moves to OK. On a real system, do this for every Q* profile except your one break-glass admin account, set that one to a complex vaulted password, and change the SST/DST service-tool IDs via STRSST → 8 → 2.',
+        highlight: 'as400ShipprfBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Export the audit',
+        body:  'Click ↓ Export IBM i Audit CSV to save the results, combined with any other IBM i tool output from this session, for your report.',
+        highlight: 'as400ShipprfOut',
+        autoFn: 'as400ExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
   // ── IBM i (AS/400) Object / *PUBLIC Authority Scanner ─────────────
   {
     id:       'as400-object-scanner',

@@ -287,6 +287,8 @@ const SYSVALS = {
                 note: 'Idle sessions are never disconnected — an unattended terminal stays signed on.' },
   QLMTSECOFR: { value: '0',       text: 'Limit security officer device access', weak: true,
                 note: '0 = *ALLOBJ/*SERVICE users can sign on at ANY device, not just controlled ones.' },
+  QAUTOVRT:   { value: '*NOMAX',  text: 'Autoconfigure virtual devices',        weak: true,
+                note: '*NOMAX lets the system auto-create unlimited virtual (Telnet / pass-through) device descriptions — a network attacker gets an endless supply of sign-on target devices with no admin action. Set to 0, or a small controlled number.' },
   QALWOBJRST: { value: '*ALL',    text: 'Allow object restore option',        weak: true,
                 note: '*ALL permits restoring security-sensitive and state programs — a supply-chain/restore attack vector.' },
   QCRTAUT:    { value: '*CHANGE', text: 'Default public authority for new objects', weak: true,
@@ -301,28 +303,40 @@ const SYSVALS = {
 const SYSVAL_KEYS = Object.keys(SYSVALS);
 
 // User profiles (DSPUSRPRF/WRKUSRPRF) with special authorities.
+// `pwdNone` — password is *NONE (profile cannot sign on interactively, but
+// background subsystem jobs still run under it). `pwdChg` — date password
+// last changed, or *NA when there is no password. The IBM-supplied (Q*)
+// profiles are seeded as an UNHARDENED factory box: enabled, with passwords,
+// which is exactly what the Shipped Profile Audit tool flags. QSYS is the
+// one shipped example already done right (disabled + *NONE).
 const USRPRFS = [
   { name: 'QSECOFR',  text: 'Security officer',              status: '*ENABLED',  group: '*NONE',
     specialAuth: ['*ALLOBJ','*SECADM','*SAVSYS','*JOBCTL','*SERVICE','*SPLCTL','*AUDIT','*IOSYSCFG'],
-    lmtcpb: '*NO',  pwdExpiry: '*NOMAX',  pwdDefault: true,  lastSignon: '07/06/26 08:14:22' },
+    lmtcpb: '*NO',  pwdExpiry: '*NOMAX',  pwdDefault: true,  pwdNone: false, pwdChg: '06/28/26', lastSignon: '07/06/26 08:14:22' },
   { name: 'QPGMR',    text: 'Programmer',                    status: '*ENABLED',  group: '*NONE',
     specialAuth: ['*JOBCTL','*SPLCTL','*SAVSYS'],
-    lmtcpb: '*NO',  pwdExpiry: '*NOMAX',  pwdDefault: false, lastSignon: '07/05/26 17:02:10' },
+    lmtcpb: '*NO',  pwdExpiry: '*NOMAX',  pwdDefault: false, pwdNone: false, pwdChg: '01/14/25', lastSignon: '07/05/26 17:02:10' },
   { name: 'APPADMIN', text: 'Application service account',   status: '*ENABLED',  group: '*NONE',
     specialAuth: ['*ALLOBJ','*JOBCTL'],
-    lmtcpb: '*NO',  pwdExpiry: '*NOMAX',  pwdDefault: false, lastSignon: '07/07/26 02:00:05' },
+    lmtcpb: '*NO',  pwdExpiry: '*NOMAX',  pwdDefault: false, pwdNone: false, pwdChg: '07/01/26', lastSignon: '07/07/26 02:00:05' },
   { name: 'JSMITH',   text: 'John Smith - Accounting',       status: '*ENABLED',  group: 'GRPACCT',
     specialAuth: [],
-    lmtcpb: '*YES', pwdExpiry: '*SYSVAL', pwdDefault: false, lastSignon: '07/06/26 09:30:44' },
+    lmtcpb: '*YES', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: false, pwdChg: '07/02/26', lastSignon: '07/06/26 09:30:44' },
   { name: 'QSYSOPR',  text: 'System operator',               status: '*ENABLED',  group: '*NONE',
     specialAuth: ['*JOBCTL','*SAVSYS'],
-    lmtcpb: '*NO',  pwdExpiry: '*SYSVAL', pwdDefault: false, lastSignon: '07/06/26 06:00:00' },
+    lmtcpb: '*NO',  pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: false, pwdChg: '03/22/25', lastSignon: '07/06/26 06:00:00' },
   { name: 'QUSER',    text: 'Default user profile',          status: '*ENABLED',  group: '*NONE',
     specialAuth: [],
-    lmtcpb: '*NO',  pwdExpiry: '*SYSVAL', pwdDefault: false, lastSignon: '*NONE' },
+    lmtcpb: '*NO',  pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: false, pwdChg: '11/03/24', lastSignon: '*NONE' },
   { name: 'QSRV',     text: 'Service representative',        status: '*DISABLED', group: '*NONE',
     specialAuth: ['*ALLOBJ','*SERVICE'],
-    lmtcpb: '*NO',  pwdExpiry: '*NOMAX',  pwdDefault: true,  lastSignon: '*NONE' },
+    lmtcpb: '*NO',  pwdExpiry: '*NOMAX',  pwdDefault: true,  pwdNone: false, pwdChg: '01/01/24', lastSignon: '*NONE' },
+  { name: 'QSYS',     text: 'Internal system profile',       status: '*DISABLED', group: '*NONE',
+    specialAuth: ['*ALLOBJ','*SECADM','*SAVSYS','*JOBCTL','*SERVICE','*SPLCTL','*AUDIT','*IOSYSCFG'],
+    lmtcpb: '*NO',  pwdExpiry: '*NOMAX',  pwdDefault: false, pwdNone: true,  pwdChg: '*NA',      lastSignon: '*NONE' },
+  { name: 'QTMHHTTP', text: 'IBM HTTP Server for i',         status: '*ENABLED',  group: '*NONE',
+    specialAuth: [],
+    lmtcpb: '*NO',  pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: false, pwdChg: '02/09/25', lastSignon: '*NONE' },
 ];
 
 // Objects and their *PUBLIC / private authorities (DSPOBJAUT/WRKOBJ).
@@ -630,6 +644,23 @@ function runCommand(raw) {
       if (!USRPRFS.find(p => p.name === name))    return { type: 'error', message: `CPF2204 - User profile ${name} not found.` };
       return { type: 'detail', screen: 'USRPRF_DETAIL', target: name };
     }
+    case 'CHGUSRPRF': {
+      // Minimal remediation support so the Shipped Profile Audit walkthrough
+      // can harden a profile and re-run. Only PASSWORD(*NONE) and STATUS are
+      // modelled; the change persists for the life of the mock process.
+      const name = params.USRPRF;
+      if (!name)                               return { type: 'error', message: 'CPD0043 - Keyword USRPRF required for CHGUSRPRF.' };
+      const p = USRPRFS.find(u => u.name === name);
+      if (!p)                                  return { type: 'error', message: `CPF2204 - User profile ${name} not found.` };
+      const changed = [];
+      if (params.PASSWORD === '*NONE') { p.pwdNone = true; p.pwdDefault = false; p.pwdChg = '*NA'; changed.push('PASSWORD(*NONE)'); }
+      if (params.STATUS === '*DISABLED') { p.status = '*DISABLED'; changed.push('STATUS(*DISABLED)'); }
+      if (params.STATUS === '*ENABLED')  { p.status = '*ENABLED';  changed.push('STATUS(*ENABLED)'); }
+      if (!changed.length) return { type: 'error', message: `CPD2CB1 - CHGUSRPRF ${name}: the mock models only PASSWORD(*NONE) and STATUS.` };
+      return { type: 'error', message: `Profile ${name} changed — ${changed.join(' ')}.` };
+    }
+    case 'STRSST': return { type: 'detail', screen: 'SST_DETAIL', target: null };
+    case 'ANZDFTPWD': return { type: 'detail', screen: 'ANZDFTPWD_DETAIL', target: null };
     case 'WRKOBJ': return { type: 'screen', screen: 'OBJ_LIST' };
     case 'DSPOBJAUT': {
       const obj = params.OBJ; // LIB/NAME or NAME
@@ -744,6 +775,7 @@ const LIST_META = {
 const DETAIL_SCREENS = new Set([
   'SYSVAL_DETAIL', 'USRPRF_DETAIL', 'OBJ_DETAIL', 'NETA', 'JOBD_DETAIL', 'AUTL_DETAIL',
   'SPLF_DETAIL', 'JOB_DETAIL', 'LIB_DETAIL', 'LIBL_DETAIL', 'MBR_DETAIL',
+  'SST_DETAIL', 'ANZDFTPWD_DETAIL',
 ]);
 
 const AID_F3  = 0x33;
@@ -892,6 +924,70 @@ function screenSysvalDetail(name) {
   return wrapPanel(fields, { row: 22, col: 44 });
 }
 
+// System Service Tools (SST) — the shipped service-tools user IDs. On a
+// factory box these all carry their default password and are enabled. A real
+// STRSST needs *SERVICE and walks a menu tree; the mock renders the
+// "Work with service tools user IDs" list (STRSST option 8) directly.
+const SST_IDS = [
+  { id: 'QSECOFR',  status: '*ENABLED',  factory: true  },
+  { id: '22222222', status: '*ENABLED',  factory: true  },
+  { id: 'QSRV',     status: '*ENABLED',  factory: true  },
+  { id: '11111111', status: '*DISABLED', factory: false },
+];
+function screenSstDetail() {
+  const fields = [
+    { row: 0,  col: 24, text: 'System Service Tools (SST)', input: false },
+    { row: 2,  col: 2,  text: 'Work with service tools user IDs        (STRSST option 8)', input: false },
+    { row: 4,  col: 2,  text: 'Service tools user ID     Status        Password', input: false },
+    { row: 5,  col: 2,  text: '---------------------     ----------    ---------', input: false },
+  ];
+  SST_IDS.forEach((s, i) => {
+    fields.push({ row: 6 + i, col: 2,  text: s.id.padEnd(24, ' '), input: false });
+    fields.push({ row: 6 + i, col: 28, text: s.status.padEnd(12, ' '), input: false, attr: s.status === '*DISABLED' ? ATTR_GREEN : ATTR_WHITE });
+    fields.push({ row: 6 + i, col: 42, text: '*DEFAULT', input: false, attr: s.factory ? ATTR_RED : ATTR_WHITE });
+    if (s.factory) fields.push({ row: 6 + i, col: 54, text: '<= shipped default', input: false, attr: ATTR_RED });
+  });
+  const n = SST_IDS.filter(s => s.factory).length;
+  fields.push({ row: 6 + SST_IDS.length + 1, col: 2,
+    text: `*** ${n} service tools user ID(s) still hold the shipped default password ***`, input: false, attr: ATTR_RED });
+  fields.push({ row: 6 + SST_IDS.length + 2, col: 2,
+    text: 'Remediate: STRSST -> 8 -> option 2 to change; disable IDs not in use.', input: false });
+  fields.push({ row: 6 + SST_IDS.length + 3, col: 2,
+    text: 'If SST itself is disabled, do this from DST at the console instead.', input: false });
+  fields.push({ row: 22, col: 2, text: 'Press Enter to return', input: false });
+  fields.push({ row: 23, col: 2, text: 'F3=Exit   F12=Cancel', input: false });
+  fields.push({ row: 22, col: 44, text: '', input: true, length: 1 });
+  return wrapPanel(fields, { row: 22, col: 44 });
+}
+
+// ANZDFTPWD — Analyze Default Passwords. Reads live from USRPRFS, so after a
+// CHGUSRPRF ... PASSWORD(*NONE) the offending profile drops off on a re-run.
+function screenAnzdftpwdDetail() {
+  const hits = USRPRFS.filter(p => p.pwdDefault);
+  const fields = [
+    { row: 0,  col: 26, text: 'Analyze Default Passwords', input: false },
+    { row: 2,  col: 2,  text: 'Profiles whose password is the same as the profile name:', input: false },
+    { row: 4,  col: 2,  text: 'Profile      Status        Special authority', input: false },
+    { row: 5,  col: 2,  text: '----------   ----------    -----------------', input: false },
+  ];
+  hits.forEach((p, i) => {
+    const priv = p.specialAuth.includes('*ALLOBJ') || p.specialAuth.includes('*SECADM');
+    fields.push({ row: 6 + i, col: 2,  text: p.name.padEnd(13, ' '), input: false, attr: ATTR_RED });
+    fields.push({ row: 6 + i, col: 15, text: p.status.padEnd(12, ' '), input: false, attr: p.status === '*DISABLED' ? ATTR_GREEN : ATTR_WHITE });
+    fields.push({ row: 6 + i, col: 29, text: priv ? '*ALLOBJ / *SECADM' : '(none notable)', input: false, attr: priv ? ATTR_RED : ATTR_WHITE });
+  });
+  fields.push({ row: 6 + Math.max(hits.length, 1) + 1, col: 2,
+    text: hits.length
+      ? `*** ${hits.length} profile(s) have a default password — see QPRTANLPWD spooled file ***`
+      : 'No profiles have a default password.', input: false, attr: hits.length ? ATTR_RED : ATTR_GREEN });
+  if (!hits.length) fields.push({ row: 7, col: 2, text: '(none)', input: false, attr: ATTR_GREEN });
+  fields.push({ row: 20, col: 2, text: 'ACTION(*NONE) was used — no profiles were changed or disabled.', input: false });
+  fields.push({ row: 22, col: 2, text: 'Press Enter to return', input: false });
+  fields.push({ row: 23, col: 2, text: 'F3=Exit   F12=Cancel', input: false });
+  fields.push({ row: 22, col: 44, text: '', input: true, length: 1 });
+  return wrapPanel(fields, { row: 22, col: 44 });
+}
+
 function screenUsrprfList(ctx) {
   const fields = [
     { row: 0, col: 28, text: 'Work with User Profiles', input: false },
@@ -925,16 +1021,18 @@ function screenUsrprfDetail(name) {
     { row: 5,  col: 2,  text: `Group profile  . . . . . . . . :   ${p.group}`, input: false },
     { row: 6,  col: 2,  text: `Limit capabilities . . . . . . :   ${p.lmtcpb}`, input: false, attr: p.lmtcpb === '*NO' ? ATTR_RED : ATTR_WHITE },
     { row: 7,  col: 2,  text: `Password expiration interval . :   ${p.pwdExpiry}`, input: false, attr: p.pwdExpiry === '*NOMAX' ? ATTR_RED : ATTR_WHITE },
-    { row: 8,  col: 2,  text: `Last sign-on . . . . . . . . . :   ${p.lastSignon}`, input: false },
-    { row: 10, col: 2,  text: 'Special authority  . . . . . . :', input: false },
+    { row: 8,  col: 2,  text: `No password (*NONE)  . . . . . :   ${p.pwdNone ? '*YES' : '*NO'}`, input: false, attr: p.pwdNone ? ATTR_GREEN : ATTR_WHITE },
+    { row: 9,  col: 2,  text: `Date password last changed . . :   ${p.pwdChg || '*NA'}`, input: false },
+    { row: 10, col: 2,  text: `Last sign-on . . . . . . . . . :   ${p.lastSignon}`, input: false },
+    { row: 12, col: 2,  text: 'Special authority  . . . . . . :', input: false },
   ];
   const sa = p.specialAuth.length ? p.specialAuth : ['*NONE'];
   sa.forEach((a, i) => {
     const priv = a === '*ALLOBJ' || a === '*SECADM' || a === '*SERVICE';
-    fields.push({ row: 11 + i, col: 36, text: a, input: false, attr: priv ? ATTR_RED : ATTR_GREEN });
+    fields.push({ row: 13 + i, col: 36, text: a, input: false, attr: priv ? ATTR_RED : ATTR_GREEN });
   });
   if (p.pwdDefault) {
-    fields.push({ row: 20, col: 2, text: '*** WARNING: password matches profile name (default) ***', input: false, attr: ATTR_RED });
+    fields.push({ row: 21, col: 2, text: '*** WARNING: password matches profile name (default) ***', input: false, attr: ATTR_RED });
   }
   fields.push({ row: 22, col: 2,  text: 'Press Enter to continue', input: false });
   fields.push({ row: 23, col: 2,  text: 'F3=Exit   F12=Cancel', input: false });
@@ -1672,6 +1770,10 @@ function handleConnection(socket) {
       ds = screenSysvalList({ message: menuMessage });
     } else if (screen === 'SYSVAL_DETAIL') {
       ds = screenSysvalDetail(cmdTarget);
+    } else if (screen === 'SST_DETAIL') {
+      ds = screenSstDetail();
+    } else if (screen === 'ANZDFTPWD_DETAIL') {
+      ds = screenAnzdftpwdDetail();
     } else if (screen === 'USRPRF_LIST') {
       ds = screenUsrprfList({ message: menuMessage });
     } else if (screen === 'USRPRF_DETAIL') {

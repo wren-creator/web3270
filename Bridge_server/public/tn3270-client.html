@@ -1095,6 +1095,15 @@
             <div id="as400UsrprfOut" style="max-height:220px;overflow-y:auto;margin-top:4px"></div>
           </div>
 
+          <!-- Shipped Profile Audit (IBM-supplied Q* profiles) -->
+          <div style="margin-top:10px;padding-top:8px;border-top:1px solid #1a1a1a">
+            <div style="font-size:10px;color:var(--text-muted);font-weight:600;letter-spacing:.06em;margin-bottom:4px">SHIPPED PROFILE AUDIT (IBM-SUPPLIED Q* PROFILES)</div>
+            <div class="sec-panel-hint" style="margin-bottom:6px">WRKUSRPRF then DSPUSRPRF for every IBM-supplied (Q*) profile. IBM ships these for daemons and base services so they can't be deleted — the control is to make them non-interactive. A Q* profile that is STATUS(*ENABLED) with a password other than *NONE is a finding; a default password (password = profile name) is CRITICAL. QSECOFR is treated as the break-glass account.</div>
+            <button id="as400ShipprfBtn" class="sec-inject-btn" onclick="startAs400ShippedAudit()" style="background:#1a2a1a">▶ AUDIT SHIPPED PROFILES</button>
+            <div id="as400ShipprfStatus" style="font-size:10px;color:var(--text-muted);margin-top:4px;min-height:14px"></div>
+            <div id="as400ShipprfOut" style="max-height:220px;overflow-y:auto;margin-top:4px"></div>
+          </div>
+
           <!-- Object / *PUBLIC Authority Scanner -->
           <div style="margin-top:10px;padding-top:8px;border-top:1px solid #1a1a1a">
             <div style="font-size:10px;color:var(--text-muted);font-weight:600;letter-spacing:.06em;margin-bottom:4px">OBJECT / *PUBLIC AUTHORITY SCANNER</div>

@@ -68,6 +68,7 @@ const SYSVAL_RULES = {
   QPWDLVL:    { risk: 'MEDIUM', test: v => v === '0',                       rec: 'Raise password level (>= 2)' },
   QINACTITV:  { risk: 'MEDIUM', test: v => v === '*NONE',                   rec: 'Set an inactive-job timeout' },
   QLMTSECOFR: { risk: 'HIGH',   test: v => v === '0',                       rec: 'Restrict *ALLOBJ/*SERVICE device access (1)' },
+  QAUTOVRT:   { risk: 'MEDIUM', test: v => v !== '0',                       rec: 'Set QAUTOVRT to 0 (or a small controlled limit) — *NOMAX auto-creates unlimited virtual sign-on devices' },
   QALWOBJRST: { risk: 'HIGH',   test: v => v === '*ALL',                    rec: 'Restrict object restore (*NONE)' },
   QCRTAUT:    { risk: 'HIGH',   test: v => v === '*CHANGE' || v === '*ALL', rec: 'Default new-object public authority to *EXCLUDE/*USE' },
   QRETSVRSEC: { risk: 'MEDIUM', test: v => v === '1',                       rec: 'Do not retain decryptable server security data (0)' },
@@ -163,6 +164,56 @@ export function evaluateProfile({ status, lmtCpb, auths, defaultPwd }) {
   if (status === '*DISABLED' && findings.length) findings.push('(currently *DISABLED)');
 
   return { risk, finding: findings.join(', ') || 'No significant exposure' };
+}
+
+// ── Shipped Profile Audit (IBM-supplied Q* profiles) ───────────────────────
+// IBM ships dozens of Q* profiles that system daemons and base services run
+// under, so they can't be deleted — the control is to make them
+// non-interactive. A shipped profile is compliant when it CANNOT sign on:
+// STATUS(*DISABLED) or PASSWORD(*NONE). Background subsystem jobs still run
+// under a *NONE profile; only 5250 / FTP / SSH sign-on is blocked.
+//
+// QSECOFR is the documented exception — it keeps a (vaulted) password as the
+// break-glass account — but a *default* password (password = profile name)
+// on ANY shipped profile is always CRITICAL.
+//   status    — '*ENABLED' | '*DISABLED'      (parseLabelValue 'Status')
+//   pwdNone   — '*YES' | '*NO'                (parseLabelValue 'No password')
+//   defaultPwd— boolean, from the detail-screen warning line
+//   auths     — parseSpecialAuths(screenText)
+//   pwdChg    — 'mm/dd/yy' | '*NA'            (parseLabelValue 'Date password last changed')
+const _PRIV_AUTHS = ['*ALLOBJ', '*SECADM', '*SERVICE', '*SPLCTL'];
+export function evaluateShippedProfile({ name, status, pwdNone, defaultPwd, auths = [], pwdChg }) {
+  const noPwd    = pwdNone === '*YES';
+  const disabled = status === '*DISABLED';
+  const privList = auths.filter(a => _PRIV_AUTHS.includes(a));
+  const privNote = privList.length ? ` — holds ${privList.join('/')}` : '';
+  const fix      = `CHGUSRPRF USRPRF(${name}) PASSWORD(*NONE)` + (name === 'QSECOFR' ? '' : ' STATUS(*DISABLED)');
+
+  if (defaultPwd) {
+    return { risk: 'CRITICAL', finding:
+      `Password still equals the profile name${privNote}. ` +
+      (name === 'QSECOFR'
+        ? 'Set a complex vaulted password on the break-glass account now.'
+        : `${fix} — or a vaulted password if this is a break-glass account.`) };
+  }
+
+  if (name === 'QSECOFR') {
+    if (disabled) return { risk: 'MEDIUM', finding:
+      'Break-glass account is *DISABLED — confirm a documented, tested path exists to re-enable it (DST/console).' };
+    const undated = !pwdChg || /^\*N/i.test(pwdChg);
+    return { risk: undated ? 'LOW' : 'OK', finding: undated
+      ? 'Break-glass account: enabled, non-default password, but no recorded change date — rotate and log it.'
+      : `Break-glass account: enabled with a non-default password (expected). Last changed ${pwdChg}.` };
+  }
+
+  if (noPwd || disabled) {
+    const how = [noPwd && 'PASSWORD(*NONE)', disabled && 'STATUS(*DISABLED)'].filter(Boolean).join(' + ');
+    return { risk: 'OK', finding: `Non-interactive (${how}) — background jobs still run under it. Compliant.` };
+  }
+
+  return { risk: privList.length ? 'HIGH' : 'MEDIUM', finding:
+    `Interactive sign-on still possible: STATUS(*ENABLED) with a password${privNote}. ` +
+    `${fix} — subsystem jobs keep working, 5250/FTP/SSH sign-on is blocked.` };
 }
 
 // ── Wave 2: Network attributes (DSPNETA) ────────────────────────────────────

@@ -2009,6 +2009,126 @@ Run the User Profile Enumerator first (it rates `APPADMIN` CRITICAL for `*ALLOBJ
 
 ---
 
+## Part 35 — IBM i (AS/400) Shipped Profile Audit
+
+Parts 33–34 audit system values, user profiles, objects, and the extended
+surfaces. Part 35 adds an eighth IBM i tool with one narrow job: check the
+**IBM-supplied (`Q*`) user profiles** against a single hardening rule.
+
+IBM ships dozens of `Q*` profiles — `QSECOFR`, `QSYSOPR`, `QPGMR`, `QUSER`,
+`QSYS`, `QSRV`, `QTMHHTTP`, and more. System daemons and base services run
+under them, so they **cannot be deleted**. The control is to make them
+**non-interactive**: `STATUS(*DISABLED)` or `PASSWORD(*NONE)`. Background
+subsystem jobs still run under a `*NONE` profile; only interactive sign-on
+(5250, FTP, SSH) is blocked. The one profile that legitimately keeps a
+password is the designated break-glass administrative account.
+
+### Location
+
+Security panel → IBM i SECURITY (AS/400) → SHIPPED PROFILE AUDIT
+
+### How it works
+
+Same two-phase drill as the User Profile Enumerator (Part 33B): `WRKUSRPRF`
+to collect the profile list, then a `DSPUSRPRF USRPRF(name)` per profile from
+the menu command line. This tool keeps only the names beginning with `Q` and,
+from each detail screen, reads `Status`, the **`No password (*NONE)`** line,
+the **`Date password last changed`** line, the special-authority list, and the
+default-password warning. `evaluateShippedProfile` (in `as400sec-parse.js`)
+classifies each one.
+
+### Risk levels
+
+| Rating | Condition |
+|---|---|
+| CRITICAL | password equals the profile name (a default password) — on any shipped profile, including a disabled one |
+| HIGH | a **privileged** (`*ALLOBJ`/`*SECADM`/`*SERVICE`/`*SPLCTL`) `Q*` profile still `STATUS(*ENABLED)` with a password |
+| MEDIUM | a non-privileged `Q*` profile still `STATUS(*ENABLED)` with a password |
+| LOW | `QSECOFR` enabled with a non-default password but no recorded change date |
+| OK | non-interactive already — `PASSWORD(*NONE)` and/or `STATUS(*DISABLED)`; or `QSECOFR` enabled with a dated non-default password |
+
+`QSECOFR` is judged as the break-glass account: a non-default password there is
+*expected*, only a default password (CRITICAL) or a missing change date (LOW)
+is flagged, and a disabled `QSECOFR` is flagged MEDIUM as a recovery-path
+concern.
+
+### What the mock seeds
+
+`USRPRFS` in `mock-lpar/mock-as400.js` ships an **unhardened factory box**:
+
+| Profile | Seeded state | Audit result |
+|---|---|---|
+| `QSECOFR` | `*ENABLED`, password = `QSECOFR` | CRITICAL (default password) |
+| `QSRV` | `*DISABLED`, password = `QSRV` | CRITICAL (default password, even disabled) |
+| `QPGMR` | `*ENABLED`, has `*SPLCTL` | HIGH |
+| `QSYSOPR`, `QUSER`, `QTMHHTTP` | `*ENABLED`, password set | MEDIUM |
+| `QSYS` | `*DISABLED` + `PASSWORD(*NONE)` | OK — the target state, despite holding every special authority |
+
+### Teaching scenario
+
+Run the audit against the mock. The spread is deliberate: two CRITICAL, one
+HIGH, three MEDIUM, one OK. The instructive pair is `QSYS` versus everything
+else — `QSYS` holds all eight special authorities and is still **OK**, because
+it is disabled *and* has no password. That is exactly the state the six
+findings need to reach. `QSRV` is the other lesson: it is already `*DISABLED`,
+which feels safe, but its password still equals its name, so a `DST`/`SST`
+recovery or a re-enable would hand an attacker `*ALLOBJ *SERVICE` — a default
+password is CRITICAL regardless of status.
+
+Then remediate one live: type
+
+```
+CHGUSRPRF USRPRF(QUSER) PASSWORD(*NONE) STATUS(*DISABLED)
+```
+
+on the command line and re-run the audit — `QUSER` moves to **OK**. The mock
+models `CHGUSRPRF` for `PASSWORD(*NONE)` and `STATUS` only, and the change
+persists for the life of the mock process (restart to reset).
+
+### Two cross-checks the tool does not cover
+
+- **Service Tools user IDs.** Type `STRSST` — the mock renders the "Work with
+  service tools user IDs" list (SST option 8). `QSECOFR`, `22222222`, and
+  `QSRV` all still hold their **shipped default password**. On a real system,
+  change them via `STRSST` → 8 → 2, or from `DST` at the console if SST itself
+  is disabled.
+- **`QAUTOVRT`.** Run the System Value Security Analyzer (Part 33A). `QAUTOVRT`
+  is `*NOMAX` on the mock, which lets the system auto-create unlimited virtual
+  (Telnet / pass-through) device descriptions — an endless supply of sign-on
+  target devices. Set it to `0`, or a small controlled limit.
+- **`ANZDFTPWD`.** Type `ANZDFTPWD ACTION(*NONE)` for IBM's own default-password
+  report (mock: lists `QSECOFR` and `QSRV`, takes no action).
+
+### Remediation on a real system
+
+The mock is for practising the read; the fix on a real IBM i is a `CHGUSRPRF`
+per shipped profile plus an automated audit you can schedule. Point the audit
+at `QSYS2.USER_INFO`:
+
+```sql
+--  Shipped (Q*) profile posture — findings only.
+--  ACS "Run SQL Scripts", STRSQL, or RUNSQLSTM. Caller needs *ALLOBJ + *SECADM
+--  for USER_DEFAULT_PASSWORD to be populated (it is NULL on 7.5 SF99950 L5+,
+--  where ANZDFTPWD is the supported default-password check instead).
+SELECT AUTHORIZATION_NAME AS PROFILE, STATUS,
+       NO_PASSWORD_INDICATOR  AS PWD_IS_NONE,   -- 'NO' = still has a password
+       USER_DEFAULT_PASSWORD  AS DFT_PWD,       -- 'YES' = password equals name
+       PASSWORD_CHANGE_DATE, SPECIAL_AUTHORITIES
+  FROM QSYS2.USER_INFO
+  WHERE (AUTHORIZATION_NAME LIKE 'Q%' AND NO_PASSWORD_INDICATOR = 'NO'
+         AND STATUS = '*ENABLED' AND AUTHORIZATION_NAME <> 'QSECOFR')
+     OR USER_DEFAULT_PASSWORD = 'YES'
+  ORDER BY AUTHORIZATION_NAME;
+```
+
+Wrap it in a scheduled CL program (`RUNSQLSTM` the query into an outfile,
+`CPYF ... TOFILE(*PRINT)`, then `ANZDFTPWD ACTION(*NONE)`), and
+`ADDJOBSCDE` it weekly. **Expected secure state:** the findings query returns
+only your break-glass account (or nothing); every other `Q*` profile is
+`STATUS(*DISABLED)` or `PASSWORD(*NONE)`; `ANZDFTPWD` reports zero profiles.
+
+---
+
 ## Appendix — The .rec.json format
 
 The recording file is plain JSON and human-readable:

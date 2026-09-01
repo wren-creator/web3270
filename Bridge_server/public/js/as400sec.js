@@ -25,7 +25,7 @@
 import { state } from './state.js';
 import { saveAs } from './utils.js';
 import {
-  parseProfileNames, parseLabelValue, parseSpecialAuths, evaluateProfile,
+  parseProfileNames, parseLabelValue, parseSpecialAuths, evaluateProfile, evaluateShippedProfile,
   parseSysvals, evaluateSysval, parseObjects, parseObjectGrants, evaluateObjectDetail,
   parseNetattrs, evaluateNetattr, parseJobds, evaluateJobd,
   parseAutls, parseAutlSecured, evaluateAutl, parseActjobs, evaluateActjob,
@@ -89,6 +89,28 @@ const TOOLS = {
       },
     },
   },
+  // Shipped Profile Audit — same discovery/drill machinery as USRPRF, but
+  // scoped to IBM-supplied (Q*) profiles and classified against the
+  // "shipped profile must be non-interactive" rule (evaluateShippedProfile).
+  SHIPPRF: {
+    cmd: 'WRKUSRPRF', title: 'Work with User Profiles', ids: 'Shipprf',
+    drill: {
+      collect: lines => parseProfileNames(lines)
+        .filter(n => /^Q/.test(n))
+        .map(n => ({ key: n, cmd: `DSPUSRPRF USRPRF(${n})` })),
+      detailTitle: 'Display User Profile',
+      parse: (lines, text, item) => {
+        const status     = parseLabelValue(lines, 'Status');
+        const pwdNone    = parseLabelValue(lines, 'No password');
+        const pwdChg     = parseLabelValue(lines, 'Date password last changed');
+        const auths      = parseSpecialAuths(text);
+        const defaultPwd = text.includes('password matches profile name');
+        const { risk, finding } = evaluateShippedProfile({ name: item.key, status, pwdNone, defaultPwd, auths, pwdChg });
+        const pwd = pwdNone === '*YES' ? '*NONE' : 'password set';
+        return { name: item.key, value: `${status} · ${pwd}`, risk, detail: finding };
+      },
+    },
+  },
   OBJ: {
     cmd: 'WRKOBJ', title: 'Work with Objects', ids: 'Obj',
     drill: {
@@ -148,7 +170,7 @@ const TOOLS = {
 };
 
 // Persisted results per tool (so all tables/CSV survive across scans).
-const RESULTS = { USRPRF: [], SYSVAL: [], OBJ: [], NETATTR: [], JOBD: [], AUTL: [], ACTJOB: [] };
+const RESULTS = { USRPRF: [], SHIPPRF: [], SYSVAL: [], OBJ: [], NETATTR: [], JOBD: [], AUTL: [], ACTJOB: [] };
 
 // ── State machine ───────────────────────────────────────────────────────────
 let as400 = { running: false, tool: null, expecting: null, items: [], idx: 0 };
@@ -233,6 +255,7 @@ const RISK_ORDER = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3, INFO: 4, OK: 5 };
 // Column headers per tool for the first two data columns (risk/detail are shared).
 const COLS = {
   USRPRF:  ['PROFILE', 'AUTHORITIES'],
+  SHIPPRF: ['Q* PROFILE', 'STATUS / PWD'],
   SYSVAL:  ['SYSTEM VALUE', 'CURRENT'],
   OBJ:     ['OBJECT', '*PUBLIC'],
   NETATTR: ['ATTRIBUTE', 'VALUE'],
@@ -279,6 +302,7 @@ function _start(tool) {
 }
 
 export function startAs400UserScan()    { _start('USRPRF'); }
+export function startAs400ShippedAudit() { _start('SHIPPRF'); }
 export function startAs400SysvalScan()  { _start('SYSVAL'); }
 export function startAs400ObjScan()     { _start('OBJ'); }
 export function startAs400NetattrScan() { _start('NETATTR'); }
@@ -292,6 +316,7 @@ export function as400ExportCsv() {
   const add = (tool, label) => RESULTS[tool].forEach(r => rows.push([label, r.name, r.value, r.risk, r.detail, ts]));
   add('SYSVAL',  'sysval-analyzer');
   add('USRPRF',  'usrprf-enum');
+  add('SHIPPRF', 'shipped-profile-audit');
   add('OBJ',     'object-scanner');
   add('NETATTR', 'netattr-analyzer');
   add('JOBD',    'jobd-privesc');
@@ -304,6 +329,6 @@ export function as400ExportCsv() {
 
 Object.assign(window, {
   as400OnScreen, as400ExportCsv,
-  startAs400UserScan, startAs400SysvalScan, startAs400ObjScan,
+  startAs400UserScan, startAs400ShippedAudit, startAs400SysvalScan, startAs400ObjScan,
   startAs400NetattrScan, startAs400JobdScan, startAs400AutlScan, startAs400ActjobScan,
 });
