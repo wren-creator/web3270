@@ -274,8 +274,8 @@ const _WALKTHROUGHS = [
         autoFn: null,
       },
       {
-        title: 'Load the default wordlist',
-        body:  'Click "Load defaults". If you have put a list at ~/mainframe/default-accounts.txt on the bridge host (one userid:pass per line, # comments allowed) it is loaded verbatim; otherwise the wordlist pre-fills with the most common default credential pairs for the detected subsystem. Each line is USER,PASS in the box — edit it freely or paste your own. On the z/TPF logon screen there is also a "Load default-account list" button in the z/TPF CONSOLE section that does the same thing.',
+        title: 'Load the wordlist',
+        body:  'Two buttons above the box. "Load defaults" fills it with the built-in default credential pairs for the detected subsystem. "Load list" reads ~/mainframe/default-accounts.txt on the bridge host (one userid:pass per line, # comments allowed) and uses it verbatim. Either way each line ends up as USER,PASS in the box — edit it freely or paste your own. On the z/TPF logon screen there is also a "Load default-account list" button in the z/TPF CONSOLE section that does the same as "Load list".',
         highlight: 'probeWordlist',
         autoFn: 'probeLoadDefaults',
         autoLabel: 'Load defaults for me',

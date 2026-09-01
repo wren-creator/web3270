@@ -130,36 +130,38 @@ export function probeDetectSubsystem() {
   return null;
 }
 
-export async function probeLoadDefaults() {
+// Load defaults: the built-in per-subsystem list.
+export function probeLoadDefaults() {
   const det = probeDetectSubsystem();
   const el  = document.getElementById('probeWordlist');
   if (!el) return;
   if (!det) {
-    _probeSetStatus('Navigate to a TSO, z/VM, CICS, or z/TPF logon screen first');
+    _probeSetStatus('Navigate to a TSO, z/VM, CICS, z/TPF, or IBM i logon screen first');
     return;
   }
+  el.value = det.profile.defaults.join('\n');
+  _probeSetStatus(`Built-in defaults loaded for ${det.name} — ${det.profile.defaults.length} pairs`);
+}
 
-  // Prefer an operator-supplied list at ~/mainframe/default-accounts.txt on
-  // the bridge host; fall back to the built-in defaults for the detected
-  // subsystem if the file is absent, empty, or the route is unavailable.
-  let filePairs = null, fileSrc = '';
+// Load list: the operator-supplied wordlist at ~/mainframe/default-accounts.txt
+// on the bridge host (one "userid:pass" or "userid,pass" per line, # comments).
+export async function probeLoadList() {
+  const el = document.getElementById('probeWordlist');
+  if (!el) return;
   try {
     const r = await fetch('/api/default-accounts', { cache: 'no-store' });
-    if (r.ok) {
-      const j = await r.json();
-      if (j && j.found && Array.isArray(j.pairs) && j.pairs.length) {
-        filePairs = j.pairs.filter(p => Array.isArray(p) && p[0] && p[1]);
-        fileSrc   = j.path || '~/mainframe/default-accounts.txt';
-      }
+    const j = r.ok ? await r.json() : null;
+    if (j && j.found && Array.isArray(j.pairs) && j.pairs.length) {
+      const pairs = j.pairs.filter(p => Array.isArray(p) && p[0] && p[1]);
+      el.value = pairs.map(([u, p]) => `${u},${p}`).join('\n');
+      _probeSetStatus(`Loaded ${pairs.length} pair(s) from ${j.path || '~/mainframe/default-accounts.txt'}`);
+      return;
     }
-  } catch { /* offline / route not present → built-in fallback */ }
-
-  if (filePairs && filePairs.length) {
-    el.value = filePairs.map(([u, p]) => `${u},${p}`).join('\n');
-    _probeSetStatus(`Loaded ${filePairs.length} pair(s) from ${fileSrc}`);
-  } else {
-    el.value = det.profile.defaults.join('\n');
-    _probeSetStatus(`Defaults loaded for ${det.name} — ${det.profile.defaults.length} built-in pairs`);
+    _probeSetStatus(j && j.reason === 'multi-tenant'
+      ? 'File list disabled on this deployment — use Load defaults'
+      : 'No ~/mainframe/default-accounts.txt on the bridge host — use Load defaults');
+  } catch {
+    _probeSetStatus('Could not reach the bridge to read the account list');
   }
 }
 
@@ -188,6 +190,7 @@ export async function startProbe() {
   document.getElementById('probeStopBtn').style.display  = '';
   _probeSetStatus(`Probing ${sysName} — ${pairs.length} pair(s)`);
 
+  let consecErr = 0;
   for (let i = 0; i < pairs.length; i++) {
     if (_probeAborted) break;
     const [userid, password] = pairs[i];
@@ -209,6 +212,7 @@ export async function startProbe() {
       else if (profile.success(txt)) result = 'SUCCESS';
       else                           result = 'FAILURE';
 
+      consecErr = 0;
       _probeResults.push({ userid, password, result, elapsed, ts: new Date().toISOString() });
       _probeRenderResults();
 
@@ -223,8 +227,18 @@ export async function startProbe() {
     } catch (err) {
       _probeResults.push({ userid, password, result: 'ERR', elapsed: null, ts: new Date().toISOString() });
       _probeRenderResults();
-      _probeSetStatus('Error: ' + err.message);
-      break;
+      if (/no active session/i.test(err.message)) {
+        _probeSetStatus('No active session — connect and navigate to a logon screen'); break;
+      }
+      // A single attempt getting no host reply shouldn't kill the run, but a
+      // run of them means something systemic — usually MITM Intercept holding
+      // the Enter AID, or the wrong logon screen.
+      if (++consecErr >= 2) {
+        _probeSetStatus(`Stopped — ${consecErr} attempts got no host reply. If ⚡ MITM Intercept is on, turn it off (it holds the probe's Enter). Otherwise confirm you're on the logon screen.`);
+        break;
+      }
+      _probeSetStatus(`No reply for ${userid} — retrying next`);
+      await new Promise(r => setTimeout(r, delay));
     }
   }
 
@@ -282,4 +296,4 @@ function _probeRenderResults() {
     }).join('') + '</table>';
 }
 
-Object.assign(window, { probeOnScreen, probeDetectSubsystem, probeLoadDefaults, startProbe, stopProbe, probeExportCsv });
+Object.assign(window, { probeOnScreen, probeDetectSubsystem, probeLoadDefaults, probeLoadList, startProbe, stopProbe, probeExportCsv });

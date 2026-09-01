@@ -708,10 +708,13 @@
       <div class="sec-section">
         <div class="sec-section-hdr">RACF PROBE</div>
         <div class="sec-section-body">
-          <div class="sec-panel-hint" style="margin-bottom:6px">Auto-probes TSO, z/VM, or CICS logon screens with a credential wordlist. Navigate to a logon screen first. FOR AUTHORIZED USE ONLY.</div>
+          <div class="sec-panel-hint" style="margin-bottom:6px">Auto-probes TSO, z/VM, CICS, z/TPF, or IBM i logon screens with a credential wordlist. Navigate to a logon screen first. FOR AUTHORIZED USE ONLY.</div>
           <div class="sec-row" style="justify-content:space-between;align-items:center;margin-bottom:4px">
             <span style="font-size:10px;color:var(--text-muted)">Wordlist — USERID,PASSWORD per line</span>
-            <button onclick="probeLoadDefaults()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:1px 8px;cursor:pointer">Load defaults</button>
+            <span style="display:flex;gap:4px">
+              <button onclick="probeLoadDefaults()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:1px 8px;cursor:pointer" title="Built-in list for the detected system">Load defaults</button>
+              <button onclick="probeLoadList()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:1px 8px;cursor:pointer" title="Read ~/mainframe/default-accounts.txt on the bridge host">Load list</button>
+            </span>
           </div>
           <textarea id="probeWordlist" rows="5"
             placeholder="IBMUSER,SYS1&#10;MAINT,MAINT&#10;# lines starting with # are comments"
@@ -879,7 +882,7 @@
           </div>
           <div id="tpfLogonHint" class="sec-panel-hint" style="display:none;margin-bottom:6px;border:1px solid #3a2e1a;background:#181410;padding:6px 8px;border-radius:3px;color:#d0b070">
             At the operator logon screen. Before signing on, use <b>RACF PROBE</b> (above) to check for default operator credentials.
-            <button onclick="probeLoadDefaults()" style="margin-top:5px;display:block;background:#0d1a2d;border:1px solid #1e3a5f;border-radius:3px;color:#4a9fd4;font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer;font-weight:700">Load default-account list</button>
+            <button onclick="probeLoadList()" style="margin-top:5px;display:block;background:#0d1a2d;border:1px solid #1e3a5f;border-radius:3px;color:#4a9fd4;font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer;font-weight:700">Load default-account list</button>
           </div>
           <div class="sec-row">
             <button id="tpfEnumBtn" class="sec-panel-btn" onclick="tpfEnumEcbs()">

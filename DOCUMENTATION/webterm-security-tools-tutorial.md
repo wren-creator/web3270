@@ -596,7 +596,7 @@ The probe reads the current screen text plus the OIA APP field to detect which s
 
 1. Unlock the Security panel (🔒 Sec tab) and scroll to **RACF PROBE**
 2. Navigate the terminal to a TSO, z/VM, CICS, z/TPF, or IBM i Sign On screen
-3. Click **Load defaults** — if `~/mainframe/default-accounts.txt` exists on the bridge host it is used verbatim (one `userid:pass` per line, `#` comments allowed), otherwise the wordlist pre-fills with the built-in defaults for the detected subsystem
+3. Populate the wordlist — **Load defaults** fills it with the built-in list for the detected subsystem; **Load list** reads `~/mainframe/default-accounts.txt` on the bridge host (one `userid:pass` per line, `#` comments) and uses it verbatim
 4. Adjust the wordlist if needed (one `USERID,PASSWORD` per line; lines starting with `#` are comments)
 5. Set the delay between attempts (500–10000 ms; default 1500 ms)
 6. Click **▶ START** — the probe begins immediately, updating the results table after each attempt
