@@ -288,7 +288,7 @@ const _WALKTHROUGHS = [
       },
       {
         title: 'Keep going after a match (optional)',
-        body:  'By default the probe stops at the first SUCCESS. Check "Keep going after a match" to have it sign that account off instead (LOGOFF / SIGNOFF / #CP LOGOFF / CESF LOGOFF / PF3, per subsystem), wait to land back on the logon screen, and continue the wordlist in order — enumerating every valid default credential rather than just the first. LOCKOUT still stops the run.',
+        body:  'By default the probe stops at the first SUCCESS. Check "Keep going after a match" to have it sign that account off instead (LOGOFF HOLD / SIGNOFF / #CP LOGOFF / CESF LOGOFF / PF3, per subsystem), wait to land back on the logon screen, and continue the wordlist in order — enumerating every valid default credential rather than just the first. On z/OS the probe sends LOGOFF HOLD, not bare LOGOFF, so the terminal stays on VTAM and the logon panel redisplays on the same session; bare LOGOFF would drop to VTAM or an installation session manager and stall the sweep. LOCKOUT still stops the run.',
         highlight: 'probeEnumAll',
         autoFn: null,
       },
@@ -300,7 +300,7 @@ const _WALKTHROUGHS = [
       },
       {
         title: 'Read the live results',
-        body:  'Each row appears as responses arrive. SUCCESS (green) — credentials accepted. FAILURE (amber) — rejected, probe continues. LOCKOUT (red) — RACF suspended the user; the probe stops immediately to prevent further lockouts. A plain run stops at the first SUCCESS; with "Keep going after a match" checked, every valid pair shows green and the final status lists them all. Against a z/TPF or IBM i logon there is no attempt lockout modelled — on the mocks, TPFOP01/TPF1 (z/TPF) and QSECOFR/QSECOFR (IBM i) each succeed on the first try.',
+        body:  'Each row appears as responses arrive. SUCCESS (green) — credentials accepted. FAILURE (amber) — rejected, probe continues. LOCKOUT (red) — RACF suspended the user; the probe stops immediately to prevent further lockouts. A plain run stops at the first SUCCESS; with "Keep going after a match" checked, every valid pair shows green and the final status lists them all. On the mock fleet: mock z/OS accepts IBMUSER/SYS1 (and locks the account after 3 misses); mock z/VM accepts OPERATOR/OPERATOR, MAINT/MAINT and MAINT730/MAINT730 while the other z/VM defaults now come back FAILURE (valid userid, wrong password — HCPLGA050E) and base CP has no attempt lockout; z/TPF (TPFOP01/TPF1) and IBM i (QSECOFR/QSECOFR) each succeed on the first try with no lockout modelled.',
         highlight: 'probeResultsTable',
         autoFn: null,
       },

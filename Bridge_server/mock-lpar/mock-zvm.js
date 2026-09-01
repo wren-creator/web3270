@@ -6,13 +6,15 @@
  * Screen flow:
  *
  *   CP Logon screen
- *       │  ENTER (any userid / password)
+ *       │  ENTER — password checked against ZVM_DIRECTORY (blank password
+ *       │          still walks in; unknown userid → HCPLGA054E; wrong
+ *       │          password → HCPLGA050E)
  *       ▼
  *   z/VM CP Ready prompt
  *       │  "ipl cms"   or "cms"  → CMS Ready
  *       │  "cp q <x>"             → CP Query response
  *       │  "disc"                 → Disconnect (simulated)
- *       │  "logoff"               → Disconnect
+ *       │  "logoff" / "#cp logoff" → back to the CP logon screen (TCP stays up)
  *       ▼
  *   CMS Ready prompt
  *       │  "filelist"             → FILELIST screen
@@ -34,6 +36,29 @@ const LOG     = (process.env.LOG_LEVEL || 'info') === 'debug';
 const LU_NAME = process.env.MOCK_ZVM_LU    || 'ZVMLU01';
 const SYSNAME = process.env.MOCK_ZVM_SYSID || 'ZVMPROD';
 const VMID    = process.env.MOCK_ZVM_VMID  || 'ZVMSYS1';   // z/VM system name shown on banner
+
+// Mock CP directory — userid: password (case-insensitive, CP folds both to
+// uppercase). Rules, mirroring how a real un-ESM'd z/VM behaves:
+//   • unknown userid            → HCPLGA054E ... not in CP directory
+//   • known userid, wrong pass  → HCPLGA050E LOGON unsuccessful--incorrect password
+//   • known userid, BLANK pass  → logs on anyway. This is the deliberate
+//     carve-out that keeps every CMS walkthrough and the "type any userid"
+//     demo path working; the RACF PROBE always sends a password, so it still
+//     gets a real accept/reject split.
+// Base CP has no failed-attempt lockout (that needs an external security
+// manager), so the probe's LOCKOUT case never fires here — same as a real
+// system without RACF for z/VM.
+const ZVM_DIRECTORY = {
+  OPERATOR: 'OPERATOR',   // default system operator — weak on purpose
+  MAINT:    'MAINT',      // IBM maintenance id, historically shipped weak
+  MAINT730: 'MAINT730',   // version-stamped maintenance id
+  ZVMOP:    'ZVMOP99',    // real password — probe sees a valid id, wrong pw
+  TCPIP:    'TCPIP42',
+  TCPMAINT: 'NETWRK88',
+  PMAINT:   'PRIVM123',
+  AUTOLOG1: 'ALOG1XY',
+  DEMO:     'DEMO',       // walkthrough id; blank password also walks in
+};
 
 // CMS "EXEC" content — single source of truth shared between the XEDIT
 // display (screenXedit, below) and actually running one (case 'cms': dispatch).
@@ -189,12 +214,12 @@ function wrapEOR(data) {
 
 // ── Screen builders ───────────────────────────────────────────────
 
-function screenLogon() {
+function screenLogon(lastMsg = '') {
   const now      = new Date();
   const timeStr  = now.toLocaleTimeString('en-US', { hour12: false });
   const dateStr  = now.toLocaleDateString('en-GB');
 
-  return buildScreen(true, [
+  const fields = [
     // Banner line
     { row:0,  col:0,  fa: FA_PROTECTED_HIGH },
     { row:0,  col:1,  text: `z/VM  Version 7 Release 3.0,  Service Level  ${VMID}` },
@@ -232,7 +257,15 @@ function screenLogon() {
     { row:23, col:0,  text: `RUNNING   ${SYSNAME}` },
     { row:23, col:30, fa: FA_PROTECTED },
     { row:23, col:30, text: 'PF3=Quit' },
-  ]);
+  ];
+
+  // CP rejection message (HCPLGA054E / HCPLGA050E) from the last logon try.
+  if (lastMsg) fields.push(
+    { row:18, col:0, fa: FA_PROTECTED_HIGH },
+    { row:18, col:1, text: String(lastMsg).slice(0, 78) },
+  );
+
+  return buildScreen(true, fields);
 }
 
 function screenCPReady(userid, lastMsg = '') {
@@ -565,6 +598,7 @@ function handleConnection(socket) {
   // Application state
   let currentScreen = 'logon';
   let userid        = 'DEMO';
+  let lastLogonMsg  = '';
   let lastCPMsg     = '';
   let lastCMSMsg    = '';
   let cpQueryResult = '';
@@ -664,7 +698,7 @@ function handleConnection(socket) {
    mockCols = cols;
    let ds;
    switch (currentScreen) {
-    case 'logon': ds = screenLogon(); break;
+    case 'logon': ds = screenLogon(lastLogonMsg); break;
     case 'cp': ds = screenCPReady(userid, lastCPMsg); break;
     case 'cms': ds = screenCMSReady(userid, lastCMSMsg); break;
     case 'filelist': ds = screenFilelist(userid); break;
@@ -837,11 +871,30 @@ function handleConnection(socket) {
     switch (currentScreen) {
       case 'logon':
         if (aid === AID_ENTER) {
-          userid = (fieldMap[734] || fieldMap[Object.keys(fieldMap)[0]] || 'DEMO').slice(0, 8).toUpperCase();
-          log(`[${id}] Logon: userid='${userid}'`);
-          currentScreen = 'cp';
-          lastCPMsg     = '';
-          sendCurrentScreen();
+          // USERID field data starts at row 9 col 14 (734), PASSWORD at
+          // row 10 col 14 (814). Fall back to splitting the concatenated
+          // field text if a client addresses the fields slightly off.
+          const parts = inputText.split(/\s+/).filter(Boolean);
+          const enteredUser = (fieldMap[734] || parts[0] || 'DEMO').slice(0, 8).toUpperCase().trim();
+          const enteredPass = (fieldMap[814] || parts[1] || '').toUpperCase().trim();
+          userid = enteredUser || 'DEMO';
+          const dirPass = ZVM_DIRECTORY[userid];
+          if (dirPass === undefined) {
+            lastLogonMsg = `HCPLGA054E ${userid} not in CP directory`;
+            log(`[${id}] Logon rejected — ${userid} not in CP directory`);
+            sendCurrentScreen();
+          } else if (enteredPass !== '' && enteredPass !== dirPass.toUpperCase()) {
+            lastLogonMsg = 'HCPLGA050E LOGON unsuccessful--incorrect password';
+            log(`[${id}] Logon rejected — incorrect password for ${userid}`);
+            sendCurrentScreen();
+          } else {
+            // Correct password, or the blank-password walkthrough carve-out.
+            lastLogonMsg  = '';
+            log(`[${id}] Logon: userid='${userid}'`);
+            currentScreen = 'cp';
+            lastCPMsg     = '';
+            sendCurrentScreen();
+          }
         } else if (aid === AID_PF3) {
           socket.end();
         }
@@ -865,8 +918,20 @@ function handleConnection(socket) {
             cpQueryResult = simulateCPQuery(inputText, userid);
             currentScreen = 'cpquery';
             sendCurrentScreen();
-          } else if (cmd === 'LOGOFF' || cmd === 'LOG' || cmd === 'DISC') {
-            log(`[${id}] Logoff requested`);
+          } else if (cmd === 'LOGOFF' || cmd === 'LOG' || cmd === '#CP LOGOFF') {
+            // Real z/VM: LOGOFF ends the session and redisplays the CP logon
+            // screen on the same terminal connection — it does NOT drop TCP.
+            // (DISC below is the genuine disconnect.) Lets the RACF PROBE's
+            // "keep going after a match" sweep carry on to the next credential.
+            log(`[${id}] LOGOFF — returning to CP logon screen`);
+            userid       = 'DEMO';
+            lastLogonMsg = '';
+            lastCPMsg    = '';
+            lastCMSMsg   = '';
+            currentScreen = 'logon';
+            sendCurrentScreen();
+          } else if (cmd === 'DISC' || cmd === 'DISCONNECT') {
+            log(`[${id}] DISCONNECT requested`);
             socket.end();
           } else if (cmd === 'HELP') {
             cpQueryResult = `CP COMMANDS:\n  IPL CMS       - Load CMS\n  QUERY TIME    - Display time\n  QUERY NAMES   - List logged-on users\n  QUERY STORAGE - Display storage\n  QUERY DASD    - Display DASD\n  LOGOFF        - Logoff\nReady; T=0.01/0.01`;
@@ -915,7 +980,14 @@ function handleConnection(socket) {
             lastCPMsg     = 'CP entered.';
             sendCurrentScreen();
           } else if (cmd === '#CP LOGOFF' || cmd === 'LOGOFF') {
-            socket.end();
+            // Same as LOGOFF from CP — back to the logon screen, TCP stays up.
+            log(`[${id}] LOGOFF from CMS — returning to CP logon screen`);
+            userid       = 'DEMO';
+            lastLogonMsg = '';
+            lastCPMsg    = '';
+            lastCMSMsg   = '';
+            currentScreen = 'logon';
+            sendCurrentScreen();
           } else if (cmd === 'CMS') {
             lastCMSMsg = 'Already in CMS.  Ready; T=0.01/0.01';
             sendCurrentScreen();
@@ -963,7 +1035,7 @@ function handleConnection(socket) {
   function sendCurrentScreen() {
     let ds;
     switch (currentScreen) {
-      case 'logon':    ds = screenLogon();                          break;
+      case 'logon':    ds = screenLogon(lastLogonMsg);              break;
       case 'cp':       ds = screenCPReady(userid, lastCPMsg);       break;
       case 'cpquery':  ds = screenCPQuery(userid, cpQueryResult);   break;
       case 'cms':      ds = screenCMSReady(userid, lastCMSMsg);     break;

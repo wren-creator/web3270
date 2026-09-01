@@ -9,7 +9,11 @@ const _PROBE_PROFILES = {
     success: t => /\bREADY\b|ISPF PRIMARY|ICH70002I/i.test(t),
     lockout: t => /IKJ56421I|AUTHORIZATION FAILURE|REVOKED/i.test(t),
     logon:   t => /TSO\/E LOGON|ENTER USERID/i.test(t),
-    logoff:  { cmd: 'LOGOFF' },
+    // LOGOFF HOLD (not bare LOGOFF): keeps the terminal on VTAM and
+    // redisplays the logon panel on the same session, so the sweep can
+    // carry on. Bare LOGOFF drops the terminal back to VTAM / a session
+    // manager, which varies by installation and breaks "keep going".
+    logoff:  { cmd: 'LOGOFF HOLD' },
     failure: t => /IKJ56425I|IKJ56420I|IKJ56421I|LOGON (rejected|unable|unsuccessful|denied)|not authorized|password.*(not correct|incorrect|expired)/i.test(t),
     defaults: [
       'IBMUSER,SYS1', 'IBMUSER,IBMUSER', 'MAINT,MAINT', 'MAINT,SYS1',

@@ -13,7 +13,11 @@ AID key handling → macro replay → Copilot screen context.
 
 ```
 TSO/E Logon screen
-      │  ENTER (any userid)
+      │  ENTER (IBMUSER/SYS1, DEMO/DEMO, or USER1/PASS1 — 3 misses locks the account)
+      ▼
+TSO READY prompt
+      │  ISPF + ENTER → ISPF Primary Option Menu
+      │  LOGOFF [HOLD] → back to the TSO/E Logon screen (same connection)
       ▼
 ISPF Primary Option Menu
       │  2 + ENTER → Edit (JCL member)
@@ -24,6 +28,27 @@ ISPF Primary Option Menu
 Edit / SDSF screen
       │  PF3 or ENTER → back to ISPF
 ```
+
+`LOGOFF` at the READY prompt mirrors real TSO's `LOGOFF HOLD` — the session
+ends and the logon panel redisplays without dropping TCP, so the RACF PROBE's
+"keep going after a match" sweep can carry on to the next credential.
+
+### Mock z/VM logon (`mock-zvm.js`, port 3271)
+
+The CP LOGON panel checks the password against a small mock CP directory:
+
+| Rule | Result |
+|------|--------|
+| Unknown userid | `HCPLGA054E <userid> not in CP directory` |
+| Known userid, wrong password | `HCPLGA050E LOGON unsuccessful--incorrect password` |
+| Known userid, **blank** password | Logs on anyway — keeps every CMS walkthrough and the "type any userid" demo path working |
+
+Weak-on-purpose entries: `OPERATOR/OPERATOR`, `MAINT/MAINT`, `MAINT730/MAINT730`.
+Real-password entries (probe sees a valid userid, wrong password): `ZVMOP`,
+`TCPIP`, `TCPMAINT`, `PMAINT`, `AUTOLOG1`, plus `DEMO/DEMO`. Base CP has no
+failed-attempt lockout — that needs an external security manager — so the
+probe's LOCKOUT case never fires here. `LOGOFF` / `#CP LOGOFF` returns to the
+CP logon screen on the same connection; `DISC` is the genuine disconnect.
 
 ---
 
@@ -62,7 +87,8 @@ PROD01_HOST=127.0.0.1 PROD01_PORT=3270 PROD01_TLS=false node server.js
 Open `public/tn3270-client.html` in your browser.
 Click **⊕ Connect to LPAR → PROD01**.
 
-You will see the TSO/E Logon screen. Type any userid and press Enter.
+You will see the TSO/E Logon screen. Log on with `IBMUSER` / `SYS1` (or
+`DEMO` / `DEMO`) and press Enter.
 
 ---
 

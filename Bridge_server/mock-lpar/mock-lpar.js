@@ -1620,6 +1620,16 @@ function handleConnection(socket) {
           } else if (cmd.startsWith('LISTCAT')) {
             state.tsoOutput = tryListcat(cmd) || `IKJ56500I COMMAND ${cmd} NOT FOUND`;
             currentScreen = 'tsoCmd'; sendCurrentScreen();
+          } else if (cmd === 'LOGOFF' || cmd.startsWith('LOGOFF ')) {
+            // Real TSO: bare LOGOFF ends the session and drops the terminal
+            // back to VTAM; LOGOFF HOLD (or an installation session manager)
+            // keeps the terminal connected and redisplays the logon panel.
+            // The probe's "keep going after a match" sweep sends LOGOFF HOLD
+            // and expects to land back on the logon screen, so mirror that.
+            log(`[${id}] LOGOFF — returning to logon panel`);
+            loginAttempts = 0;
+            state.readyMsg = '';
+            currentScreen = 'logon'; sendCurrentScreen();
           } else {
             state.tsoOutput = `IKJ56500I COMMAND ${cmd} NOT FOUND\nIKJ56501I ENTER HELP for list of valid commands`;
             currentScreen = 'tsoCmd'; sendCurrentScreen();
@@ -1659,6 +1669,12 @@ function handleConnection(socket) {
           } else if (cmd.startsWith('LISTCAT')) {
             state.tsoOutput = tryListcat(cmd) || `IKJ56500I COMMAND ${cmd} NOT FOUND`;
             sendCurrentScreen();
+          } else if (cmd === 'LOGOFF' || cmd.startsWith('LOGOFF ')) {
+            log(`[${id}] LOGOFF from command shell — returning to logon panel`);
+            loginAttempts = 0;
+            state.readyMsg = '';
+            state.tsoOutput = '';
+            currentScreen = 'logon'; sendCurrentScreen();
           } else {
             state.tsoOutput = `IKJ56500I COMMAND ${cmd} NOT FOUND`;
             sendCurrentScreen();
