@@ -2807,6 +2807,53 @@ const _WALKTHROUGHS = [
     ],
   },
 
+  // ── z/TPF: Hardening Audit ───────────────────────────────────────
+  {
+    id:       'tpf-hardening-audit',
+    category: 'security',
+    title:    'z/TPF: Hardening Audit',
+    desc:     'Sweeps the four surfaces a z/TPF training lab is usually left exposed on — internet daemons (ZINET), CRAS console routing (ZCRAS), the command authorization matrix (ZAUTH), and the POSIX account files — and lists every config leftover as a rated finding.',
+    steps: [
+      {
+        title: 'What this covers',
+        body:  'A stood-up-and-never-locked-down z/TPF lab leaks in four predictable places. ZINET: daemons (FTP, Telnet, HTTP, TFTP) left with anonymous or no authentication. ZCRAS: an alternate Computer Room Agent Set console bound to a TCP/IP line, and student terminal pools that can route restricted operator commands. ZAUTH: the UUSR command-authorization matrix letting a non-admin class reach ZFILE / ZDCP / ZLOGP. POSIX: leftover demo accounts (tpfuser, guest, test) in /etc/passwd with login shells, and real or empty password hashes in /etc/shadow.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Prerequisites',
+        body:  'Be signed on to a z/TPF operator console at the ENTER TPF COMMAND prompt. Any privilege level works — every command the tool issues is a DISPLAY or a ZFILE cat, all read-only. On the mock, that ZFILE is reachable at all is itself one of the findings.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click the 🔒 button in the OIA status bar and enter the security password (default: 2970).',
+        highlight: 'secBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Find the Hardening Audit',
+        body:  'In the z/TPF CONSOLE section, the Hardening Audit is the seventh tool, below the Entry Point Debugger.',
+        highlight: 'tpfHardenBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Run the sweep',
+        body:  'Click ⛨ Hardening Audit. It issues ZINET DISPLAY, ZCRAS DISPLAY, ZAUTH DISPLAY, ZFILE cat /etc/passwd and ZFILE cat /etc/shadow back to back, parses each reply, and collapses everything into one findings table sorted by severity.',
+        highlight: 'tpfHardenBtn',
+        autoFn: 'tpfHardeningAudit',
+        autoLabel: 'Run it for me',
+      },
+      {
+        title: 'Read the findings',
+        body:  'CRITICAL — anonymous FTP, and the /etc/shadow entry for test with no password field at all. HIGH — the unauthenticated HTTP daemon and the no-auth TFTP daemon, CRAS3 bound to a TCP/IP line, POOL2 (STUDENT class) routing restricted commands, ZFILE/ZDCP reachable from STUDENT, and tpfuser/guest carrying weak MD5 hashes with login shells. MEDIUM — Telnet password auth over cleartext. The clean contrast is the system accounts tpf/daemon/sshd: /sbin/nologin shells and ! / * in shadow, which is the state the demo accounts should be in. None of this is a live incident — it is what a lab looks like when the teardown step was skipped.',
+        highlight: 'tpfResults',
+        autoFn: null,
+      },
+    ],
+  },
+
 ];
 
 // ── Engine state ───────────────────────────────────────────────────

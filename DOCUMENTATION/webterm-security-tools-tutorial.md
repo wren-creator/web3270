@@ -2129,6 +2129,104 @@ only your break-glass account (or nothing); every other `Q*` profile is
 
 ---
 
+## Part 36 — z/TPF Security Console, Wave 2
+
+Part 32 covered the original four z/TPF tools (ECB Enumerator, Privilege
+Scanner, Entry Point Prober, Pool Monitor). Wave 2 adds three more to the same
+**z/TPF CONSOLE** section, built on the same screen-scraped `tpf-security.js`
+implementation. The mock (`mock-lpar/mock-tpf.js`) grew a matching command
+surface: `ZSHOW` gained the diagnostic word-form subcommands `UTIL` / `LOCK` /
+`PROG` / `MQP` / `ALLOC`, `ZTEST` gained a full interactive debugger past its
+old `ENTRY` form, and four hardening commands were added — `ZINET DISPLAY`,
+`ZCRAS DISPLAY`, `ZAUTH DISPLAY`, and `ZFILE cat`.
+
+Same prerequisite as Part 32: connect to a z/TPF target (the bundled mock on
+port 3274, or a session profile with host type `TPF`), sign on, and stop at the
+`ENTER TPF COMMAND` console.
+
+---
+
+### System Diagnostics
+
+Runs `ZSHOW UTIL`, `ZSHOW LOCK`, `ZSHOW MQP`, and `ZSHOW ALLOC` in one sweep
+and flags the resource anomalies a containment review cares about.
+
+**Location:** Security panel → z/TPF CONSOLE → SYSTEM DIAGNOSTICS
+
+**How it works:** issues the four diagnostic `ZSHOW` subcommands back to back
+and parses each reply. It flags a lock held over 1,000 ms or with five or more
+waiters, the `DEFERRED` scheduler list above 1,000 entries, and any fixed-file
+record type at or above 90 percent of its prime allocation. CPU is left
+unflagged unless an I-stream is genuinely hot (≥ 85 percent) or the CPU-loop
+detector reports anything other than `NONE`.
+
+**Teaching scenario:** on the mock all three non-CPU checks fire — `PAYM` holds
+`ACCT#00920C14` for 4,210 ms with seven waiters, the deferred list sits at
+1,842, and `#ACCREC` is at 91 percent. The result text says plainly that these
+are one incident (the seeded `CYC-0826` storyline), not three unrelated faults:
+the `PAYM` lock is why the deferred list is backing up, and the backlog is why
+`#ACCREC` is filling. The lesson is reading them together instead of chasing
+each in isolation.
+
+---
+
+### Entry Point Debugger
+
+Drives the console debugger — `ZTEST START` then `DISPLAY`, `BP`, `STEP`, `GO`,
+`STOR`, `STOP` — against a privileged ECB.
+
+**Location:** Security panel → z/TPF CONSOLE → ENTRY POINT DEBUGGER
+
+**How it works:** targets the first privileged ECB from the Enumerator's cached
+list, or `PAYM` as a fallback. It runs a full debug session: `ZTEST START,<ecb>`
+attaches and loads the entry point, `ZTEST DISPLAY` dumps the PSW and all 16
+general registers, `ZTEST BP` sets a breakpoint a few instructions in, `ZTEST
+STEP` single-steps once, `ZTEST GO` runs to the breakpoint, `ZTEST STOR` dumps
+entry-point storage, and `ZTEST STOP` closes the session. Register and storage
+values are seeded deterministically from the program name and address, so a
+given walkthrough always sees the same numbers.
+
+**Why it belongs in a security panel:** `ZTEST ENTRY` (the Entry Point Prober in
+Part 32) is a health check. Everything past `ENTRY` is a live debugger —
+registers, breakpoints, single-step, storage read — and on the mock it carries
+no privilege gate, so an `OPER` session that can reach the console can attach it
+to a privileged payment handler. The finding to record in a review: treat
+operator-console access as equivalent to code-execution access on anything
+`ZTEST` can name. Against `PAYM`, `DISPLAY` also surfaces the `CYC-0826` marker
+in the save-area chain.
+
+---
+
+### Hardening Audit
+
+Sweeps the four surfaces a z/TPF training lab is usually left exposed on:
+internet daemons, CRAS console routing, the command authorization matrix, and
+the POSIX account files. Runs `ZINET DISPLAY`, `ZCRAS DISPLAY`, `ZAUTH DISPLAY`,
+`ZFILE cat /etc/passwd`, and `ZFILE cat /etc/shadow`, then collapses everything
+into one findings table sorted by severity.
+
+**Location:** Security panel → z/TPF CONSOLE → HARDENING AUDIT
+
+**How it works and what it flags:**
+
+| Area | Command | Finding |
+|---|---|---|
+| ZINET | `ZINET DISPLAY` | a daemon with `AUTH ANONYMOUS` (CRITICAL) or `AUTH NONE` (HIGH); password auth with `TLS NO` (MEDIUM) |
+| ZCRAS | `ZCRAS DISPLAY` | an alternate CRAS bound to a TCP/IP line (network-reachable operator console); a terminal pool routing restricted commands for a non-admin class |
+| ZAUTH | `ZAUTH DISPLAY` | `ZFILE` / `ZDCP` / `ZLOGP` / `ZSTOP` / `ZEND` authorized for a terminal class other than `ADMIN` (or read-only `AGENT`) |
+| POSIX | `ZFILE cat /etc/passwd` + `/etc/shadow` | a demo account (`tpfuser`, `guest`, `test`) with a login shell; an `/etc/shadow` entry with a weak `$1$` MD5 hash or no password field at all |
+
+**Teaching scenario:** the mock returns eleven findings — two CRITICAL
+(anonymous FTP, and `test` with an empty shadow field), eight HIGH, one MEDIUM.
+The clean contrast is the system accounts `tpf` / `daemon` / `sshd`:
+`/sbin/nologin` shells and `!` / `*` in shadow, which is the state the demo
+accounts should be in. None of it is a live incident — it is what a lab looks
+like when the teardown step was skipped. On a real z/TPF system the fixes are
+in the ZINET configuration, the CRAS line assignments, the `UUSR` user-exit
+authorization table, and `/etc/passwd` / `/etc/shadow` maintenance.
+
+---
+
 ## Appendix — The .rec.json format
 
 The recording file is plain JSON and human-readable:

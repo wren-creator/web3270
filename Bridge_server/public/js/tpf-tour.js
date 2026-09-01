@@ -70,6 +70,12 @@ const TOUR_STEPS = [
     side: 'left'
   },
   {
+    target: () => document.querySelectorAll('#tpfSection .sec-row button')[6],
+    title: 'Hardening Audit',
+    body: 'Sweeps the four surfaces a z/TPF training lab is usually left exposed on: internet daemons (ZINET), CRAS console/terminal routing (ZCRAS), the command authorization matrix (ZAUTH), and the POSIX account files (ZFILE cat /etc/passwd, /etc/shadow). Findings are config leftovers — anonymous daemons, a network-reachable CRAS, restricted commands reachable from a student class, demo accounts with real hashes.',
+    side: 'left'
+  },
+  {
     target: () => document.getElementById('tpfResults'),
     title: 'Results Panel',
     body: 'All tool output appears here, color-coded by severity:<br>• <span style="color:#40d080">Green</span> — denied / secure<br>• <span style="color:#d04040">Red</span> — accessible (investigate)<br>• <span style="color:#d08020">Yellow</span> — warning / threshold exceeded<br><br>Scroll for full output from longer scans.',

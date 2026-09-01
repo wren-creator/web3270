@@ -212,6 +212,66 @@ const POOL_TABLE = [
   { name:'XPOOL',   addr:'06000000', size: '64M', used:' 62M', pct:97  },
 ];
 
+// ── z/TPF hardening surfaces (ZINET / ZCRAS / ZAUTH / POSIX) ─────────────
+// Seeded as a training lab that was stood up and never locked back down:
+// internet daemons with anonymous / no auth, an alternate CRAS on a
+// network-reachable line, a STUDENT terminal class that can route
+// restricted operator commands, and leftover demo accounts in the POSIX
+// file system. Each is a finding the z/TPF Hardening Audit tool surfaces;
+// harden one by editing its row here — nothing else needs to change.
+const ZINET_SERVERS = [
+  { name:'FTPD',   port:21, state:'ACTIVE', model:'NOLISTEN', auth:'ANONYMOUS', tls:'NO'  },
+  { name:'TELNET', port:23, state:'ACTIVE', model:'CHILD',    auth:'PASSWORD',  tls:'NO'  },
+  { name:'SSHD',   port:22, state:'ACTIVE', model:'CHILD',    auth:'KEY',       tls:'N/A' },
+  { name:'HTTPD',  port:80, state:'ACTIVE', model:'CHILD',    auth:'NONE',      tls:'NO'  },
+  { name:'TFTPD',  port:69, state:'ACTIVE', model:'NOLISTEN', auth:'NONE',      tls:'NO'  },
+];
+
+const ZCRAS_TERMINALS = [
+  { role:'PRIME', sym:'CRAS',  line:'L2201',  restricted:'YES', note:'console room, controlled'          },
+  { role:'ALT',   sym:'CRAS2', line:'L4407',  restricted:'YES', note:'ops annex, controlled'            },
+  { role:'ALT',   sym:'CRAS3', line:'LTCP01', restricted:'YES', note:'TCP/IP console, network-reachable' },
+];
+
+const ZCRAS_POOLS = [
+  { pool:'POOL1', cls:'AGENT',   terms:240, rcmds:'NO'  },
+  { pool:'POOL2', cls:'STUDENT', terms: 32, rcmds:'YES' },
+  { pool:'POOL3', cls:'ADMIN',   terms:  8, rcmds:'YES' },
+];
+
+// Command-level authorization matrix (ZAUTH). Which terminal class may issue
+// which restricted operator command — enforced by the UUSR user exit.
+const ZAUTH_MATRIX = [
+  { cmd:'ZFILE', classes:['ADMIN','STUDENT'] },
+  { cmd:'ZDCP',  classes:['ADMIN','STUDENT'] },
+  { cmd:'ZLOGP', classes:['ADMIN'] },
+  { cmd:'ZSTOP', classes:['ADMIN'] },
+  { cmd:'ZEND',  classes:['ADMIN'] },
+  { cmd:'ZINET', classes:['ADMIN','AGENT'] },
+];
+
+// POSIX file system, reachable through ZFILE. Demo accounts left with login
+// shells; system accounts correctly locked. Shadow field: '!' / '*' = locked,
+// '' = no password at all, '$1$' = weak MD5, '$6$' = sha512.
+const POSIX_PASSWD = [
+  { user:'root',    uid:0,   gid:0,   home:'/root',          shell:'/bin/sh'       },
+  { user:'tpf',     uid:1,   gid:1,   home:'/',              shell:'/bin/false'    },
+  { user:'daemon',  uid:2,   gid:2,   home:'/',              shell:'/sbin/nologin' },
+  { user:'sshd',    uid:74,  gid:74,  home:'/var/empty',     shell:'/sbin/nologin' },
+  { user:'tpfuser', uid:500, gid:500, home:'/home/tpfuser',  shell:'/bin/sh'       },
+  { user:'guest',   uid:501, gid:501, home:'/home/guest',    shell:'/bin/sh'       },
+  { user:'test',    uid:502, gid:502, home:'/home/test',     shell:'/bin/sh'       },
+];
+const POSIX_SHADOW = {
+  root:    '$6$rA9x$sha512hash',
+  tpf:     '!',
+  daemon:  '*',
+  sshd:    '*',
+  tpfuser: '$1$xO3kf1$md5hash',
+  guest:   '$1$Ab9Qz2$md5hash',
+  test:    '',
+};
+
 // ── ZTEST interactive debugger state ──────────────────────────────────────
 // Real z/TPF ZTEST attaches to one program at a time, so the mock keeps a
 // single module-level session. DISPLAY / STEP / GO / REG / STOR all read and
@@ -332,6 +392,14 @@ function dispatchCommand(raw, priv) {
     case 'ZEND':
       if (priv < 3) return authFail(verb, 'SYSPROG');
       return cmdZend(args[0]);
+    case 'ZINET':
+      return cmdZinet(args);
+    case 'ZCRAS':
+      return cmdZcras(args);
+    case 'ZAUTH':
+      return cmdZauth(args);
+    case 'ZFILE':
+      return cmdZfile(raw);
     case 'HELP': case '?':
       return cmdHelp(priv);
     default:
@@ -506,6 +574,114 @@ function cmdZshowAlloc() {
     `ZTPF152I END OF ALLOCATION DISPLAY`,
     `ZTPF153W #ACCREC AT 91% — PAYMENT POSTING WILL FAIL IF PRIME FILLS`,
   ];
+}
+
+// ── Hardening surfaces: ZINET / ZCRAS / ZAUTH / ZFILE ───────────────────
+function cmdZinet(args) {
+  if ((args[0] || 'DISPLAY') !== 'DISPLAY') {
+    return [`ZTPF160E Syntax: ZINET DISPLAY`];
+  }
+  const lines = [
+    `ZTPF160I ZINET SERVER TABLE — ${ZINET_SERVERS.length} DEFINED`,
+    `ZTPF160I SERVER  PORT  STATE   MODEL     AUTH       TLS`,
+    `ZTPF160I ------  ----  ------  --------  ---------  ---`,
+  ];
+  for (const s of ZINET_SERVERS) {
+    const flag = (s.auth === 'ANONYMOUS' || s.auth === 'NONE' || s.tls === 'NO') ? ' *' : '';
+    lines.push(`ZTPF160I ${s.name.padEnd(6)}  ${String(s.port).padStart(4)}  ${s.state.padEnd(6)}  ${s.model.padEnd(8)}  ${s.auth.padEnd(9)}  ${s.tls.padEnd(3)}${flag}`);
+  }
+  lines.push(`ZTPF162I END OF ZINET SERVER TABLE`);
+  const anon = ZINET_SERVERS.filter(s => s.auth === 'ANONYMOUS' || s.auth === 'NONE');
+  if (anon.length) lines.push(`ZTPF163W ${anon.map(s => s.name).join(', ')} ACCEPT UNAUTHENTICATED CONNECTIONS`);
+  return lines;
+}
+
+function cmdZcras(args) {
+  if ((args[0] || 'DISPLAY') !== 'DISPLAY') {
+    return [`ZTPF170E Syntax: ZCRAS DISPLAY`];
+  }
+  const lines = [
+    `ZTPF170I COMPUTER ROOM AGENT SET (CRAS)`,
+    `ZTPF170I ROLE   SYMBOL  LINE    RESTRICTED  NOTE`,
+    `ZTPF170I -----  ------  ------  ----------  ------------------------------`,
+  ];
+  for (const t of ZCRAS_TERMINALS) {
+    const flag = /TCP/i.test(t.line) ? ' *' : '';
+    lines.push(`ZTPF170I ${t.role.padEnd(5)}  ${t.sym.padEnd(6)}  ${t.line.padEnd(6)}  ${t.restricted.padEnd(10)}  ${t.note}${flag}`);
+  }
+  lines.push(`ZTPF171I TERMINAL POOLS — RESTRICTED-COMMAND ROUTING`);
+  lines.push(`ZTPF171I POOL   CLASS    TERMS  RESTRICTED-CMDS`);
+  lines.push(`ZTPF171I -----  -------  -----  --------------`);
+  for (const p of ZCRAS_POOLS) {
+    const flag = (p.rcmds === 'YES' && p.cls !== 'ADMIN') ? ' *' : '';
+    lines.push(`ZTPF171I ${p.pool.padEnd(5)}  ${p.cls.padEnd(7)}  ${String(p.terms).padStart(5)}  ${p.rcmds}${flag}`);
+  }
+  lines.push(`ZTPF172I END OF CRAS DISPLAY`);
+  const netCras = ZCRAS_TERMINALS.filter(t => /TCP/i.test(t.line));
+  const badPool = ZCRAS_POOLS.filter(p => p.rcmds === 'YES' && p.cls !== 'ADMIN');
+  if (netCras.length) lines.push(`ZTPF173W ${netCras.map(t => t.sym).join(', ')} IS AN ALTERNATE CRAS ON A NETWORK-REACHABLE LINE`);
+  if (badPool.length) lines.push(`ZTPF173W POOL(S) ${badPool.map(p => p.pool).join(', ')} ROUTE RESTRICTED COMMANDS FOR A NON-ADMIN CLASS`);
+  return lines;
+}
+
+function cmdZauth(args) {
+  if ((args[0] || 'DISPLAY') !== 'DISPLAY') {
+    return [`ZTPF180E Syntax: ZAUTH DISPLAY`];
+  }
+  const lines = [
+    `ZTPF180I COMMAND AUTHORIZATION MATRIX (UUSR USER EXIT)`,
+    `ZTPF180I COMMAND  AUTHORIZED TERMINAL CLASSES`,
+    `ZTPF180I -------  ---------------------------`,
+  ];
+  const RESTRICTED = ['ZFILE', 'ZDCP', 'ZLOGP', 'ZSTOP', 'ZEND'];
+  for (const e of ZAUTH_MATRIX) {
+    const nonAdmin = e.classes.filter(c => c !== 'ADMIN' && c !== 'AGENT');
+    const flag = (RESTRICTED.includes(e.cmd) && nonAdmin.length) ? ' *' : '';
+    lines.push(`ZTPF180I ${e.cmd.padEnd(7)}  ${e.classes.join(' ')}${flag}`);
+  }
+  lines.push(`ZTPF182I END OF AUTHORIZATION MATRIX`);
+  const leaks = ZAUTH_MATRIX.filter(e => RESTRICTED.includes(e.cmd) && e.classes.some(c => c !== 'ADMIN' && c !== 'AGENT'));
+  if (leaks.length) lines.push(`ZTPF183W ${leaks.map(e => e.cmd).join(', ')} REACHABLE FROM A NON-ADMIN TERMINAL CLASS`);
+  return lines;
+}
+
+function cmdZfile(raw) {
+  // dispatchCommand upper-cased the line, so re-parse the original for the
+  // case-sensitive POSIX path.
+  const m = raw.trim().match(/^ZFILE\s+(\w+)\s+(\S+)/i);
+  if (!m) return [`ZTPF190E Syntax: ZFILE cat <path>   (/etc/passwd, /etc/shadow)`];
+  const op = m[1].toLowerCase();
+  const path = m[2];
+  if (op !== 'cat') return [`ZTPF190E ZFILE: only 'cat' is modelled in this mock`];
+
+  if (/^\/etc\/passwd$/i.test(path)) {
+    const lines = [`ZTPF190I ZFILE cat /etc/passwd`];
+    for (const p of POSIX_PASSWD) {
+      const login = p.shell !== '/bin/false' && p.shell !== '/sbin/nologin';
+      const demo = /^(tpfuser|guest|test)$/.test(p.user);
+      const flag = (login && demo) ? '   <- demo account with a login shell' : '';
+      lines.push(`ZTPF190I ${p.user}:x:${p.uid}:${p.gid}::${p.home}:${p.shell}${flag}`);
+    }
+    lines.push(`ZTPF192I END OF FILE (${POSIX_PASSWD.length} ENTRIES)`);
+    return lines;
+  }
+
+  if (/^\/etc\/shadow$/i.test(path)) {
+    const lines = [`ZTPF190I ZFILE cat /etc/shadow`];
+    for (const p of POSIX_PASSWD) {
+      const h = POSIX_SHADOW[p.user] ?? '';
+      let note = '';
+      if (h === '') note = '   <- NO PASSWORD';
+      else if (h.startsWith('$1$')) note = '   <- weak MD5';
+      lines.push(`ZTPF190I ${p.user}:${h}:19700::::::${note}`);
+    }
+    lines.push(`ZTPF192I END OF FILE (${POSIX_PASSWD.length} ENTRIES)`);
+    const weak = POSIX_PASSWD.filter(p => { const h = POSIX_SHADOW[p.user] ?? ''; return h === '' || h.startsWith('$1$'); });
+    if (weak.length) lines.push(`ZTPF193W ${weak.map(p => p.user).join(', ')} HAVE A WEAK OR ABSENT PASSWORD HASH`);
+    return lines;
+  }
+
+  return [`ZTPF191E ZFILE: ${path} not found (mock models /etc/passwd and /etc/shadow)`];
 }
 
 // bcn/sav are optional — omitted entirely, ZBOOK books exactly as it
@@ -829,6 +1005,10 @@ function cmdHelp(priv) {
     `ZTPF000I ZTEST STEP / GO — Single-step / run to breakpoint or exit`,
     `ZTPF000I ZTEST REG,n[,v] / STOR,addr[,len] — Registers / storage`,
     `ZTPF000I ZTEST TRACE ON|OFF / STOP — Trace toggle / end session`,
+    `ZTPF000I ZINET DISPLAY   — Internet daemon (ZINET) server table`,
+    `ZTPF000I ZCRAS DISPLAY   — CRAS terminals + restricted-command routing`,
+    `ZTPF000I ZAUTH DISPLAY   — Command authorization matrix (UUSR)`,
+    `ZTPF000I ZFILE cat path  — Read a POSIX file (/etc/passwd, /etc/shadow)`,
     `ZTPF000I ZBOOK passenger,flight,date,seat[,bcn,sav] — Create a PNR`,
     `ZTPF000I ZLOOK pnr       — Look up a PNR`,
     `ZTPF000I ZCXL pnr        — Cancel a PNR`,

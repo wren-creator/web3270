@@ -473,6 +473,92 @@ export async function tpfDebugEntry() {
   `);
 }
 
+// ── Tool: Hardening Audit ────────────────────────────────────────────────
+// Sweeps the four surfaces a z/TPF training lab is usually left exposed on:
+// internet daemons (ZINET), CRAS console/terminal routing (ZCRAS), the
+// command authorization matrix (ZAUTH), and the POSIX account files
+// (ZFILE cat /etc/passwd, /etc/shadow). Every finding is a config leftover,
+// not a live incident.
+export async function tpfHardeningAudit() {
+  if (!_detected) return;
+  _setResults('<div class="tpf-running">Hardening sweep — ZINET / ZCRAS / ZAUTH / /etc/passwd / /etc/shadow…</div>');
+
+  const inet   = _splitLines(await _tpfCmd('ZINET DISPLAY')).map(_stripMsgId);
+  const cras   = _splitLines(await _tpfCmd('ZCRAS DISPLAY')).map(_stripMsgId);
+  const auth   = _splitLines(await _tpfCmd('ZAUTH DISPLAY')).map(_stripMsgId);
+  const passwd = _splitLines(await _tpfCmd('ZFILE cat /etc/passwd')).map(_stripMsgId);
+  const shadow = _splitLines(await _tpfCmd('ZFILE cat /etc/shadow')).map(_stripMsgId);
+
+  const F = [];  // { area, item, sev, detail }
+
+  // ZINET — daemons with weak or no authentication
+  for (const l of inet) {
+    const m = l.match(/^([A-Z]+)\s+(\d+)\s+(ACTIVE|INACTIVE)\s+\S+\s+(\S+)\s+(\S+)/);
+    if (!m) continue;
+    const [, name, port, , iauth, tls] = m;
+    if (iauth === 'ANONYMOUS')  F.push({ area: 'ZINET', item: `${name}:${port}`, sev: 'CRITICAL', detail: 'accepts ANONYMOUS logins — disable anon access in the ZINET config' });
+    else if (iauth === 'NONE')  F.push({ area: 'ZINET', item: `${name}:${port}`, sev: 'HIGH',     detail: `no authentication${tls === 'NO' ? ' and no TLS' : ''} — require auth or stop the daemon` });
+    else if (tls === 'NO')      F.push({ area: 'ZINET', item: `${name}:${port}`, sev: 'MEDIUM',   detail: 'password auth over cleartext — enable TLS or move to SSH' });
+  }
+
+  // ZCRAS — network-reachable alternate CRAS, and restricted-command routing
+  for (const l of cras) {
+    let m = l.match(/^(?:PRIME|ALT)\s+(\S+)\s+(\S+)\s+(?:YES|NO)\b/);
+    if (m && /TCP/i.test(m[2])) F.push({ area: 'ZCRAS', item: m[1], sev: 'HIGH', detail: `alternate CRAS on line ${m[2]} — an operator console reachable from the network` });
+    m = l.match(/^(POOL\d+)\s+(\S+)\s+\d+\s+(YES|NO)\b/);
+    if (m && m[3] === 'YES' && m[2] !== 'ADMIN') F.push({ area: 'ZCRAS', item: `${m[1]} (${m[2]})`, sev: 'HIGH', detail: 'terminal pool routes restricted operator commands for a non-admin class' });
+  }
+
+  // ZAUTH — restricted commands reachable from a non-admin terminal class
+  for (const l of auth) {
+    const m = l.match(/^(Z[A-Z]+)\s+([A-Z].*?)\s*\*?$/);
+    if (!m) continue;
+    if (!['ZFILE', 'ZDCP', 'ZLOGP', 'ZSTOP', 'ZEND'].includes(m[1])) continue;
+    const bad = m[2].trim().split(/\s+/).filter(c => c !== 'ADMIN' && c !== 'AGENT');
+    if (bad.length) F.push({ area: 'ZAUTH', item: m[1], sev: 'HIGH', detail: `authorized for ${bad.join(', ')} — restrict to ADMIN in the UUSR exit` });
+  }
+
+  // POSIX — demo accounts, login shells, weak/absent password hashes
+  const demo   = /^(tpfuser|guest|test|admin)$/;
+  const shells = {};
+  for (const l of passwd) {
+    const m = l.match(/^(\w+):x:\d+:\d+::[^:]*:(\S+)/);
+    if (m) shells[m[1]] = m[2];
+  }
+  for (const l of shadow) {
+    const m = l.match(/^(\w+):([^:]*):/);
+    if (!m) continue;
+    const [, user, hash] = m;
+    const login = shells[user] && shells[user] !== '/bin/false' && shells[user] !== '/sbin/nologin';
+    if (hash === '')                       F.push({ area: '/etc/shadow', item: user, sev: 'CRITICAL', detail: 'no password field at all — passwordless login if the account is reachable' });
+    else if (hash.startsWith('$1$') && demo.test(user)) F.push({ area: '/etc/shadow', item: user, sev: 'HIGH', detail: `demo account with a weak MD5 hash${login ? ' and a login shell' : ''} — remove the account` });
+    else if (demo.test(user) && login)    F.push({ area: '/etc/passwd', item: user, sev: 'MEDIUM', detail: `demo account with login shell ${shells[user]} — set /sbin/nologin or remove` });
+  }
+
+  const SEV = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
+  F.sort((a, b) => (SEV[a.sev] ?? 9) - (SEV[b.sev] ?? 9) || a.area.localeCompare(b.area));
+  const critHigh = F.filter(f => f.sev === 'CRITICAL' || f.sev === 'HIGH').length;
+
+  _setResults(`
+    <div class="tpf-result-hdr">z/TPF HARDENING AUDIT — ${F.length} FINDING${F.length === 1 ? '' : 'S'}</div>
+    <table class="tpf-table">
+      <thead><tr><th>AREA</th><th>ITEM</th><th>SEV</th><th>DETAIL</th></tr></thead>
+      <tbody>
+        ${F.map(f => `
+          <tr class="${(f.sev === 'CRITICAL' || f.sev === 'HIGH') ? 'tpf-warn-row' : ''}">
+            <td class="tpf-mono tpf-dim">${esc(f.area)}</td>
+            <td class="tpf-mono">${esc(f.item)}</td>
+            <td class="${(f.sev === 'CRITICAL' || f.sev === 'HIGH') ? 'tpf-warn' : 'tpf-dim'}">${f.sev}</td>
+            <td class="tpf-dim">${esc(f.detail)}</td>
+          </tr>`).join('') || '<tr><td colspan="4" class="tpf-dim">No findings — all four surfaces are locked down.</td></tr>'}
+      </tbody>
+    </table>
+    <div class="tpf-result-note">${F.length
+      ? `${critHigh} critical/high. Config leftovers, not a live incident: anonymous daemons, a network-reachable CRAS, restricted commands reachable from a student terminal class, and demo accounts with real password hashes.`
+      : 'ZINET, CRAS routing, the ZAUTH matrix, and the POSIX account files are all clean.'}</div>
+  `);
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 function _setResults(html) {
   const content = document.getElementById('tpfResultsContent');
@@ -498,3 +584,4 @@ window.tpfProbeEntries  = tpfProbeEntries;
 window.tpfCheckPools    = tpfCheckPools;
 window.tpfSysDiag       = tpfSysDiag;
 window.tpfDebugEntry    = tpfDebugEntry;
+window.tpfHardeningAudit = tpfHardeningAudit;
