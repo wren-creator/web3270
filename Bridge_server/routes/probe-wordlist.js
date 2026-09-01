@@ -1,21 +1,26 @@
 // GET /api/default-accounts
 //
-// Serves an operator-supplied default-credential wordlist from a fixed path
-// on the bridge host, ~/mainframe/default-accounts.txt, for the RACF PROBE
-// tool's "Load defaults" action. One credential per line, "user:pass" or
+// Serves an operator-supplied default-credential wordlist for the RACF
+// PROBE tool's "Load list" action. One credential per line, "user:pass" or
 // "user,pass"; blank lines and lines starting with # are ignored.
 //
-// The path is fixed (no filename parameter), so there is no traversal
-// surface. On a multi-tenant / hosted deployment the bridge's own home dir
-// is not a per-customer resource, so the route returns { found:false }
-// there and the client falls back to its built-in lists.
+// Path resolution:
+//   DEFAULT_ACCOUNTS_FILE env var, if set (this is what docker-compose.yml
+//   uses: it bind-mounts ./default-accounts.txt to /app/default-accounts.txt
+//   and points this var there, so the container reads a host file live).
+//   Otherwise ~/mainframe/default-accounts.txt for a plain Node/WSL run.
+//
+// The path comes only from env/default, never from the request, so there is
+// no traversal surface. On a multi-tenant / hosted deployment the bridge's
+// filesystem is not a per-customer resource, so the route returns
+// { found:false } there and the client falls back to its built-in lists.
 
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
-const FILE = path.join(os.homedir(), 'mainframe', 'default-accounts.txt');
-const DISPLAY_PATH = '~/mainframe/default-accounts.txt';
+const FILE = process.env.DEFAULT_ACCOUNTS_FILE
+  || path.join(os.homedir(), 'mainframe', 'default-accounts.txt');
 
 function parsePairs(text) {
   const pairs = [];
@@ -47,10 +52,10 @@ export function handle(req, res, ctx) {
   if (ctx?.config?.bridge?.multiTenant) { json({ found: false, reason: 'multi-tenant' }); return true; }
 
   fs.readFile(FILE, 'utf8', (err, text) => {
-    if (err) { json({ found: false, path: DISPLAY_PATH }); return; }
+    if (err) { json({ found: false, path: FILE }); return; }
     const pairs = parsePairs(text);
     ctx?.logger?.info?.(`[default-accounts] served ${pairs.length} pair(s) from ${FILE}`);
-    json({ found: pairs.length > 0, path: DISPLAY_PATH, count: pairs.length, pairs });
+    json({ found: pairs.length > 0, path: FILE, count: pairs.length, pairs });
   });
   return true;
 }

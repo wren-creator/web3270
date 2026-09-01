@@ -596,7 +596,7 @@ The probe reads the current screen text plus the OIA APP field to detect which s
 
 1. Unlock the Security panel (🔒 Sec tab) and scroll to **RACF PROBE**
 2. Navigate the terminal to a TSO, z/VM, CICS, z/TPF, or IBM i Sign On screen
-3. Populate the wordlist — **Load defaults** fills it with the built-in list for the detected subsystem; **Load list** reads `~/mainframe/default-accounts.txt` on the bridge host (one `userid:pass` per line, `#` comments) and uses it verbatim
+3. Populate the wordlist — **Load defaults** fills it with the built-in list for the detected subsystem; **Load list** reads a file on the bridge host (one `userid:pass` per line, `#` comments) and uses it verbatim. The bridge reads `DEFAULT_ACCOUNTS_FILE` if set, otherwise `~/mainframe/default-accounts.txt`. The shipped `docker-compose.yml` bind-mounts `Bridge_server/default-accounts.txt` to `/app/default-accounts.txt` and points the env var at it, so on the Docker setup you edit `Bridge_server/default-accounts.txt` on the host and it takes effect live. The status line shows the path it read (or failed to read).
 4. Adjust the wordlist if needed (one `USERID,PASSWORD` per line; lines starting with `#` are comments)
 5. Set the delay between attempts (500–10000 ms; default 1500 ms)
 6. Click **▶ START** — the probe begins immediately, updating the results table after each attempt

@@ -18,6 +18,9 @@ services:
       - type: bind
         source: ./ssh-hosts.txt
         target: /app/ssh-hosts.txt
+      - type: bind
+        source: ./default-accounts.txt
+        target: /app/default-accounts.txt
       - type: volume
         source: macros_data
         target: /app/macros/local
@@ -42,6 +45,9 @@ services:
 
       DEFAULT_MODEL:    "3278-2"
       DEFAULT_CODEPAGE: "37"
+      # RACF PROBE "Load list" reads this file (bind-mounted above). Drop your
+      # authorized-lab wordlist into ./default-accounts.txt on the host.
+      DEFAULT_ACCOUNTS_FILE: "/app/default-accounts.txt"
 
     extra_hosts:
       - "host.docker.internal:host-gateway"

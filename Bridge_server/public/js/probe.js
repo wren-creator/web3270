@@ -159,7 +159,7 @@ export async function probeLoadList() {
     }
     _probeSetStatus(j && j.reason === 'multi-tenant'
       ? 'File list disabled on this deployment — use Load defaults'
-      : 'No ~/mainframe/default-accounts.txt on the bridge host — use Load defaults');
+      : `No wordlist file at ${j && j.path ? j.path : 'the configured path'} on the bridge host — use Load defaults`);
   } catch {
     _probeSetStatus('Could not reach the bridge to read the account list');
   }
