@@ -292,15 +292,6 @@ function createHandlers({ logger, send, Ebcdic }) {
     logger.info(`[ws:${wsId}] xfer.tso-download -> ${resolvedDataset}`);
     send(ws, { type: 'xfer.progress', direction: 'download', step: 'Opening dataset...' });
 
-    const _canaryHandler = (sd) => {
-      const lines = (sd.rows || []).map(row =>
-        (Array.isArray(row) ? row : []).map(c => (c.char && c.char !== ' ') ? c.char : ' ').join('').trimEnd()
-      ).filter(l => l.trim());
-      logger.info(`[ws:${wsId}] CANARY screen event: rows=${sd.rows?.length} fields=${sd.fields?.length} text="${lines.join(' | ').substring(0, 120)}"`);
-    };
-    session.on('screen', _canaryHandler);
-    setTimeout(() => session.removeListener('screen', _canaryHandler), 30000);
-
     try {
       typeCmd(`EDIT '${resolvedDataset}' DATA`);
       await waitScr(t => t.includes('EDIT') || t.includes('INVALID DATA SET'), 15000);
