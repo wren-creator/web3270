@@ -10,6 +10,9 @@ macros/accounts/
 ssh-hosts.txt
 lpars.txt
 
+# RACF PROBE wordlist — operator's own default-credential list, edited in place
+default-accounts.txt
+
 # Stale root-level artifacts
 macros.json
 macros/macros.json

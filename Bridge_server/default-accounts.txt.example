@@ -1,14 +1,34 @@
 # RACF PROBE — default-credential wordlist ("Load list" button)
 #
+# Copy this to default-accounts.txt and edit it for the lab system you are
+# authorized to test. start.sh does the copy on first run; default-accounts.txt
+# is gitignored and read live (bind-mounted in Docker, see DEFAULT_ACCOUNTS_FILE).
+#
 # One credential per line, "userid:pass" or "userid,pass".
 # Blank lines and lines starting with # are ignored.
 #
-# This file is a starting point. Replace it with the list curated for the
-# lab system you are authorized to test. It is read live (bind-mounted in
-# Docker via DEFAULT_ACCOUNTS_FILE), so edits take effect without a rebuild.
-#
 # The RACF PROBE "Load defaults" button carries the built-in per-subsystem
 # lists (TSO / z/VM / CICS / z/TPF / IBM i) if you would rather use those.
+
+# ── TSO / z/OS ──
+IBMUSER:SYS1
+IBMUSER:IBMUSER
+MAINT:MAINT
+SYSPROG:SYSPROG
+SYSADM:SYSADM
+
+# ── z/VM ──
+OPERATOR:OPERATOR
+MAINT:MAINT
+MAINT730:MAINT730
+PMAINT:PMAINT
+TCPMAINT:TCPMAINT
+AUTOLOG1:AUTOLOG1
+
+# ── CICS ──
+CICSUSER:CICSUSER
+CICS:CICS
+ADMIN:ADMIN
 
 # ── z/TPF operator logon ──
 TPFOP01:TPF1
