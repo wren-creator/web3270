@@ -253,11 +253,11 @@ const _WALKTHROUGHS = [
     id:       'racf-probe',
     category: 'security',
     title:    'RACF Credential Discovery',
-    desc:     'Iterates a credential wordlist against a TSO, z/VM, CICS, or z/TPF logon screen and classifies each response.',
+    desc:     'Iterates a credential wordlist against a TSO, z/VM, CICS, z/TPF, or IBM i (TN5250) logon screen and classifies each response.',
     steps: [
       {
         title: 'Prerequisites',
-        body:  'Connect to a TN3270 host and navigate to the logon screen — TSO/E LOGON, z/VM CP LOGON, CICS CESN, or the z/TPF operator logon (OPER ID ==>). Do not log in yet. The probe needs the logon screen to be the active screen when it starts.',
+        body:  'Connect to a host and navigate to the logon screen — TSO/E LOGON, z/VM CP LOGON, CICS CESN, the z/TPF operator logon (OPER ID ==>), or the IBM i Sign On screen (User / Password). Do not log in yet. The probe needs the logon screen to be the active screen when it starts.',
         highlight: null,
         autoFn: null,
       },
@@ -294,7 +294,7 @@ const _WALKTHROUGHS = [
       },
       {
         title: 'Read the live results',
-        body:  'Each row appears as responses arrive. SUCCESS (green) — credentials accepted. FAILURE (amber) — rejected, probe continues. LOCKOUT (red) — RACF suspended the user; the probe stops immediately to prevent further lockouts. Against a z/TPF operator logon there is no sign-on lockout, so the probe runs the full wordlist unless it hits a SUCCESS first — on the mock, TPFOP01/TPF1 succeeds on the first try.',
+        body:  'Each row appears as responses arrive. SUCCESS (green) — credentials accepted. FAILURE (amber) — rejected, probe continues. LOCKOUT (red) — RACF suspended the user; the probe stops immediately to prevent further lockouts. Against a z/TPF or IBM i logon there is no attempt lockout modelled, so the probe runs the full wordlist unless it hits a SUCCESS first — on the mocks, TPFOP01/TPF1 (z/TPF) and QSECOFR/QSECOFR (IBM i) each succeed on the first try.',
         highlight: 'probeResultsTable',
         autoFn: null,
       },

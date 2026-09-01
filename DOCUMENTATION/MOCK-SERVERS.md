@@ -458,7 +458,20 @@ The menu tree: **MAIN** → USER TASKS, OFFICE TASKS, GENERAL SYSTEM TASKS (syst
 
 ### AS/400 Sign On
 
-There is **no credential check**. Any non-blank user name is accepted and becomes the current profile (upper-cased); the password field is drawn as a nondisplay field but ignored. Sign on as `QSECOFR`, `APPADMIN`, `JSMITH`, or anything else. `90` at any menu, or `SIGNOFF`, returns to the Sign On screen.
+The password is validated **only when one is actually typed**. Leave it blank and any non-blank user name walks in as the current profile — the long-standing mock convenience the security-tool walkthroughs rely on ("sign on as `QSECOFR`" needs no password). Type a password and the mock enforces it, so the Security panel's **RACF PROBE** has a real target:
+
+| Typed | Result |
+|---|---|
+| user, blank password | accepted as that profile |
+| known profile + correct password | accepted (`QSECOFR`/`QSECOFR`, `QSRV`/`QSRV`; the rest use a non-default value) |
+| known profile + wrong password | `CPF1107 - Password not correct for user profile.` |
+| profile with `PASSWORD(*NONE)` (e.g. `QSYS`) | `CPF1118 - No password associated with user ...` |
+| unknown user | `CPF1120 - User ... does not exist.` |
+| `*DISABLED` profile, correct password | `CPF1394 - User profile ... cannot sign on.` |
+
+The mock does not model QMAXSIGN attempt lockout (`CPF1393`), so a probe never has to stop early. `90` at any menu, or `SIGNOFF`, returns to the Sign On screen.
+
+Passwords live in the `CREDENTIALS` table in `mock-lpar/mock-as400.js`, kept in sync with the `pwdDefault` flags in `USRPRFS`.
 
 ### AS/400 Commands
 

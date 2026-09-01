@@ -160,13 +160,13 @@ function fieldAt(runs, row) {
   return run ? run.text.trim() : '';
 }
 
-function screenSignon() {
+function screenSignon(message = '') {
   const now = new Date();
   const dateStr = now.toLocaleDateString('en-US');
   const timeStr = now.toLocaleTimeString('en-US', { hour12: false });
 
   const clearUnit = Buffer.from([ESC, CMD_CLEAR_UNIT]);
-  const wtd = wrapEsc(CMD_WRITE_TO_DISPLAY, buildScreen(80, [
+  const fields = [
     { row: 1,  col: 30, text: 'Sign On', input: false },
     { row: 3,  col: 2,  text: `System  . . . . . :   ${SYSNAME}`, input: false },
     { row: 4,  col: 2,  text: `Subsystem . . . . :   QINTER`, input: false },
@@ -183,7 +183,9 @@ function screenSignon() {
     { row: 11, col: 53, text: '', input: true, length: 10 },
     { row: 22, col: 2,  text: `${dateStr}  ${timeStr}`, input: false },
     { row: 23, col: 2,  text: '(C) COPYRIGHT MOCK AS/400 1988, 2026.', input: false },
-  ], { row: 7, col: 53 }));
+  ];
+  if (message) fields.push({ row: 20, col: 2, text: message.slice(0, 76), input: false, attr: ATTR_RED });
+  const wtd = wrapEsc(CMD_WRITE_TO_DISPLAY, buildScreen(80, fields, { row: 7, col: 53 }));
   const readCmd = Buffer.from([ESC, CMD_READ_INPUT_FIELDS]);
 
   return Buffer.concat([clearUnit, wtd, readCmd]);
@@ -338,6 +340,24 @@ const USRPRFS = [
     specialAuth: [],
     lmtcpb: '*NO',  pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: false, pwdChg: '02/09/25', lastSignon: '*NONE' },
 ];
+
+// Sign On passwords. Only consulted when a password is actually typed —
+// a blank password still walks in as any user (the mock's long-standing
+// convenience, and what every existing IBM i walkthrough relies on). With
+// a password present, the mock validates it so the RACF PROBE has a real
+// target: profiles with pwdDefault use their own name, the rest use a set
+// value. QSYS is intentionally absent (pwdNone → CPF1118). Kept in sync
+// with the pwdDefault flags in USRPRFS above.
+const CREDENTIALS = {
+  QSECOFR:  'QSECOFR',      // pwdDefault
+  QSRV:     'QSRV',         // pwdDefault
+  QPGMR:    'PgmrPass1',
+  QSYSOPR:  'OpsPass22',
+  QUSER:    'Guest2026',
+  QTMHHTTP: 'HttpAdm99',
+  JSMITH:   'Summer2026',
+  APPADMIN: 'Appl1cation',
+};
 
 // Objects and their *PUBLIC / private authorities (DSPOBJAUT/WRKOBJ).
 const OBJECTS = [
@@ -1605,6 +1625,7 @@ function handleConnection(socket) {
   let screen = 'signon';   // 'signon' | a MENUS key | 'MESSAGES' | 'STUB'
   let user = null;
   let menuMessage = '';
+  let signonMessage = '';  // CPF error shown on the Sign On screen after a bad attempt
   let messages = [];
   let unreadCount = 0;
   let returnTo = 'MAIN';   // menu to go back to from MESSAGES/STUB
@@ -1761,7 +1782,7 @@ function handleConnection(socket) {
   function sendScreen() {
     let ds;
     if (screen === 'signon') {
-      ds = screenSignon();
+      ds = screenSignon(signonMessage);
     } else if (screen === 'MESSAGES') {
       ds = screenMessages({ user, messages });
     } else if (screen === 'STUB') {
@@ -1868,19 +1889,46 @@ function handleConnection(socket) {
 
     if (screen === 'signon') {
       // Field rows match screenSignon()'s layout: User at row 7, Password
-      // at row 8 (unused by this mock beyond being present — no real
-      // credential check, same as before).
-      const typedUser = fieldAt(runs, 7);
-      if (typedUser) {
-        user = typedUser.toUpperCase();
+      // at row 8. A password is only validated when one is actually typed;
+      // a blank password still signs on as any user (long-standing mock
+      // convenience the IBM i walkthroughs rely on). With a password
+      // present the mock enforces it so the RACF PROBE has a real target.
+      const typedUser = fieldAt(runs, 7).toUpperCase();
+      const typedPass = fieldAt(runs, 8);
+
+      const accept = () => {
+        user = typedUser;
         messages = seedMessages(user);
         unreadCount = messages.length;
         returnTo = 'MAIN';
         screen = 'MAIN';
         menuMessage = '';
+        signonMessage = '';
+      };
+
+      if (!typedUser) {
+        // Blank Enter just redraws the Sign On screen.
+      } else if (!typedPass) {
+        accept();
+      } else {
+        // Order mirrors a real IBM i Sign On: no-password first, then
+        // existence, then the password itself, then profile status. A
+        // pre-disabled profile yields CPF1394 (probe: FAILURE, keep going);
+        // only CPF1393 — disabled *by* failed attempts — would be a real
+        // lockout, which the mock does not model.
+        const prf = USRPRFS.find(p => p.name === typedUser);
+        if (prf && prf.pwdNone) {
+          signonMessage = `CPF1118 - No password associated with user ${typedUser}.`;
+        } else if (!(typedUser in CREDENTIALS)) {
+          signonMessage = `CPF1120 - User ${typedUser} does not exist.`;
+        } else if (CREDENTIALS[typedUser] !== typedPass) {
+          signonMessage = 'CPF1107 - Password not correct for user profile.';
+        } else if (prf && prf.status === '*DISABLED') {
+          signonMessage = `CPF1394 - User profile ${typedUser} cannot sign on.`;
+        } else {
+          accept();
+        }
       }
-      // Blank Enter on signon just redraws it — a real AS/400 would show
-      // "User missing", which isn't worth modeling for this mock.
     } else if (screen === 'MESSAGES') {
       // Viewing the messages marks them read, like real DSPMSG.
       unreadCount = 0;

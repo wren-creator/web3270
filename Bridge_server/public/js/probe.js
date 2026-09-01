@@ -57,6 +57,28 @@ const _PROBE_PROFILES = {
       'TPFOPER,TPFOPER', 'SYSOP,SYSOP',
     ],
   },
+  AS400: {
+    // IBM i (TN5250) Sign On. Distinguished from every menu screen by
+    // "Sign On" + "Password" + the Subsystem/Current library labels; the
+    // menus have a "Selection or command" line instead. The FA byte sits at
+    // the field's SBA position, so the data column is one past it (54 for a
+    // field declared at col 53). Success = a menu appeared. A disabled
+    // profile (CPF1394) is the closest thing to a lockout.
+    detect:  t => /\bSign On\b/.test(t) && /Password/i.test(t) && /(Subsystem|Current library)/i.test(t),
+    userRow: 7, userCol: 54,
+    passRow: 8, passCol: 54,
+    success: t => /Selection or command|MAIN MENU/i.test(t),
+    // Only a profile disabled *by* failed sign-on attempts (CPF1393) is a
+    // real lockout worth stopping on. A pre-disabled profile (CPF1394) or a
+    // *NONE / unknown user (CPF1118 / CPF1120) is just a FAILURE.
+    lockout: t => /CPF1393|has been disabled because|disabled.*sign-on attempts/i.test(t),
+    logon:   t => /\bSign On\b/.test(t) && /Password/i.test(t),
+    defaults: [
+      'QSECOFR,QSECOFR', 'QSRV,QSRV', 'QUSER,QUSER',
+      'QPGMR,QPGMR', 'QSYSOPR,QSYSOPR', 'QSECADM,QSECADM',
+      'QSYS,QSYS', 'QSYSOPR,SYSOPR',
+    ],
+  },
 };
 
 let _probeRunning  = false;

@@ -566,7 +566,7 @@ A brief flash bar also appears above the OIA bar showing the most recent anomali
 
 ## Part 12 — RACF Auto-Probe
 
-Wave 7 adds a reactive credential probe that iterates a wordlist against live TSO, z/VM, CICS, or z/TPF logon screens and classifies each response — faster and more informative than hand-editing the static security macros.
+Wave 7 adds a reactive credential probe that iterates a wordlist against live TSO, z/VM, CICS, z/TPF, or IBM i (TN5250) logon screens and classifies each response — faster and more informative than hand-editing the static security macros.
 
 ### How it works
 
@@ -574,9 +574,9 @@ The probe sends each credential pair through the active session's WebSocket conn
 
 | Result | Condition detected |
 |---|---|
-| **SUCCESS** | READY prompt (TSO), CP READ/CMS (z/VM), CICS application screen, `ENTER TPF COMMAND` console (z/TPF) |
+| **SUCCESS** | READY prompt (TSO), CP READ/CMS (z/VM), CICS application screen, `ENTER TPF COMMAND` console (z/TPF), a menu with a `Selection or command` line (IBM i) |
 | **FAILURE** | ICH error codes, "LOGON unsuccessful", wrong-password messages, `ZTPF901E INVALID OPER ID OR PASSWORD` (z/TPF) |
-| **LOCKOUT** | IKJ56421I, AUTHORIZATION FAILURE, REVOKED, "User revoked". z/TPF has no sign-on lockout, so this only fires on an explicit revoke message there. |
+| **LOCKOUT** | IKJ56421I, AUTHORIZATION FAILURE, REVOKED, "User revoked". z/TPF has no sign-on lockout. On IBM i only `CPF1393` (profile disabled *by* failed attempts) counts — a pre-disabled profile (`CPF1394`), `*NONE` password (`CPF1118`) or unknown user (`CPF1120`) is a FAILURE and the probe keeps going. |
 
 On LOCKOUT or SUCCESS the probe stops immediately. Each attempt is spaced by a configurable delay (default 1500 ms) to avoid rapid-fire lockout triggers.
 
@@ -590,11 +590,12 @@ The probe reads the current screen text plus the OIA APP field to detect which s
 | z/VM | `z/VM`, `USERID ==>` | row 9, col 14 | row 10, col 14 |
 | CICS | `CESN`, `SIGN ON TO CICS` | row 5, col 25 | row 6, col 25 |
 | z/TPF | `OPER ID ==>` (logon + logon-error, not the console) | row 4, col 15 | row 6, col 15 |
+| IBM i | `Sign On` + `Password` + `Subsystem`/`Current library` (not a menu) | row 7, col 54 | row 8, col 54 |
 
 ### How to use it
 
 1. Unlock the Security panel (🔒 Sec tab) and scroll to **RACF PROBE**
-2. Navigate the terminal to a TSO, z/VM, CICS, or z/TPF logon screen
+2. Navigate the terminal to a TSO, z/VM, CICS, z/TPF, or IBM i Sign On screen
 3. Click **Load defaults** — the wordlist pre-fills with the standard IBM default credentials for the detected subsystem
 4. Adjust the wordlist if needed (one `USERID,PASSWORD` per line; lines starting with `#` are comments)
 5. Set the delay between attempts (500–10000 ms; default 1500 ms)
@@ -613,11 +614,15 @@ Results are shown in a live table (userid, masked password, result). Click **↓
 
 **z/TPF:** TPFOP01/TPF1, SYSOP01/SYS1, ADMIN01/ADMIN, PRIME/PRIME, CRAS/CRAS, OPER/OPER, TPFOPER/TPFOPER, SYSOP/SYSOP
 
+**IBM i:** QSECOFR/QSECOFR, QSRV/QSRV, QUSER/QUSER, QPGMR/QPGMR, QSYSOPR/QSYSOPR, QSECADM/QSECADM, QSYS/QSYS, QSYSOPR/SYSOPR
+
 ### Teaching use cases
 
 **Default credential enumeration** — run the probe against the mock TSO LPAR with defaults loaded. IBMUSER/SYS1 succeeds on the first attempt, demonstrating that the most common IBM-supplied default is also the first credential an attacker tries.
 
 **z/TPF operator logon** — connect to the mock z/TPF host and stop at the operator logon (`OPER ID ==>`). Load defaults and run: the first pair, `TPFOP01/TPF1`, succeeds and the probe stops as the operator console appears. The point for a review is that the z/TPF operator console has well-known default operator IDs and no sign-on lockout, so an unthrottled credential probe against it carries none of the account-suspension risk it would on RACF.
+
+**IBM i Sign On** — connect to the mock AS/400 host and stop at the Sign On screen. Load defaults and run: `QSECOFR/QSECOFR` succeeds on the first attempt and the probe stops as the MAIN MENU appears — the single most common IBM-supplied default, still live. Harden it first (`CHGUSRPRF USRPRF(QSECOFR) PASSWORD(...)` from a signed-in session, or the Shipped Profile Audit's remediation step) and re-run: the probe now walks the whole list as FAILURE, since the mock does not model attempt lockout. The distinct `CPF` codes in the returned screen — `CPF1107` wrong password, `CPF1120` no such user, `CPF1118` `*NONE` — are the same ones a real IBM i returns.
 
 **Lockout threshold demonstration** — add three wrong passwords before a correct one and show students exactly when the IKJ56421I lockout fires. The probe stops and marks the locked account — a clean example of RACF's lockout counter in action.
 
