@@ -52,6 +52,22 @@ function _splitLines(text) {
   return String(text).split('\n').map(l => l.trim()).filter(Boolean);
 }
 
+// The z/TPF section auto-shows on any z/TPF screen, including the operator
+// LOGON screen. Every tool here injects a command into the first input
+// field, which on the logon screen is OPER ID — so a tool run before
+// sign-on types its command into the userid field and reads back
+// "ZTPF901E INVALID OPER ID OR PASSWORD". Gate on the command console
+// actually being up: "ENTER TPF COMMAND" present, "OPER ID ==>" absent.
+function _consoleActive() {
+  const t = state.liveScreenText || '';
+  return /ENTER TPF COMMAND/i.test(t) && !/OPER ID\s*==>/i.test(t);
+}
+function _requireConsole() {
+  if (_consoleActive()) return true;
+  _setResults('<div class="tpf-running">Not at the operator console. Sign on (OPER ID / PASSWORD) and stop at the ENTER TPF COMMAND prompt, then run this again.</div>');
+  return false;
+}
+
 // ── Screen hook — called on every screen event ─────────────────────────────
 export function tpfOnScreen(msg) {
   const text = screenToText(msg);
@@ -66,6 +82,13 @@ export function tpfOnScreen(msg) {
     _detected = false;
     state.tpfDetected = false;
     _hideTpfSection();
+  }
+
+  // Back at the operator logon screen → forget any prior privilege reading
+  // so a stale SYSPROG badge doesn't carry across a logoff.
+  if (/OPER ID\s*==>/i.test(text) && _privLevel !== 0) {
+    _privLevel = 0;
+    _updatePrivBadge();
   }
 
   // Infer privilege level from rejection messages
@@ -105,16 +128,17 @@ function _hideTpfSection() {
 function _updatePrivBadge() {
   const badge  = document.getElementById('tpfPrivBadge');
   if (!badge) return;
+  if (!_privLevel) { badge.style.display = 'none'; return; }
   const labels = ['UNKNOWN', 'OPER', 'SYSOP', 'SYSPROG'];
   const colors = ['#3a3a3a', '#c07020', '#20a070', '#20c050'];
   badge.textContent        = labels[_privLevel] || 'UNKNOWN';
-  badge.style.background   = colors[_privLevel] || '#3a3a3a';
-  badge.style.display      = 'inline-block';
+  badge.style.background    = colors[_privLevel] || '#3a3a3a';
+  badge.style.display       = 'inline-block';
 }
 
 // ── Tool: ECB Enumerator ───────────────────────────────────────────────────
 export async function tpfEnumEcbs() {
-  if (!_detected) return;
+  if (!_detected || !_requireConsole()) return;
   _setResults('<div class="tpf-running">Running ZSHOW E — enumerating entry points…</div>');
 
   const text = await _tpfCmd('ZSHOW E');
@@ -159,17 +183,23 @@ export async function tpfEnumEcbs() {
 
 // ── Tool: Privilege Boundary Scanner ──────────────────────────────────────
 export async function tpfScanPriv() {
-  if (!_detected) return;
+  if (!_detected || !_requireConsole()) return;
   _setResults('<div class="tpf-running">Scanning privilege boundary…</div>');
+
+  // "Allowed" must be a POSITIVE confirmation — the command's own success
+  // reply — not merely the absence of an AUTHORIZATION FAILURE. A login
+  // rejection, a syntax error or a blank screen all lack that string and
+  // must NOT read as allowed.
+  const denied = t => /ZTPF900E|AUTHORIZATION FAILURE/i.test(t);
 
   const showText = await _tpfCmd('ZSHOW S');
   const canShow  = /ZTPF100I/i.test(showText);
 
   const stopText = await _tpfCmd('ZSTOP,RPRT');
-  const canStop  = !/AUTHORIZATION FAILURE/i.test(stopText);
+  const canStop  = /ZTPF80[01][IW]/i.test(stopText) && !denied(stopText);
 
   const endText  = await _tpfCmd('ZEND CHECK');
-  const canEnd   = !/AUTHORIZATION FAILURE/i.test(endText);
+  const canEnd   = /ZTPF830[IW]/i.test(endText) && !denied(endText);
 
   _privLevel = canEnd ? 3 : canStop ? 2 : canShow ? 1 : 0;
   _updatePrivBadge();
@@ -214,7 +244,7 @@ export async function tpfScanPriv() {
 
 // ── Tool: Entry Point Prober ───────────────────────────────────────────────
 export async function tpfProbeEntries() {
-  if (!_detected) return;
+  if (!_detected || !_requireConsole()) return;
 
   const targets = (state.tpfEcbList?.length)
     ? state.tpfEcbList.map(e => e.name)
@@ -257,7 +287,7 @@ export async function tpfProbeEntries() {
 
 // ── Tool: Pool Monitor ─────────────────────────────────────────────────────
 export async function tpfCheckPools() {
-  if (!_detected) return;
+  if (!_detected || !_requireConsole()) return;
   _setResults('<div class="tpf-running">Running ZSHOW P — checking memory pools…</div>');
 
   const text  = await _tpfCmd('ZSHOW P');
@@ -299,7 +329,7 @@ export async function tpfCheckPools() {
 // incident (CYC-0826) rather than four independent faults — the lesson is
 // reading them together instead of chasing each in isolation.
 export async function tpfSysDiag() {
-  if (!_detected) return;
+  if (!_detected || !_requireConsole()) return;
   _setResults('<div class="tpf-running">Resource sweep — ZSHOW UTIL / LOCK / MQP / ALLOC…</div>');
 
   const util  = _splitLines(await _tpfCmd('ZSHOW UTIL')).map(_stripMsgId);
@@ -395,7 +425,7 @@ export async function tpfSysDiag() {
 // ECB. The finding is that ZTEST is not privilege-gated: any operator
 // session that reaches the console can attach a debugger to privileged code.
 export async function tpfDebugEntry() {
-  if (!_detected) return;
+  if (!_detected || !_requireConsole()) return;
   const target = state.tpfEcbList?.find(e => e.priv)?.name || 'PAYM';
   _setResults(`<div class="tpf-running">Attaching ZTEST debugger to ${esc(target)}…</div>`);
 
@@ -480,7 +510,7 @@ export async function tpfDebugEntry() {
 // (ZFILE cat /etc/passwd, /etc/shadow). Every finding is a config leftover,
 // not a live incident.
 export async function tpfHardeningAudit() {
-  if (!_detected) return;
+  if (!_detected || !_requireConsole()) return;
   _setResults('<div class="tpf-running">Hardening sweep — ZINET / ZCRAS / ZAUTH / /etc/passwd / /etc/shadow…</div>');
 
   const inet   = _splitLines(await _tpfCmd('ZINET DISPLAY')).map(_stripMsgId);
