@@ -12,7 +12,8 @@
     "mock:lpar:acf2": "MOCK_ESM=ACF2 node mock-lpar/mock-lpar.js",
     "mock:lpar:tss": "MOCK_ESM=TOPSECRET node mock-lpar/mock-lpar.js",
     "mock:as400": "node mock-lpar/mock-as400.js",
-    "mock:zvm": "node mock-lpar/mock-zvm.js"
+    "mock:zvm": "node mock-lpar/mock-zvm.js",
+    "mock:tpf": "node mock-lpar/mock-tpf.js"
   },
   "dependencies": {
     "kerberos": "^7.0.0",

@@ -2659,6 +2659,88 @@ const _WALKTHROUGHS = [
     ],
   },
 
+  // ── z/TPF: System Diagnostics ─────────────────────────────────────
+  {
+    id:       'tpf-system-diagnostics',
+    category: 'security',
+    title:    'z/TPF: System Diagnostics',
+    desc:     'Runs the four diagnostic ZSHOW subcommands — UTIL, LOCK, MQP, ALLOC — in one sweep and flags the resource anomalies a containment review cares about.',
+    steps: [
+      {
+        title: 'Prerequisites',
+        body:  'Be signed on to a z/TPF operator console at the ENTER TPF COMMAND prompt. Any privilege level works — all four ZSHOW subcommands this tool uses are OPER-level queries.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click the 🔒 button in the OIA status bar and enter the security password (default: 2970).',
+        highlight: 'secBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Find System Diagnostics',
+        body:  'In the z/TPF CONSOLE section, System Diagnostics is the fifth tool, below Pool Monitor.',
+        highlight: 'tpfDiagBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Run the sweep',
+        body:  'Click ◈ System Diagnostics. It sends ZSHOW UTIL (CPU per I-stream), ZSHOW LOCK (held record and resource locks), ZSHOW MQP (scheduler list depths) and ZSHOW ALLOC (fixed-file record allocation) back to back, then parses each reply. Every command is read-only.',
+        highlight: 'tpfDiagBtn',
+        autoFn: 'tpfSysDiag',
+        autoLabel: 'Run it for me',
+      },
+      {
+        title: 'Read the anomalies',
+        body:  'Flagged rows: a lock held over 1,000ms or with five or more waiters, the DEFERRED scheduler list above 1,000 entries, any record type at or above 90% of prime. On the mock all three fire — PAYM holds ACCT#00920C14 for 4,210ms with 7 waiters, the deferred list sits at 1,842, and #ACCREC is at 91%. The point of running them together is that these are one incident (the seeded CYC-0826 storyline), not three: the PAYM lock is why the deferred list is backing up, and the backlog is why #ACCREC is filling. Chasing any one in isolation leads nowhere.',
+        highlight: 'tpfResults',
+        autoFn: null,
+      },
+    ],
+  },
+
+  // ── z/TPF: Entry Point Debugger ──────────────────────────────────
+  {
+    id:       'tpf-entry-debugger',
+    category: 'security',
+    title:    'z/TPF: Entry Point Debugger',
+    desc:     'Drives the console debugger — ZTEST START / DISPLAY / BP / STEP / GO / STOR / STOP — against a privileged ECB, showing that operator-console reach is debugger reach on privileged code.',
+    steps: [
+      {
+        title: 'Prerequisites',
+        body:  'Be signed on to a z/TPF operator console at the ENTER TPF COMMAND prompt. Run the ECB Enumerator first if you want the tool to target a real privileged ECB from the live directory; otherwise it falls back to PAYM. This walkthrough drives a live debugger against a payment handler — only do it on the mock or a system you are authorized to test.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click the 🔒 button in the OIA status bar and enter the security password (default: 2970).',
+        highlight: 'secBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Find the Entry Point Debugger',
+        body:  'In the z/TPF CONSOLE section, the Entry Point Debugger is the sixth tool, below System Diagnostics.',
+        highlight: 'tpfDebugBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Run the debug cycle',
+        body:  'Click ⬚ Entry Point Debugger. It runs a full session: ZTEST START,<ecb> attaches and loads the entry point, ZTEST DISPLAY dumps the PSW and all 16 general registers, ZTEST BP sets a breakpoint a few instructions in, ZTEST STEP single-steps once, ZTEST GO runs to that breakpoint, ZTEST STOR dumps entry-point storage, and ZTEST STOP closes the session cleanly.',
+        highlight: 'tpfDebugBtn',
+        autoFn: 'tpfDebugEntry',
+        autoLabel: 'Run it for me',
+      },
+      {
+        title: 'Read the results',
+        body:  'ZTEST ENTRY (the Entry Point Prober) is a health check. Everything past ENTRY is a live debugger — registers, breakpoints, single-step, storage read — and on the mock it carries no privilege gate, so an OPER session that can reach the console can attach it to a privileged payment handler. The takeaway for a review: treat operator-console access as equivalent to code-execution access on anything ZTEST can name. Against PAYM, DISPLAY also surfaces the seeded CYC-0826 marker in the save-area chain, the same incident the other z/TPF tools touch from their own angles.',
+        highlight: 'tpfResults',
+        autoFn: null,
+      },
+    ],
+  },
+
 ];
 
 // ── Engine state ───────────────────────────────────────────────────

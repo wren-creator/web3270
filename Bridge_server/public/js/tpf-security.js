@@ -42,6 +42,16 @@ function _tpfCmd(cmd) {
   });
 }
 
+// Console output lines arrive prefixed with their ZTPFnnnI/W/E message id
+// (e.g. "ZTPF200I AARES  APPL  ACTIVE ..."). Strip it so table rows can be
+// matched positionally, and keep a plain line splitter next to it.
+function _stripMsgId(line) {
+  return String(line).replace(/^\s*ZTPF\d{3}[IWE]\s+/, '').trim();
+}
+function _splitLines(text) {
+  return String(text).split('\n').map(l => l.trim()).filter(Boolean);
+}
+
 // ── Screen hook — called on every screen event ─────────────────────────────
 export function tpfOnScreen(msg) {
   const text = screenToText(msg);
@@ -108,17 +118,17 @@ export async function tpfEnumEcbs() {
   _setResults('<div class="tpf-running">Running ZSHOW E — enumerating entry points…</div>');
 
   const text = await _tpfCmd('ZSHOW E');
-  const lines = text.split('\n').map(l => l.trim());
+  const lines = _splitLines(text);
 
+  // Every console line carries a ZTPF200I prefix, header rows included, so
+  // gating on that marker would skip the whole table. Strip the message id
+  // and trust the positional row shape instead; stop at the end marker.
   const ecbs = [];
-  let inTable = false;
-  for (const line of lines) {
-    if (/ZTPF200I/.test(line)) { inTable = true; continue; }
-    if (/ZTPF202I/.test(line)) { inTable = false; continue; }
-    if (inTable) {
-      const m = line.match(/^([A-Z]{4,8})\s+(APPL|SYSTEM)\s+(ACTIVE|IDLE|STOPPED)\s+(\d+)\s+([\d,]+)/);
-      if (m) ecbs.push({ name: m[1], type: m[2], status: m[3], entries: m[4], txn: m[5], priv: line.includes('[PRIV]') });
-    }
+  for (const raw of lines) {
+    if (/ZTPF202I|END OF ECB DIRECTORY/.test(raw)) break;
+    const line = _stripMsgId(raw);
+    const m = line.match(/^([A-Z]{4,8})\s+(APPL|SYSTEM)\s+(ACTIVE|IDLE|STOPPED)\s+(\d+)\s+([\d,]+)/);
+    if (m) ecbs.push({ name: m[1], type: m[2], status: m[3], entries: m[4], txn: m[5], priv: /\[PRIV\]/.test(raw) });
   }
 
   state.tpfEcbList = ecbs;
@@ -251,11 +261,11 @@ export async function tpfCheckPools() {
   _setResults('<div class="tpf-running">Running ZSHOW P — checking memory pools…</div>');
 
   const text  = await _tpfCmd('ZSHOW P');
-  const lines = text.split('\n').map(l => l.trim());
+  const lines = _splitLines(text);
 
   const pools = [];
-  for (const line of lines) {
-    const m = line.match(/^(ECBPOOL|FPOOL|GPOOL|IPOOL|TPOOL|XPOOL)\s+\S+\s+(\S+)\s+(\S+)\s+(\d+)%/);
+  for (const raw of lines) {
+    const m = _stripMsgId(raw).match(/^(ECBPOOL|FPOOL|GPOOL|IPOOL|TPOOL|XPOOL)\s+\S+\s+(\S+)\s+(\S+)\s+(\d+)%/);
     if (m) pools.push({ name: m[1], size: m[2], used: m[3], pct: parseInt(m[4]), warn: parseInt(m[4]) >= 90 });
   }
 
@@ -283,6 +293,186 @@ export async function tpfCheckPools() {
   );
 }
 
+// ── Tool: System Diagnostics ──────────────────────────────────────────────
+// Resource-containment sweep. Runs the four diagnostic ZSHOW subcommands and
+// flags the anomalies. On the mock these all trace back to one seeded
+// incident (CYC-0826) rather than four independent faults — the lesson is
+// reading them together instead of chasing each in isolation.
+export async function tpfSysDiag() {
+  if (!_detected) return;
+  _setResults('<div class="tpf-running">Resource sweep — ZSHOW UTIL / LOCK / MQP / ALLOC…</div>');
+
+  const util  = _splitLines(await _tpfCmd('ZSHOW UTIL')).map(_stripMsgId);
+  const lock  = _splitLines(await _tpfCmd('ZSHOW LOCK')).map(_stripMsgId);
+  const mqp   = _splitLines(await _tpfCmd('ZSHOW MQP')).map(_stripMsgId);
+  const alloc = _splitLines(await _tpfCmd('ZSHOW ALLOC')).map(_stripMsgId);
+
+  // ZSHOW UTIL — system average + busiest I-stream. A single I-stream in the
+  // 60s is normal headroom on this platform; the real tells are a hot stream
+  // (≥ 85%) or the CPU-loop detector reporting anything other than NONE.
+  const avgLine  = util.find(l => /SYSTEM AVERAGE/i.test(l)) || '';
+  const avgPct   = avgLine.match(/AVERAGE:\s*(\d+)%/i)?.[1] ?? '—';
+  const busiest  = avgLine.match(/BUSIEST:\s*(CP\d+)\s+AT\s+(\d+)%/i);
+  const loopLine = util.find(l => /CPU-LOOP DETECTION/i.test(l)) || '';
+  const cpuLoop  = !!loopLine && !/CPU-LOOP DETECTION:\s*NONE\b/i.test(loopLine);
+  const cpuAnom  = cpuLoop || (busiest ? parseInt(busiest[2]) >= 85 : false);
+
+  // ZSHOW LOCK — held record locks
+  const locks = [];
+  for (const l of lock) {
+    const m = l.match(/^(\w+)\s+(\S+)\s+(EXCL|SHARE)\s+(\d+)\s+([\d,]+)$/);
+    if (m) locks.push({ holder: m[1], resource: m[2], type: m[3], waiters: +m[4], heldMs: +m[5].replace(/,/g, '') });
+  }
+  const lockAnoms = locks.filter(l => l.heldMs >= 1000 || l.waiters >= 5);
+
+  // ZSHOW MQP — scheduler list depths
+  const lists = [];
+  for (const l of mqp) {
+    const m = l.match(/^([A-Z]+ LIST)\s*:\s*([\d,]+)\s+ENTRIES/i);
+    if (m) lists.push({ name: m[1], count: +m[2].replace(/,/g, '') });
+  }
+  const deferred = lists.find(r => /DEFERRED/i.test(r.name));
+  const mqpAnom  = deferred ? deferred.count >= 1000 : false;
+
+  // ZSHOW ALLOC — fixed-file record allocation
+  const recs = [];
+  for (const l of alloc) {
+    const m = l.match(/^(#\w+)\s+(\d+)\s+([\d,]+)\s+([\d,]+)\s+(\d+)%/);
+    if (m) recs.push({ type: m[1], size: m[2], prime: m[3], overflow: m[4], pct: +m[5] });
+  }
+  const recAnoms = recs.filter(r => r.pct >= 90);
+
+  const anomCount = (cpuAnom ? 1 : 0) + lockAnoms.length + (mqpAnom ? 1 : 0) + recAnoms.length;
+
+  const lockRows = locks.map(l => `
+    <tr class="${(l.heldMs >= 1000 || l.waiters >= 5) ? 'tpf-warn-row' : ''}">
+      <td class="tpf-mono">${esc(l.holder)}</td>
+      <td class="tpf-mono tpf-dim">${esc(l.resource)}</td>
+      <td class="tpf-dim">${esc(l.type)}</td>
+      <td class="${l.waiters >= 5 ? 'tpf-warn' : 'tpf-dim'}">${l.waiters}</td>
+      <td class="${l.heldMs >= 1000 ? 'tpf-warn' : 'tpf-dim'}">${l.heldMs.toLocaleString()}ms</td>
+    </tr>`).join('');
+
+  const listRows = lists.map(r => `
+    <tr class="${(/DEFERRED/i.test(r.name) && r.count >= 1000) ? 'tpf-warn-row' : ''}">
+      <td class="tpf-mono">${esc(r.name)}</td>
+      <td class="${(/DEFERRED/i.test(r.name) && r.count >= 1000) ? 'tpf-warn' : 'tpf-mono tpf-dim'}">${r.count.toLocaleString()}</td>
+    </tr>`).join('');
+
+  const recRows = recs.map(r => `
+    <tr class="${r.pct >= 90 ? 'tpf-warn-row' : ''}">
+      <td class="tpf-mono">${esc(r.type)}</td>
+      <td class="tpf-dim">${esc(r.prime)}</td>
+      <td class="${r.pct >= 90 ? 'tpf-warn' : 'tpf-ok'}">${r.pct}%</td>
+    </tr>`).join('');
+
+  _setResults(`
+    <div class="tpf-result-hdr">RESOURCE DIAGNOSTICS${anomCount > 0 ? ` — ${anomCount} ANOMAL${anomCount > 1 ? 'IES' : 'Y'}` : ' — CLEAR'}</div>
+    <div class="tpf-result-note" style="padding:4px 8px">
+      CPU: ${esc(avgPct)}% avg${busiest ? `, busiest ${esc(busiest[1])} at <span class="${cpuAnom ? 'tpf-warn' : 'tpf-dim'}">${esc(busiest[2])}%</span>` : ''}
+    </div>
+    <table class="tpf-table">
+      <thead><tr><th>LOCK HOLDER</th><th>RESOURCE</th><th>TYPE</th><th>WAIT</th><th>HELD</th></tr></thead>
+      <tbody>${lockRows || '<tr><td colspan="5" class="tpf-dim">no locks parsed</td></tr>'}</tbody>
+    </table>
+    <table class="tpf-table" style="margin-top:6px">
+      <thead><tr><th>SCHEDULER LIST</th><th>DEPTH</th></tr></thead>
+      <tbody>${listRows || '<tr><td colspan="2" class="tpf-dim">no lists parsed</td></tr>'}</tbody>
+    </table>
+    <table class="tpf-table" style="margin-top:6px">
+      <thead><tr><th>RECORD TYPE</th><th>PRIME</th><th>USED</th></tr></thead>
+      <tbody>${recRows || '<tr><td colspan="3" class="tpf-dim">no allocation parsed</td></tr>'}</tbody>
+    </table>
+    <div class="tpf-result-note">${anomCount > 0
+      ? `${anomCount} anomaly signal(s). On the mock these are downstream symptoms of one incident (CYC-0826), not separate faults — correlate before remediating.`
+      : 'All four diagnostic areas within normal limits.'}</div>
+  `);
+}
+
+// ── Tool: Entry Point Debugger ────────────────────────────────────────────
+// Drives the console debugger (ZTEST beyond ENTRY) through a full
+// START → DISPLAY → BP → STEP → GO → STOR → STOP cycle against a privileged
+// ECB. The finding is that ZTEST is not privilege-gated: any operator
+// session that reaches the console can attach a debugger to privileged code.
+export async function tpfDebugEntry() {
+  if (!_detected) return;
+  const target = state.tpfEcbList?.find(e => e.priv)?.name || 'PAYM';
+  _setResults(`<div class="tpf-running">Attaching ZTEST debugger to ${esc(target)}…</div>`);
+
+  const startT   = _splitLines(await _tpfCmd(`ZTEST START,${target}`)).map(_stripMsgId);
+  const started  = startT.some(l => /DEBUG SESSION STARTED/i.test(l));
+  if (!started) {
+    // NOT FOUND, ALREADY ACTIVE, or a syntax refusal — clear any stale
+    // session and report the first line the console gave back.
+    await _tpfCmd('ZTEST STOP');
+    const why = startT.find(l => /NOT FOUND|ALREADY ACTIVE|Syntax/i.test(l)) || startT[0] || 'no response';
+    _setResults(`<div class="tpf-running">ZTEST START rejected for ${esc(target)} — ${esc(why)}</div>`);
+    return;
+  }
+  const base = startT.find(l => /LOADED @/i.test(l))?.match(/LOADED @ ([0-9A-F]{8})/i)?.[1] || null;
+  const len  = startT.find(l => /LENGTH/i.test(l))?.match(/LENGTH ([0-9A-F]+)/i)?.[1] || '—';
+
+  const disp = _splitLines(await _tpfCmd('ZTEST DISPLAY')).map(_stripMsgId);
+  const psw  = disp.find(l => /PSW:/i.test(l))?.match(/PSW:\s*([0-9A-F]{8})\s+([0-9A-F]{8})/i);
+  const regs = [];
+  for (const l of disp) {
+    const m = l.match(/GPR\s+\d+-\d+\s*:\s*([0-9A-F]{8})\s+([0-9A-F]{8})\s+([0-9A-F]{8})\s+([0-9A-F]{8})/i);
+    if (m) regs.push(m[1], m[2], m[3], m[4]);
+  }
+  const cycNote = disp.find(l => /CYC-0826/i.test(l)) || null;
+
+  let stepLine = null, bpHit = null;
+  if (base) {
+    const bpAddr = (parseInt(base, 16) + 8).toString(16).toUpperCase().padStart(8, '0');
+    await _tpfCmd(`ZTEST BP,${bpAddr}`);
+    stepLine = _splitLines(await _tpfCmd('ZTEST STEP')).map(_stripMsgId).find(l => /EXECUTED:/i.test(l)) || null;
+    const goT = _splitLines(await _tpfCmd('ZTEST GO')).map(_stripMsgId);
+    bpHit = goT.find(l => /BREAKPOINT REACHED/i.test(l)) || goT.find(l => /RAN TO COMPLETION/i.test(l)) || null;
+  }
+
+  let dump = [];
+  if (base) {
+    dump = _splitLines(await _tpfCmd(`ZTEST STOR,${base},32`)).map(_stripMsgId)
+      .filter(l => /^[0-9A-F]{8}\s+[0-9A-F]{2}\s/i.test(l)).slice(0, 4);
+  }
+
+  await _tpfCmd('ZTEST STOP');
+
+  const regRows = [];
+  for (let i = 0; i < regs.length; i += 4) {
+    regRows.push(`<tr>
+      <td class="tpf-dim">R${i}-R${i + 3}</td>
+      <td class="tpf-mono">${regs.slice(i, i + 4).map(esc).join(' ')}</td>
+    </tr>`);
+  }
+
+  _setResults(`
+    <div class="tpf-result-hdr">ENTRY POINT DEBUGGER — ${esc(target)}</div>
+    <div class="tpf-priv-result tpf-priv-critical">
+      <div class="tpf-priv-role">ZTEST debugger attached to a privileged handler from an operator session</div>
+      <div class="tpf-priv-risk">ZTEST beyond ENTRY is a live debugger — registers, breakpoints, single-step, storage — and it is not privilege-gated. Console reach equals debugger reach on privileged code.</div>
+    </div>
+    <table class="tpf-table" style="margin-top:8px">
+      <tbody>
+        <tr><td class="tpf-dim">LOADED AT</td><td class="tpf-mono">${esc(base || '—')}</td></tr>
+        <tr><td class="tpf-dim">LENGTH</td><td class="tpf-mono">${esc(len)}</td></tr>
+        ${psw ? `<tr><td class="tpf-dim">PSW</td><td class="tpf-mono">${esc(psw[1])} ${esc(psw[2])}</td></tr>` : ''}
+        ${stepLine ? `<tr><td class="tpf-dim">STEPPED</td><td class="tpf-mono">${esc(stepLine)}</td></tr>` : ''}
+        ${bpHit ? `<tr><td class="tpf-dim">RESUMED</td><td class="tpf-mono">${esc(bpHit)}</td></tr>` : ''}
+      </tbody>
+    </table>
+    ${regRows.length ? `<table class="tpf-table" style="margin-top:6px">
+      <thead><tr><th>REGISTERS</th><th>VALUE</th></tr></thead>
+      <tbody>${regRows.join('')}</tbody>
+    </table>` : ''}
+    ${dump.length ? `<div class="tpf-result-note" style="padding:4px 8px">STORAGE @ ${esc(base)}</div>
+    <table class="tpf-table"><tbody>${dump.map(l => `<tr><td class="tpf-mono">${esc(l)}</td></tr>`).join('')}</tbody></table>` : ''}
+    <div class="tpf-result-note">${cycNote
+      ? `DISPLAY also surfaced the seeded incident marker: ${esc(cycNote)}`
+      : 'Debug session opened and closed cleanly (ZTEST STOP issued).'}</div>
+  `);
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 function _setResults(html) {
   const content = document.getElementById('tpfResultsContent');
@@ -306,3 +496,5 @@ window.tpfEnumEcbs      = tpfEnumEcbs;
 window.tpfScanPriv      = tpfScanPriv;
 window.tpfProbeEntries  = tpfProbeEntries;
 window.tpfCheckPools    = tpfCheckPools;
+window.tpfSysDiag       = tpfSysDiag;
+window.tpfDebugEntry    = tpfDebugEntry;

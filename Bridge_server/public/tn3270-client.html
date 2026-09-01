@@ -901,6 +901,18 @@
               <span class="sec-panel-btn-sub">ZSHOW P — flag memory pools above 90% capacity</span>
             </button>
           </div>
+          <div class="sec-row">
+            <button id="tpfDiagBtn" class="sec-panel-btn" onclick="tpfSysDiag()">
+              <span class="sec-panel-btn-label">◈ System Diagnostics</span>
+              <span class="sec-panel-btn-sub">ZSHOW UTIL / LOCK / MQP / ALLOC — resource containment sweep</span>
+            </button>
+          </div>
+          <div class="sec-row">
+            <button id="tpfDebugBtn" class="sec-panel-btn" onclick="tpfDebugEntry()">
+              <span class="sec-panel-btn-label">⬚ Entry Point Debugger</span>
+              <span class="sec-panel-btn-sub">ZTEST START/BP/STEP/GO — attach the console debugger to a privileged ECB</span>
+            </button>
+          </div>
           <!-- Tool results panel -->
           <div id="tpfResults" style="display:none;margin-top:6px;border:1px solid #0d2a1a;border-radius:3px;background:#020a05;max-height:260px;overflow-y:auto">
             <div id="tpfResultsContent"></div>

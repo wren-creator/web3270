@@ -58,6 +58,18 @@ const TOUR_STEPS = [
     side: 'left'
   },
   {
+    target: () => document.querySelectorAll('#tpfSection .sec-row button')[4],
+    title: 'System Diagnostics',
+    body: 'Runs ZSHOW UTIL, LOCK, MQP and ALLOC in one sweep and flags resource anomalies — a lock held too long, the deferred scheduler list backing up, a record type near its prime limit. Read the flags together: on the mock they are one incident, not four.',
+    side: 'left'
+  },
+  {
+    target: () => document.querySelectorAll('#tpfSection .sec-row button')[5],
+    title: 'Entry Point Debugger',
+    body: 'Drives the console debugger — ZTEST START / DISPLAY / BP / STEP / GO / STOR — against a privileged ECB. ZTEST past ENTRY is a live debugger and is not privilege-gated: console reach is debugger reach on privileged code.',
+    side: 'left'
+  },
+  {
     target: () => document.getElementById('tpfResults'),
     title: 'Results Panel',
     body: 'All tool output appears here, color-coded by severity:<br>• <span style="color:#40d080">Green</span> — denied / secure<br>• <span style="color:#d04040">Red</span> — accessible (investigate)<br>• <span style="color:#d08020">Yellow</span> — warning / threshold exceeded<br><br>Scroll for full output from longer scans.',
