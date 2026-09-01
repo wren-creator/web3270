@@ -1,14 +1,15 @@
 # WebTerm/3270 — Mock Server Reference
 
-Three lightweight TN3270 daemons for local development and demos — no mainframe required.
+Four lightweight mock daemons for local development and demos, no mainframe required.
 
-| Daemon | File | Default Port | Simulates |
-|--------|------|-------------|-----------|
-| Mock z/OS LPAR | `mock-lpar/mock-lpar.js` | **3270** | IBM z/OS · TSO/E · ISPF · SDSF |
-| Mock z/VM | `mock-lpar/mock-zvm.js` | **3271** | IBM z/VM · CP · CMS · XEDIT |
-| Mock z/TPF | `mock-lpar/mock-tpf.js` | **3274** | IBM z/TPF · Operator Console · ZSHOW/ZTEST |
+| Daemon | File | Default Port | Protocol | Simulates |
+|--------|------|-------------|----------|-----------|
+| Mock z/OS LPAR | `mock-lpar/mock-lpar.js` | **3270** | TN3270(E) | IBM z/OS · TSO/E · ISPF · SDSF |
+| Mock z/VM | `mock-lpar/mock-zvm.js` | **3271** | TN3270(E) | IBM z/VM · CP · CMS · XEDIT |
+| Mock AS/400 | `mock-lpar/mock-as400.js` | **3272** | TN5250 | IBM i (AS/400) · 5250 menus · WRK/DSP panels · PDM · SQL · RPG |
+| Mock z/TPF | `mock-lpar/mock-tpf.js` | **3274** | TN3270(E) | IBM z/TPF · Operator Console · ZSHOW/ZTEST |
 
-All three daemons implement the **full TN3270(E) protocol stack** — real Telnet negotiation, EBCDIC encoding, and proper 3270 datastream — so the bridge and client exercise the complete code path exactly as they would against a real mainframe.
+The three TN3270 daemons implement the **full TN3270(E) protocol stack**: real Telnet negotiation, EBCDIC encoding, and proper 3270 datastream. The AS/400 daemon implements **TN5250**, the 5250 datastream and its EBCDIC field format. Either way the bridge and client exercise the complete code path exactly as they would against real hardware.
 
 ---
 
@@ -23,6 +24,12 @@ All three daemons implement the **full TN3270(E) protocol stack** — real Telne
   - [Screen flow](#zvm-screen-flow)
   - [Commands and keys](#zvm-commands-and-keys)
   - [Configuration](#zvm-configuration)
+- [Mock AS/400 (IBM i)](#mock-as400-ibm-i)
+  - [Screen flow](#as400-screen-flow)
+  - [Sign on](#as400-sign-on)
+  - [Commands](#as400-commands)
+  - [Seeded weak posture](#as400-seeded-weak-posture)
+  - [Configuration](#as400-configuration)
 - [Mock z/TPF](#mock-ztpf)
   - [Screen flow](#tpf-screen-flow)
   - [Commands and privilege levels](#tpf-commands)
@@ -409,6 +416,123 @@ Startup output:
 
 ---
 
+## Mock AS/400 (IBM i)
+
+Simulates an IBM i (AS/400) system over **TN5250**, not TN3270. It speaks the 5250 datastream and 5250 field format, so the bridge exercises its TN5250 path (`tn5250/`) end to end. The session starts at the Sign On screen and drops into a classic green-screen menu tree with a "Selection or command" line, from which every `WRK*` / `DSP*` panel, PDM, interactive SQL, and the RPG interpreter are reachable.
+
+Most of the mock's depth is a **deliberately weak security posture** for the IBM i security tools in the client (Security panel → IBM i SECURITY). See `DOCUMENTATION/webterm-security-tools-tutorial.md` Parts 33–35 for the tools that read this mock; this section documents the mock itself.
+
+### AS/400 Screen Flow
+
+```
+┌─────────────────────────────┐
+│   Sign On                   │  User + Password, press Enter
+│   System / Subsystem / Disp │  (password field present, not checked)
+└──────────────┬──────────────┘
+               │ ENTER (any non-blank user)
+               ▼
+┌─────────────────────────────┐
+│   MAIN MENU                 │  1 User · 2 Office · 3 System
+│   Select one of the         │  4 Files · 5 Programming · 9 Messages
+│   following:                │
+│   ...                       │
+│   Selection or command      │  type a menu number OR a CL command
+│   ===> _                    │
+└──────────────┬──────────────┘
+               │ CL command (e.g. WRKUSRPRF)  │ menu number
+               ▼                              ▼
+┌─────────────────────────────┐   ┌─────────────────────────────┐
+│  Work with ... (list panel) │   │  Submenu (USER/SYSTEM/...)   │
+│  Opt  Name  ...             │   │  ...                         │
+│  Command ===> _             │   │  Selection or command ===> _ │
+└──────────────┬──────────────┘   └─────────────────────────────┘
+               │ option 5=Display, or DSP* on the command line
+               ▼
+┌─────────────────────────────┐
+│  Display ... (detail panel) │  no command line — Enter / F3 / F12
+│  Field . . . . :  value     │  all navigate back to the list
+└─────────────────────────────┘
+```
+
+The menu tree: **MAIN** → USER TASKS, OFFICE TASKS, GENERAL SYSTEM TASKS (system values, user profiles, objects, active jobs, subsystems), FILES, and PROGRAMMING (PDM, interactive SQL). Any menu also takes a CL command on its "Selection or command" line, which is how the security tools drive it.
+
+### AS/400 Sign On
+
+There is **no credential check**. Any non-blank user name is accepted and becomes the current profile (upper-cased); the password field is drawn as a nondisplay field but ignored. Sign on as `QSECOFR`, `APPADMIN`, `JSMITH`, or anything else. `90` at any menu, or `SIGNOFF`, returns to the Sign On screen.
+
+### AS/400 Commands
+
+Type these on any "Selection or command" / "Command ===>" line. Anything not modelled returns a realistic `CPF`/`CPD` message.
+
+**Security review — the surfaces the IBM i security tools audit**
+
+| Command | Description |
+|---------|-------------|
+| `WRKSYSVAL` / `DSPSYSVAL SYSVAL(x)` | Security system values (list + detail). Weak values render in red. |
+| `WRKUSRPRF` / `DSPUSRPRF USRPRF(x)` | User profiles (list + detail): status, limit capabilities, special authorities, `No password (*NONE)`, date password last changed, and a default-password warning |
+| `WRKOBJ` / `DSPOBJAUT OBJ(lib/name)` | Objects and their `*PUBLIC` authority plus private grants |
+| `DSPNETA` | Network attributes (`JOBACN`, `DDMACC`, `PCSACC`, `ALWANYNET`) |
+| `WRKJOBD` / `DSPJOBD JOBD(x)` | Job descriptions, including any that name a fixed `USER()` |
+| `WRKAUTL` / `DSPAUTL AUTL(x)` | Authorization lists and the objects they secure |
+| `WRKACTJOB` | Active jobs with their user, subsystem, and function |
+| `WRKSBS` | Subsystems |
+| `STRSST` | Service Tools user IDs (SST option 8): `QSECOFR`, `22222222`, `QSRV`, all still on the shipped default password |
+| `ANZDFTPWD ACTION(*NONE)` | Analyze Default Passwords — lists profiles whose password equals the profile name; reads live from the profile table |
+| `CHGUSRPRF USRPRF(x) PASSWORD(*NONE) STATUS(*DISABLED)` | Remediation — only `PASSWORD(*NONE)` and `STATUS` are modelled; the change persists for the life of the mock process |
+
+**Everyday operations**
+
+| Command | Description |
+|---------|-------------|
+| `WRKSPLF` / `WRKOUTQ` | Spooled files / output queues |
+| `WRKJOB` / `WRKUSRJOB` / `WRKBCHJOB` | Current job / your jobs / batch jobs (`WRKBCHJOB` shows `MTHEND` queued behind a running `PAYRPT` — a Book 201 exercise) |
+| `WRKLIB` / `DSPLIBL` | Libraries / library list |
+| `DSPMSG` | Message queue (per-user, seeded on sign on; `MTHCLOSE` sits in `MSGW`) |
+| `SNDMSG` | Compose a message to another user |
+
+**Programming**
+
+| Command | Description |
+|---------|-------------|
+| `STRPDM` → `WRKOBJPDM LIB(x)` → `WRKMBRPDM FILE(x)` | Programming Development Manager: drill library → objects → source members |
+| `WRKMBRPDM` option `4=Run`, or `CALL PGM(APPLIB/ADVENTURE)` | Runs a real, scoped-down RPG IV interpreter (`mock-lpar/rpg/`) against fixed-form RPGLE + DDS source, a small text adventure. See `mock-lpar/README.md`. |
+| `STRSQL` | Interactive SQL entry screen |
+
+**Cross-platform token chain — hop 2 of 4**
+
+| Command | Description |
+|---------|-------------|
+| `CHKBCN BCN(x)` | Validates the Batch Control Number the z/OS mock's `DATACHK` job issues; on a match, issues the fixed Resource Clearance Code. See the Mainframe 105 chain note in the z/TPF section. |
+
+### AS/400 Seeded Weak Posture
+
+The mock ships as an **unhardened factory box** so the security tools have real findings. Everything below is editable in `mock-lpar/mock-as400.js`, one row per finding, nothing else needs to change.
+
+- **System values** (`SYSVALS`): `QSECURITY 30`, `QMAXSIGN *NOMAX`, `QMAXSGNACN 1`, `QAUTOVRT *NOMAX`, `QLMTSECOFR 0`, `QALWOBJRST *ALL`, `QCRTAUT *CHANGE`, `QAUDCTL *NONE`, weak `QPWD*` rules, and more. Every value is flagged except one clean control, `QDSPSGNINF 1`.
+- **User profiles** (`USRPRFS`): `QSECOFR` and `QSRV` on their default password; `APPADMIN` (an "application service account") quietly holding `*ALLOBJ`; the IBM-supplied `Q*` set (`QPGMR`, `QSYSOPR`, `QUSER`, `QTMHHTTP`) still enabled with passwords; `QSYS` as the one shipped profile done right, `*DISABLED` and `PASSWORD(*NONE)` despite holding every special authority.
+- **Objects** (`OBJECTS`): `PAYROLL/EMPMAST` at `*PUBLIC *ALL`; `APPLIB/CONFIG` at `*PUBLIC *USE` but with a risky private `GRPACCT=*CHANGE` grant.
+- **Job descriptions, authorization lists, network attributes, active jobs**: seeded with the classic IBM i privilege-escalation and remote-access findings (a JOBD naming `USER(QSECOFR)` usable by `*PUBLIC`, an auth list at `*PUBLIC *CHANGE`, `JOBACN(*FILE)`, jobs running under `QSECOFR`/`APPADMIN`).
+
+### AS/400 Configuration
+
+| Environment Variable | Default | Description |
+|---------------------|---------|-------------|
+| `MOCK_AS400_PORT` | `3272` | TCP port to listen on |
+| `MOCK_AS400_SYSID` | `AS400MOCK` | System name shown on the Sign On screen and panel headers |
+| `LOG_LEVEL` | `info` | Set to `debug` for full byte-level Telnet / 5250 logging |
+
+```bash
+MOCK_AS400_PORT=3272 MOCK_AS400_SYSID=IBMIDEV node mock-lpar/mock-as400.js
+```
+
+Startup output:
+
+```
+2026-01-01T00:00:00.000Z [INFO ] Mock AS/400 (TN5250) listening on 0.0.0.0:3272
+```
+
+---
+
 ## Mock z/TPF
 
 Simulates an IBM z/TPF operator console. z/TPF is the Transaction Processing Facility OS used by airlines and credit card networks. The session starts at the operator logon screen and drops into a scrolling command console after login.
@@ -446,12 +570,44 @@ Commands are typed at the `OPERID ==>` prompt. Privilege level is set at logon.
 | `ZSHOW T` | Transaction monitor — TPS, peak, totals, queue depth |
 | `ZSHOW O` | Active operator list |
 | `ZSHOW V` | System version and uptime |
-| `ZTEST ENTRY,<ecb>` | Test an individual entry point — response time and status |
 | `ZSHOW B` | List active bookings (see the ticketing commands below) |
+| `ZSHOW UTIL` | CPU utilization by I-stream, MPIF state |
+| `ZSHOW LOCK` | Held record / resource locks — holder, resource, waiters, hold time |
+| `ZSHOW PROG` | Program allocation table (built from the ECB table) |
+| `ZSHOW MQP` | Scheduler list depths (input / ready / deferred / cross / suspend) |
+| `ZSHOW ALLOC` | Fixed-file record allocation — prime / overflow / used% |
+| `HELP` or `?` | Show available commands for current privilege level |
+
+**ZTEST — entry-point probe and interactive debugger**
+
+| Command | Description |
+|---------|-------------|
+| `ZTEST ENTRY,<ecb>` | Probe an individual entry point — response time and status |
+| `ZTEST START,<ecb>` | Attach the debugger to an ECB (one session at a time) |
+| `ZTEST DISPLAY` | Show the PSW and all 16 general registers |
+| `ZTEST BP,<addr>` / `ZTEST CLEAR,<addr>\|ALL` | Set / clear breakpoints |
+| `ZTEST STEP` / `ZTEST GO` | Single-step one instruction / run to the next breakpoint or exit |
+| `ZTEST REG,<n>[,<val>]` / `ZTEST STOR,<addr>[,<len>]` | Read or set a register / dump storage |
+| `ZTEST TRACE ON\|OFF` / `ZTEST STOP` | Toggle instruction trace / end the session |
+
+Register and storage values are seeded deterministically from the program name and address, so a given walkthrough always sees the same numbers. `ZTEST` past `ENTRY` is **not** privilege-gated.
+
+**Hardening surfaces — DISPLAY-level**
+
+| Command | Description |
+|---------|-------------|
+| `ZINET DISPLAY` | Internet daemon (ZINET) server table — port, state, auth model, TLS |
+| `ZCRAS DISPLAY` | CRAS terminals and their line assignments, plus terminal-pool restricted-command routing |
+| `ZAUTH DISPLAY` | Command authorization matrix (the UUSR user exit) — which terminal class may issue which restricted command |
+| `ZFILE cat <path>` | Read a POSIX file — `/etc/passwd` and `/etc/shadow` are modelled |
+
+**Ticketing**
+
+| Command | Description |
+|---------|-------------|
 | `ZBOOK passenger,flight,date,seat[,bcn,sav]` | Book a PNR, e.g. `ZBOOK SMITH,AA100,25DEC,14A` — returns a generated 6-character locator. The trailing `bcn,sav` pair is optional; omitted, ZBOOK books exactly as it always has. Supplied, both must match the fixed values the Mainframe 105 cross-platform token chain issues (see below) or the booking is rejected with `ZTPF852E`/`ZTPF853E` |
 | `ZLOOK <pnr>` | Look up a PNR by locator |
 | `ZCXL <pnr>` | Cancel a PNR — sets its status to CANCELLED rather than deleting the record |
-| `HELP` or `?` | Show available commands for current privilege level |
 
 > `ZBOOK`/`ZLOOK`/`ZCXL` are available at plain OPER level, same as `ZSHOW`/`ZTEST` — booking and cancelling is front-line agent work, not gated the way stopping an entry point is.
 
@@ -540,7 +696,7 @@ Startup output:
 
 ## Running All Servers
 
-### WSL2 / Node (four terminals)
+### WSL2 / Node (five terminals)
 
 ```bash
 # Terminal 1 — z/OS mock (port 3270)
@@ -551,11 +707,15 @@ node mock-lpar/mock-lpar.js
 cd ~/Bridge_server
 node mock-lpar/mock-zvm.js
 
-# Terminal 3 — z/TPF mock (port 3274)
+# Terminal 3 — AS/400 mock (port 3272)
+cd ~/Bridge_server
+node mock-lpar/mock-as400.js
+
+# Terminal 4 — z/TPF mock (port 3274)
 cd ~/Bridge_server
 node mock-lpar/mock-tpf.js
 
-# Terminal 4 — bridge
+# Terminal 5 — bridge
 cd ~/Bridge_server
 node server.js
 ```
@@ -564,9 +724,10 @@ node server.js
 
 ```bash
 cd ~/Bridge_server
-node mock-lpar/mock-lpar.js &
-node mock-lpar/mock-zvm.js  &
-node mock-lpar/mock-tpf.js  &
+node mock-lpar/mock-lpar.js  &
+node mock-lpar/mock-zvm.js   &
+node mock-lpar/mock-as400.js &
+node mock-lpar/mock-tpf.js   &
 node server.js
 ```
 
@@ -574,21 +735,23 @@ node server.js
 
 ## Docker
 
-Add the `mock-zvm` service to your `docker-compose.yml` alongside the existing `mock-lpar`:
+`docker-compose.yml` already defines every mock as its own service (`mock-lpar`, `mock-zvm`, `mock-as400`, `mock-tpf`, and `mock-claims`), each with its own `mock-lpar/Dockerfile.mock-*`, and the `tn3270-bridge` service `depends_on` all of them. `docker compose up -d` brings up the whole fleet.
+
+Each daemon is reachable inside the Docker network at `<container-name>:<port>` (`mock-zvm:3271`, `mock-as400:3272`, `mock-tpf:3274`, …). No port needs to be exposed externally unless you want to connect to a mock directly from outside Docker.
+
+The AS/400 service stanza, for reference:
 
 ```yaml
-  mock-zvm:
+  mock-as400:
     build:
       context: .
-      dockerfile: mock-lpar/Dockerfile.mock-zvm
-    container_name: mock-zvm
+      dockerfile: mock-lpar/Dockerfile.mock-as400
+    container_name: mock-as400
     restart: unless-stopped
     environment:
-      MOCK_ZVM_PORT:  "3271"
-      MOCK_ZVM_SYSID: "ZVMPROD"
-      MOCK_ZVM_VMID:  "ZVMSYS1"
-      MOCK_ZVM_LU:    "ZVMLU01"
-      LOG_LEVEL:      "debug"
+      MOCK_AS400_PORT:  "3272"
+      MOCK_AS400_SYSID: "AS400MOCK"
+      LOG_LEVEL:        "debug"
     networks:
       - tn3270-net
     deploy:
@@ -598,10 +761,8 @@ Add the `mock-zvm` service to your `docker-compose.yml` alongside the existing `
           cpus: "0.25"
 ```
 
-The z/VM daemon is reachable inside Docker at `mock-zvm:3271`. No port needs to be exposed externally unless you want to connect to it directly from outside Docker.
-
 ```bash
-docker compose build mock-zvm
+docker compose build          # or: docker compose build mock-as400
 docker compose up -d
 ```
 
@@ -609,27 +770,30 @@ docker compose up -d
 
 ## lpars.txt Entries
 
-Add all three mock servers to `lpars.txt` so they appear in the WebTerm/3270 LPAR dropdown:
+Every mock is already a built-in profile in `lpars.shipped.txt` (tracked in git, loaded automatically, read-only in the UI), so nothing needs adding for the defaults:
 
 ```
-# id,        name,       host,       port,  tls,   type,  model
-mock-zos,    MOCK-ZOS,   mock-lpar,  3270,  false, TSO,   3278-2
-mock-zvm,    MOCK-ZVM,   mock-zvm,   3271,  false, VM,    3278-2
-mock-tpf,    MOCK-TPF,   mock-tpf,   3274,  false, TPF,   3278-2
+# id, name, host, port, tls, type, model, tn3270e, protocol
+mock-zos,    MOCK-ZOS,    mock-lpar,   3270,  false,  TSO,    3278-2,  true
+mock-zvm,    MOCK-ZVM,    mock-zvm,    3271,  false,  ZVM,    3278-2,  true
+mock-tpf,    MOCK-TPF,    mock-tpf,    3274,  false,  TPF,    3278-2,  true
+mock-as400,  MOCK-AS400,  mock-as400,  3272,  false,  AS400,  3179-2,  true,  5250
+mock-claims, MOCK-CLAIMS, mock-claims, 3273,  false,  CLAIMS, 3278-2,  true
 ```
 
-> For WSL2/Node (not Docker), use `127.0.0.1` as the host instead of the service name:
+The AS/400 row carries a 9th column, `protocol`, set to `5250`; omitted, it defaults to `3270`. Its model is a 5250 display model (`3179-2`) rather than a 3278.
+
+> To point the client at a Node/WSL2 fleet instead of the Docker one, override the host in your own gitignored `lpars.txt` using the same ids:
 > ```
-> mock-zos,  MOCK-ZOS,  127.0.0.1,  3270,  false, TSO,  3278-2
-> mock-zvm,  MOCK-ZVM,  127.0.0.1,  3271,  false, VM,   3278-2
-> mock-tpf,  MOCK-TPF,  127.0.0.1,  3274,  false, TPF,  3278-2
+> mock-as400,  MOCK-AS400,  127.0.0.1,  3272,  false,  AS400,  3179-2,  true,  5250
+> mock-tpf,    MOCK-TPF,    127.0.0.1,  3274,  false,  TPF,    3278-2,  true
 > ```
 
 ---
 
 ## Protocol Notes
 
-Both daemons implement the same TN3270(E) protocol layer:
+The three TN3270 daemons (z/OS, z/VM, z/TPF) implement the same TN3270(E) protocol layer:
 
 - Full Telnet option negotiation (`DO` / `WILL` / `WONT` for BINARY, EOR, TN3270E)
 - TN3270E device-type sub-negotiation with `FUNCTIONS IS` response
@@ -640,5 +804,7 @@ Both daemons implement the same TN3270(E) protocol layer:
 - Input field content extraction from 3270 write records
 - `IAC` byte escaping in both directions
 - Graceful disconnect via `socket.end()` on logoff commands
+
+The AS/400 daemon speaks **TN5250** instead: the same Telnet option negotiation, but the 5250 datastream (`Write To Display` with `SBA`/`SF`/`IC` orders and 5250 field-format words), 5250 AID bytes, and `GET`/`PUT-GET` record opcodes. Screen content is EBCDIC the same way.
 
 No npm packages are required beyond Node's built-in `net` module.
