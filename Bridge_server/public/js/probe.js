@@ -39,6 +39,24 @@ const _PROBE_PROFILES = {
       'IBMUSER,SYS1', 'SYSADM,SYSADM',
     ],
   },
+  TPF: {
+    // z/TPF operator logon. The logon and logon-error screens both carry
+    // "OPER ID  ==>"; the operator console does not, so that is the
+    // discriminator. Success = the scrolling console appeared. z/TPF has no
+    // sign-on lockout, so LOCKOUT only fires on an explicit revoke message
+    // (never on the mock).
+    detect:  t => /OPER ID\s*==>/i.test(t),
+    userRow: 4, userCol: 15,
+    passRow: 6, passCol: 15,
+    success: t => /ENTER TPF COMMAND|PF3=LOGOFF/i.test(t),
+    lockout: t => /OPER ID\s+(REVOKED|DISABLED|LOCKED)|ZTPF9\d{2}E.*(REVOK|LOCK)/i.test(t),
+    logon:   t => /OPER ID\s*==>/i.test(t),
+    defaults: [
+      'TPFOP01,TPF1', 'SYSOP01,SYS1', 'ADMIN01,ADMIN',
+      'PRIME,PRIME', 'CRAS,CRAS', 'OPER,OPER',
+      'TPFOPER,TPFOPER', 'SYSOP,SYSOP',
+    ],
+  },
 };
 
 let _probeRunning  = false;
@@ -98,7 +116,7 @@ export function probeLoadDefaults() {
     el.value = det.profile.defaults.join('\n');
     _probeSetStatus(`Defaults loaded for ${det.name} — ${det.profile.defaults.length} pairs`);
   } else {
-    _probeSetStatus('Navigate to a TSO, z/VM, or CICS logon screen first');
+    _probeSetStatus('Navigate to a TSO, z/VM, CICS, or z/TPF logon screen first');
   }
 }
 
@@ -106,7 +124,7 @@ export async function startProbe() {
   if (_probeRunning) return;
 
   const det = probeDetectSubsystem();
-  if (!det) { _probeSetStatus('Navigate to a TSO, z/VM, or CICS logon screen first'); return; }
+  if (!det) { _probeSetStatus('Navigate to a TSO, z/VM, CICS, or z/TPF logon screen first'); return; }
   const { name: sysName, profile } = det;
 
   const delay = parseInt((document.getElementById('probeDelay') || {}).value || '1500', 10) || 1500;

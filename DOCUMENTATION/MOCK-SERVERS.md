@@ -641,6 +641,8 @@ Authorization failures produce `ZTPF900E AUTHORIZATION FAILURE` and are logged.
 | `SYSOP01` | `SYS1` | SYSOP | 2 — stop + manage |
 | `ADMIN01` | `ADMIN` | SYSPROG | 3 — full control |
 
+Bad credentials redisplay the logon screen with `ZTPF901E INVALID OPER ID OR PASSWORD`; there is no sign-on lockout. The Security panel's **RACF PROBE** tool recognises this logon screen (`OPER ID ==>`) and can spray a wordlist against it, classifying SUCCESS (the console appeared) vs FAILURE.
+
 ### TPF ECB Table
 
 15 simulated entry control blocks:
