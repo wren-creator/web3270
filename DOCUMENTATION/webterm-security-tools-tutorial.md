@@ -2235,6 +2235,69 @@ like when the teardown step was skipped. On a real z/TPF system the fixes are
 in the ZINET configuration, the CRAS line assignments, the `UUSR` user-exit
 authorization table, and `/etc/passwd` / `/etc/shadow` maintenance.
 
+### Beyond the console: the ssh daemon
+
+The Hardening Audit reads the ZINET server table from the operator console, but
+the sshd on a z/TPF box (IBM's ported OpenSSH, run from ZINET) is worth checking
+directly from the network. There is no OpenSSH "anonymous" switch — `anon=Y` is
+a ZINET **FTP/TFTP** server-table setting only. What you are actually testing
+for is a server that grants a session with **no credential**, which comes from
+`PermitEmptyPasswords yes` plus a null-password account, an
+`AuthenticationMethods none` in a `Match` block, or a `none`-auth-accepting
+ported sshd.
+
+Quick check, offering no auth method and a harmless command so a success is
+unambiguous:
+
+```bash
+ssh -o BatchMode=yes -o PubkeyAuthentication=no -o PasswordAuthentication=no \
+    -o NumberOfPasswordPrompts=0 -p <PORT> anonymous@<TPF_HOST> true
+```
+
+`Permission denied (publickey,password)` is the secure result. A banner plus
+`true` returning, or an SFTP subsystem that opens, is the finding.
+
+Scripted sweep (`AutoAddPolicy` disables host-key verification — fine for an
+audit run, do not copy it into anything that matters):
+
+```python
+import sys, paramiko
+
+def check_ssh_nocred(host, port=22, timeout=10):
+    c = paramiko.SSHClient()
+    c.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    try:
+        c.connect(host, port=port, username="anonymous", password="",
+                  look_for_keys=False, allow_agent=False, timeout=timeout)
+        try:
+            c.open_sftp()
+            print(f"[!] FINDING {host}:{port}: session AND sftp with no credential")
+        except Exception:
+            print(f"[!] FINDING {host}:{port}: shell session with no credential")
+        c.close()
+        return True
+    except paramiko.AuthenticationException:
+        print(f"[+] SECURE {host}:{port}: credentials required")
+        return False
+    except paramiko.SSHException as e:
+        print(f"[?] INCONCLUSIVE {host}:{port}: handshake failure ({e})")
+        return None
+    except Exception as e:
+        print(f"[-] ERROR {host}:{port}: {e}")
+        return None
+
+if __name__ == "__main__":
+    h = sys.argv[1] if len(sys.argv) > 1 else "127.0.0.1"
+    p = int(sys.argv[2]) if len(sys.argv) > 2 else 22
+    check_ssh_nocred(h, p)
+```
+
+`c.connect(..., password="")` probes both `none` auth and empty-password auth in
+one attempt. A kex/cipher mismatch or a mid-handshake drop is **inconclusive**,
+not a pass — it is not evidence the server is locked down. This check can't run
+against the mock fleet, there is no sshd there; use a real target or a throwaway
+local `sshd`. A panel version is backlog item 24.
+
 ---
 
 ## Appendix — The .rec.json format
