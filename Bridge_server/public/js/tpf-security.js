@@ -84,6 +84,11 @@ export function tpfOnScreen(msg) {
     _hideTpfSection();
   }
 
+  // Show the "check for default credentials" hint only while at the logon
+  // screen; the console tools take over once signed on.
+  const hint = document.getElementById('tpfLogonHint');
+  if (hint) hint.style.display = (isTpf && /OPER ID\s*==>/i.test(text)) ? '' : 'none';
+
   // Back at the operator logon screen → forget any prior privilege reading
   // so a stale SYSPROG badge doesn't carry across a logoff.
   if (/OPER ID\s*==>/i.test(text) && _privLevel !== 0) {

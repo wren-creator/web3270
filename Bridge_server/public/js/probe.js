@@ -130,15 +130,36 @@ export function probeDetectSubsystem() {
   return null;
 }
 
-export function probeLoadDefaults() {
+export async function probeLoadDefaults() {
   const det = probeDetectSubsystem();
   const el  = document.getElementById('probeWordlist');
   if (!el) return;
-  if (det) {
-    el.value = det.profile.defaults.join('\n');
-    _probeSetStatus(`Defaults loaded for ${det.name} — ${det.profile.defaults.length} pairs`);
-  } else {
+  if (!det) {
     _probeSetStatus('Navigate to a TSO, z/VM, CICS, or z/TPF logon screen first');
+    return;
+  }
+
+  // Prefer an operator-supplied list at ~/mainframe/default-accounts.txt on
+  // the bridge host; fall back to the built-in defaults for the detected
+  // subsystem if the file is absent, empty, or the route is unavailable.
+  let filePairs = null, fileSrc = '';
+  try {
+    const r = await fetch('/api/default-accounts', { cache: 'no-store' });
+    if (r.ok) {
+      const j = await r.json();
+      if (j && j.found && Array.isArray(j.pairs) && j.pairs.length) {
+        filePairs = j.pairs.filter(p => Array.isArray(p) && p[0] && p[1]);
+        fileSrc   = j.path || '~/mainframe/default-accounts.txt';
+      }
+    }
+  } catch { /* offline / route not present → built-in fallback */ }
+
+  if (filePairs && filePairs.length) {
+    el.value = filePairs.map(([u, p]) => `${u},${p}`).join('\n');
+    _probeSetStatus(`Loaded ${filePairs.length} pair(s) from ${fileSrc}`);
+  } else {
+    el.value = det.profile.defaults.join('\n');
+    _probeSetStatus(`Defaults loaded for ${det.name} — ${det.profile.defaults.length} built-in pairs`);
   }
 }
 
