@@ -47,7 +47,8 @@ Bridge_server/
 │   ├── macros.js                         GET/POST/DELETE /api/macros — macros.json CRUD + library guard (403)
 │   ├── recording.js                      GET/POST /api/recordings — session recording files
 │   ├── security.js                       POST /api/security — security tool server-side helpers
-│   └── negotiate.js                      GET /api/negotiate — TLS cipher, cert chain, LU fixation, TN3270E log per session
+│   ├── negotiate.js                      GET /api/negotiate — TLS cipher, cert chain, LU fixation, TN3270E log per session
+│   └── sessions.js                       GET /api/sessions, POST /api/session-kill — Session Manager: list/terminate running sessions
 ├── config.js                             Profile loaders: lpars.txt (loadLparFile) + ssh-hosts.txt (loadSshHostsFile)
 ├── logger.js                             Structured logger (LOG_LEVEL env var)
 ├── package.json                          Deps: ws, ssh2 (production); nodemon (dev)
@@ -189,6 +190,10 @@ Bridge_server/
 │       │                                   · SDSF Job Scanner — passive screen parse, flags system STCs visible from low-priv
 │       │                                   · STC Profile Scanner — RLIST STARTED per STC, ICH10006I = HIGH
 │       ├── walkthrough.js                Guided scenario walkthroughs (security + general), overlay engine
+│       ├── session-manager.js            Session Manager popup (Session menu → Session Manager…):
+│       │                                   · Lists every session the bridge holds — host, profile, duration, idle, state
+│       │                                   · Per-row Kill → POST /api/session-kill; flags rows owned by this browser
+│       │                                   · Auto-refreshes every 3s while open
 │       └── main.js                       App init, WebSocket lifecycle, session tab management
 │
 │  ── Mock LPAR daemons ──────────────────────────────────────────────

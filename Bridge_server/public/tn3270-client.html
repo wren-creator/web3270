@@ -60,6 +60,8 @@
       <div class="menu-dropdown">
         <div class="menu-dd-item" id="menuDisconnect" onclick="menuDisconnect()">Disconnect</div>
         <div class="menu-dd-item" id="menuReconnect" onclick="menuReconnect()">Reconnect</div>
+        <div class="menu-dd-sep"></div>
+        <div class="menu-dd-item" onclick="sessionManagerOpen(); closeAllMenus()">Session Manager…</div>
       </div>
     </div>
     <div class="menu-item" id="menuView" onclick="toggleMenu('menuView')">View
@@ -1435,6 +1437,27 @@
     <div style="display:flex;gap:8px;justify-content:flex-end;">
       <button onclick="_cancelMacroPrompt()" style="background:none;border:1px solid #444;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:11px;padding:4px 12px;cursor:pointer">Cancel (stop macro)</button>
       <button onclick="_submitMacroPrompt()" style="background:#0d1a2d;border:1px solid #1e3a5f;border-radius:3px;color:var(--accent-blue);font-family:inherit;font-size:11px;padding:4px 14px;cursor:pointer;font-weight:700">Continue →</button>
+    </div>
+  </div>
+</div>
+
+<!-- SESSION MANAGER modal -->
+<div id="sessionManagerModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9400;align-items:center;justify-content:center;"
+     onclick="if(event.target===this)sessionManagerClose()">
+  <div style="background:#0a0f14;border:1px solid #1e3a5f;border-radius:6px;width:860px;max-width:95vw;max-height:85vh;overflow-y:auto;box-shadow:0 4px 24px rgba(0,0,0,0.9);font-family:'IBM Plex Mono',monospace">
+    <div style="background:#0d1a2d;border-bottom:1px solid #1e3a5f;padding:12px 16px;border-radius:6px 6px 0 0;display:flex;align-items:center;justify-content:space-between">
+      <div style="font-size:12px;font-weight:700;color:#4a9fd4">&#x229F; Session Manager</div>
+      <button onclick="sessionManagerClose()" style="background:none;border:none;color:var(--text-muted);font-size:16px;cursor:pointer;padding:0 2px">&#x2715;</button>
+    </div>
+    <div style="padding:12px 16px">
+      <div style="font-size:10px;color:var(--text-muted);margin-bottom:8px;line-height:1.5">
+        Every TN3270 / TN5250 session the bridge currently holds. Killing one drops the host connection and disconnects the browser tab using it, without restarting the bridge. <span style="color:#e0a060">orphaned</span> = the browser socket is already gone.
+      </div>
+      <div id="sessionManagerBody"></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px">
+        <div id="sessionManagerStatus" style="font-size:10px;color:var(--text-muted)"></div>
+        <button onclick="sessionManagerRefresh()" style="background:#0d1a2d;border:1px solid #1e3a5f;border-radius:3px;color:#4a9fd4;font-family:inherit;font-size:10px;padding:3px 12px;cursor:pointer">&#x21BB; Refresh</button>
+      </div>
     </div>
   </div>
 </div>

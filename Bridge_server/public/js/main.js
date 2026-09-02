@@ -28,6 +28,7 @@ import './fielddisclosure.js';
 import './bufferbleed.js';
 import './vmminidisk.js';
 import './walkthrough.js';
+import './session-manager.js';
 import { initBarbieEgg } from './easteregg.js';
 
 function tick() {

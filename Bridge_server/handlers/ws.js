@@ -125,6 +125,17 @@ export function createWsHandler({ config, logger, sessions, Ebcdic }) {
       sessions.set(wsId, session);
       esmFingerprints.set(wsId, new EsmFingerprint());
 
+      // Session Manager metadata (routes/sessions.js reads these off the
+      // session object; the engine itself doesn't track them).
+      session._ws            = ws;
+      session.protocol       = protocol;
+      session.originIp       = origin;
+      session.profileName    = PROFILE_BY_HOST_PORT.get(`${host}:${port}`)?.name || null;
+      session.isMock         = MOCK_LPAR_HOSTS.has(`${host}:${port}`);
+      session.connectedAt    = Date.now();
+      session.lastActivityAt = Date.now();
+      session.connState      = 'connecting';
+
       const macroHandler = new MacroHandler(session, ws, wsId, macroStore);
       CopilotHandler.sendProviderInfo(ws);
 
@@ -132,12 +143,14 @@ export function createWsHandler({ config, logger, sessions, Ebcdic }) {
       session.on('connected', ({ tlsVersion } = {}) => {
         logger.info(`[ws:${wsId}] TCP connected to ${host}:${port}`);
         session.tlsVersion = tlsVersion || 'PLAIN';
+        session.connState  = 'connected';
         send(ws, { type: 'status', state: 'connected', host, port, lu: session.negotiatedLu, model: session.model, tlsVersion, wsId });
       });
 
       session.on('screen', screenData => {
         session.lastScreen = screenData;
         session.lastScreen.fields = screenData.fields || [];
+        session.lastActivityAt = Date.now();
         send(ws, { type: 'screen', ...screenData });
         logTraffic({
           ts: new Date().toISOString(),
@@ -172,8 +185,8 @@ export function createWsHandler({ config, logger, sessions, Ebcdic }) {
       session.on('oia',          oiaData => { send(ws, { type: 'oia', ...oiaData }); });
       session.on('gddm',         gddmData => { send(ws, { type: 'gddm', ...gddmData }); });
       session.on('lu',           lu      => { send(ws, { type: 'status', state: 'lu', lu }); });
-      session.on('error',        err     => { logger.error(`[ws:${wsId}] Session error: ${err.message}`); send(ws, { type: 'error', message: err.message }); });
-      session.on('disconnected', reason  => { logger.info(`[ws:${wsId}] Disconnected: ${reason}`); send(ws, { type: 'status', state: 'disconnected', reason }); });
+      session.on('error',        err     => { session.connState = 'error'; logger.error(`[ws:${wsId}] Session error: ${err.message}`); send(ws, { type: 'error', message: err.message }); });
+      session.on('disconnected', reason  => { session.connState = 'disconnected'; logger.info(`[ws:${wsId}] Disconnected: ${reason}`); send(ws, { type: 'status', state: 'disconnected', reason }); });
 
       // ── IND$FILE events ──────────────────────────────────────────
       session.on('indfile-complete', info => {
@@ -202,6 +215,7 @@ export function createWsHandler({ config, logger, sessions, Ebcdic }) {
       ws.on('message', rawMsg => {
         let msg;
         try { msg = JSON.parse(rawMsg); } catch { return; }
+        session.lastActivityAt = Date.now();
 
         if (recordings.has(wsId) && (msg.type === 'key' || msg.type === 'type')) {
           const rec = recordings.get(wsId);
