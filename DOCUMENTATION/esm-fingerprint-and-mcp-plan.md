@@ -105,8 +105,10 @@ limits, stop on lockout, no credential iteration without written scope). `.mcp.j
   class. Prerequisite for exposing the MCP surface beyond localhost.
 - **MCP Streamable-HTTP transport** authenticated with the hosted-tier session cookie.
 - **Port to `webterm-3270-saas`** (near-duplicate repo), or de-duplicate the two.
-- **License mismatch:** `Bridge_server/package.json` says MIT; README / docs say
-  GPL-3.0. Pick one (hack3270 is GPL-3.0).
+- ~~**License mismatch:** `Bridge_server/package.json` says MIT; README / docs say
+  GPL-3.0. Pick one (hack3270 is GPL-3.0).~~ Resolved: standardized on `GPL-3.0-only`
+  across `package.json`, `mcp/package.json`, `SBOM.md`, and a new README License section
+  (the root `LICENSE` was already GPLv3).
 - Dead `oia` event: `handlers/ws.js` subscribes to `session.on('oia')` but neither
   session engine emits it.
 - `copilot.list-models` vs `copilot.listModels` guard-string mismatch in `ws.js`.

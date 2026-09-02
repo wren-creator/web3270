@@ -4,7 +4,7 @@
 **Component:** `webterm-3270-bridge`  
 **Version:** 1.0.0  
 **Generated:** 2026-06-10  
-**License:** MIT  
+**License:** GPL-3.0-only  
 **SBOM Format:** Narrative Markdown (CycloneDX/SPDX concepts)
 
 ---
@@ -174,7 +174,7 @@ No npm packages are shipped to the browser.
 | ISC | 5 | `anymatch`, `glob-parent`, `ignore-by-default`, `touch`, `semver` |
 | BlueOak-1.0.0 | 1 | `minimatch` |
 
-All dependency licenses are permissive and compatible with this project's MIT license.
+All dependency licenses are permissive and compatible with this project's GPL-3.0-only license.
 
 ---
 

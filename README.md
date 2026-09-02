@@ -430,3 +430,9 @@ $action  = New-ScheduledTaskAction -Execute "wsl.exe" `
 $trigger = New-ScheduledTaskTrigger -AtLogOn
 Register-ScheduledTask -TaskName "WebTerm3270 Bridge" -Action $action -Trigger $trigger -RunLevel Highest
 ```
+
+---
+
+## License
+
+WebTerm/3270 is licensed under the **GNU General Public License v3.0** (`GPL-3.0-only`). See [LICENSE](LICENSE) for the full text.

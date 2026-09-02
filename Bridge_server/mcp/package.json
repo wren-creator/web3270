@@ -4,6 +4,7 @@
   "description": "MCP server that drives the WebTerm/3270 bridge for AI coding assistants",
   "type": "module",
   "private": true,
+  "license": "GPL-3.0-only",
   "bin": { "webterm-3270-mcp": "server.js" },
   "scripts": {
     "start": "node server.js",
