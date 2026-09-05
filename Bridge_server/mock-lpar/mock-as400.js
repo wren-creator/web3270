@@ -450,6 +450,18 @@ const USRPRFS = [
     lmtcpb: '*NO', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true, pwdChg: '*NA', lastSignon: '*NONE' },
   { name: 'QX400',     text: 'X.400 mail', status: '*ENABLED', group: '*NONE', specialAuth: [],
     lmtcpb: '*NO', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true, pwdChg: '*NA', lastSignon: '*NONE' },
+
+  // ── Irregular profile ─────────────────────────────────────────────────
+  // QYSPJ is NOT an IBM-supplied profile. It is a blend-in backdoor: a
+  // Q-named, *ALLOBJ *SECADM profile with an innocuous description, planted
+  // so an admin scanning WRKUSRPRF skims past it as "just another Q thing".
+  // Carmel's Ch.2 note ("consider creating a new account such as QYSPJ").
+  // The Shipped Profile Audit flags it because the name is not on the
+  // known IBM-supplied list — a recently-changed password on a privileged
+  // Q* profile IBM never ships.
+  { name: 'QYSPJ',     text: 'System operator',               status: '*ENABLED',  group: '*NONE',
+    specialAuth: ['*ALLOBJ','*SECADM','*JOBCTL'],
+    lmtcpb: '*NO',  pwdExpiry: '*NOMAX',  pwdDefault: true,  pwdNone: false, pwdChg: '07/04/26', lastSignon: '07/07/26 03:12:40' },
 ];
 
 // Sign On passwords. Only consulted when a password is actually typed —
@@ -463,6 +475,7 @@ const CREDENTIALS = {
   QSECOFR:  'QSECOFR',      // pwdDefault
   QSRV:     'QSRV',         // pwdDefault
   QSRVBAS:  'QSRVBAS',      // pwdDefault
+  QYSPJ:    'QYSPJ',        // pwdDefault — planted backdoor, lazy password
   QPGMR:    'PgmrPass1',
   QSYSOPR:  'OpsPass22',
   QUSER:    'Guest2026',

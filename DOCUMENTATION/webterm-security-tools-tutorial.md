@@ -622,7 +622,9 @@ Results are shown in a live table (userid, masked password, result). Click **↓
 
 **z/TPF operator logon** — connect to the mock z/TPF host and stop at the operator logon (`OPER ID ==>`). Load defaults and run: the first pair, `TPFOP01/TPF1`, succeeds and the probe stops as the operator console appears. The point for a review is that the z/TPF operator console has well-known default operator IDs and no sign-on lockout, so an unthrottled credential probe against it carries none of the account-suspension risk it would on RACF.
 
-**IBM i Sign On** — connect to the mock AS/400 host and stop at the Sign On screen. Load defaults and run: `QSECOFR/QSECOFR` succeeds on the first attempt and the probe stops as the MAIN MENU appears — the single most common IBM-supplied default, still live. Harden it first (`CHGUSRPRF USRPRF(QSECOFR) PASSWORD(...)` from a signed-in session, or the Shipped Profile Audit's remediation step) and re-run: the probe now walks the whole list as FAILURE, since the mock does not model attempt lockout. The distinct `CPF` codes in the returned screen — `CPF1107` wrong password, `CPF1120` no such user, `CPF1118` `*NONE` — are the same ones a real IBM i returns.
+**IBM i Sign On** — connect to the mock AS/400 host and stop at the Sign On screen. Load defaults and run: `QSECOFR/QSECOFR` succeeds on the first attempt and the probe stops as the MAIN MENU appears — the single most common IBM-supplied default, still live. `QYSPJ/QYSPJ` also succeeds — a planted blend-in backdoor (a `Q`-named `*ALLOBJ` profile IBM never ships) with a lazy password. Harden `QSECOFR` (`CHGUSRPRF USRPRF(QSECOFR) PASSWORD(...)` from a signed-in session, or the Shipped Profile Audit's remediation step) and re-run.
+
+The `CPF` codes in the returned screen are a **user-enumeration oracle**: `CPF1120` ("does not exist") is the only one that means the profile is not real — the probe marks that `FAILURE`. `CPF1107` (wrong password), `CPF1118` (`PASSWORD(*NONE)`), and `CPF1394` (disabled) all confirm the **profile exists**, so the probe marks those `EXISTS` (amber) and keeps sweeping. Run the full `Q*` list against the mock with all-wrong passwords and the probe still reports every real profile it found: "N valid credential(s) … · K valid profile(s) enumerated: …". This is why the Shipped Profile Audit's job is really "is there a `Q`-named profile here that shouldn't be" — `QYSPJ` is the answer.
 
 **Lockout threshold demonstration** — add three wrong passwords before a correct one and show students exactly when the IKJ56421I lockout fires. The probe stops and marks the locked account — a clean example of RACF's lockout counter in action.
 
@@ -2081,14 +2083,23 @@ real modern IBM i does — `PASSWORD(*NONE)`, already compliant:
 | `QSYS` | `*DISABLED` + `PASSWORD(*NONE)` | OK — the target state, despite holding every special authority |
 | `QLPAUTO`, `QLPINSTALL` | `*ENABLED`, `PASSWORD(*NONE)`, hold `*ALLOBJ *SECADM` | OK — powerful, but non-interactive |
 | ~40 more (`QDOC`, `QTFTP`, `QSNADS`, `QDIRSRV`, `QBRMS`, `QTCP`, `QMSF`, `QNOTES`, …) | `*ENABLED`, `PASSWORD(*NONE)` | OK — the long compliant tail, which is what the findings must join |
+| `QYSPJ` | `*ENABLED`, password = `QYSPJ`, `*ALLOBJ *SECADM`, "System operator" description | CRITICAL — **not an IBM-supplied profile**; a `Q`-named blend-in backdoor |
+
+The audit checks the profile name against a list of the ~50 IBM-supplied
+`Q*` profiles. Anything else beginning with `Q` — `QYSPJ` here — is an
+*irregular profile*: don't harden it, investigate it (`DSPOBJD OBJ(QYSPJ)
+*USRPRF` and the audit journal show who created it and when), then
+`DLTUSRPRF` once confirmed rogue. This is the check that catches an
+attacker who already had `*SECADM` and left themselves a way back in.
 
 Special-authority values were cross-checked against the IBM i Security
 Reference (SC41-5302) "IBM-supplied user profiles" table.
 
 ### Teaching scenario
 
-Run the audit against the mock. The spread is deliberate: three CRITICAL, one
-HIGH, three MEDIUM, and a long tail of OK rows. That tail is the point — most
+Run the audit against the mock. The spread is deliberate: four CRITICAL
+(`QSECOFR`, `QSRV`, `QSRVBAS` default passwords, plus `QYSPJ` the irregular
+profile), one HIGH, three MEDIUM, and a long tail of OK rows. That tail is the point — most
 of a real system's `Q*` profiles already ship `PASSWORD(*NONE)`, so the audit
 is really a hunt for the handful that don't (and for any irregular, non-IBM
 `Q`-named profile someone slipped in). The instructive pair is `QSYS` versus

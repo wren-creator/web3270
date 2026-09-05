@@ -182,12 +182,36 @@ export function evaluateProfile({ status, lmtCpb, auths, defaultPwd }) {
 //   auths     — parseSpecialAuths(screenText)
 //   pwdChg    — 'mm/dd/yy' | '*NA'            (parseLabelValue 'Date password last changed')
 const _PRIV_AUTHS = ['*ALLOBJ', '*SECADM', '*SERVICE', '*SPLCTL'];
+
+// The IBM-supplied Q* profiles a base + common-LP install actually creates.
+// A Q-named profile NOT on this list is an "irregular profile" — the classic
+// blend-in backdoor (Carmel Ch.2: "create a new account such as QYSPJ").
+const IBM_SUPPLIED_PROFILES = new Set([
+  'QSECOFR', 'QSYS', 'QSYSOPR', 'QPGMR', 'QSRV', 'QUSER', 'QTMHHTTP', 'QSRVBAS',
+  'QLPAUTO', 'QLPINSTALL', 'QTCP', 'QPM400', 'QCLUSTER', 'QCLUMGT', 'QAUTPROF',
+  'QBRMS', 'QCOLSRV', 'QDBSHR', 'QDBSHRDO', 'QDFTOWN', 'QDIRSRV', 'QDLFM', 'QDOC',
+  'QDSNX', 'QEJB', 'QFNC', 'QGATE', 'QMQM', 'QMQMADM', 'QMSF', 'QNETSPLF',
+  'QNFSANON', 'QNOTES', 'QNTP', 'QPEX', 'QPRJOWN', 'QRJE', 'QRMTCAL', 'QSNADS',
+  'QSPL', 'QSPLJOB', 'QSVCDRCTR', 'QTFTP', 'QTMHHTP1', 'QTMPLPD', 'QTMTWSG',
+  'QTSTRQS', 'QUMB', 'QYPSJSVR', 'QYPUOWN', 'QX400',
+]);
+
 export function evaluateShippedProfile({ name, status, pwdNone, defaultPwd, auths = [], pwdChg }) {
   const noPwd    = pwdNone === '*YES';
   const disabled = status === '*DISABLED';
   const privList = auths.filter(a => _PRIV_AUTHS.includes(a));
   const privNote = privList.length ? ` — holds ${privList.join('/')}` : '';
   const fix      = `CHGUSRPRF USRPRF(${name}) PASSWORD(*NONE)` + (name === 'QSECOFR' ? '' : ' STATUS(*DISABLED)');
+
+  // Strongest signal first: a Q-named profile IBM never ships. Do not try to
+  // "harden" it — investigate who created it and when (DSPOBJD, audit journal),
+  // then delete it.
+  if (/^Q/i.test(name) && !IBM_SUPPLIED_PROFILES.has(name.toUpperCase())) {
+    return { risk: 'CRITICAL', finding:
+      `Not an IBM-supplied profile — IBM never ships a "${name}"${privNote}. ` +
+      `A Q-named profile is camouflage. DSPOBJD OBJ(${name}) *USRPRF and the audit ` +
+      `journal show who created it and when; DLTUSRPRF once you have confirmed it is rogue.` };
+  }
 
   if (defaultPwd) {
     return { risk: 'CRITICAL', finding:

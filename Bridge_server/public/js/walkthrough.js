@@ -294,13 +294,13 @@ const _WALKTHROUGHS = [
       },
       {
         title: 'Start the probe',
-        body:  'Click ▶ START. For each credential pair the probe types the username, tabs to the password field, types the password, and presses Enter. It waits for the screen to update and then classifies the response as SUCCESS, FAILURE, or LOCKOUT.',
+        body:  'Click ▶ START. For each credential pair the probe types the username, tabs to the password field, types the password, and presses Enter. It waits for the screen to update and then classifies the response as SUCCESS, EXISTS, FAILURE, or LOCKOUT.',
         highlight: 'probeStartBtn',
         autoFn: null,
       },
       {
         title: 'Read the live results',
-        body:  'Each row appears as responses arrive. SUCCESS (green) — credentials accepted. FAILURE (amber) — rejected, probe continues. LOCKOUT (red) — RACF suspended the user; the probe stops immediately to prevent further lockouts. A plain run stops at the first SUCCESS; with "Keep going after a match" checked, every valid pair shows green and the final status lists them all. On the mock fleet: mock z/OS accepts IBMUSER/SYS1 (and locks the account after 3 misses); mock z/VM accepts OPERATOR/OPERATOR, MAINT/MAINT and MAINT730/MAINT730 while the other z/VM defaults now come back FAILURE (valid userid, wrong password — HCPLGA050E) and base CP has no attempt lockout; z/TPF (TPFOP01/TPF1) and IBM i (QSECOFR/QSECOFR) each succeed on the first try with no lockout modelled.',
+        body:  'Each row appears as responses arrive. SUCCESS (green) — credentials accepted. EXISTS (amber) — the userid is real but this password did not work (a user-enumeration hit); the probe records it and keeps going. FAILURE (grey) — no such userid. LOCKOUT (red) — RACF suspended the user; the probe stops immediately. A plain run stops at the first SUCCESS; with "Keep going after a match" checked, every valid pair shows green and the final status lists both the valid credentials and every profile the run confirmed exists. On the mock fleet: mock z/OS accepts IBMUSER/SYS1 (and locks the account after 3 misses); mock z/VM accepts OPERATOR/OPERATOR, MAINT/MAINT and MAINT730/MAINT730 while the other z/VM defaults come back FAILURE and base CP has no attempt lockout; z/TPF (TPFOP01/TPF1) succeeds on the first try; IBM i accepts QSECOFR/QSECOFR and QYSPJ/QYSPJ (a planted backdoor), and against the full Q* list every real profile shows EXISTS even when no password works — the Sign On CPF codes (CPF1120 = no such user, CPF1107/CPF1118/CPF1394 = user exists) are the oracle.',
         highlight: 'probeResultsTable',
         autoFn: null,
       },
@@ -2237,7 +2237,7 @@ const _WALKTHROUGHS = [
       },
       {
         title: 'Read the findings',
-        body:  'CRITICAL — password equals the profile name (QSECOFR, QSRV, and QSRVBAS on the mock; QSRVBAS also holds *ALLOBJ). HIGH — a privileged Q* profile still enabled with a password. MEDIUM — a non-privileged Q* profile still enabled with a password (QPGMR, QSYSOPR, QUSER, QTMHHTTP). OK — non-interactive already: QSYS ships *DISABLED and PASSWORD(*NONE) even though it holds every special authority, and the ~40 other IBM-supplied profiles (QDOC, QTFTP, QSNADS, QDIRSRV, …) ship PASSWORD(*NONE) — that long tail of OK rows is the target state for the whole set. QSECOFR is judged as the break-glass account — a non-default password is expected there, only a default password or a missing change date is flagged.',
+        body:  'CRITICAL — either the password equals the profile name (QSECOFR, QSRV, QSRVBAS on the mock; QSRVBAS also holds *ALLOBJ), OR the name is not one IBM ships at all (QYSPJ — a Q-named *ALLOBJ *SECADM blend-in backdoor; do not harden it, investigate and delete it). HIGH — a privileged Q* profile still enabled with a password. MEDIUM — a non-privileged Q* profile still enabled with a password (QPGMR, QSYSOPR, QUSER, QTMHHTTP). OK — non-interactive already: QSYS ships *DISABLED and PASSWORD(*NONE) even though it holds every special authority, and the ~40 other IBM-supplied profiles (QDOC, QTFTP, QSNADS, QDIRSRV, …) ship PASSWORD(*NONE) — that long tail of OK rows is the target state for the whole set. QSECOFR is judged as the break-glass account — a non-default password is expected there, only a default password or a missing change date is flagged.',
         highlight: 'as400ShipprfOut',
         autoFn: null,
       },

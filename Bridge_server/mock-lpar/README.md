@@ -263,7 +263,7 @@ tasks*, MAIN option 3, options 5/6/7):
 | Command | Panel | What a tool would flag |
 |---------|-------|------------------------|
 | `WRKSYSVAL` / `DSPSYSVAL SYSVAL(x)` | System values | `QSECURITY 30`, `QMAXSIGN *NOMAX`, `QPWDEXPITV *NOMAX`, `QAUDCTL *NONE`, weak `QPWD*` |
-| `WRKUSRPRF` / `DSPUSRPRF USRPRF(x)` | User profiles | `QSECOFR` with all 8 special authorities + **default password**, over-privileged `APPADMIN` (`*ALLOBJ`), `LMTCPB *NO`, and `QSRVBAS` shipping its **default password** (= profile name) while holding `*ALLOBJ` |
+| `WRKUSRPRF` / `DSPUSRPRF USRPRF(x)` | User profiles | `QSECOFR` with all 8 special authorities + **default password**, over-privileged `APPADMIN` (`*ALLOBJ`), `LMTCPB *NO`, `QSRVBAS` shipping its **default password** (= profile name) while holding `*ALLOBJ`, and `QYSPJ` — a `Q`-named `*ALLOBJ *SECADM` **blend-in backdoor** IBM never ships |
 | `WRKOBJ` / `DSPOBJAUT OBJ(lib/obj)` | Object authority | `PAYROLL/EMPMAST` at `*PUBLIC *ALL`, libraries at `*PUBLIC *CHANGE` |
 
 **Wave 2 — extended surfaces** (options 1 and 4 of *General system tasks* run

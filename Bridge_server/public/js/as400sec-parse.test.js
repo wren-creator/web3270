@@ -26,6 +26,14 @@ test('evaluateShippedProfile: a stock IBM-supplied profile (QDOC, *NONE) is comp
   assert.equal(r.risk, 'OK');
 });
 
+test('evaluateShippedProfile: a Q-named profile IBM never ships is CRITICAL (irregular profile)', () => {
+  const r = evaluateShippedProfile({ name: 'QYSPJ', status: '*ENABLED', pwdNone: '*NO', defaultPwd: false, auths: ['*ALLOBJ', '*SECADM'] });
+  assert.equal(r.risk, 'CRITICAL');
+  assert.match(r.finding, /Not an IBM-supplied profile/);
+  // even a *NONE / disabled non-IBM Q* profile is still flagged
+  assert.equal(evaluateShippedProfile({ name: 'QHACKER', status: '*DISABLED', pwdNone: '*YES', defaultPwd: false, auths: [] }).risk, 'CRITICAL');
+});
+
 test('evaluateShippedProfile: *NONE or *DISABLED is compliant (OK)', () => {
   assert.equal(evaluateShippedProfile({ name: 'QSYS', status: '*DISABLED', pwdNone: '*YES', defaultPwd: false, auths: ['*ALLOBJ'] }).risk, 'OK');
   assert.equal(evaluateShippedProfile({ name: 'QTFTP', status: '*ENABLED', pwdNone: '*YES', defaultPwd: false, auths: [] }).risk, 'OK');

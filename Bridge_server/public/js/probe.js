@@ -81,12 +81,18 @@ const _PROBE_PROFILES = {
     passRow: 8, passCol: 54,
     success: t => /Selection or command|MAIN MENU/i.test(t),
     // Only a profile disabled *by* failed sign-on attempts (CPF1393) is a
-    // real lockout worth stopping on. A pre-disabled profile (CPF1394) or a
-    // *NONE / unknown user (CPF1118 / CPF1120) is just a FAILURE.
+    // real lockout worth stopping on.
     lockout: t => /CPF1393|has been disabled because|disabled.*sign-on attempts/i.test(t),
     logon:   t => /\bSign On\b/.test(t) && /Password/i.test(t),
     logoff:  { cmd: 'SIGNOFF' },
-    failure: t => /CPF1107|CPF1120|CPF1118|CPF1392|CPF1394|not correct|does not exist|no password|cannot sign on/i.test(t),
+    // IBM i Sign On is a user-enumeration oracle: the CPF code tells you
+    // whether the PROFILE is real independently of whether the password
+    // worked. CPF1120 alone means "no such user" → FAILURE. Wrong password
+    // (CPF1107), no password / *NONE profile (CPF1118), pre-disabled
+    // (CPF1394), or about-to-be-disabled (CPF1392) all confirm the profile
+    // EXISTS — a positive enumeration hit against the full Q* set.
+    exists:  t => /CPF1107|CPF1118|CPF1392|CPF1394|password not correct|no password associated|cannot sign on/i.test(t),
+    failure: t => /CPF1120|does not exist/i.test(t),
     defaults: [
       'QSECOFR,QSECOFR', 'QSRV,QSRV', 'QUSER,QUSER',
       'QPGMR,QPGMR', 'QSYSOPR,QSYSOPR', 'QSECADM,QSECADM',
@@ -99,6 +105,7 @@ let _probeRunning   = false;
 let _probeAborted   = false;
 let _probeResults   = [];
 let _probeSuccesses = [];
+let _probeEnumerated = [];   // profiles confirmed valid via the CPF-code oracle (no valid password)
 let _probeScreenCb  = null;
 
 export function probeOnScreen(msg) {
@@ -249,8 +256,9 @@ export async function startProbe() {
 
   _probeRunning   = true;
   _probeAborted   = false;
-  _probeResults   = [];
-  _probeSuccesses = [];
+  _probeResults    = [];
+  _probeSuccesses  = [];
+  _probeEnumerated = [];
   _probeRenderResults();
 
   document.getElementById('probeStartBtn').style.display = 'none';
@@ -285,6 +293,7 @@ export async function startProbe() {
         const txt = _probeText(s);
         if      (profile.lockout(txt))            { result = 'LOCKOUT'; }
         else if (profile.success(txt))            { result = 'SUCCESS'; }
+        else if (profile.exists && profile.exists(txt))   { result = 'EXISTS'; }
         else if (profile.failure && profile.failure(txt)) { result = 'FAILURE'; }
         if (result) { elapsed = Date.now() - t0; break; }
       }
@@ -299,6 +308,13 @@ export async function startProbe() {
       _probeRenderResults();
 
       if (result === 'LOCKOUT') { _probeSetStatus(`🔴 LOCKOUT — ${userid} is locked. Stopped.`); break; }
+
+      // EXISTS — the profile is real but this credential didn't get in. Record
+      // it as an enumeration hit and keep sweeping (never a stop condition).
+      if (result === 'EXISTS') {
+        _probeEnumerated.push(userid);
+        _probeSetStatus(`👤 ${userid} — valid profile (auth failed), continuing…`);
+      }
 
       if (result === 'SUCCESS') {
         _probeSuccesses.push(userid);
@@ -346,12 +362,15 @@ export async function startProbe() {
   document.getElementById('probeStopBtn').style.display  = 'none';
 
   const last = _probeResults[_probeResults.length - 1];
+  const enumNote = _probeEnumerated.length
+    ? ` · ${_probeEnumerated.length} valid profile(s) enumerated: ${_probeEnumerated.join(', ')}`
+    : '';
   if (_probeAborted) {
     /* stopProbe already set the status */
   } else if (enumAll && _probeSuccesses.length) {
-    _probeSetStatus(`Done — ${_probeResults.length} attempt(s), ${_probeSuccesses.length} valid: ${_probeSuccesses.join(', ')}`);
+    _probeSetStatus(`Done — ${_probeResults.length} attempt(s), ${_probeSuccesses.length} valid credential(s): ${_probeSuccesses.join(', ')}${enumNote}`);
   } else if (last && !['SUCCESS', 'LOCKOUT'].includes(last.result)) {
-    _probeSetStatus(`Done — ${_probeResults.length} attempt(s), no match found`);
+    _probeSetStatus(`Done — ${_probeResults.length} attempt(s), no credential match${enumNote || ' found'}`);
   }
 }
 
@@ -379,7 +398,7 @@ function _probeRenderResults() {
   const el = document.getElementById('probeResultsTable');
   if (!el) return;
   if (!_probeResults.length) { el.innerHTML = ''; return; }
-  const C = { SUCCESS: '#3a9a6a', LOCKOUT: '#e06060', FAILURE: '#555', ERR: '#e0a060' };
+  const C = { SUCCESS: '#3a9a6a', EXISTS: '#c9a227', LOCKOUT: '#e06060', FAILURE: '#555', ERR: '#e0a060' };
   const esc = window.esc ?? (s => String(s));
   // Timing color: fast <800ms may indicate userid enumeration side-channel
   const tColor = ms => ms == null ? '#333' : ms < 800 ? '#e0a060' : ms < 2000 ? '#777' : '#555';
