@@ -263,7 +263,7 @@ tasks*, MAIN option 3, options 5/6/7):
 | Command | Panel | What a tool would flag |
 |---------|-------|------------------------|
 | `WRKSYSVAL` / `DSPSYSVAL SYSVAL(x)` | System values | `QSECURITY 30`, `QMAXSIGN *NOMAX`, `QPWDEXPITV *NOMAX`, `QAUDCTL *NONE`, weak `QPWD*` |
-| `WRKUSRPRF` / `DSPUSRPRF USRPRF(x)` | User profiles | `QSECOFR` with all 8 special authorities + **default password**, over-privileged `APPADMIN` (`*ALLOBJ`), `LMTCPB *NO` |
+| `WRKUSRPRF` / `DSPUSRPRF USRPRF(x)` | User profiles | `QSECOFR` with all 8 special authorities + **default password**, over-privileged `APPADMIN` (`*ALLOBJ`), `LMTCPB *NO`, and `QSRVBAS` shipping its **default password** (= profile name) while holding `*ALLOBJ` |
 | `WRKOBJ` / `DSPOBJAUT OBJ(lib/obj)` | Object authority | `PAYROLL/EMPMAST` at `*PUBLIC *ALL`, libraries at `*PUBLIC *CHANGE` |
 
 **Wave 2 — extended surfaces** (options 1 and 4 of *General system tasks* run
@@ -280,6 +280,15 @@ tasks*, MAIN option 3, options 5/6/7):
 On the "Work with" panels, type `5` in the **Opt** column next to a row and
 press Enter to drill into its detail panel; `F3`/`F12` steps back out. An
 unrecognized command returns a realistic `CPD0030`/`CPF…` message.
+
+`USRPRFS` carries the full IBM-supplied `Q*` profile set (~50 profiles: Table
+from a colleague's unpublished iSeries security field notes, cross-checked
+against the IBM i Security Reference SC41-5302). Modern IBM i ships almost all
+of them `PASSWORD(*NONE)`, so the Shipped Profile Audit rates them **compliant**
+— they are there for enumeration realism. `WRKUSRPRF` therefore pages: **Roll
+Up** / **Roll Down** move through it, and the panel shows `More...` / `Bottom`
+bottom-right (the audit tool collects every page before drilling). `DSPUSRPRF
+USRPRF(QDOC)` etc. resolve any of them by name.
 
 The posture is data-driven — the `SYSVALS`, `USRPRFS`, `OBJECTS`, `NETA`,
 `JOBDS`, `AUTLS`, `ACTJOBS`, and `SBS` tables near the top of `mock-as400.js`

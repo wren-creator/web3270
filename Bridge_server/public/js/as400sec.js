@@ -43,6 +43,7 @@ function _send(obj) {
 }
 function _pressEnter() { _send({ type: 'key', aid: 'ENTER', fields: [] }); }
 function _pressF3()    { _send({ type: 'key', aid: 'F3', fields: [] }); }
+function _pressPgDn()  { _send({ type: 'key', aid: 'PGDN', fields: [] }); }
 
 // Fill the first unprotected input field on the current screen. On the mock's
 // menus that is the "Selection or command" line — the only input — so this is
@@ -173,7 +174,7 @@ const TOOLS = {
 const RESULTS = { USRPRF: [], SHIPPRF: [], SYSVAL: [], OBJ: [], NETATTR: [], JOBD: [], AUTL: [], ACTJOB: [] };
 
 // ── State machine ───────────────────────────────────────────────────────────
-let as400 = { running: false, tool: null, expecting: null, items: [], idx: 0 };
+let as400 = { running: false, tool: null, expecting: null, items: [], idx: 0, pageItems: [], pages: 0 };
 
 export function as400OnScreen(msg) {
   if (!as400.running) return;
@@ -186,7 +187,19 @@ export function as400OnScreen(msg) {
   // Every tool starts by waiting for its list screen.
   if (as400.expecting === 'LIST' && text.includes(T.title)) {
     if (T.drill) {
-      as400.items = T.drill.collect(lines);
+      // WRKUSRPRF now pages (full IBM-supplied Q* set). Accumulate each page,
+      // Roll Up while the panel still says "More...", then de-dupe by key.
+      // Short list panels never render "More..." so they fall straight through.
+      as400.pageItems.push(...T.drill.collect(lines));
+      if (text.includes('More...') && as400.pages < 12) {
+        as400.pages++;
+        _pressPgDn();
+        return;
+      }
+      const seen = new Set();
+      as400.items = as400.pageItems.filter(it => !seen.has(it.key) && seen.add(it.key));
+      as400.pageItems = [];
+      as400.pages = 0;
       if (!as400.items.length) { _status(tool, 'Nothing discovered on the list.', 'error'); _finish(); return; }
       RESULTS[tool] = [];
       as400.idx = 0;
@@ -238,7 +251,7 @@ export function as400OnScreen(msg) {
 function _finish() {
   const btn = document.getElementById('as400' + (TOOLS[as400.tool]?.ids || '') + 'Btn');
   if (btn) btn.disabled = false;
-  as400 = { running: false, tool: null, expecting: null, items: [], idx: 0 };
+  as400 = { running: false, tool: null, expecting: null, items: [], idx: 0, pageItems: [], pages: 0 };
 }
 
 // ── UI ──────────────────────────────────────────────────────────────────────
@@ -293,7 +306,7 @@ function _start(tool) {
   }
   RESULTS[tool] = [];
   _render(tool);
-  as400 = { running: true, tool, expecting: 'LIST', items: [], idx: 0 };
+  as400 = { running: true, tool, expecting: 'LIST', items: [], idx: 0, pageItems: [], pages: 0 };
   const btn = document.getElementById('as400' + TOOLS[tool].ids + 'Btn');
   if (btn) btn.disabled = true;
   _status(tool, `Issuing ${TOOLS[tool].cmd}…`);

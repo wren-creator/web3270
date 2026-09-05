@@ -2230,14 +2230,14 @@ const _WALKTHROUGHS = [
       },
       {
         title: 'Run the audit',
-        body:  'Click ▶ AUDIT SHIPPED PROFILES. The tool issues WRKUSRPRF, keeps only the names starting with Q, then returns to the menu and issues DSPUSRPRF for each one, reading Status, the No password (*NONE) line, the date the password was last changed, the special-authority list, and the default-password warning. The status line shows progress.',
+        body:  'Click ▶ AUDIT SHIPPED PROFILES. The mock now models the full IBM-supplied Q* set (~50 profiles), so WRKUSRPRF spans several pages — the tool rolls through all of them (watching for "More..." / "Bottom") and keeps only the names starting with Q, then returns to the menu and issues DSPUSRPRF for each one, reading Status, the No password (*NONE) line, the date the password was last changed, the special-authority list, and the default-password warning. The status line shows progress.',
         highlight: 'as400ShipprfBtn',
         autoFn: 'startAs400ShippedAudit',
         autoLabel: 'Run it for me',
       },
       {
         title: 'Read the findings',
-        body:  'CRITICAL — password equals the profile name (QSECOFR and QSRV on the mock). HIGH — a privileged Q* profile still enabled with a password. MEDIUM — a non-privileged Q* profile still enabled with a password (QPGMR, QSYSOPR, QUSER, QTMHHTTP). OK — non-interactive already: QSYS ships *DISABLED and PASSWORD(*NONE) even though it holds every special authority, which is exactly the target state for the rest. QSECOFR is judged as the break-glass account — a non-default password is expected there, only a default password or a missing change date is flagged.',
+        body:  'CRITICAL — password equals the profile name (QSECOFR, QSRV, and QSRVBAS on the mock; QSRVBAS also holds *ALLOBJ). HIGH — a privileged Q* profile still enabled with a password. MEDIUM — a non-privileged Q* profile still enabled with a password (QPGMR, QSYSOPR, QUSER, QTMHHTTP). OK — non-interactive already: QSYS ships *DISABLED and PASSWORD(*NONE) even though it holds every special authority, and the ~40 other IBM-supplied profiles (QDOC, QTFTP, QSNADS, QDIRSRV, …) ship PASSWORD(*NONE) — that long tail of OK rows is the target state for the whole set. QSECOFR is judged as the break-glass account — a non-default password is expected there, only a default password or a missing change date is flagged.',
         highlight: 'as400ShipprfOut',
         autoFn: null,
       },

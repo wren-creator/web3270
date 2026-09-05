@@ -12,6 +12,20 @@ test('evaluateShippedProfile: default password is always CRITICAL, even when dis
   assert.equal(disabled.risk, 'CRITICAL');
 });
 
+test('evaluateShippedProfile: QSRVBAS ships its default password and holds *ALLOBJ → CRITICAL', () => {
+  const r = evaluateShippedProfile({
+    name: 'QSRVBAS', status: '*ENABLED', pwdNone: '*NO', defaultPwd: true,
+    auths: ['*ALLOBJ', '*SAVSYS', '*JOBCTL'], pwdChg: '01/01/24',
+  });
+  assert.equal(r.risk, 'CRITICAL');
+  assert.ok(r.finding.includes('*ALLOBJ'));
+});
+
+test('evaluateShippedProfile: a stock IBM-supplied profile (QDOC, *NONE) is compliant', () => {
+  const r = evaluateShippedProfile({ name: 'QDOC', status: '*ENABLED', pwdNone: '*YES', defaultPwd: false, auths: [] });
+  assert.equal(r.risk, 'OK');
+});
+
 test('evaluateShippedProfile: *NONE or *DISABLED is compliant (OK)', () => {
   assert.equal(evaluateShippedProfile({ name: 'QSYS', status: '*DISABLED', pwdNone: '*YES', defaultPwd: false, auths: ['*ALLOBJ'] }).risk, 'OK');
   assert.equal(evaluateShippedProfile({ name: 'QTFTP', status: '*ENABLED', pwdNone: '*YES', defaultPwd: false, auths: [] }).risk, 'OK');

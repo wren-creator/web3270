@@ -2041,7 +2041,10 @@ Security panel → IBM i SECURITY (AS/400) → SHIPPED PROFILE AUDIT
 
 Same two-phase drill as the User Profile Enumerator (Part 33B): `WRKUSRPRF`
 to collect the profile list, then a `DSPUSRPRF USRPRF(name)` per profile from
-the menu command line. This tool keeps only the names beginning with `Q` and,
+the menu command line. The mock now models the full IBM-supplied `Q*` set
+(~50 profiles), so `WRKUSRPRF` spans several pages — the tool rolls through
+all of them (Roll Up while the panel still reads `More...`, stopping at
+`Bottom`) before it starts drilling. It keeps only the names beginning with `Q` and,
 from each detail screen, reads `Status`, the **`No password (*NONE)`** line,
 the **`Date password last changed`** line, the special-authority list, and the
 default-password warning. `evaluateShippedProfile` (in `as400sec-parse.js`)
@@ -2064,23 +2067,36 @@ concern.
 
 ### What the mock seeds
 
-`USRPRFS` in `mock-lpar/mock-as400.js` ships an **unhardened factory box**:
+`USRPRFS` in `mock-lpar/mock-as400.js` seeds the full IBM-supplied `Q*` set.
+A hand-picked few are an **unhardened factory box**; the rest ship the way a
+real modern IBM i does — `PASSWORD(*NONE)`, already compliant:
 
 | Profile | Seeded state | Audit result |
 |---|---|---|
 | `QSECOFR` | `*ENABLED`, password = `QSECOFR` | CRITICAL (default password) |
 | `QSRV` | `*DISABLED`, password = `QSRV` | CRITICAL (default password, even disabled) |
+| `QSRVBAS` | `*ENABLED`, password = `QSRVBAS`, holds `*ALLOBJ *SAVSYS *JOBCTL` | CRITICAL (default password on a privileged profile) |
 | `QPGMR` | `*ENABLED`, has `*SPLCTL` | HIGH |
 | `QSYSOPR`, `QUSER`, `QTMHHTTP` | `*ENABLED`, password set | MEDIUM |
 | `QSYS` | `*DISABLED` + `PASSWORD(*NONE)` | OK — the target state, despite holding every special authority |
+| `QLPAUTO`, `QLPINSTALL` | `*ENABLED`, `PASSWORD(*NONE)`, hold `*ALLOBJ *SECADM` | OK — powerful, but non-interactive |
+| ~40 more (`QDOC`, `QTFTP`, `QSNADS`, `QDIRSRV`, `QBRMS`, `QTCP`, `QMSF`, `QNOTES`, …) | `*ENABLED`, `PASSWORD(*NONE)` | OK — the long compliant tail, which is what the findings must join |
+
+Special-authority values were cross-checked against the IBM i Security
+Reference (SC41-5302) "IBM-supplied user profiles" table.
 
 ### Teaching scenario
 
-Run the audit against the mock. The spread is deliberate: two CRITICAL, one
-HIGH, three MEDIUM, one OK. The instructive pair is `QSYS` versus everything
-else — `QSYS` holds all eight special authorities and is still **OK**, because
-it is disabled *and* has no password. That is exactly the state the six
-findings need to reach. `QSRV` is the other lesson: it is already `*DISABLED`,
+Run the audit against the mock. The spread is deliberate: three CRITICAL, one
+HIGH, three MEDIUM, and a long tail of OK rows. That tail is the point — most
+of a real system's `Q*` profiles already ship `PASSWORD(*NONE)`, so the audit
+is really a hunt for the handful that don't (and for any irregular, non-IBM
+`Q`-named profile someone slipped in). The instructive pair is `QSYS` versus
+the findings — `QSYS` holds all eight special authorities and is still **OK**,
+because it is disabled *and* has no password. That is exactly the state the
+findings need to reach. `QSRVBAS` is the newest lesson: it is enabled, holds
+`*ALLOBJ`, and still carries its shipped default password — a straight
+CRITICAL. `QSRV` is the other: it is already `*DISABLED`,
 which feels safe, but its password still equals its name, so a `DST`/`SST`
 recovery or a re-enable would hand an attacker `*ALLOBJ *SERVICE` — a default
 password is CRITICAL regardless of status.

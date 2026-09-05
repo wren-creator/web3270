@@ -307,10 +307,21 @@ const SYSVAL_KEYS = Object.keys(SYSVALS);
 // User profiles (DSPUSRPRF/WRKUSRPRF) with special authorities.
 // `pwdNone` — password is *NONE (profile cannot sign on interactively, but
 // background subsystem jobs still run under it). `pwdChg` — date password
-// last changed, or *NA when there is no password. The IBM-supplied (Q*)
-// profiles are seeded as an UNHARDENED factory box: enabled, with passwords,
-// which is exactly what the Shipped Profile Audit tool flags. QSYS is the
-// one shipped example already done right (disabled + *NONE).
+// last changed, or *NA when there is no password.
+//
+// Two layers here:
+//   1. The hand-picked findings set (QSECOFR/QSRV default passwords, an
+//      over-privileged APPADMIN, an enabled QTMHHTTP, …) — an UNHARDENED
+//      factory box, which is what the Shipped Profile Audit flags.
+//   2. The FULL IBM-supplied (Q*) profile set below it — modern IBM i ships
+//      almost all of these PASSWORD(*NONE), so they are audit-COMPLIANT and
+//      exist for enumeration realism: WRKUSRPRF paging, DSPJOB library-list
+//      drilling, and the Sign On CPF1118-vs-CPF1120 existence oracle. Table
+//      sourced from a colleague's unpublished iSeries security field notes
+//      (author anonymous, joint whitepaper pending), cross-checked against
+//      the IBM i Security Reference (SC41-5302) "IBM-supplied user profiles"
+//      table. QSRVBAS is the one deliberate exception — it keeps its shipped
+//      default password (= profile name), the classic Ch.2 finding.
 const USRPRFS = [
   { name: 'QSECOFR',  text: 'Security officer',              status: '*ENABLED',  group: '*NONE',
     specialAuth: ['*ALLOBJ','*SECADM','*SAVSYS','*JOBCTL','*SERVICE','*SPLCTL','*AUDIT','*IOSYSCFG'],
@@ -339,6 +350,106 @@ const USRPRFS = [
   { name: 'QTMHHTTP', text: 'IBM HTTP Server for i',         status: '*ENABLED',  group: '*NONE',
     specialAuth: [],
     lmtcpb: '*NO',  pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: false, pwdChg: '02/09/25', lastSignon: '*NONE' },
+
+  // ── Full IBM-supplied (Q*) profile set ──────────────────────────────────
+  // QSRVBAS: the deliberate finding — ships PASSWORD(QSRVBAS), holds *ALLOBJ.
+  { name: 'QSRVBAS',   text: 'Basic service profile',         status: '*ENABLED',  group: '*NONE',
+    specialAuth: ['*ALLOBJ','*SAVSYS','*JOBCTL'],
+    lmtcpb: '*NO',  pwdExpiry: '*NOMAX',  pwdDefault: true,  pwdNone: false, pwdChg: '01/01/24', lastSignon: '*NONE' },
+  // Elevated shipped profiles — powerful, but PASSWORD(*NONE) keeps them
+  // non-interactive and therefore compliant (SPCAUT per SC41-5302).
+  { name: 'QLPAUTO',   text: 'LP automatic install',          status: '*ENABLED',  group: '*NONE',
+    specialAuth: ['*ALLOBJ','*SECADM','*SAVSYS','*JOBCTL','*IOSYSCFG'],
+    lmtcpb: '*NO',  pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true,  pwdChg: '*NA', lastSignon: '*NONE' },
+  { name: 'QLPINSTALL', text: 'LP install',                   status: '*ENABLED',  group: '*NONE',
+    specialAuth: ['*ALLOBJ','*SECADM','*SAVSYS','*JOBCTL','*IOSYSCFG'],
+    lmtcpb: '*NO',  pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true,  pwdChg: '*NA', lastSignon: '*NONE' },
+  { name: 'QTCP',      text: 'TCP/IP',                         status: '*ENABLED',  group: '*NONE',
+    specialAuth: ['*JOBCTL'],
+    lmtcpb: '*NO',  pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true,  pwdChg: '*NA', lastSignon: '*NONE' },
+  { name: 'QPM400',    text: 'Performance Management',         status: '*ENABLED',  group: '*NONE',
+    specialAuth: ['*IOSYSCFG','*JOBCTL'],
+    lmtcpb: '*NO',  pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true,  pwdChg: '*NA', lastSignon: '*NONE' },
+  { name: 'QCLUSTER',  text: 'Cluster',                        status: '*ENABLED',  group: '*NONE',
+    specialAuth: ['*IOSYSCFG'],
+    lmtcpb: '*NO',  pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true,  pwdChg: '*NA', lastSignon: '*NONE' },
+  // The remainder ship SPCAUT(*NONE) + PASSWORD(*NONE) — all audit-compliant.
+  { name: 'QAUTPROF',  text: 'Auto profile', status: '*ENABLED', group: '*NONE', specialAuth: [],
+    lmtcpb: '*NO', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true, pwdChg: '*NA', lastSignon: '*NONE' },
+  { name: 'QBRMS',     text: 'Backup Recovery Media Svcs', status: '*ENABLED', group: '*NONE', specialAuth: [],
+    lmtcpb: '*NO', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true, pwdChg: '*NA', lastSignon: '*NONE' },
+  { name: 'QCLUMGT',   text: 'Cluster management', status: '*ENABLED', group: '*NONE', specialAuth: [],
+    lmtcpb: '*NO', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true, pwdChg: '*NA', lastSignon: '*NONE' },
+  { name: 'QCOLSRV',   text: 'Collection Services', status: '*ENABLED', group: '*NONE', specialAuth: [],
+    lmtcpb: '*NO', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true, pwdChg: '*NA', lastSignon: '*NONE' },
+  { name: 'QDBSHR',    text: 'Internal database share', status: '*ENABLED', group: '*NONE', specialAuth: [],
+    lmtcpb: '*NO', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true, pwdChg: '*NA', lastSignon: '*NONE' },
+  { name: 'QDBSHRDO',  text: 'Internal DB share (DDM)', status: '*ENABLED', group: '*NONE', specialAuth: [],
+    lmtcpb: '*NO', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true, pwdChg: '*NA', lastSignon: '*NONE' },
+  { name: 'QDFTOWN',   text: 'Default object owner', status: '*ENABLED', group: '*NONE', specialAuth: [],
+    lmtcpb: '*NO', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true, pwdChg: '*NA', lastSignon: '*NONE' },
+  { name: 'QDIRSRV',   text: 'Directory (LDAP) server', status: '*ENABLED', group: '*NONE', specialAuth: [],
+    lmtcpb: '*YES', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true, pwdChg: '*NA', lastSignon: '*NONE' },
+  { name: 'QDLFM',     text: 'DLO file manager', status: '*ENABLED', group: '*NONE', specialAuth: [],
+    lmtcpb: '*NO', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true, pwdChg: '*NA', lastSignon: '*NONE' },
+  { name: 'QDOC',      text: 'Internal document', status: '*ENABLED', group: '*NONE', specialAuth: [],
+    lmtcpb: '*NO', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true, pwdChg: '*NA', lastSignon: '*NONE' },
+  { name: 'QDSNX',     text: 'Dist Systems Node Exec', status: '*ENABLED', group: '*NONE', specialAuth: [],
+    lmtcpb: '*NO', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true, pwdChg: '*NA', lastSignon: '*NONE' },
+  { name: 'QEJB',      text: 'WebSphere / EJB', status: '*ENABLED', group: '*NONE', specialAuth: [],
+    lmtcpb: '*NO', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true, pwdChg: '*NA', lastSignon: '*NONE' },
+  { name: 'QFNC',      text: 'Finance', status: '*ENABLED', group: '*NONE', specialAuth: [],
+    lmtcpb: '*NO', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true, pwdChg: '*NA', lastSignon: '*NONE' },
+  { name: 'QGATE',     text: 'VM/MVS bridge', status: '*ENABLED', group: '*NONE', specialAuth: [],
+    lmtcpb: '*NO', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true, pwdChg: '*NA', lastSignon: '*NONE' },
+  { name: 'QMQM',      text: 'MQ Series', status: '*ENABLED', group: '*NONE', specialAuth: [],
+    lmtcpb: '*NO', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true, pwdChg: '*NA', lastSignon: '*NONE' },
+  { name: 'QMQMADM',   text: 'MQ Series administration', status: '*ENABLED', group: '*NONE', specialAuth: [],
+    lmtcpb: '*NO', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true, pwdChg: '*NA', lastSignon: '*NONE' },
+  { name: 'QMSF',      text: 'Mail Server Framework', status: '*ENABLED', group: '*NONE', specialAuth: [],
+    lmtcpb: '*NO', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true, pwdChg: '*NA', lastSignon: '*NONE' },
+  { name: 'QNETSPLF',  text: 'Network spooled files', status: '*ENABLED', group: '*NONE', specialAuth: [],
+    lmtcpb: '*NO', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true, pwdChg: '*NA', lastSignon: '*NONE' },
+  { name: 'QNFSANON',  text: 'NFS anonymous', status: '*ENABLED', group: '*NONE', specialAuth: [],
+    lmtcpb: '*NO', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true, pwdChg: '*NA', lastSignon: '*NONE' },
+  { name: 'QNOTES',    text: 'Lotus Domino', status: '*ENABLED', group: '*NONE', specialAuth: [],
+    lmtcpb: '*NO', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true, pwdChg: '*NA', lastSignon: '*NONE' },
+  { name: 'QNTP',      text: 'Network Time Protocol', status: '*ENABLED', group: '*NONE', specialAuth: [],
+    lmtcpb: '*NO', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true, pwdChg: '*NA', lastSignon: '*NONE' },
+  { name: 'QPEX',      text: 'Performance Explorer', status: '*ENABLED', group: '*NONE', specialAuth: [],
+    lmtcpb: '*NO', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true, pwdChg: '*NA', lastSignon: '*NONE' },
+  { name: 'QPRJOWN',   text: 'Project owner', status: '*ENABLED', group: '*NONE', specialAuth: [],
+    lmtcpb: '*NO', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true, pwdChg: '*NA', lastSignon: '*NONE' },
+  { name: 'QRJE',      text: 'Remote Job Entry', status: '*ENABLED', group: '*NONE', specialAuth: [],
+    lmtcpb: '*NO', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true, pwdChg: '*NA', lastSignon: '*NONE' },
+  { name: 'QRMTCAL',   text: 'Remote calendar', status: '*ENABLED', group: '*NONE', specialAuth: [],
+    lmtcpb: '*NO', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true, pwdChg: '*NA', lastSignon: '*NONE' },
+  { name: 'QSNADS',    text: 'SNA Distribution Services', status: '*ENABLED', group: '*NONE', specialAuth: [],
+    lmtcpb: '*NO', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true, pwdChg: '*NA', lastSignon: '*NONE' },
+  { name: 'QSPL',      text: 'Spooling', status: '*ENABLED', group: '*NONE', specialAuth: [],
+    lmtcpb: '*NO', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true, pwdChg: '*NA', lastSignon: '*NONE' },
+  { name: 'QSPLJOB',   text: 'Internal spool job', status: '*ENABLED', group: '*NONE', specialAuth: [],
+    lmtcpb: '*NO', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true, pwdChg: '*NA', lastSignon: '*NONE' },
+  { name: 'QSVCDRCTR', text: 'Service Director', status: '*ENABLED', group: '*NONE', specialAuth: [],
+    lmtcpb: '*NO', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true, pwdChg: '*NA', lastSignon: '*NONE' },
+  { name: 'QTFTP',     text: 'TFTP server', status: '*ENABLED', group: '*NONE', specialAuth: [],
+    lmtcpb: '*NO', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true, pwdChg: '*NA', lastSignon: '*NONE' },
+  { name: 'QTMHHTP1',  text: 'HTTP server CGI', status: '*ENABLED', group: '*NONE', specialAuth: [],
+    lmtcpb: '*NO', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true, pwdChg: '*NA', lastSignon: '*NONE' },
+  { name: 'QTMPLPD',   text: 'Remote LPR (LPD)', status: '*ENABLED', group: '*NONE', specialAuth: [],
+    lmtcpb: '*NO', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true, pwdChg: '*NA', lastSignon: '*NONE' },
+  { name: 'QTMTWSG',   text: 'Workstation Gateway', status: '*ENABLED', group: '*NONE', specialAuth: [],
+    lmtcpb: '*NO', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true, pwdChg: '*NA', lastSignon: '*NONE' },
+  { name: 'QTSTRQS',   text: 'Test request', status: '*ENABLED', group: '*NONE', specialAuth: [],
+    lmtcpb: '*NO', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true, pwdChg: '*NA', lastSignon: '*NONE' },
+  { name: 'QUMB',      text: 'Ultimedia', status: '*ENABLED', group: '*NONE', specialAuth: [],
+    lmtcpb: '*NO', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true, pwdChg: '*NA', lastSignon: '*NONE' },
+  { name: 'QYPSJSVR',  text: 'Mgmt Central Java server', status: '*ENABLED', group: '*NONE', specialAuth: [],
+    lmtcpb: '*NO', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true, pwdChg: '*NA', lastSignon: '*NONE' },
+  { name: 'QYPUOWN',   text: 'Mgmt Central owner', status: '*ENABLED', group: '*NONE', specialAuth: [],
+    lmtcpb: '*NO', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true, pwdChg: '*NA', lastSignon: '*NONE' },
+  { name: 'QX400',     text: 'X.400 mail', status: '*ENABLED', group: '*NONE', specialAuth: [],
+    lmtcpb: '*NO', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true, pwdChg: '*NA', lastSignon: '*NONE' },
 ];
 
 // Sign On passwords. Only consulted when a password is actually typed —
@@ -351,6 +462,7 @@ const USRPRFS = [
 const CREDENTIALS = {
   QSECOFR:  'QSECOFR',      // pwdDefault
   QSRV:     'QSRV',         // pwdDefault
+  QSRVBAS:  'QSRVBAS',      // pwdDefault
   QPGMR:    'PgmrPass1',
   QSYSOPR:  'OpsPass22',
   QUSER:    'Guest2026',
@@ -765,6 +877,9 @@ function pickOption(runs, startRow, count) {
 // line), the panel command line sits at LIST_CMD_ROW.
 const LIST_START_ROW = 6;
 const LIST_CMD_ROW   = 21;
+// WRKUSRPRF is the only list panel long enough to need paging (the full
+// IBM-supplied Q* set puts it well past one screen). Rows 6..19 = 14/page.
+const USRPRF_PAGE_SIZE = 14;
 
 // Which "Work with" list panels exist, how many rows each has, and (if the
 // panel supports 5=Display) how a picked row maps to a detail screen + target.
@@ -776,7 +891,7 @@ const LIST_CMD_ROW   = 21;
 // are scoped to a library/file picked via the CL command that opened them).
 const LIST_META = {
   SYSVAL_LIST: { count: () => SYSVAL_KEYS.length, detail: i => ['SYSVAL_DETAIL', SYSVAL_KEYS[i]] },
-  USRPRF_LIST: { count: () => USRPRFS.length,     detail: i => ['USRPRF_DETAIL', USRPRFS[i].name] },
+  // USRPRF_LIST is handled by its own paged branch in the AID loop, not here.
   OBJ_LIST:    { count: () => OBJECTS.length,      detail: i => ['OBJ_DETAIL', i] },
   JOBD_LIST:   { count: () => JOBDS.length,        detail: i => ['JOBD_DETAIL', JOBDS[i].name] },
   AUTL_LIST:   { count: () => AUTLS.length,        detail: i => ['AUTL_DETAIL', AUTLS[i].name] },
@@ -798,8 +913,10 @@ const DETAIL_SCREENS = new Set([
   'SST_DETAIL', 'ANZDFTPWD_DETAIL',
 ]);
 
-const AID_F3  = 0x33;
-const AID_F12 = 0x3C;
+const AID_F3   = 0x33;
+const AID_F12  = 0x3C;
+const AID_PGUP = 0xF4;   // 5250 Roll Down
+const AID_PGDN = 0xF5;   // 5250 Roll Up
 
 function screenMenu(menuId, ctx) {
   const menu = MENUS[menuId];
@@ -1009,6 +1126,10 @@ function screenAnzdftpwdDetail() {
 }
 
 function screenUsrprfList(ctx) {
+  const pageCount = Math.max(1, Math.ceil(USRPRFS.length / USRPRF_PAGE_SIZE));
+  const page = Math.min(Math.max(ctx.page || 0, 0), pageCount - 1);
+  const start = page * USRPRF_PAGE_SIZE;
+  const slice = USRPRFS.slice(start, start + USRPRF_PAGE_SIZE);
   const fields = [
     { row: 0, col: 28, text: 'Work with User Profiles', input: false },
     { row: 0, col: 68, text: SYSNAME, input: false },
@@ -1016,7 +1137,7 @@ function screenUsrprfList(ctx) {
     { row: 3, col: 4,  text: '5=Display', input: false },
     { row: 5, col: 2,  text: 'Opt  Profile     Text                      Special authority', input: false },
   ];
-  USRPRFS.forEach((p, idx) => {
+  slice.forEach((p, idx) => {
     const row = LIST_START_ROW + idx;
     const priv = p.specialAuth.includes('*ALLOBJ') || p.specialAuth.includes('*SECADM');
     let sa = p.specialAuth.length ? p.specialAuth.join(' ') : '*NONE';
@@ -1026,6 +1147,10 @@ function screenUsrprfList(ctx) {
     fields.push({ row, col: 17, text: p.text.slice(0, 24).padEnd(24, ' '), input: false });
     fields.push({ row, col: 42, text: sa, input: false, attr: authAttr(priv) });
   });
+  // Real WRKUSRPRF shows "More..." bottom-right while pages remain, "Bottom"
+  // on the last. The Shipped Profile Audit client keys on the literal text.
+  fields.push({ row: 20, col: 60,
+    text: page < pageCount - 1 ? 'More...' : 'Bottom', input: false });
   listTrailer(fields, ctx.message);
   return wrapPanel(fields, { row: LIST_START_ROW, col: 2 });
 }
@@ -1631,6 +1756,7 @@ function handleConnection(socket) {
   let returnTo = 'MAIN';   // menu to go back to from MESSAGES/STUB
   let stubLabel = '';      // which option led to the current STUB screen
   let cmdTarget = null;    // detail target: sysval name / profile name / object index
+  let usrprfPage = 0;      // WRKUSRPRF paging (Roll Up/Down); reset on entry
   let navStack = [];       // back-navigation stack for the WRK/DSP security panels
   let sqlResult = null;    // last STRSQL result: { cols, rows } or null
   let rpgGen = null;       // running RPG program's generator (screen === 'RPG_RUN')
@@ -1643,7 +1769,7 @@ function handleConnection(socket) {
   // few Wave 3 panels (e.g. MBRPDM_LIST) are themselves scoped by cmdTarget
   // and also drill into a detail screen that overwrites it — plain screen-id
   // stacking would lose the scope on the way back out.
-  function goTo(next, target = null) { navStack.push({ screen, cmdTarget }); screen = next; cmdTarget = target; menuMessage = ''; }
+  function goTo(next, target = null) { navStack.push({ screen, cmdTarget }); screen = next; cmdTarget = target; menuMessage = ''; if (next === 'USRPRF_LIST') usrprfPage = 0; }
   function goBack() {
     const prev = navStack.pop();
     screen = prev ? prev.screen : 'MAIN';
@@ -1796,7 +1922,7 @@ function handleConnection(socket) {
     } else if (screen === 'ANZDFTPWD_DETAIL') {
       ds = screenAnzdftpwdDetail();
     } else if (screen === 'USRPRF_LIST') {
-      ds = screenUsrprfList({ message: menuMessage });
+      ds = screenUsrprfList({ message: menuMessage, page: usrprfPage });
     } else if (screen === 'USRPRF_DETAIL') {
       ds = screenUsrprfDetail(cmdTarget);
     } else if (screen === 'OBJ_LIST') {
@@ -1982,6 +2108,27 @@ function handleConnection(socket) {
         menuMessage = `Program ${rpgPgmName} ended normally.`;
       } else {
         rpgYield = r.value;
+      }
+    } else if (screen === 'USRPRF_LIST') {
+      // Paged list — own handler so Roll Up/Down work and a picked Opt maps
+      // through the page offset to the absolute USRPRFS index.
+      const cmdLine = fieldAt(runs, LIST_CMD_ROW);
+      const pageCount = Math.max(1, Math.ceil(USRPRFS.length / USRPRF_PAGE_SIZE));
+      if (aid === AID_F3 || aid === AID_F12) {
+        goBack();
+      } else if (cmdLine) {
+        applyCommand(runCommand(cmdLine));
+      } else if (aid === AID_PGDN) {
+        if (usrprfPage < pageCount - 1) usrprfPage++;
+      } else if (aid === AID_PGUP) {
+        if (usrprfPage > 0) usrprfPage--;
+      } else {
+        const pick = pickOption(runs, LIST_START_ROW, USRPRF_PAGE_SIZE);
+        if (pick) {
+          const absIdx = usrprfPage * USRPRF_PAGE_SIZE + pick.index;
+          if (USRPRFS[absIdx]) goTo('USRPRF_DETAIL', USRPRFS[absIdx].name);
+        }
+        // bare Enter with no option typed → redraw as-is
       }
     } else if (LIST_META[screen]) {
       const meta = LIST_META[screen];
