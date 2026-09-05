@@ -1880,6 +1880,10 @@ A privileged profile that is currently `*DISABLED` is still reported (with a "(c
 
 Run the enumerator against the mock. `QSECOFR` is CRITICAL on three counts at once — all eight special authorities, a default password, and `LMTCPB(*NO)`. The instructive one is `APPADMIN`: an ordinary-looking "application service account" that quietly holds `*ALLOBJ`. Service and batch accounts accumulating `*ALLOBJ` "to make things work" is one of the most common real-world IBM i findings. Then look at `QSRV` — privileged *and* carrying a default password, but `*DISABLED`; explain why a disabled-but-privileged profile still belongs in the report.
 
+### The enumeration path that needs no command line
+
+The tool types `WRKUSRPRF` on a command line. A properly locked-down IBM i user does not have one — `LMTCPB(*YES)`, an initial program, a menu they cannot leave. That user can still list every profile on the system: **Display Job → option 13 (Display library list) → `5` on `QSYS` → the `*USRPRF` objects.** On real hardware the entry is the System Request key then option 3; on the mock it is the `DSPJOB` command or *User tasks → 6*. The Display Library panel pages through every profile as a green `*USRPRF` row, and `5` on one opens the same `DSPUSRPRF` detail. The walkthrough **`as400-dspjob-enumeration`** drives it step by step. The countermeasures are indirect — keep restricted users at `LMTCPB(*YES)` with an inescapable menu, set `QSYS` / the `*USRPRF` objects to `*PUBLIC *EXCLUDE` where the applications allow, and audit for the pattern (a restricted user opening `DSPJOB` then Display Library on `QSYS`).
+
 ---
 
 ## Part 33C — Object / *PUBLIC Authority Scanner

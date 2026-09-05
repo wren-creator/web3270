@@ -310,6 +310,7 @@ green-screen navigation before touching a real box. Reachable by command
 | `WRKSPLF` | Work with spooled files | User tasks (1) → 3 | Opt `5` shows a fake report/job-log content preview |
 | `WRKOUTQ` | Work with output queues | — | List-only |
 | `WRKJOB` | Display job status (current job) | — | No params — always the signed-on user's "current" interactive job |
+| `DSPJOB` | Display Job (options 1-16) | User tasks (1) → 6 | Only option `13` (Display library list) is wired; from there `5` on `QSYS` → Display Library, a **paged** object list whose green `*USRPRF` rows are every user profile, `5` on one drills its `DSPUSRPRF` detail. Carmel Ch.2.3's "no command line necessary" user-enumeration path (System Request itself is not modelled as a 5250 AID) |
 | `WRKUSRJOB` | Work with (your) jobs | User tasks (1) → 5 | Built live from whichever userid signed on |
 | `WRKBCHJOB` | Work with batch jobs | User tasks (1) → 4 | System-wide submitted jobs, several users/statuses |
 | `SNDMSG` | Send a Message | User tasks (1) → 1 | Compose screen (To user + text); appears in your own `DSPMSG` queue on send |

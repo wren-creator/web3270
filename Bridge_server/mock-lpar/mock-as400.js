@@ -220,6 +220,7 @@ const MENUS = {
       { num: '3', label: 'Work with spooled files',        run: 'WRKSPLF' },
       { num: '4', label: 'Work with batch jobs',           run: 'WRKBCHJOB' },
       { num: '5', label: 'Work with your jobs',             run: 'WRKUSRJOB' },
+      { num: '6', label: 'Display current job',             run: 'DSPJOB' },
     ],
   },
   OFFICE: {
@@ -837,6 +838,7 @@ function runCommand(raw) {
     case 'WRKSPLF': return { type: 'screen', screen: 'SPLF_LIST' };
     case 'WRKOUTQ': return { type: 'screen', screen: 'OUTQ_LIST' };
     case 'WRKJOB':  return { type: 'detail', screen: 'JOB_DETAIL', target: '*CURRENT' };
+    case 'DSPJOB':  return { type: 'screen', screen: 'DSPJOB_OPTS' };
     case 'WRKUSRJOB': return { type: 'screen', screen: 'USRJOB_LIST' };
     case 'WRKBCHJOB': return { type: 'screen', screen: 'BCHJOB_LIST' };
     case 'WRKLIB':  return { type: 'screen', screen: 'LIB_LIST' };
@@ -904,7 +906,8 @@ const USRPRF_PAGE_SIZE = 14;
 // are scoped to a library/file picked via the CL command that opened them).
 const LIST_META = {
   SYSVAL_LIST: { count: () => SYSVAL_KEYS.length, detail: i => ['SYSVAL_DETAIL', SYSVAL_KEYS[i]] },
-  // USRPRF_LIST is handled by its own paged branch in the AID loop, not here.
+  // USRPRF_LIST / DSPLIB_OBJS are handled by their own paged branches, not here.
+  DSPJOB_LIBL: { count: () => LIBL.length,          detail: i => ['DSPLIB_OBJS', LIBL[i].name] },
   OBJ_LIST:    { count: () => OBJECTS.length,      detail: i => ['OBJ_DETAIL', i] },
   JOBD_LIST:   { count: () => JOBDS.length,        detail: i => ['JOBD_DETAIL', JOBDS[i].name] },
   AUTL_LIST:   { count: () => AUTLS.length,        detail: i => ['AUTL_DETAIL', AUTLS[i].name] },
@@ -1627,6 +1630,106 @@ function screenLiblDetail() {
   return wrapPanel(fields, { row: 22, col: 44 });
 }
 
+// ── DSPJOB → library list → Display Library object enumeration ──────────
+// Carmel Ch.2.3, "no command line necessary": a restricted user reaches the
+// full user-profile list via System Request -> 3 (Display current job) -> 13
+// (Display library list) -> 5 on QSYS, then pages the *USRPRF objects. The
+// mock's entry is the DSPJOB command or USER menu option 6 (System Request
+// itself is not modelled as a 5250 AID).
+
+// A few real QSYS objects for texture, then every user profile as a *USRPRF
+// object -- the section the book's Figure 9 pages down to. Other libraries
+// map from PDM_OBJECTS where the mock has them.
+function libraryObjects(lib) {
+  if (lib === 'QSYS') {
+    const base = [
+      { obj: 'QCMD',    type: '*CMD', text: 'Command entry' },
+      { obj: 'QCMDEXC', type: '*PGM', text: 'Execute command API' },
+      { obj: 'QINTER',  type: '*SBSD', text: 'Interactive subsystem description' },
+      { obj: 'QSYS',    type: '*LIB', text: 'System library' },
+    ];
+    const prf = USRPRFS.map(p => ({ obj: p.name, type: '*USRPRF', text: p.text }));
+    return [...base, ...prf].sort((a, b) => a.obj.localeCompare(b.obj));
+  }
+  return (PDM_OBJECTS[lib] || []).map(o => ({ obj: o.name, type: o.type, text: o.text }));
+}
+
+function screenDspjobOpts(ctx) {
+  const j = findJob('*CURRENT', ctx.user);
+  const opts = [
+    '1. Display job status attributes',
+    '2. Display job definition attributes',
+    '3. Display job run attributes, if active',
+    '4. Display spooled files',
+    '10. Display job log, if active or on job queue',
+    '11. Display call stack, if active',
+    '12. Display locks, if active',
+    '13. Display library list, if active',
+    '14. Display open files, if active',
+    '15. Display file overrides, if active',
+    '16. Display commitment control status, if active',
+  ];
+  const fields = [
+    { row: 0, col: 34, text: 'Display Job', input: false },
+    { row: 0, col: 68, text: SYSNAME, input: false },
+    { row: 2, col: 2,  text: `Job:  ${j.name.padEnd(10)} User:  ${j.user.padEnd(10)} Number:  ${j.number}`, input: false },
+    { row: 4, col: 2,  text: 'Select one of the following:', input: false },
+  ];
+  opts.forEach((o, i) => fields.push({ row: 6 + i, col: 5, text: o, input: false }));
+  fields.push({ row: 20, col: 2,  text: 'Selection', input: false });
+  fields.push({ row: 20, col: 14, text: '', input: true, length: 2 });
+  if (ctx.message) fields.push({ row: 21, col: 2, text: ctx.message.slice(0, 76), input: false, attr: ATTR_RED });
+  fields.push({ row: 23, col: 2,  text: 'F3=Exit   F12=Cancel', input: false });
+  return wrapPanel(fields, { row: 20, col: 14 });
+}
+
+function screenDspjobLibl(ctx) {
+  const fields = [
+    { row: 0, col: 26, text: 'Display Job Library List', input: false },
+    { row: 0, col: 68, text: SYSNAME, input: false },
+    { row: 2, col: 2,  text: 'Type options, press Enter.', input: false },
+    { row: 3, col: 4,  text: '5=Display objects in library', input: false },
+    { row: 5, col: 2,  text: 'Opt  Library     Type', input: false },
+  ];
+  LIBL.forEach((l, idx) => {
+    const row = LIST_START_ROW + idx;
+    fields.push({ row, col: 2,  text: '', input: true, length: 2 });
+    fields.push({ row, col: 6,  text: l.name.padEnd(11, ' '), input: false });
+    fields.push({ row, col: 18, text: l.type, input: false });
+  });
+  listTrailer(fields, ctx.message);
+  return wrapPanel(fields, { row: LIST_START_ROW, col: 2 });
+}
+
+function screenDsplibObjs(ctx) {
+  const objs = libraryObjects(ctx.lib);
+  const pageCount = Math.max(1, Math.ceil(objs.length / USRPRF_PAGE_SIZE));
+  const page = Math.min(Math.max(ctx.page || 0, 0), pageCount - 1);
+  const slice = objs.slice(page * USRPRF_PAGE_SIZE, page * USRPRF_PAGE_SIZE + USRPRF_PAGE_SIZE);
+  const fields = [
+    { row: 0, col: 30, text: 'Display Library', input: false },
+    { row: 0, col: 68, text: SYSNAME, input: false },
+    { row: 2, col: 2,  text: `Library  . . . . . :   ${ctx.lib}`, input: false },
+    { row: 3, col: 2,  text: 'Type options, press Enter.   5=Display full attributes', input: false },
+    { row: 5, col: 2,  text: 'Opt  Object      Type       Text', input: false },
+  ];
+  if (!objs.length) {
+    fields.push({ row: LIST_START_ROW, col: 2, text: '(No objects modelled for this library.)', input: false });
+  } else {
+    slice.forEach((o, idx) => {
+      const row = LIST_START_ROW + idx;
+      const isPrf = o.type === '*USRPRF';
+      fields.push({ row, col: 2,  text: '', input: true, length: 2 });
+      fields.push({ row, col: 6,  text: o.obj.padEnd(11, ' '), input: false });
+      fields.push({ row, col: 18, text: o.type.padEnd(10, ' '), input: false, attr: isPrf ? ATTR_GREEN : ATTR_WHITE });
+      fields.push({ row, col: 29, text: (o.text || '').slice(0, 45), input: false });
+    });
+    fields.push({ row: 20, col: 60, text: page < pageCount - 1 ? 'More...' : 'Bottom', input: false });
+  }
+  listTrailer(fields, ctx.message);
+  return wrapPanel(fields, { row: LIST_START_ROW, col: 2 });
+}
+
 function screenObjpdmList(lib, ctx) {
   const objs = PDM_OBJECTS[lib] || [];
   const fields = [
@@ -1770,6 +1873,7 @@ function handleConnection(socket) {
   let stubLabel = '';      // which option led to the current STUB screen
   let cmdTarget = null;    // detail target: sysval name / profile name / object index
   let usrprfPage = 0;      // WRKUSRPRF paging (Roll Up/Down); reset on entry
+  let dsplibPage = 0;      // DSPJOB → library list → Display Library object paging
   let navStack = [];       // back-navigation stack for the WRK/DSP security panels
   let sqlResult = null;    // last STRSQL result: { cols, rows } or null
   let rpgGen = null;       // running RPG program's generator (screen === 'RPG_RUN')
@@ -1782,7 +1886,7 @@ function handleConnection(socket) {
   // few Wave 3 panels (e.g. MBRPDM_LIST) are themselves scoped by cmdTarget
   // and also drill into a detail screen that overwrites it — plain screen-id
   // stacking would lose the scope on the way back out.
-  function goTo(next, target = null) { navStack.push({ screen, cmdTarget }); screen = next; cmdTarget = target; menuMessage = ''; if (next === 'USRPRF_LIST') usrprfPage = 0; }
+  function goTo(next, target = null) { navStack.push({ screen, cmdTarget }); screen = next; cmdTarget = target; menuMessage = ''; if (next === 'USRPRF_LIST') usrprfPage = 0; if (next === 'DSPLIB_OBJS') dsplibPage = 0; }
   function goBack() {
     const prev = navStack.pop();
     screen = prev ? prev.screen : 'MAIN';
@@ -1974,6 +2078,12 @@ function handleConnection(socket) {
       ds = screenLibDetail(cmdTarget);
     } else if (screen === 'LIBL_DETAIL') {
       ds = screenLiblDetail();
+    } else if (screen === 'DSPJOB_OPTS') {
+      ds = screenDspjobOpts({ user, message: menuMessage });
+    } else if (screen === 'DSPJOB_LIBL') {
+      ds = screenDspjobLibl({ message: menuMessage });
+    } else if (screen === 'DSPLIB_OBJS') {
+      ds = screenDsplibObjs({ lib: cmdTarget, page: dsplibPage, message: menuMessage });
     } else if (screen === 'OBJPDM_LIST') {
       ds = screenObjpdmList(cmdTarget, { message: menuMessage });
     } else if (screen === 'MBRPDM_LIST') {
@@ -2142,6 +2252,40 @@ function handleConnection(socket) {
           if (USRPRFS[absIdx]) goTo('USRPRF_DETAIL', USRPRFS[absIdx].name);
         }
         // bare Enter with no option typed → redraw as-is
+      }
+    } else if (screen === 'DSPJOB_OPTS') {
+      // Display Job options screen (also the System Request -> 3 landing).
+      // Only option 13 (Display library list) is wired.
+      if (aid === AID_F3 || aid === AID_F12) {
+        goBack();
+      } else {
+        const sel = fieldAt(runs, 20).trim();
+        if (sel === '13')  goTo('DSPJOB_LIBL');
+        else if (sel)      menuMessage = `Option ${sel} is not modelled — use 13 (Display library list).`;
+        // blank → redraw
+      }
+    } else if (screen === 'DSPLIB_OBJS') {
+      // Paged object list for the library picked on DSPJOB_LIBL. 5 on a
+      // *USRPRF object drills into the same detail screen WRKUSRPRF uses.
+      const objs = libraryObjects(cmdTarget);
+      const cmdLine = fieldAt(runs, LIST_CMD_ROW);
+      const pageCount = Math.max(1, Math.ceil(objs.length / USRPRF_PAGE_SIZE));
+      if (aid === AID_F3 || aid === AID_F12) {
+        goBack();
+      } else if (cmdLine) {
+        applyCommand(runCommand(cmdLine));
+      } else if (aid === AID_PGDN) {
+        if (dsplibPage < pageCount - 1) dsplibPage++;
+      } else if (aid === AID_PGUP) {
+        if (dsplibPage > 0) dsplibPage--;
+      } else {
+        const pick = pickOption(runs, LIST_START_ROW, USRPRF_PAGE_SIZE);
+        if (pick) {
+          const o = objs[dsplibPage * USRPRF_PAGE_SIZE + pick.index];
+          if (o && o.type === '*USRPRF' && USRPRFS.some(p => p.name === o.obj)) {
+            goTo('USRPRF_DETAIL', o.obj);
+          }
+        }
       }
     } else if (LIST_META[screen]) {
       const meta = LIST_META[screen];

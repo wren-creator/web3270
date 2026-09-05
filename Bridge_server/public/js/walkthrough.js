@@ -2263,6 +2263,58 @@ const _WALKTHROUGHS = [
     ],
   },
 
+  // ── IBM i (AS/400) DSPJOB user enumeration (no command line) ──────
+  {
+    id:       'as400-dspjob-enumeration',
+    category: 'security',
+    title:    'IBM i: DSPJOB user enumeration (no command line)',
+    desc:     'Walks the full IBM i user-profile list without a command line, via Display Job -> Display library list -> Display objects in QSYS -> the *USRPRF objects. This is the enumeration path available to a restricted user who cannot type commands.',
+    steps: [
+      {
+        title: 'Why this one is different',
+        body:  'The User Profile Enumerator and the Shipped Profile Audit both type WRKUSRPRF / DSPUSRPRF on a command line. A properly locked-down IBM i user does not have one — LMTCPB(*YES), an initial program, a menu they cannot escape. This walkthrough uses only menu options and list selections, so it works for that user. On a real system the entry point is the System Request key then option 3; the mock does not model System Request, so it exposes the same screen as the DSPJOB command and as USER menu option 6.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Prerequisites',
+        body:  'Connect to a TN5250 (IBM i / AS/400) target and sign on. Stop wherever you land — a menu is fine, a locked application screen is fine. You do not need a command line. It is fully read-only.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Open Display Job',
+        body:  'From the mock: at the MAIN MENU choose 1 (User tasks), then 6 (Display current job). If you have a command line you can type DSPJOB instead. Either way you land on the Display Job screen — the same one System Request -> 3 shows on real hardware — with options 1 through 16.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Option 13 — Display library list',
+        body:  'Type 13 in the Selection field and press Enter. You get the job\'s library list: QSYS, QSYS2, QHLPSYS, QUSRSYS, then the application and user libraries. QSYS is the one that matters — every user profile on the system is an object in it.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Drill into QSYS',
+        body:  'Type 5 in the Opt column next to QSYS and press Enter. The Display Library panel lists the objects in QSYS. Commands, programs, the library itself — and, in green, the *USRPRF objects: one per user profile.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Page the profile list',
+        body:  'Roll Up / Roll Down (Page Down / Page Up) through the list — it spans several pages, ending at "Bottom". Every *USRPRF row is a valid account name: the IBM-supplied Q* profiles, the application accounts, and anything irregular someone planted (QYSPJ on the mock). Type 5 next to any one to open its full profile — status, special authorities, last sign-on — the same detail screen WRKUSRPRF drills into. You now have the entire user list and never touched a command line.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Why it is hard to stop',
+        body:  'DSPJOB and the library-list option are core operator function; you cannot remove them. The controls are indirect: keep restricted users at LMTCPB(*YES) with an initial program and menu, set QSYS and the *USRPRF objects to *PUBLIC *EXCLUDE where your applications allow it, and audit for the enumeration pattern (a restricted user opening DSPJOB then Display Library on QSYS). The Shipped Profile Audit is still the tool that catches the actual finding this enumeration would hand an attacker: a default password or an irregular Q* profile.',
+        highlight: null,
+        autoFn: null,
+      },
+    ],
+  },
+
   // ── IBM i (AS/400) Object / *PUBLIC Authority Scanner ─────────────
   {
     id:       'as400-object-scanner',
