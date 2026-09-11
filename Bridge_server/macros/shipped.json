@@ -142,5 +142,49 @@
       }
     ],
     "id": "mq6u5eobquxq"
+  },
+  {
+    "name": "create_dataset",
+    "description": "Prompts for a dataset name, then allocates it with a TSO ALLOCATE command from the READY prompt",
+    "created": "2026-09-11T00:00:00.000Z",
+    "steps": [
+      {
+        "op": "comment",
+        "text": "Start from the native TSO READY prompt (not inside ISPF)"
+      },
+      {
+        "op": "wait",
+        "condition": "text",
+        "row": 6,
+        "col": 1,
+        "text": "READY",
+        "timeoutMs": 10000
+      },
+      {
+        "op": "prompt",
+        "var": "dsname",
+        "label": "Dataset name to create (e.g. HLQ.NEW.DATA):"
+      },
+      {
+        "op": "type",
+        "row": 7,
+        "col": 1,
+        "text": "ALLOCATE DATASET('{dsname}') NEW CATALOG SPACE(1,1) TRACKS RECFM(F,B) LRECL(80) BLKSIZE(0) DSORG(PS)"
+      },
+      {
+        "op": "aid",
+        "aid": "ENTER"
+      },
+      {
+        "op": "wait",
+        "condition": "screen",
+        "timeoutMs": 5000
+      },
+      {
+        "op": "comment",
+        "text": "Blank READY means it allocated cleanly; an IKJ56xxx message (e.g. already cataloged) shows on the READY screen instead"
+      }
+    ],
+    "id": "mtwxvwwtdlum"
   }
 ]
