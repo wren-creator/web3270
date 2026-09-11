@@ -303,6 +303,44 @@ const CATALOG = {
   SECURITY: ['SECURITY.AUDIT.LOG'],
 };
 
+// Userids the mock currently treats as RACF-revoked — module-level and shared
+// across every connection for the life of the daemon, same as CATALOG and ESM
+// above. Two things add to it: MAX_ATTEMPTS consecutive bad passwords at logon
+// (real RACF does exactly this), or the security-tools "RACF Brute Force
+// Template" / "RACF Default Credential Scanner" macros driving a session into
+// that same lockout. resume_locked_account's ALU {userid} RESUME is the only
+// thing that removes an entry — see tryAltuser() below — so what those two
+// macro pairs demonstrate is now the actual before/after of the same state,
+// not two disconnected simulations.
+const REVOKED_USERS = new Set();
+
+// Recognizes ALTUSER/ALU <userid> RESUME and ALTUSER/ALU <userid> PASSWORD(newpw),
+// the two RACF admin actions the resume_locked_account and reset_password_default
+// security macros issue. Real RACF would check the logged-on userid's SPECIAL or
+// group-SPECIAL authority before honoring either one — this mock doesn't model
+// authority levels at all (nothing here does: LISTAPF, ALLOCATE, the ESM switch
+// all work for anyone), so both actions succeed once the syntax parses. PASSWORD
+// doesn't persist anywhere either — VALID_CREDENTIALS is a fixed per-connection
+// map, not a live table ALTUSER can update — so it's accepted but doesn't change
+// what a later logon will actually require. Returns null for anything that isn't
+// ALTUSER/ALU at all, same NOT FOUND fallthrough convention as tryAllocate/tryListcat.
+function tryAltuser(cmd) {
+  if (!/^AL(TUSER|U)\b/.test(cmd)) return null;
+  const rest = cmd.replace(/^AL(TUSER|U)\s+/, '');
+  const [target, ...actionParts] = rest.split(/\s+/);
+  const targetUser = (target || '').toUpperCase();
+  if (!targetUser) return { ok: false, msg: 'IKJ56701I MISSING USERID OPERAND' };
+  const action = actionParts.join(' ');
+  if (/^RESUME$/i.test(action)) {
+    REVOKED_USERS.delete(targetUser);
+    return { ok: true };
+  }
+  if (/^PASSWORD\([^)]+\)$/i.test(action)) {
+    return { ok: true };
+  }
+  return { ok: false, msg: `IKJ56500I COMMAND ${cmd} NOT FOUND` };
+}
+
 // Recognizes ALLOCATE DATASET('name') / ALLOCATE DA('name') — the create_dataset
 // shipped macro's whole reason for existing. Real TSO ignores the rest of the
 // attribute list for our purposes (SPACE/RECFM/LRECL/etc. don't change whether
@@ -1564,6 +1602,15 @@ function handleConnection(socket) {
           lastEnteredUser = enteredUser;
           lastEnteredPass = enteredPass;
           const validPass = VALID_CREDENTIALS[enteredUser];
+          if (REVOKED_USERS.has(enteredUser)) {
+            // Already revoked — real RACF rejects this before even looking at
+            // the password, so don't burn an attempt or give a correct
+            // password any credit. resume_locked_account's ALU {userid}
+            // RESUME (see tryAltuser above) is what clears this.
+            log(`[${id}] Logon rejected — '${enteredUser}' is REVOKED`);
+            accountLocked = true;
+            currentScreen = 'lockout';
+          } else
           // Case-insensitive on purpose: the real terminal deliberately does
           // NOT force-uppercase nondisplay (password) fields client-side
           // (see public/js/keyboard.js — that matters for real case-sensitive
@@ -1581,6 +1628,8 @@ function handleConnection(socket) {
             if (loginAttempts >= MAX_ATTEMPTS) {
               accountLocked = true;
               currentScreen = 'lockout';
+              REVOKED_USERS.add(enteredUser);
+              log(`[${id}] '${enteredUser}' REVOKED after ${loginAttempts} failed attempts`);
             } else {
               currentScreen = 'logonError';
             }
@@ -1650,6 +1699,11 @@ function handleConnection(socket) {
             state.readyMsg = result.ok ? '' : result.msg;
             currentScreen = result.ok ? 'ready' : 'readyOutput';
             sendCurrentScreen();
+          } else if (/^AL(TUSER|U)\b/.test(cmd)) {
+            const result = tryAltuser(cmd);
+            state.readyMsg = result.ok ? '' : result.msg;
+            currentScreen = result.ok ? 'ready' : 'readyOutput';
+            sendCurrentScreen();
           } else if (cmd === 'LOGOFF' || cmd.startsWith('LOGOFF ')) {
             // Real TSO: bare LOGOFF ends the session and drops the terminal
             // back to VTAM; LOGOFF HOLD (or an installation session manager)
@@ -1701,6 +1755,10 @@ function handleConnection(socket) {
             sendCurrentScreen();
           } else if (/^ALLOC(ATE)?\b/.test(cmd)) {
             const result = tryAllocate(cmd);
+            state.tsoOutput = result.ok ? '' : result.msg;
+            sendCurrentScreen();
+          } else if (/^AL(TUSER|U)\b/.test(cmd)) {
+            const result = tryAltuser(cmd);
             state.tsoOutput = result.ok ? '' : result.msg;
             sendCurrentScreen();
           } else if (cmd === 'LOGOFF' || cmd.startsWith('LOGOFF ')) {
