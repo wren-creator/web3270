@@ -7,9 +7,12 @@
     "modified": "2026-06-12T00:00:00.000Z",
     "steps": [
       {
-        "op": "waitScr",
+        "op": "wait",
+        "condition": "text",
+        "row": 0,
+        "col": 25,
         "text": "ISPF Primary Option Menu",
-        "timeout": 15000,
+        "timeoutMs": 15000,
         "comment": "Wait for ISPF Primary Option Menu"
       },
       {
@@ -25,9 +28,12 @@
         "comment": "Select option 6 - Command Shell"
       },
       {
-        "op": "waitScr",
+        "op": "wait",
+        "condition": "text",
+        "row": 0,
+        "col": 1,
         "text": "ISPF Command Shell",
-        "timeout": 10000,
+        "timeoutMs": 10000,
         "comment": "Wait for TSO Command Shell panel"
       },
       {
@@ -44,13 +50,17 @@
         "comment": "Submit LISTAPF command"
       },
       {
-        "op": "waitScr",
+        "op": "wait",
+        "condition": "text",
+        "row": 0,
+        "col": 1,
         "text": "LISTAPF Output",
-        "timeout": 10000,
+        "timeoutMs": 10000,
         "comment": "Wait for APF list — note USER.LOADLIB flagged as writable"
       },
       {
-        "op": "pause",
+        "op": "wait",
+        "condition": "delay",
         "ms": 2000,
         "comment": "Allow output to render — use Traffic Recorder to capture results"
       }
@@ -64,10 +74,13 @@
     "modified": "2026-06-12T00:00:00.000Z",
     "steps": [
       {
-        "op": "waitScr",
+        "op": "wait",
+        "condition": "text",
+        "row": 1,
+        "col": 47,
         "text": "TSO/E LOGON",
-        "timeout": 15000,
-        "comment": "Wait for mock z/OS logon screen"
+        "timeoutMs": 15000,
+        "comment": "Wait for mock z/OS logon screen. Column assumes mock-lpar.js's default SYSNAME=MOCKPROD (8 chars) — if MOCK_SYSID is set to something a different length, this column shifts and needs recalculating."
       },
       {
         "op": "type",
@@ -90,10 +103,13 @@
         "comment": "Submit credentials"
       },
       {
-        "op": "waitScr",
+        "op": "wait",
+        "condition": "text",
+        "row": 0,
+        "col": 10,
         "text": "TSO/E - Ready",
-        "timeout": 5000,
-        "comment": "Success — logon landed on READY prompt"
+        "timeoutMs": 5000,
+        "comment": "Success — logon landed on READY prompt. Column assumes default SYSNAME=MOCKPROD, same caveat as the logon wait above."
       }
     ]
   },
@@ -105,10 +121,13 @@
     "modified": "2026-06-12T00:00:00.000Z",
     "steps": [
       {
-        "op": "waitScr",
+        "op": "wait",
+        "condition": "text",
+        "row": 1,
+        "col": 47,
         "text": "TSO/E LOGON",
-        "timeout": 15000,
-        "comment": "Wait for mock z/OS logon screen"
+        "timeoutMs": 15000,
+        "comment": "Wait for mock z/OS logon screen. Column assumes mock-lpar.js's default SYSNAME=MOCKPROD (8 chars) — if MOCK_SYSID is set to something a different length, this column shifts and needs recalculating."
       },
       {
         "op": "type",
@@ -130,10 +149,13 @@
         "fields": []
       },
       {
-        "op": "waitScr",
+        "op": "wait",
+        "condition": "text",
+        "row": 0,
+        "col": 10,
         "text": "TSO/E - Ready",
-        "timeout": 5000,
-        "comment": "Success condition — READY prompt means logon succeeded"
+        "timeoutMs": 5000,
+        "comment": "Success condition — READY prompt means logon succeeded. Column assumes default SYSNAME=MOCKPROD, same caveat as the logon wait above."
       }
     ]
   },
