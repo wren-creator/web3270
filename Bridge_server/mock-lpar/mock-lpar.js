@@ -303,6 +303,31 @@ const CATALOG = {
   SECURITY: ['SECURITY.AUDIT.LOG'],
 };
 
+// Recognizes ALLOCATE DATASET('name') / ALLOCATE DA('name') — the create_dataset
+// shipped macro's whole reason for existing. Real TSO ignores the rest of the
+// attribute list for our purposes (SPACE/RECFM/LRECL/etc. don't change whether
+// the allocate succeeds), so this only cares about the dsname. Returns null for
+// anything that isn't an ALLOCATE/ALLOC command at all, so callers fall through
+// to the generic COMMAND NOT FOUND response same as every other unhandled verb;
+// returns { ok, msg } once it's decided this WAS an allocate attempt. A newly
+// allocated name is added to CATALOG under its first qualifier so a follow-up
+// LISTCAT LEVEL(prefix) shows it, same shared module-level CATALOG the ESM
+// switch and LISTCAT already treat as global rather than per-session state.
+function tryAllocate(cmd) {
+  if (!/^ALLOC(ATE)?\b/.test(cmd)) return null;
+  const m = cmd.match(/\b(?:DATASET|DA)\('([^']+)'\)/);
+  if (!m) return { ok: false, msg: 'IKJ56701I MISSING DATA SET NAME OPERAND' };
+  const dsname = m[1].toUpperCase();
+  const prefix = dsname.split('.')[0];
+  const existing = CATALOG[prefix] || [];
+  if (existing.includes(dsname)) {
+    return { ok: false, msg: `IKJ56225I DATA SET ${dsname} NOT ALLOCATED, ALREADY IN CATALOG` };
+  }
+  if (!CATALOG[prefix]) CATALOG[prefix] = [];
+  CATALOG[prefix].push(dsname);
+  return { ok: true };
+}
+
 // Recognizes LISTCAT LEVEL(prefix), the one real IDCAMS command the
 // Dataset Recon Scanner issues. Returns null for anything else so callers
 // can fall through to the generic COMMAND NOT FOUND response.
@@ -1620,6 +1645,11 @@ function handleConnection(socket) {
           } else if (cmd.startsWith('LISTCAT')) {
             state.tsoOutput = tryListcat(cmd) || `IKJ56500I COMMAND ${cmd} NOT FOUND`;
             currentScreen = 'tsoCmd'; sendCurrentScreen();
+          } else if (/^ALLOC(ATE)?\b/.test(cmd)) {
+            const result = tryAllocate(cmd);
+            state.readyMsg = result.ok ? '' : result.msg;
+            currentScreen = result.ok ? 'ready' : 'readyOutput';
+            sendCurrentScreen();
           } else if (cmd === 'LOGOFF' || cmd.startsWith('LOGOFF ')) {
             // Real TSO: bare LOGOFF ends the session and drops the terminal
             // back to VTAM; LOGOFF HOLD (or an installation session manager)
@@ -1668,6 +1698,10 @@ function handleConnection(socket) {
             sendCurrentScreen();
           } else if (cmd.startsWith('LISTCAT')) {
             state.tsoOutput = tryListcat(cmd) || `IKJ56500I COMMAND ${cmd} NOT FOUND`;
+            sendCurrentScreen();
+          } else if (/^ALLOC(ATE)?\b/.test(cmd)) {
+            const result = tryAllocate(cmd);
+            state.tsoOutput = result.ok ? '' : result.msg;
             sendCurrentScreen();
           } else if (cmd === 'LOGOFF' || cmd.startsWith('LOGOFF ')) {
             log(`[${id}] LOGOFF from command shell — returning to logon panel`);
