@@ -185,3 +185,18 @@ Series-level plan for the 400 series, the final book series on this project, fol
 - [ ] **405 — Detection, Response, and the Purple Team Report (capstone)**: minimal new mock lift, mostly a book-content device (a Detection Worksheet) pulling together the artifacts 401-404's new mock additions already produce. Biggest single build task is the cross-book callback structure, not new code, same role 205 played for the 200 series.
 
 Each book above gets its own detailed task list (specific mock code, specific files) logged here once that book's scoping pass happens, following the same pattern every prior series used. No prose gets written for any 400-series book until its task list is closed and verified live.
+
+### Mainframe 401 (Recon and the Protocol Edge) prep
+
+No new mock code, every exercise runs against features that already ship. Eight-session outline drafted (`book-manuscripts/mainframe-401-draft/outline.md`): an RoE scoping worksheet and letter template (Session 1, book content only), then one session each on z/OS handshake/negotiation, z/OS passive ESM fingerprinting, z/VM CP LOGON recon, IBM i and z/TPF banners, traffic/negotiation watching, MITM as a recon lens, and a review-question close. Scoped 2026-09-25.
+
+All four platforms verified live through the actual Bridge_server client (Playwright-driven, not a raw client, see the negotiation-stall note below):
+
+- [x] **z/OS — passive ESM fingerprinting, the book's centerpiece**: logged on live as `IBMUSER`/`SYS1` (`IKJ56455I IBMUSER LOGGED ON AT 21:37:53`). At READY, `ESM` reported `EXTERNAL SECURITY MANAGER IS RACF`. `ESM ACF2` switched live, real `ACF2 LOGON       LOGONID ===>` banner, wrong password gave real `ACF01004 INVALID PASSWORD` / `ACF01013 2 ATTEMPTS LEFT BEFORE LOGONID SUSPEND`. `ESM TOPSECRET` (after a mock restart to reset attempt counters) gave real `TOP SECRET/MVS LOGON` banner, wrong password gave real `TSS7101E PASSWORD IS INCORRECT` / `TSS7102E 2 VIOLATIONS BEFORE ACCESSORID SUSPEND`. Every string matches an `esm-fingerprint.js` rule exactly.
+- [x] **z/VM — CP LOGON asymmetry**: live-confirmed unknown userid returns `HCPLGA054E ... not in CP directory`. A cleaner re-capture of the exact userid-substitution text is worth doing before final prose, the message ID and behavior are confirmed real either way.
+- [x] **IBM i — Sign On banner**: live-captured, discloses `System . . . . . : AS400MOCK`, subsystem `QINTER`, display `QPADEV0001`.
+- [x] **z/TPF — Operator Console banner**: live-captured, discloses `TPFSYS1` and, notably, its own valid credential set printed directly on the pre-auth logon screen (`TPFOP01/TPF1`, `SYSOP01/SYS1`, `ADMIN01/ADMIN`), a real, quotable finding for the book.
+
+**Real finding, filed here rather than fixed (out of scope for a book that needs no new mock code)**: `s3270` (the standard x3270-suite client) and this project's own `tn3270-bridge` MCP tool both stall mid-TN3270E-negotiation against the z/OS mock. Confirmed via `s3270 -trace`: the mock sends its `DEVICE-TYPE` subnegotiation in an order a strict client doesn't expect (host-initiated before the client's own `REQUEST`). The Bridge_server's own browser client tolerates it, which is why it, not a raw client, was used for the verification above. Worth a look as a compatibility bug, since a real strict TN3270E client hitting this mock today would hang the same way.
+
+All four platforms verified live. 401 drafting can start.
