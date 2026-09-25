@@ -1422,15 +1422,31 @@ function handleConnection(socket) {
 
     if (opt === OPT_TN3270E) {
       if (cmd === WILL) {
-        // Client agreed to TN3270E — send device-type request
+        // Client agreed to TN3270E. Per RFC 2355 the host prompts with
+        // DEVICE-TYPE SEND, and the client replies with its own
+        // DEVICE-TYPE REQUEST (handled below in handleSubneg, which
+        // already replies IS correctly). This used to send DEVICE-TYPE
+        // REQUEST here instead of SEND — the host claiming the client's
+        // role — which the Bridge_server's own client tolerated (it
+        // independently sends its own REQUEST too regardless of what it's
+        // sent, so both sides just raced and both replied IS), but a
+        // standards-strict client like s3270 has no handler for an
+        // incoming host-initiated REQUEST and just stalls waiting to be
+        // the one to send it. Confirmed via s3270 -trace.
         tn3270eMode = true;
         clientWillTN3270E = true;
+        // RFC 2355: SEND is its own top-level TN3270E message, carrying
+        // DEVICE-TYPE as its payload, i.e. "SEND DEVICE-TYPE", not
+        // "DEVICE-TYPE SEND". Getting this byte order backwards is exactly
+        // as invisible to the Bridge_server's own client (which never
+        // waits to be prompted at all, see _sendTn3270eDeviceType) as the
+        // original REQUEST-vs-SEND bug was — only a strict parser like
+        // s3270's notices, silently, as an unrecognized subcommand.
         socket.write(Buffer.from([
-          IAC, SB, OPT_TN3270E, TN3E_DEVICE_TYPE, TN3E_REQUEST,
-          ...Buffer.from('IBM-3278-2'),
+          IAC, SB, OPT_TN3270E, TN3E_SEND, TN3E_DEVICE_TYPE,
           IAC, SE,
         ]));
-        debug(`[${id}] → SB TN3270E DEVICE-TYPE REQUEST IBM-3278-2`);
+        debug(`[${id}] → SB TN3270E SEND DEVICE-TYPE`);
       } else if (cmd === WONT) {
         // Client refused TN3270E — fall back to classic TN3270
         tn3270eMode = false;
