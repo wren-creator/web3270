@@ -370,7 +370,7 @@ function dispatchCommand(raw, priv) {
       }
     case 'ZTEST':
       if (args[0] === 'ENTRY' && args[1]) return cmdZtestEntry(args[1]);
-      return cmdZtest(args);
+      return cmdZtest(args, priv);
     case 'ZBOOK':
       if (args.length < 4) return ['ZTPF851E Syntax: ZBOOK passenger,flight,date,seat[,bcn,sav]'];
       return cmdZbook(args[0], args[1], args[2], args[3], args[4], args[5]);
@@ -753,9 +753,9 @@ function cmdZtestEntry(name) {
 // Everything except `ZTEST ENTRY,<ecb>` (still handled in dispatchCommand)
 // lands here. Models the real z/TPF debugger: START attaches to a program,
 // then BP / STEP / GO / DISPLAY / REG / STOR / TRACE / STOP.
-function cmdZtest(args) {
+function cmdZtest(args, priv) {
   switch (args[0] || '') {
-    case 'START':                       return ztestStart(args[1]);
+    case 'START':                       return ztestStart(args[1], priv);
     case 'STOP': case 'END': case 'QUIT': return ztestStop();
     case 'DISPLAY': case 'D': case 'STATUS': return ztestDisplay();
     case 'BP': case 'AT': case 'BREAK':  return ztestBp(args[1]);
@@ -783,16 +783,49 @@ function ztestParseAddr(s) {
   return parseInt(String(s).replace(/^0X/, ''), 16);
 }
 
-function ztestStart(name) {
+// Mainframe 403 (400 series): every ECB's debug memory window, deterministic
+// from its own name — factored out of ztestStart() below so ztestStor()'s
+// cross-boundary read (further down) can compute it for ANY entry point,
+// not just the one currently attached.
+function ecbBaseLen(prog) {
+  const base = (0x00C10000 + ((prog.charCodeAt(0) & 0x0F) << 12)) >>> 0;
+  const len  = 0x200 + ((prog.charCodeAt(prog.length - 1) & 0x0F) << 5);
+  return { base, len };
+}
+
+// Which ECB's own window (if any) an address falls inside. The base
+// formula only depends on a name's first character (see ecbBaseLen),
+// so names sharing a first letter (AARES/AUTH/AVAIL, SCHD/SECU) share a
+// base too — prefer a priv:true match on that collision, since that's
+// the window a reader deliberately aiming at a privileged ECB's address
+// actually means to land in.
+function ecbAtAddress(addr) {
+  const hits = ECB_TABLE.filter(e => {
+    const { base, len } = ecbBaseLen(e.name);
+    return addr >= base && addr < base + len;
+  });
+  return hits.find(e => e.priv) || hits[0] || null;
+}
+
+function ztestStart(name, priv) {
   if (!name) return [`ZTPF720E Syntax: ZTEST START,<prog>`];
   const prog = name.toUpperCase();
   const ecb = ECB_TABLE.find(e => e.name === prog);
   if (!ecb) return [`ZTPF720E PROGRAM ${prog} NOT FOUND IN DIRECTORY`];
+  // Mainframe 403 (400 series) privilege-escalation vector: this is the
+  // first authorization check anywhere in this mock's command dispatch
+  // (confirmed by grep before this book was scoped — everything else here
+  // works for any logged-on role). OPER (priv 1) is denied attaching
+  // directly to a privileged ECB; the actual escalation is that this
+  // check is the ONLY one, ztestStor() below never re-verifies which
+  // program's window it's reading from.
+  if (ecb.priv && (priv || 1) < 2) {
+    return [`ZTPF720E INSUFFICIENT PRIVILEGE — SYSOP OR HIGHER REQUIRED FOR PRIVILEGED ENTRY POINT`];
+  }
   if (ZTEST_SESSION.active) {
     return [`ZTPF720E DEBUG SESSION ALREADY ACTIVE ON ${ZTEST_SESSION.prog} — ZTEST STOP FIRST`];
   }
-  const base = (0x00C10000 + ((prog.charCodeAt(0) & 0x0F) << 12)) >>> 0;
-  const len  = 0x200 + ((prog.charCodeAt(prog.length - 1) & 0x0F) << 5);
+  const { base, len } = ecbBaseLen(prog);
   Object.assign(ZTEST_SESSION, {
     active: true, prog, base, pc: base,
     regs: ztestSeedRegs(prog), bps: [], trace: false, steps: 0,
@@ -918,6 +951,16 @@ function ztestReg(numArg, valArg) {
   return [`ZTPF729I GPR ${n} SET TO ${hex8(v)}   (WAS ${hex8(old)})`];
 }
 
+// Mainframe 403 (400 series): content planted at a privileged ECB's own
+// window so a cross-boundary read (ztestStor() below) has a provable
+// payoff instead of indistinguishable noise. Deterministic per ECB name,
+// same reproducibility discipline as ztestBytes()'s seeded pseudo-random.
+function ztestPrivilegedBytes(ecbName, base, len) {
+  const marker = `${ecbName}-INTERNAL-KEY-8842 `;
+  const repeated = marker.repeat(Math.ceil(len / marker.length)).slice(0, len);
+  return Array.from(toEbcdic(repeated));
+}
+
 function ztestStor(addrArg, lenArg) {
   if (!ZTEST_SESSION.active) return ztestNotActive();
   if (!addrArg) return [`ZTPF724E Syntax: ZTEST STOR,<hex-address>[,<len>]`];
@@ -926,7 +969,15 @@ function ztestStor(addrArg, lenArg) {
   let len = parseInt(lenArg, 10);
   if (Number.isNaN(len) || len <= 0) len = 32;
   len = Math.min(len, 128);
-  const bytes = ztestBytes(base >>> 0, len);
+  // Mainframe 403 (400 series) privilege-escalation vector: ztestStart()
+  // above only checks privilege at attach time. This command never asks
+  // "whose window is this address actually in" — an OPER attached to a
+  // non-privileged ECB can still request an address that falls inside a
+  // DIFFERENT, privileged ECB's own window, and gets real content back.
+  const owner = ecbAtAddress(base >>> 0);
+  const bytes = (owner && owner.priv && owner.name !== ZTEST_SESSION.prog)
+    ? ztestPrivilegedBytes(owner.name, base >>> 0, len)
+    : ztestBytes(base >>> 0, len);
   const lines = [`ZTPF725I STORAGE @ ${hex8(base)}   ${len} BYTE(S)`];
   for (let off = 0; off < len; off += 8) {
     const row = bytes.slice(off, off + 8);

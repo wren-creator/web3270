@@ -280,6 +280,15 @@ const PGM_OUTCOMES = {
   // it. Confirmed via LISTCAT LEVEL(FINANCE) that the dataset itself is
   // fine, just not current yet.
   MENDFEED: { rc: 4,  msg: 'FINANCE.LEDGER.CURRENT READ AT CYC-0826 -- REFRESH NOT YET COMPLETE' },
+  // Mainframe 403 (400 series) privilege-escalation vector: LISTAPF's own
+  // output (screenListapf() below) already flags USER.LOADLIB on WORK01
+  // as writable — that finding is Nuts and Bolts' APF List Scanner
+  // territory (webterm-security-tools-tutorial.md), a detection result,
+  // not an exploit. This job is the exploitation step 403 actually owns:
+  // STEPLIB points at that same writable library, so this step genuinely
+  // runs out of an APF-authorized library. Its RC=0 completion message
+  // is the proof the reader carries into ADDAPF next (tryAddapf() below).
+  AUTHRUN:  { rc: 0, msg: 'STEP1 EXECUTED FROM USER.LOADLIB (STEPLIB) -- RAN APF-AUTHORIZED, KEY(0)' },
 };
 
 // Mainframe 203 (200 series) light security touch: canned dataset catalog
@@ -302,6 +311,43 @@ const CATALOG = {
   HR:       ['HR.EMPLOYEE.SSN.FILE'],
   SECURITY: ['SECURITY.AUDIT.LOG'],
 };
+
+// Mainframe 403 (400 series) privilege-escalation vector: the APF-authorized
+// library list LISTAPF reports, module-level/shared same as CATALOG above.
+// USER.LOADLIB on WORK01 ships already flagged writable (Nuts and Bolts'
+// APF List Scanner finding, a detection result). tryAddapf() below is the
+// exploitation step 403 owns: once AUTHRUN has demonstrated running code
+// out of that writable library, ADDAPF lets that authorized state add any
+// further dataset to this same list, a full escalation loop provable by a
+// follow-up LISTAPF showing the new entry.
+const APF_LIST = [
+  { vol: 'SYSRES', dsn: 'SYS1.LINKLIB' },
+  { vol: 'SYSRES', dsn: 'SYS1.LPALIB' },
+  { vol: 'SYSRES', dsn: 'SYS1.MIGLIB' },
+  { vol: 'SYSRES', dsn: 'SYS1.SVCLIB' },
+  { vol: 'PROD01', dsn: 'CEE.SCEERUN' },
+  { vol: 'PROD01', dsn: 'ISP.SISPLOAD' },
+  { vol: 'PROD01', dsn: 'SYS1.CSSLIB' },
+  { vol: 'WORK01', dsn: 'USER.LOADLIB', writable: true },
+];
+
+// Recognizes ADDAPF <dataset> [volume] — real syntax would be a CSVAPF
+// SVC 99 call or an IEASYSxx PROGxx update, both far out of scope for a
+// TSO command line; this mock keeps the same "one real command, one real
+// effect" discipline as tryAllocate/tryListcat rather than modeling the
+// actual API. Returns null for anything that isn't an ADDAPF attempt at
+// all, same NOT FOUND fallthrough convention as the rest of this family.
+function tryAddapf(cmd) {
+  const m = cmd.match(/^ADDAPF\s+([\w$#@.]+)(?:\s+([\w$#@]+))?$/i);
+  if (!m) return null;
+  const dsn = m[1].toUpperCase();
+  const vol = (m[2] || 'WORK01').toUpperCase();
+  if (APF_LIST.some(e => e.dsn === dsn)) {
+    return { ok: false, msg: `IKJ56225I DATA SET ${dsn} ALREADY IN THE APF LIST` };
+  }
+  APF_LIST.push({ vol, dsn });
+  return { ok: true, msg: `IKJ56251I ${dsn} ADDED TO THE APF LIST ON VOLUME ${vol}` };
+}
 
 // Userids the mock currently treats as RACF-revoked — module-level and shared
 // across every connection for the life of the daemon, same as CATALOG and ESM
@@ -415,6 +461,7 @@ const JCL_MEMBERS = {
   NIGHTRUN: { ...loadJclMember('nightrun.jcl'), desc: 'Nightly refresh (RC=04, not the job it looks like next to)' },
   PAYVER:   { ...loadJclMember('payver.jcl'),   desc: 'Payroll verification (RC=8 -- is the data really missing?)' },
   MENDFEED: { ...loadJclMember('mendfeed.jcl'), desc: 'Month-end feed, CYC-0826 (RC=04, timing not technical)' },
+  AUTHRUN:  { ...loadJclMember('authrun.jcl'),  desc: 'Authorized library test (STEPLIB=USER.LOADLIB)' },
 };
 
 // Job queue is module-level/shared, same convention as the AS/400 mock's
@@ -827,6 +874,23 @@ function screenReady(userid = 'DEMO', lastMsg = '') {
 }
 
 function screenListapf() {
+  // Mainframe 403: rendered from APF_LIST now, not a fixed 8-row layout,
+  // so a successful ADDAPF (tryAddapf() above) actually shows up on the
+  // next LISTAPF, the proof of a completed escalation loop. Entries stay
+  // capped to what rows 5-13 can hold (9 rows) — plenty for this book's
+  // one ADDAPF addition; a real LISTAPF would page past that.
+  const rows = APF_LIST.slice(0, 9).map((e, i) => {
+    const f = [{ row: 5 + i, col: 1, text: `${e.vol.padEnd(8)}${e.dsn}` }];
+    if (e.writable) {
+      f[0].text = `${e.vol.padEnd(8)}${e.dsn.padEnd(24)}`;
+      f.push({ row: 5 + i, col: 42, saColor: COL_RED, saHighlight: HL_BLINK, text: '*** WRITABLE ***' });
+    }
+    return f;
+  }).flat();
+  const writableEntry = APF_LIST.find(e => e.writable);
+  const msg = writableEntry
+    ? `IKJ56250I ${APF_LIST.length} entries found. ${writableEntry.dsn} on ${writableEntry.vol} may be writable.`
+    : `IKJ56250I ${APF_LIST.length} entries found.`;
   return buildScreen(true, [
     { row:0,  col:0,  fa: FA_PROTECTED_HIGH, color: COL_WHITE, highlight: HL_INTENS },
     { row:0,  col:1,  text: 'LISTAPF Output' },
@@ -834,18 +898,9 @@ function screenListapf() {
     { row:1,  col:1,  text: 'APF-Authorized Libraries:' },
     { row:3,  col:1,  saColor: COL_YELLOW, text: 'Volume  Dataset Name' },
     { row:4,  col:1,  saColor: COL_YELLOW, text: '------  --------------------------------------------------------' },
-    { row:5,  col:1,  text: 'SYSRES  SYS1.LINKLIB' },
-    { row:6,  col:1,  text: 'SYSRES  SYS1.LPALIB' },
-    { row:7,  col:1,  text: 'SYSRES  SYS1.MIGLIB' },
-    { row:8,  col:1,  text: 'SYSRES  SYS1.SVCLIB' },
-    { row:9,  col:1,  text: 'PROD01  CEE.SCEERUN' },
-    { row:10, col:1,  text: 'PROD01  ISP.SISPLOAD' },
-    { row:11, col:1,  text: 'PROD01  SYS1.CSSLIB' },
-    // Writable APF entry — dataset name normal, warning text blinks red
-    { row:12, col:1,  text: 'WORK01  USER.LOADLIB                    ' },
-    { row:12, col:42, saColor: COL_RED, saHighlight: HL_BLINK, text: '*** WRITABLE ***' },
+    ...rows,
     { row:14, col:0,  fa: FA_PROTECTED_HIGH, color: COL_RED, highlight: HL_INTENS },
-    { row:14, col:1,  text: 'IKJ56250I 8 entries found. USER.LOADLIB on WORK01 may be writable.' },
+    { row:14, col:1,  text: msg },
     { row:16, col:0,  fa: FA_PROTECTED, color: COL_GREEN, highlight: HL_INTENS },
     { row:16, col:1,  text: 'READY' },
     { row:23, col:0,  fa: FA_PROTECTED, color: COL_BLUE },
@@ -1720,6 +1775,10 @@ function handleConnection(socket) {
             state.readyMsg = result.ok ? '' : result.msg;
             currentScreen = result.ok ? 'ready' : 'readyOutput';
             sendCurrentScreen();
+          } else if (/^ADDAPF\b/.test(cmd)) {
+            const result = tryAddapf(cmd);
+            state.readyMsg = result ? result.msg : `IKJ56701I Syntax: ADDAPF dataset-name [volume]`;
+            currentScreen = 'readyOutput'; sendCurrentScreen();
           } else if (cmd === 'LOGOFF' || cmd.startsWith('LOGOFF ')) {
             // Real TSO: bare LOGOFF ends the session and drops the terminal
             // back to VTAM; LOGOFF HOLD (or an installation session manager)
@@ -1776,6 +1835,10 @@ function handleConnection(socket) {
           } else if (/^AL(TUSER|U)\b/.test(cmd)) {
             const result = tryAltuser(cmd);
             state.tsoOutput = result.ok ? '' : result.msg;
+            sendCurrentScreen();
+          } else if (/^ADDAPF\b/.test(cmd)) {
+            const result = tryAddapf(cmd);
+            state.tsoOutput = result ? result.msg : `IKJ56701I Syntax: ADDAPF dataset-name [volume]`;
             sendCurrentScreen();
           } else if (cmd === 'LOGOFF' || cmd.startsWith('LOGOFF ')) {
             log(`[${id}] LOGOFF from command shell — returning to logon panel`);

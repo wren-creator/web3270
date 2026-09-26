@@ -64,6 +64,45 @@ const ZVM_DIRECTORY = {
 // display (screenXedit, below) and actually running one (case 'cms': dispatch).
 const CMS_EXECS = buildExecs(SYSNAME);
 
+// Mainframe 403 (400 series) privilege-escalation vector: minimal CP
+// privilege-class modeling, genuinely new, no earlier book touches this.
+// OPERATOR carries real z/VM's conventional class B (resource control);
+// everyone else, including every other seeded directory entry above, is
+// class G (general user). QUERY PRIVCLASS (simulateCPQuery below) lets a
+// user check their own class; FORCE (case 'cp' dispatch below) is the
+// first command this mock actually gates on it.
+const PRIV_CLASS = { OPERATOR: 'B' };
+function classOf(u) { return PRIV_CLASS[(u || '').toUpperCase()] || 'G'; }
+
+// Users FORCE has logged off — module-level/shared, same convention as
+// z/OS's REVOKED_USERS. Q NAMES (simulateCPQuery below) reflects this.
+const FORCED_USERS = new Set();
+
+// Roster QUERY NAMES reports, exactly the four names and times the
+// original static string always showed (TCPIP's CYC-0826 note is Book
+// 205's capstone finding, unchanged). Now a real array so FORCE has
+// something live to act on.
+const LOGGED_ON_USERS = [
+  { id: 'ZVMOP',    time: '00:42:10', note: '-' },
+  { id: 'MAINT',    time: '02:15:03', note: '-' },
+  { id: 'TCPIP',    time: '04:52:47', note: 'CYC-0826' },
+  { id: 'OPERATOR', time: '01:03:22', note: '-' },
+];
+
+// The actual privileged action, shared by two callers: the direct FORCE
+// command (case 'cp' dispatch, gated on classOf(userid) below) and the
+// OPUTIL exec (case 'cms' dispatch), which calls this unconditionally —
+// the trusted-helper-script bypass this book's vector actually is. Real
+// FORCE targets a userid already logged on; this mock only tracks the
+// two names Q NAMES already lists (see LOGGED_ON_USERS below).
+function forceUser(target) {
+  const t = (target || '').toUpperCase();
+  if (!t) return `HCPFOR002E Missing operand for FORCE\nReady(00002); T=0.01/0.01`;
+  if (!LOGGED_ON_USERS.some(u => u.id === t)) return `HCPFOR003E ${t} is not logged on\nReady(00003); T=0.01/0.01`;
+  FORCED_USERS.add(t);
+  return `HCPFOR001I User ${t} has been forced off\nReady; T=0.01/0.01`;
+}
+
 // ── Telnet / TN3270(E) constants ─────────────────────────────────
 const IAC  = 0xFF, DONT = 0xFE, DO   = 0xFD;
 const WONT = 0xFC, WILL = 0xFB, SB   = 0xFA, SE = 0xF0;
@@ -547,6 +586,13 @@ function simulateCPQuery(cmd, userid = 'DEMO') {
     const t = new Date();
     return `TIME IS ${t.toLocaleTimeString('en-US', { hour12: false })}  DATE IS ${t.toLocaleDateString('en-US')}\nCPU TIME = 00:00:00.12  CONNECT TIME = 00:05:37`;
   }
+  if (upper.includes('PRIVCLASS')) {
+    // Mainframe 403 (400 series): QUERY PRIVCLASS reports the caller's own
+    // class only, real z/VM behavior — you can't query someone else's
+    // without class B or higher yourself, which this mock doesn't need to
+    // model since the escalation vector is FORCE, not this query.
+    return `PRIVILEGE CLASSES FOR ${userid.toUpperCase()}: ${classOf(userid)}`;
+  }
   if (upper.includes('NAMES')) {
     // Mainframe 205 (200 series capstone) vignette: TCPIP has sat in this
     // roster since Book 1 as pure decoration, never individually examined.
@@ -556,7 +602,13 @@ function simulateCPQuery(cmd, userid = 'DEMO') {
     // (z/TPF), and mock-as400.js's seedMessages() (IBM i, the actual
     // origin). No shared state between mocks, same discipline as the
     // Book 5 token chain.
-    return `USERS:  ${SYSNAME.padEnd(8)} ZVMOP    MAINT    TCPIP    OPERATOR\nTOTAL USERS LOGGED ON = 5\nUSERID    CONNECT-TIME  NOTE\nZVMOP     00:42:10      -\nMAINT     02:15:03      -\nTCPIP     04:52:47      CYC-0826\nOPERATOR  01:03:22      -`;
+    // Mainframe 403: rendered from LOGGED_ON_USERS now, not a fixed
+    // string, so a successful FORCE (forceUser() above) actually removes
+    // a name from this roster on the next QUERY NAMES.
+    const present = LOGGED_ON_USERS.filter(u => !FORCED_USERS.has(u.id));
+    const roster = present.map(u => u.id.padEnd(8)).join(' ');
+    const rows = present.map(u => `${u.id.padEnd(9)} ${u.time.padEnd(13)} ${u.note}`).join('\n');
+    return `USERS:  ${SYSNAME.padEnd(8)} ${roster}\nTOTAL USERS LOGGED ON = ${present.length + 1}\nUSERID    CONNECT-TIME  NOTE\n${rows}`;
   }
   if (upper.includes('STORAGE') || upper.includes('STOR')) {
     return `STORAGE = 1G`;
@@ -914,6 +966,17 @@ function handleConnection(socket) {
             const result = simulateLink(userid, inputText.trim());
             lastCPMsg = result || `HCPLNM119E Invalid LINK operand\nReady(00119); T=0.01/0.01`;
             sendCurrentScreen();
+          } else if (cmd.startsWith('FORCE ')) {
+            // Mainframe 403 (400 series): the first command this mock
+            // actually gates on privilege class. classOf(userid) === 'G'
+            // for everyone except OPERATOR (see PRIV_CLASS above), so a
+            // normal logon is correctly denied here — OPUTIL (case 'cms'
+            // below) is where the exploit actually lives.
+            const target = inputText.trim().slice(6).trim().split(/\s+/)[0];
+            lastCPMsg = classOf(userid) === 'G'
+              ? `HCPCQF040E FORCE not available -- privilege class B or higher required\nReady(00040); T=0.01/0.01`
+              : forceUser(target);
+            sendCurrentScreen();
           } else if (cmd.startsWith('Q ') || cmd.startsWith('QUERY ') || cmd === 'QUERY' || cmd === 'Q') {
             cpQueryResult = simulateCPQuery(inputText, userid);
             currentScreen = 'cpquery';
@@ -996,7 +1059,24 @@ function handleConnection(socket) {
             // run it through the interpreter and show the SAY transcript.
             const [execName, ...argTokens] = inputText.trim().split(/\s+/);
             const { output, rc } = runRexx(CMS_EXECS[execName.toUpperCase()], argTokens.join(' '));
-            lastCMSMsg = [...output, `Ready(${rc}); T=0.01/0.01`].join('\n');
+            // Mainframe 403 (400 series): OPUTIL is a real, working exec,
+            // its own REXX source (execs.js) is exactly what XEDIT shows,
+            // same discipline every shipped exec in this mock holds. Its
+            // privileged behavior lives here, not in the REXX itself —
+            // runRexx() stays scoped exactly as documented (no ADDRESS
+            // support), this is a special case in the exec-dispatch path,
+            // the same pattern VERIFY (Book 105) already uses. The bypass
+            // is real: forceUser() runs unconditionally, the caller's own
+            // classOf(userid) is never checked, unlike the direct FORCE
+            // command above. An old operational-utility exec left in the
+            // CMS environment, trusted to act with more authority than
+            // whoever happens to run it actually holds.
+            if (execName.toUpperCase() === 'OPUTIL' && argTokens[0]) {
+              const forceResult = forceUser(argTokens[0]);
+              lastCMSMsg = [...output, forceResult.split('\n')[0], `Ready(${rc}); T=0.01/0.01`].join('\n');
+            } else {
+              lastCMSMsg = [...output, `Ready(${rc}); T=0.01/0.01`].join('\n');
+            }
             sendCurrentScreen();
           } else {
             lastCMSMsg = `DMSEXT002S Command not found: ${inputText}\nReady(00002); T=0.01/0.01`;

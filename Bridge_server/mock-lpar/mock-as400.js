@@ -616,6 +616,10 @@ const BCHJOBS = [
   { name: 'RPTPRINT', user: 'JSMITH',   number: '048790', sbs: 'QBATCH', jobq: 'QGPL/QBATCH', status: '*OUTQ',   submitted: '07/16/26 14:22:10' },
 ];
 
+// Job numbers for SBMJOB (Mainframe 403), starting past the seeded range
+// above (048790-048812) so nothing collides.
+let NEXT_BCHJOB_NUM = 48900;
+
 // A signed-on user's own jobs (WRKUSRJOB), built live from the session's
 // user rather than a static table since any userid can sign on. Also the
 // lookup path JOB_DETAIL uses for jobs picked from USRJOB_LIST.
@@ -834,6 +838,27 @@ function runCommand(raw) {
     }
     case 'WRKACTJOB': return { type: 'screen', screen: 'ACTJOB_LIST' };
     case 'WRKSBS':     return { type: 'screen', screen: 'SBS_LIST' };
+    // Mainframe 403 (400 series) privilege-escalation vector: APPJOBD
+    // (JOBDS above) already specifies USER(QSECOFR) at *PUBLIC *USE, a
+    // detection finding Nuts and Bolts' Job Description Privesc Scanner
+    // already owns (webterm-security-tools-tutorial.md). SBMJOB wasn't
+    // actually a live command before this — this is the exploitation step
+    // 403 owns: the job it queues runs under the JOBD's own USER(), not
+    // whoever submitted it, provable directly in the WRKBCHJOB list's own
+    // User column (screenBchjobList() above already renders j.user
+    // unmodified, no new rendering needed).
+    case 'SBMJOB': {
+      const jobdParam = (params.JOBD || '').split('/').pop();
+      if (!jobdParam) return { type: 'error', message: 'CPD0043 - Keyword JOBD required for SBMJOB.' };
+      const jobd = JOBDS.find(j => j.name === jobdParam);
+      if (!jobd) return { type: 'error', message: `CPF9801 - Job description ${jobdParam} not found.` };
+      const num = String(NEXT_BCHJOB_NUM++);
+      const now = new Date();
+      const submitted = `${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')}/26 `
+        + `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+      BCHJOBS.push({ name: jobd.name, user: jobd.user, number: num, sbs: jobd.jobq, jobq: `QGPL/${jobd.jobq}`, status: '*ACTIVE', submitted });
+      return { type: 'error', message: `CPC1221 - Job ${jobd.name}/${jobd.user}/${num} submitted to job queue ${jobd.jobq} using job description ${jobd.lib}/${jobd.name}.` };
+    }
     // Wave 3 — everyday operator / PDM / SQL
     case 'WRKSPLF': return { type: 'screen', screen: 'SPLF_LIST' };
     case 'WRKOUTQ': return { type: 'screen', screen: 'OUTQ_LIST' };

@@ -61,6 +61,21 @@ function buildExecs(sysname) {
       "if rcc \\= 'RCC-4419' then say 'DMSVER002E Resource Clearance Code not recognized:' rcc",
       'exit 0',
     ],
+    // Mainframe 403 (400 series) privilege-escalation vector: an old
+    // operational-utility exec, the kind a sysprog writes once and leaves
+    // sitting in the shared CMS environment for years. Its own source is
+    // exactly what a student sees, plain, unremarkable REXX, nothing here
+    // looks privileged. The actual privileged behavior (forceUser(),
+    // called with no class check) lives in mock-zvm.js's exec-dispatch,
+    // not in this source -- the same "trust the caller, not the code"
+    // gap that makes a trusted-helper script dangerous on a real system.
+    OPUTIL: [
+      '/* OPUTIL EXEC -- operational utility, pass a userid: OPUTIL TCPIP */',
+      'parse arg target',
+      "if target = '' then say 'OPUTIL: no target specified'",
+      "if target \\= '' then say 'OPUTIL: forcing' target 'off (maintenance utility)'",
+      'exit 0',
+    ],
   };
 }
 
