@@ -220,7 +220,11 @@ Verified live via the real Bridge_server client (a second host-level `server.js`
 
 `webterm-3270-saas` synced (`mock-lpar/mock-zvm.js` copied over, confirmed byte-identical, `node --check` clean). 404 drafting can start.
 
-- [ ] **405 — Detection, Response, and the Purple Team Report (capstone)**: minimal new mock lift, mostly a book-content device (a Detection Worksheet) pulling together the artifacts 401-404's new mock additions already produce. Biggest single build task is the cross-book callback structure, not new code, same role 205 played for the 200 series.
+- [x] **405 — Detection, Response, and the Purple Team Report (capstone)**: minimal new mock lift, mostly a book-content device (a Detection Worksheet) pulling together the artifacts 401-404's new mock additions already produce. Biggest single build task is the cross-book callback structure, not new code, same role 205 played for the 200 series. Nine-session outline drafted (`book-manuscripts/mainframe-405-draft/outline.md`), scoped 2026-09-27. Capstone device: four accounts (`IBMUSER`, `JSMITH`, `DEMO`, `TPFOP01`) recur across all four attack books with nobody asked to track any one across the whole engagement, same structural role 205's three-thread reveal played for the 200 series. No new mock lift identified; confirmed against source that every cited artifact (message IDs, `LISTAPF`/`WRKBCHJOB`/`QUERY NAMES`/exec-timestamp output) is real and reproducible before it gets written into prose.
+
+### Mainframe 405 (Detection, Response, and the Purple Team Report) prep
+
+No new mock code anticipated per the standing plan. If drafting Sessions 2-5 surfaces a genuine gap (something a real Detection Worksheet needs that no current mock output provides), it gets scoped and verified live here before that session is drafted, same discipline as every prior book.
 
 Each book above gets its own detailed task list (specific mock code, specific files) logged here once that book's scoping pass happens, following the same pattern every prior series used. No prose gets written for any 400-series book until its task list is closed and verified live.
 
