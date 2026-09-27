@@ -178,7 +178,7 @@ Series-level plan for the 400 series, the final book series on this project, fol
 
 **Constraint carried forward from the 200 series**: `WebTerm/3270: The Nuts and Bolts Guide` still owns the tool-by-tool security tour (RACF recon, CICS/DB2, IBM i's 7-tool security suite, z/VM minidisk exposure, the z/TPF security console). Every new mock-lift item below is a genuinely distinct vector, not a reuse of anything that book already claims.
 
-- [x] **401 — Recon and the Protocol Edge**: no new mock lift, reuses existing ESM fingerprinting, the traffic recorder, and the MITM tool against all four mocks. Content-only build: an RoE scoping worksheet and letter template (book-content devices, not code). Eight sessions written (~11,500 words, roughly double a 200-series book as targeted), the RoE worksheet and letter template, review questions with an answer key (new apparatus for this series), violet cover art, packaged as `Mainframe 401.epub` in `book-manuscripts`. Not yet listed on the storefront, pending the user's go-ahead.
+- [x] **401 — Recon and the Protocol Edge**: no new mock lift, reuses existing ESM fingerprinting, the traffic recorder, and the MITM tool against all four mocks. Content-only build: an RoE scoping worksheet and letter template (book-content devices, not code). Eight sessions written (~11,500 words, roughly double a 200-series book as targeted), the RoE worksheet and letter template, review questions with an answer key (new apparatus for this series), violet cover art, packaged as `Mainframe 401.epub` in `book-manuscripts`. Live on Gumroad and in the storefront catalog.
 - [x] **402 — Automated Adversary Emulation**: no new mock lift, reuses the macro engine (`macros/engine.js`), the REST routes (`routes/macro-run.js` in particular, the headless `POST /api/macro-run` endpoint built for the Rocket/Rumba migration), and the MCP server's tool set (`mcp/server.js`: `connect_lpar`, `read_screen`, `read_field_map`, `send_keys`, `send_aid`, `list_macros`, `run_macro`, `run_macro_headless`, `get_traffic`, `get_negotiation`, `get_wire`, `esm_fingerprint`). Eight-session outline drafted (`book-manuscripts/mainframe-402-draft/outline.md`), scoped 2026-09-25.
 
 ### Mainframe 402 (Automated Adversary Emulation) prep
@@ -204,8 +204,8 @@ Survey confirmed three platforms already had a real, unclaimed foundation to bui
 
 All four vectors verified live. `webterm-3270-saas` synced. 403 drafting can start.
 
-Eight sessions written (~10,700 words), fourteen review questions with an answer key, violet cover art, packaged as `Mainframe 403.epub` in `book-manuscripts`. Not yet listed on the storefront.
-- [x] **404 — Lateral Movement and Persistence**: second-heaviest new mock lift. Nine sessions written (~9,550 words), twelve review questions with an answer key, violet cover art, packaged as `Mainframe 404.epub` in `book-manuscripts`. Not yet listed on the storefront.
+Eight sessions written (~10,700 words), fourteen review questions with an answer key, violet cover art, packaged as `Mainframe 403.epub` in `book-manuscripts`. Live on Gumroad and in the storefront catalog.
+- [x] **404 — Lateral Movement and Persistence**: second-heaviest new mock lift. Nine sessions written (~9,550 words), twelve review questions with an answer key, violet cover art, packaged as `Mainframe 404.epub` in `book-manuscripts`. Live on Gumroad and in the storefront catalog.
 
 ### Mainframe 404 (Lateral Movement and Persistence) prep
 
