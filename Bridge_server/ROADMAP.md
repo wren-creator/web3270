@@ -205,7 +205,7 @@ Survey confirmed three platforms already had a real, unclaimed foundation to bui
 All four vectors verified live. `webterm-3270-saas` synced. 403 drafting can start.
 
 Eight sessions written (~10,700 words), fourteen review questions with an answer key, violet cover art, packaged as `Mainframe 403.epub` in `book-manuscripts`. Not yet listed on the storefront.
-- [x] **404 — Lateral Movement and Persistence**: second-heaviest new mock lift. Nine-session outline drafted (`book-manuscripts/mainframe-404-draft/outline.md`), scoped 2026-09-26. Both new mock pieces built and verified live 2026-09-26.
+- [x] **404 — Lateral Movement and Persistence**: second-heaviest new mock lift. Nine sessions written (~9,550 words), twelve review questions with an answer key, violet cover art, packaged as `Mainframe 404.epub` in `book-manuscripts`. Not yet listed on the storefront.
 
 ### Mainframe 404 (Lateral Movement and Persistence) prep
 
