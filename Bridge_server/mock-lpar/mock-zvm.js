@@ -466,17 +466,15 @@ function screenRdrlist(userid) {
   ]);
 }
 
-function screenXedit(userid, filename = 'DEMO REXX A') {
-  // Filename's first token (e.g. "DEMO" from "DEMO REXX A") is the
-  // CMS_EXECS lookup key -- the same source shown here is what
-  // case 'cms' below actually runs, so XEDITing a file and running it
-  // are never out of sync.
-  const execName = filename.trim().split(/\s+/)[0].toUpperCase();
-  const source = CMS_EXECS[execName];
-  const bodyLines = source
-    ? source.map((line, i) => `${String(i + 1).padStart(5, '0')} ${line}`)
+function screenXedit(userid, filename = 'DEMO REXX A', lines = []) {
+  // Mainframe 404 (400 series): renders whatever is actually in the
+  // caller's xeditBuffer now, not a fresh re-read of CMS_EXECS every
+  // time -- that's what makes an in-progress, unsaved edit visible on
+  // screen before PF3 writes it back.
+  const bodyLines = lines.length
+    ? lines.map((line, i) => `${String(i + 1).padStart(5, '0')} ${line}`)
     : [
-        '00001 * * * This mock only has real source for DEMO REXX and GREET EXEC * * *',
+        '00001 * * * Empty file -- INPUT <text> at the command line to add a line * * *',
       ];
 
   const fields = [
@@ -654,6 +652,12 @@ function handleConnection(socket) {
   let lastCPMsg     = '';
   let lastCMSMsg    = '';
   let cpQueryResult = '';
+  // Mainframe 404 (400 series): XEDIT session state, kept per connection
+  // rather than reusing lastCMSMsg as the filename hack did before this.
+  // xeditBuffer is the in-progress copy of whatever file is open; nothing
+  // touches CMS_EXECS until PF3 (save) writes it back.
+  let xeditFilename = '';
+  let xeditBuffer   = [];
 
   socket.on('close', () => log(`[${id}] Disconnected`));
   socket.on('error', err => log(`[${id}] Socket error: ${err.message}`));
@@ -960,7 +964,18 @@ function handleConnection(socket) {
 
           if (cmd === 'IPL CMS' || cmd === 'CMS' || cmd === 'IPL 190') {
             currentScreen = 'cms';
-            lastCMSMsg    = 'IPL CMS\nz/VM CMS is loaded.\nReady; T=0.01/0.01';
+            // Mainframe 404 (400 series): real CMS auto-runs a PROFILE
+            // EXEC, if one exists, on every logon, before the Ready
+            // prompt ever appears. CMS_EXECS is shared, global state
+            // (same simplification LOGGED_ON_USERS already makes), so
+            // whatever the most recent XEDIT save left in PROFILE fires
+            // here for the next logon that reaches this line, whoever
+            // that is, with no session of the editor's own still open.
+            const profileLines = CMS_EXECS['PROFILE'];
+            const profileOutput = profileLines
+              ? runRexx(profileLines, '').output.join('\n') + '\n'
+              : '';
+            lastCMSMsg = `IPL CMS\n${profileOutput}z/VM CMS is loaded.\nReady; T=0.01/0.01`;
             sendCurrentScreen();
           } else if (cmd.startsWith('LINK ')) {
             const result = simulateLink(userid, inputText.trim());
@@ -1033,9 +1048,12 @@ function handleConnection(socket) {
           } else if (cmd.startsWith('XEDIT ') || cmd.startsWith('X ')) {
             const parts    = inputText.trim().split(/\s+/);
             const filename = parts.slice(1).join(' ') || 'DEMO REXX A';
+            const execName = filename.trim().split(/\s+/)[0].toUpperCase();
             currentScreen  = 'xedit';
-            // store filename for xedit screen (re-use lastCMSMsg as a hack)
-            lastCMSMsg = filename;
+            xeditFilename  = filename;
+            // Mainframe 404 (400 series): copy, not a reference -- editing
+            // xeditBuffer must never mutate CMS_EXECS until PF3 says so.
+            xeditBuffer    = CMS_EXECS[execName] ? [...CMS_EXECS[execName]] : [];
             sendCurrentScreen();
           } else if (cmd === 'CP') {
             // Drop back to CP mode
@@ -1100,16 +1118,29 @@ function handleConnection(socket) {
         }
         break;
 
-      case 'xedit':
+      case 'xedit': {
         if (aid === AID_PF3) {
+          // Mainframe 404 (400 series): PF3 now actually writes the
+          // buffer back into CMS_EXECS -- real XEDIT persists on quit,
+          // and this mock's own exec-dispatch (the CMS_EXECS[cmd] lookup
+          // and the future PROFILE EXEC auto-run) reads from that same
+          // shared object, so a save here is visible to any later logon
+          // on this mock, not just the session that made it.
+          const execName = xeditFilename.trim().split(/\s+/)[0].toUpperCase();
+          CMS_EXECS[execName] = [...xeditBuffer];
           currentScreen = 'cms';
-          lastCMSMsg    = `File saved: ${lastCMSMsg}\nReady; T=0.01/0.01`;
+          lastCMSMsg    = `File saved: ${xeditFilename}\nReady; T=0.01/0.01`;
           sendCurrentScreen();
         } else if (aid === AID_ENTER) {
-          // Stay in XEDIT — rerender same screen
+          // Real XEDIT's command line takes subcommands; this mock models
+          // just enough of one (INPUT) to make a save mean something.
+          const line = inputText.trim();
+          const m = line.match(/^INPUT\s+(.*)$/i);
+          if (m) xeditBuffer.push(m[1]);
           sendCurrentScreen();
         }
         break;
+      }
     }
   }
   function sendCurrentScreen() {
@@ -1121,7 +1152,7 @@ function handleConnection(socket) {
       case 'cms':      ds = screenCMSReady(userid, lastCMSMsg);     break;
       case 'filelist': ds = screenFilelist(userid);                 break;
       case 'rdrlist':  ds = screenRdrlist(userid);                  break;
-      case 'xedit':    ds = screenXedit(userid, lastCMSMsg);        break;
+      case 'xedit':    ds = screenXedit(userid, xeditFilename, xeditBuffer); break;
       default:         ds = screenLogon();
     }
 
