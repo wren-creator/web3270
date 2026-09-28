@@ -226,7 +226,9 @@ Verified live via the real Bridge_server client (a second host-level `server.js`
 
 No new mock code anticipated per the standing plan. Drafting Sessions 2-5 confirmed no gap surfaced, every cited artifact was drawn from 401 and 403's own already-published, already-verified text, no new mock interaction was needed.
 
-Nine sessions written (~9,700 words), fourteen review questions with an answer key, violet cover art, packaged as `Mainframe 405.epub` in `book-manuscripts`. Not yet listed on the storefront. This is the final book in the entire training series, no further books are planned.
+Nine sessions written (~9,700 words), fourteen review questions with an answer key, violet cover art, packaged as `Mainframe 405.epub` in `book-manuscripts`. Live on Gumroad and in the storefront catalog.
+
+**400 series complete as of 2026-09-28** — all five books (401-405) shipped and live on Gumroad. Combined with the 100 and 200 series, the entire fifteen-book training series is now complete. No further series is planned.
 
 Each book above gets its own detailed task list (specific mock code, specific files) logged here once that book's scoping pass happens, following the same pattern every prior series used. No prose gets written for any 400-series book until its task list is closed and verified live.
 
