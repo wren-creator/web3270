@@ -305,12 +305,25 @@ class Tn3270Session extends EventEmitter {
     // SBA order)."
     parts.push(this._encodeAddrRaw(this.cursorAddr));
 
+    // fields can arrive straight from a WebSocket client message
+    // (handlers/ws.js's 'key' case passes msg.fields through with no
+    // validation), so this is untrusted input, not guaranteed to match
+    // getModifiedFields()'s {addr, data} shape. A malformed entry used
+    // to crash the whole bridge process (Ebcdic.fromAscii(undefined,
+    // ...)); drop it instead, with a warning, so one bad message can't
+    // take down every session on the bridge.
+    const validFields = fields.filter(f => {
+      const ok = f && typeof f.addr === 'number' && typeof f.data === 'string';
+      if (!ok) logger.warn(`[ws:${this.wsId}] sendAid: dropping malformed field entry ${JSON.stringify(f)}`);
+      return ok;
+    });
+
     // Tag each field with whether it lives inside a nondisplay
     // (password) field, by walking back to its controlling SF.
     // We do this here so the caller doesn't have to know — also so the
     // log-masking applies whether the data came from getModifiedFields
     // or from a script/macro.
-    const decorated = fields.map(f => ({
+    const decorated = validFields.map(f => ({
       ...f,
       nondisplay: f.nondisplay ?? this._addrIsInNonDisplayField(f.addr),
     }));

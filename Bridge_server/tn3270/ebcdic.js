@@ -70,6 +70,10 @@ function toAscii(buf, codepage = 37) {
  * Convert an ASCII string to an EBCDIC Buffer.
  */
 function fromAscii(str, codepage = 37) {
+  // Guard against non-string input (e.g. undefined from a malformed
+  // caller-supplied field entry) — Buffer.alloc(undefined.length) used
+  // to throw here and crash the whole process. Treat it as empty.
+  if (typeof str !== 'string') str = '';
   const table = getCodepage(codepage).fromAscii;
   const buf = Buffer.alloc(str.length);
   for (let i = 0; i < str.length; i++) {
