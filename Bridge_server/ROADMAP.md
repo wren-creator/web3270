@@ -224,7 +224,9 @@ Verified live via the real Bridge_server client (a second host-level `server.js`
 
 ### Mainframe 405 (Detection, Response, and the Purple Team Report) prep
 
-No new mock code anticipated per the standing plan. If drafting Sessions 2-5 surfaces a genuine gap (something a real Detection Worksheet needs that no current mock output provides), it gets scoped and verified live here before that session is drafted, same discipline as every prior book.
+No new mock code anticipated per the standing plan. Drafting Sessions 2-5 confirmed no gap surfaced, every cited artifact was drawn from 401 and 403's own already-published, already-verified text, no new mock interaction was needed.
+
+Nine sessions written (~9,700 words), fourteen review questions with an answer key, violet cover art, packaged as `Mainframe 405.epub` in `book-manuscripts`. Not yet listed on the storefront. This is the final book in the entire training series, no further books are planned.
 
 Each book above gets its own detailed task list (specific mock code, specific files) logged here once that book's scoping pass happens, following the same pattern every prior series used. No prose gets written for any 400-series book until its task list is closed and verified live.
 
