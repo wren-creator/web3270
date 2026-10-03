@@ -794,6 +794,7 @@
               <option value="fieldOverflow">Field Overflow — send oversized field payload</option>
               <option value="orderInject">Order Injection — inject 3270 order bytes into field data</option>
               <option value="sbaMutation">SBA Mutation — malformed screen buffer addresses</option>
+              <option value="tpfHandshake">z/TPF Handshake Fuzzer — malformed Query Reply + negotiation bytes</option>
             </select>
           </div>
 
@@ -855,6 +856,11 @@
           <!-- SBA Mutation config (no extra config needed — uses preset cases) -->
           <div id="fuzzCfg_sbaMutation" class="fuzz-mode-cfg" style="display:none;margin-bottom:6px">
             <div style="font-size:10px;color:var(--text-muted)">Iterates 7 crafted SBA addresses: zero, max-14bit, all-bits-set, high-bit, both-top-bits, 12-bit-encoding, EBCDIC-boundary.</div>
+          </div>
+
+          <!-- z/TPF Handshake Fuzzer config (no extra config needed — uses preset cases) -->
+          <div id="fuzzCfg_tpfHandshake" class="fuzz-mode-cfg" style="display:none;margin-bottom:6px">
+            <div style="font-size:10px;color:var(--text-muted)">Fuzzes the negotiation phase itself, not post-connect 3270 data. 4 malformed Query Reply structured fields (AID 0x88 — truncated, oversized-length, invalid SFID, zero-length) plus 4 raw telnet IAC sequences (DO/unsolicited WILL TIMING-MARK, an unterminated TN3270E subnegotiation, a bare IAC). z/TPF's message router has almost no fuzzing coverage otherwise.</div>
           </div>
 
           <!-- Shared settings -->

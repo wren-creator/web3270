@@ -367,6 +367,22 @@ class Tn3270Session extends EventEmitter {
   }
 
   /**
+   * Send a raw byte sequence straight to the socket, bypassing even the
+   * TN3270E data-record framing sendRawAid still applies. For fuzzing the
+   * telnet option-negotiation layer itself (IAC DO/WILL/WONT/DONT, SB/SE
+   * subnegotiation) rather than the 3270 data stream — a malformed or
+   * out-of-sequence negotiation byte never goes through _sendDataRecord's
+   * header/EOR wrapping on a real terminal either. Caller is responsible
+   * for correctness (or intentional incorrectness) of the bytes.
+   */
+  sendRawTelnet(rawBytes) {
+    const buf = Buffer.isBuffer(rawBytes) ? rawBytes : Buffer.from(rawBytes);
+    logger.info(`[ws:${this.wsId}] Fuzz: raw telnet send ${buf.length}b: ${buf.toString('hex')}`);
+    if (!this.socket || this.socket.destroyed) return;
+    this.socket.write(buf);
+  }
+
+  /**
    * Build a hex representation of the AID outbound buffer with each
    * nondisplay field's EBCDIC data bytes replaced by '..' pairs. Layout
    * is fixed: AID(1) + cursorAddr(2) + repeating[ SBA(3) + data(N) ].

@@ -25,6 +25,26 @@ const FUZZ_SBA_CASES = [
   { label: 'addr 0x7E7F — EBCDIC boundary',   hi: 0x7E, lo: 0x7F },
 ];
 
+// z/TPF Handshake Fuzzer — negotiation-phase cases, not post-connect 3270
+// data. Query Reply mutations still ride the normal AID=0x88 data-record
+// path (sendRawAid); negotiation mutations are raw telnet IAC bytes and
+// need sendRawTelnet instead (see the `telnet` flag on each case below and
+// the fuzzBuf dispatch in features/fuzz.js). z/TPF's message router is the
+// intended target — it has almost no fuzzing coverage otherwise, unlike the
+// field/order/SBA mutations above, which already exercise any 3270 host.
+const FUZZ_QUERYREPLY_CASES = [
+  { label: 'Query Reply: truncated SF (length claims 3, no body)', bytes: [0x88, 0x00, 0x03] },
+  { label: 'Query Reply: oversized length claim vs. actual body',  bytes: [0x88, 0xFF, 0xFF, 0x81, 0x80] },
+  { label: 'Query Reply: invalid SFID 0xFF',                       bytes: [0x88, 0x00, 0x04, 0x81, 0xFF] },
+  { label: 'Query Reply: zero-length structured field',            bytes: [0x88, 0x00, 0x00] },
+];
+const FUZZ_NEGOTIATION_CASES = [
+  { label: 'IAC DO TIMING-MARK',                        bytes: [0xFF, 0xFD, 0x06], telnet: true },
+  { label: 'IAC WILL TIMING-MARK (unsolicited)',        bytes: [0xFF, 0xFB, 0x06], telnet: true },
+  { label: 'SB TN3270E subneg with no IAC SE terminator', bytes: [0xFF, 0xFA, 0x28, 0x02, 0x01, 0x02, 0x03], telnet: true },
+  { label: 'Bare IAC, no command byte follows',         bytes: [0xFF], telnet: true },
+];
+
 let _fuzzRunning  = false;
 let _fuzzAborted  = false;
 let _fuzzResults  = [];
@@ -45,10 +65,10 @@ function _fuzzWaitResult(ms = 5000) {
   });
 }
 
-function _fuzzSend(label, rawBytes, timeoutMs) {
+function _fuzzSend(label, rawBytes, timeoutMs, telnet) {
   const s = state.sessions.get(state.activeSession);
   if (!s || s.ws.readyState !== WebSocket.OPEN) throw new Error('No active session');
-  s.ws.send(JSON.stringify({ type: 'sec.fuzz', label, rawBytes, timeoutMs }));
+  s.ws.send(JSON.stringify({ type: 'sec.fuzz', label, rawBytes, timeoutMs, telnet: !!telnet }));
 }
 
 function _fuzzSetStatus(msg) {
@@ -179,6 +199,26 @@ async function _runSbaMutation() {
   }
 }
 
+async function _runTpfHandshake() {
+  const timeoutEl = document.getElementById('fuzzTimeout');
+  const delayEl   = document.getElementById('fuzzDelay');
+  const timeout   = parseInt(timeoutEl?.value || '3000', 10) || 3000;
+  const delay     = parseInt(delayEl?.value   || '200',  10) || 200;
+  const cases     = [...FUZZ_QUERYREPLY_CASES, ...FUZZ_NEGOTIATION_CASES];
+
+  for (let i = 0; i < cases.length; i++) {
+    if (_fuzzAborted) break;
+    const { label, bytes, telnet } = cases[i];
+    _fuzzSetStatus(`[${i + 1}/${cases.length}] ${label}`);
+    _fuzzSend(label, bytes, timeout, telnet);
+    const result = await _fuzzWaitResult(timeout + 1000);
+    _fuzzResults.push(result);
+    _fuzzRenderResults();
+    if (result.response === 'disconnect') { _fuzzSetStatus(`Disconnect on ${label} — stopped`); break; }
+    await new Promise(r => setTimeout(r, delay));
+  }
+}
+
 export async function startFuzz() {
   if (_fuzzRunning) return;
   const mode = (document.getElementById('fuzzMode') || {}).value || 'aidSweep';
@@ -197,6 +237,7 @@ export async function startFuzz() {
       case 'fieldOverflow':await _runFieldOverflow(); break;
       case 'orderInject':  await _runOrderInject();   break;
       case 'sbaMutation':  await _runSbaMutation();   break;
+      case 'tpfHandshake': await _runTpfHandshake();  break;
     }
   } catch (err) {
     _fuzzSetStatus('Error: ' + err.message);

@@ -687,7 +687,7 @@ The Protocol Fuzzer sends intentionally malformed or mutated 3270 AID records di
 
 **Location:** Security panel → PROTOCOL FUZZER section (unlock with 🔒 first).
 
-### Four Modes
+### Five Modes
 
 **AID Sweep**
 Iterates a configurable range of AID byte values (0x00–0xFF). For each byte it sends the minimal valid-structure record `[AID byte][cursor addr 00 00]` with no field data. Most bytes outside the standard AID map will produce no-response; standard AIDs will get a screen update; invalid bytes sometimes cause the host to disconnect.
@@ -719,6 +719,14 @@ Sends an ENTER AID with a single field whose SBA (Set Buffer Address) contains a
 - `0xC000` — both top bits
 - `0x4000` — 12-bit encoding bit pattern
 - `0x7E7F` — EBCDIC boundary bytes
+
+**z/TPF Handshake Fuzzer**
+The other four modes all mutate 3270 data sent *after* a session is already up and negotiated. This one targets the handshake itself — the negotiation phase a real terminal and host go through before any 3270 data flows at all. Works against any TN3270 host, but z/TPF is the intended target: it has almost no fuzzing coverage today outside the login profile (`racf-probe`'s `TPF` detection profile). Two case groups, 8 packets total, no extra configuration:
+
+- *Query Reply mutations* (still ride the normal 3270 data path, `sendRawAid`): four malformed versions of the structured-field reply (`AID 0x88`) a real terminal sends back when the host issues a Read Partition Query during negotiation — truncated length, an oversized length claim versus actual body, an invalid SFID byte, and a zero-length structured field.
+- *Negotiation mutations* (raw telnet bytes, bypass 3270 framing entirely via a new `sendRawTelnet()` on the bridge session — a malformed IAC sequence was never going to arrive wrapped in TN3270E data-record framing on a real terminal either): `IAC DO TIMING-MARK`, an unsolicited `IAC WILL TIMING-MARK`, a `TN3270E` subnegotiation with no `IAC SE` terminator, and a bare `IAC` with no command byte following it.
+
+Verified live against the mock z/TPF host: all 8 cases currently classify `no-response` — the mock silently drops malformed negotiation input rather than echoing or crashing, a reasonably robust baseline. A `screen` result would mean the host processed the malformed data and actually repainted (worth a closer look at what it did with it); a `disconnect` is the finding that matters most, a negotiation-layer input took the session down before any real work started.
 
 ### Shared settings
 

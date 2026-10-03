@@ -34,7 +34,11 @@ export function handleFuzz(msg, ws, wsId, session, send, logger) {
   session.once('disconnected', onFuzzDisconnect);
 
   try {
-    session.sendRawAid(fuzzBuf);
+    // Telnet-layer negotiation fuzzing (z/TPF Handshake Fuzzer's negotiation
+    // cases) bypasses the 3270 data-record framing entirely — a raw IAC
+    // sequence is never going to arrive wrapped the way a real AID record is.
+    if (msg.telnet) session.sendRawTelnet(fuzzBuf);
+    else session.sendRawAid(fuzzBuf);
   } catch (err) {
     fuzzDone = true;
     clearTimeout(fuzzTimer);

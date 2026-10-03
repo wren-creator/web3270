@@ -957,6 +957,47 @@ const _WALKTHROUGHS = [
     ],
   },
 
+  // ── Scenario 18: z/TPF Handshake Fuzzer ───────────────────────────
+  {
+    id:       'fuzzer-tpf-handshake',
+    category: 'security',
+    title:    'z/TPF Handshake Fuzzer',
+    desc:     'Fuzzes the negotiation phase itself — malformed Query Reply structured fields and raw telnet IAC sequences — instead of post-connect 3270 data.',
+    steps: [
+      {
+        title: 'What this mode does differently',
+        body:  'The other four fuzz modes all mutate 3270 data sent after a session is already up and negotiated. This one targets the handshake itself: a real terminal replies to the host’s Read Partition Query with a Query Reply structured field (AID 0x88), and negotiates telnet options like TIMING-MARK before that. Most hosts, z/TPF’s message router included, get far less scrutiny here than on the data stream.',
+        highlight: 'fuzzMode',
+        autoFn: null,
+      },
+      {
+        title: 'Connect to a z/TPF target',
+        body:  'This mode works against any TN3270 host, but z/TPF is the intended target, it has almost no fuzzing coverage today outside the login profile. Connect to a z/TPF LPAR (mock or real, with written authorization) before starting.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Select the mode and run it',
+        body:  'Select "z/TPF Handshake Fuzzer" from the mode dropdown and click ▶ START. It sends 4 malformed Query Reply cases (truncated, oversized-length, invalid SFID, zero-length) over the normal 3270 data path, then 4 raw telnet IAC cases (DO TIMING-MARK, unsolicited WILL TIMING-MARK, an unterminated TN3270E subnegotiation, a bare IAC) that bypass 3270 framing entirely.',
+        highlight: 'fuzzStartBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Read the results',
+        body:  'screen = the host actually processed the malformed negotiation data and repainted (worth a closer look at what it did with it). no-response = the host silently dropped it, the most common and “safe” outcome for an option it doesn’t implement. disconnect = the malformed negotiation frame took the connection down, that’s the finding: a negotiation-layer input crashed or killed the session before any real work started.',
+        highlight: 'fuzzResultsTable',
+        autoFn: null,
+      },
+      {
+        title: 'Export results',
+        body:  'Click ↓ CSV or ↓ JSON to save the run alongside your other fuzzer results.',
+        highlight: 'fuzzResultsTable',
+        autoFn: 'fuzzExportCsv',
+        autoLabel: 'Export results CSV for me',
+      },
+    ],
+  },
+
   // ── Recon 1: RACF Settings Analyzer ──────────────────────────────
   {
     id:       'recon-racf-settings',
