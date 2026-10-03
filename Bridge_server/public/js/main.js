@@ -19,6 +19,7 @@ import './db2.js';
 import './recon.js';
 import './transit.js';
 import './syscheck.js';
+import './sshaudit.js';
 import './cics.js';
 import './negotiate.js';
 import './pool-dashboard.js';

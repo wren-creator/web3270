@@ -1734,6 +1734,45 @@ const _WALKTHROUGHS = [
     ],
   },
 
+  // ── SSH No-Credential Access Checker ────────────────────────────────
+  {
+    id:       'ssh-no-credential-access-checker',
+    category: 'security',
+    title:    'SSH No-Credential Access Checker',
+    desc:     'Probes an SSH target for two specific misconfigurations: a session granted with zero credentials at all, and an empty password accepted for a named account.',
+    steps: [
+      {
+        title: 'Why this matters',
+        body:  'z/TPF and other IBM ported-OpenSSH targets occasionally ship with a stray "PermitEmptyPasswords yes" or a misconfigured none-auth path left over from a bring-up script. Neither shows up unless you actually test for it, a working password login looks identical to an operator either way.',
+        highlight: 'sshAuditOut',
+        autoFn: null,
+      },
+      {
+        title: 'Pick a target',
+        body:  'Select a saved host from ssh-hosts.txt, or type a host, port, and username directly. This is a single targeted check against one named account, not a sweep, so it needs to know exactly who to test.',
+        highlight: 'sshAuditHost',
+        autoFn: null,
+      },
+      {
+        title: 'Run the audit',
+        body:  'Click ▶ RUN AUDIT. First attempt: the \'none\' auth method, does the server grant a session with no credential at all. If that\'s correctly rejected and the server tells us it offers password auth, second attempt: an empty password string for the same account. Each is one connection, one attempt, nothing chained.',
+        highlight: 'sshAuditOut',
+        autoFn: null,
+      },
+      {
+        title: 'Reading the verdict',
+        body:  'FINDING means one of the two checks succeeded, the finding text says which. SECURE means both were correctly rejected. INCONCLUSIVE means the check couldn\'t complete, connection refused, timeout, or the server doesn\'t offer password auth at all so the second check didn\'t apply.',
+        highlight: 'sshAuditOut', autoFn: null,
+      },
+      {
+        title: 'Export',
+        body:  'Click ↓ Export CSV (or the JSON button next to it) for a record of the host, port, username, verdict, and finding text.',
+        highlight: 'sshAuditOut',
+        autoFn: null,
+      },
+    ],
+  },
+
   // ── Wave 14: SDSF Job Scanner ─────────────────────────────────────
   {
     id:       'sdsf-job-scanner',

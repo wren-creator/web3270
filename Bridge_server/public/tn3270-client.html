@@ -1112,6 +1112,33 @@
         </div>
       </div>
 
+      <!-- SSH NO-CREDENTIAL ACCESS CHECKER section -->
+      <div class="sec-section">
+        <div class="sec-section-hdr">SSH ACCESS AUDIT</div>
+        <div class="sec-section-body">
+          <div class="sec-panel-hint" style="margin-bottom:8px">For z/TPF and other IBM ported-OpenSSH targets. Attempts a connection offering the 'none' auth method, then — only if the server actually offers password auth — a single empty-password attempt for the named account. One attempt per check, never a sweep. FOR AUTHORIZED USE ONLY.</div>
+
+          <select id="sshAuditHostSelect" onfocus="sshAuditLoadHosts()" onchange="sshAuditHostChanged()" style="width:100%;box-sizing:border-box;background:#0d0d0d;border:1px solid #222;color:#aaa;font-family:inherit;font-size:10px;padding:4px 6px;border-radius:2px;margin-bottom:6px">
+            <option value="">— Pick a saved host, or type one below —</option>
+          </select>
+
+          <div style="display:flex;gap:6px;margin-bottom:6px">
+            <input id="sshAuditHost" placeholder="host or IP" style="flex:2;box-sizing:border-box;background:#0d0d0d;border:1px solid #222;color:#aaa;font-family:'IBM Plex Mono',monospace;font-size:10px;padding:4px 6px;border-radius:2px">
+            <input id="sshAuditPort" placeholder="22" value="22" style="flex:1;box-sizing:border-box;background:#0d0d0d;border:1px solid #222;color:#aaa;font-family:'IBM Plex Mono',monospace;font-size:10px;padding:4px 6px;border-radius:2px">
+            <input id="sshAuditUser" placeholder="username" style="flex:2;box-sizing:border-box;background:#0d0d0d;border:1px solid #222;color:#aaa;font-family:'IBM Plex Mono',monospace;font-size:10px;padding:4px 6px;border-radius:2px">
+          </div>
+
+          <button id="sshAuditBtn" class="sec-inject-btn" onclick="startSshAudit()" style="background:#1a2a1a">▶ RUN AUDIT</button>
+          <div id="sshAuditStatus" style="font-size:10px;color:var(--text-muted);margin-top:4px;min-height:14px"></div>
+          <div id="sshAuditOut" style="margin-top:4px"></div>
+
+          <div style="margin-top:8px;padding-top:6px;border-top:1px solid #111">
+            <button onclick="sshAuditExportCsv()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ Export CSV</button>
+            <button onclick="sshAuditExportJson()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ JSON</button>
+          </div>
+        </div>
+      </div>
+
       <!-- CICS TRANSACTION SCANNER section -->
       <div class="sec-section">
         <div class="sec-section-hdr">CICS TRANSACTION SCANNER</div>
