@@ -48,6 +48,10 @@ button{font-family:inherit;}
 .chip.off{opacity:.35;}
 .chip .dot{width:8px; height:8px; border-radius:2px; flex-shrink:0;}
 
+.anomalies{display:flex; align-items:center; gap:8px; padding:5px 10px; background:var(--bg-panel); border-bottom:1px solid var(--border); flex-shrink:0; flex-wrap:wrap;}
+.anomaly-chip{font-size:9.5px; border:1px solid #555; border-radius:10px; padding:2px 9px; cursor:pointer; white-space:nowrap; transition:background .12s;}
+.anomaly-chip:hover{background:rgba(255,255,255,.06);}
+
 .main{flex:1; display:flex; flex-direction:column; min-height:0;}
 .pane-list{flex:1 1 52%; min-height:60px; overflow-y:auto; border-bottom:1px solid var(--border);}
 .pane-list::-webkit-scrollbar, .hexwrap::-webkit-scrollbar, .treewrap::-webkit-scrollbar{width:6px;}
@@ -147,6 +151,11 @@ tr.row-negotiation .summary{color:var(--text-faint);}
   <span class="chip" data-cat="negotiation"><span class="dot" style="background:var(--text-faint)"></span>Telnet negotiation</span>
 </div>
 
+<div class="anomalies" id="anomaliesBar" style="display:none">
+  <span class="legend-label">⚠ Anomalies</span>
+  <div id="anomaliesList" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+</div>
+
 <div class="main">
   <div class="pane-list" id="paneList">
     <table>
@@ -184,7 +193,9 @@ tr.row-negotiation .summary{color:var(--text-faint);}
   <span>hover a decoded order to highlight its bytes</span>
 </div>
 
-<script>
+<script type="module">
+import { correlateAnomalies } from './js/wire-correlate.js';
+
 const KIND_PROTO = {
   negotiation:   'Telnet negotiation',
   'tn3270e-subneg': 'TN3270E sub-negotiation',
@@ -195,6 +206,7 @@ const KIND_PROTO = {
 };
 
 let allRecords = [];
+let anomalies = [];
 let activeCats = new Set(['out','in','aid','danger','negotiation']);
 let selected = null;
 
@@ -217,8 +229,38 @@ async function loadData() {
     const res = await fetch('/api/wire');
     allRecords = await res.json();
     updateSessFilter();
+    // Stateful pass over the full record list — repeated AID=ENTER records,
+    // redisplayed logon screens, same-userid retries against RACF message
+    // patterns — none of which a single record's own decode can show.
+    anomalies = correlateAnomalies(allRecords);
+    renderAnomalies();
     renderRows();
   } catch (e) { console.error('Failed to load wire capture', e); }
+}
+
+const SEV_COLOR = { CRITICAL: 'var(--accent-danger)', HIGH: 'var(--accent-warn)', MEDIUM: '#cccc60' };
+
+function renderAnomalies() {
+  const bar  = document.getElementById('anomaliesBar');
+  const list = document.getElementById('anomaliesList');
+  list.innerHTML = '';
+  if (!anomalies.length) { bar.style.display = 'none'; return; }
+  bar.style.display = 'flex';
+  anomalies.forEach(a => {
+    const chip = document.createElement('span');
+    chip.className = 'anomaly-chip';
+    const c = SEV_COLOR[a.severity] || '#777';
+    chip.style.borderColor = c;
+    chip.style.color = c;
+    chip.textContent = `${a.severity} · Session #${a.wsId} · ${a.summary}`;
+    chip.title = `Records: ${a.recordNos.join(', ')} — click to jump to the last one`;
+    chip.addEventListener('click', () => {
+      sessFilter.value = String(a.wsId);
+      renderRows();
+      selectRecord(a.recordNos[a.recordNos.length - 1]);
+    });
+    list.appendChild(chip);
+  });
 }
 
 function updateSessFilter() {
@@ -417,7 +459,8 @@ function downloadCsv() {
 async function clearLog() {
   if (!confirm('Clear all captured traffic on the server? This clears both the Session Viewer log and this Wire Inspector capture.')) return;
   await fetch('/api/traffic/csv', { method: 'DELETE' });
-  allRecords = []; selected = null;
+  allRecords = []; anomalies = []; selected = null;
+  renderAnomalies();
   renderRows();
   document.getElementById('treewrap').innerHTML = '<div class="empty-detail"><span class="big">◇</span>Select a record to decode it</div>';
   document.getElementById('hexwrap').innerHTML = '';
@@ -452,6 +495,14 @@ loadData();
 // from this popup — matches how Session Viewer's Refresh button works,
 // just automatic.
 setInterval(loadData, 4000);
+
+// This page switched to type="module" (to import wire-correlate.js — the
+// browser can't fetch anything under tn3270/, only public/ is served
+// statically). Module scripts don't leak top-level declarations onto
+// `window` the way a classic script does, so every function an inline
+// onclick="" attribute calls by name needs exposing explicitly here, same
+// convention the rest of this project already uses in public/js/*.js.
+Object.assign(window, { loadData, downloadPcap, downloadCsv, clearLog, toggleFullscreen, replayRecord });
 </script>
 </body>
 </html>

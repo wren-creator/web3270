@@ -2267,6 +2267,12 @@ const _WALKTHROUGHS = [
         autoFn: null,
       },
       {
+        title: 'Anomaly correlation',
+        body:  'A single decoded record can’t show a pattern across several of them, repeated ENTER keys, a redisplayed logon screen, the same userid retried, culminating in an actual RACF lockout message. The Wire Inspector now runs a stateful pass over the whole capture every refresh and surfaces what it finds as colored chips above the record list: MEDIUM for two failed logons in a row, HIGH for three or more against the same userid, CRITICAL for either an actual lockout or three-plus different userids tried in sequence, the shape of a brute-force sweep rather than someone fumbling their own password. Click a chip to jump straight to the decisive record.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
         title: 'Export',
         body:  'Use ↓ PCAP for a Wireshark-readable capture (Telnet/TCP level only, same limitation as always), or ↓ CSV for the decoded record list — timestamps, direction, AID, and summaries.',
         highlight: null,
