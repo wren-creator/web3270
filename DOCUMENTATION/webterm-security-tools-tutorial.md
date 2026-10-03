@@ -22,7 +22,7 @@ Once unlocked, the Security panel is organised into collapsible accordion sectio
 
 ### Guided walkthroughs
 
-The app ships **69 built-in narrated walkthroughs** (`public/js/walkthrough.js`). Open the **WALKTHROUGHS** section at the top of the Security panel, pick one from the dropdown, and click **▶ Start** — an overlay steps through the tool one instruction at a time, highlighting the control it's talking about, with an optional **"Do it for me"** button that fires the action. Six are general (connecting, multi-session tabs, split screen, macros, file transfer, AI assist); the other 63 map almost one-to-one to the parts in this document, including one each for the four z/TPF Security Console tools. The **z/TPF CONSOLE** section additionally has a combined tour of all four of its tools, launched with the **`?`** button in that section's header. These in-app walkthroughs and this document cover the same ground — use the walkthroughs for hands-on lab time, this document for reference and lesson planning.
+The app ships **70 built-in narrated walkthroughs** (`public/js/walkthrough.js`). Open the **WALKTHROUGHS** section at the top of the Security panel, pick one from the dropdown, and click **▶ Start** — an overlay steps through the tool one instruction at a time, highlighting the control it's talking about, with an optional **"Do it for me"** button that fires the action. Six are general (connecting, multi-session tabs, split screen, macros, file transfer, AI assist); the other 64 map almost one-to-one to the parts in this document, including one each for the four z/TPF Security Console tools. The **z/TPF CONSOLE** section additionally has a combined tour of all four of its tools, launched with the **`?`** button in that section's header. These in-app walkthroughs and this document cover the same ground — use the walkthroughs for hands-on lab time, this document for reference and lesson planning.
 
 ### Contents
 
@@ -1173,6 +1173,28 @@ Two TSO-based checks that probe system library protection: APF library RACF cove
 | `IEFJOBS00` | Job-related parameters |
 
 **High-priority findings:** `SMFPRM00` readable = attacker knows which security events are NOT logged. `IEAAPF00` readable = static APF list known. `IEASVC00` readable = SVC table structure known, aids exploit development.
+
+---
+
+### Tool 3 — APF Writability Checker
+
+**Location:** Security panel → SYSTEM ACCESS CHECKS → APF WRITABILITY CHECKER
+
+**Commands:** `LISTAPF`, then `ALLOC FI(APFWR) DA('libname') SHR REUSE` per library — the same real command the PARMLIB check above uses, reused against every APF library LISTAPF returns instead of a fixed member list.
+
+**Why it's different from Tool 1:** The APF Library Scanner only checks whether a RACF profile *exists* on a library (`LISTDSD`). That's necessary but not sufficient, a library can have no profile and still reject the write for some other reason, or carry a profile and still be writable through a UACC or access-list gap `LISTDSD`'s parsing never catches. This tool skips the inference and actually attempts the write, reading back the real RACF authority decision instead.
+
+**Risk levels:**
+
+| Risk | Condition |
+|---|---|
+| CRITICAL | `IKJ56650I` — the allocation succeeded, the library is writable right now |
+| OK | `IKJ56231I` — RACF denied the allocation |
+| UNKNOWN | neither message matched, worth a manual look |
+
+A successful allocation is immediately `FREE`d; nothing stays allocated or gets modified.
+
+**What a CRITICAL finding means:** unlike Tool 1's UNPROTECTED (which infers exploitability from a missing profile), CRITICAL here is proof, a write attempt against this exact library actually succeeded during this session. Drop a backdoor program there and it runs with supervisor authority on the next load.
 
 ---
 

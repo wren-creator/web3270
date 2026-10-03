@@ -397,11 +397,28 @@ function tryAltuser(cmd) {
 // allocated name is added to CATALOG under its first qualifier so a follow-up
 // LISTCAT LEVEL(prefix) shows it, same shared module-level CATALOG the ESM
 // switch and LISTCAT already treat as global rather than per-session state.
-function tryAllocate(cmd) {
+function tryAllocate(cmd, userid = 'DEMO') {
   if (!/^ALLOC(ATE)?\b/.test(cmd)) return null;
   const m = cmd.match(/\b(?:DATASET|DA)\('([^']+)'\)/);
   if (!m) return { ok: false, msg: 'IKJ56701I MISSING DATA SET NAME OPERAND' };
-  const dsname = m[1].toUpperCase();
+  const full = m[1].toUpperCase();
+  const dsname = full.replace(/\(.*\)$/, ''); // strip a member qualifier for the lookup
+  // APF Writability Checker: ALLOCATE against a library already on the APF
+  // list checks real write authority there instead of just catalog
+  // bookkeeping — the one real command standing in for the real effect,
+  // same discipline tryAddapf's own comment already states for this family.
+  const apfEntry = APF_LIST.find(e => e.dsn === dsname);
+  if (apfEntry) {
+    // Single-line messages only — the bare TSO READY screen (screenReady)
+    // shows at most one message row, unlike the TSO command shell
+    // (screenTsoCommand), which does split multi-line output onto separate
+    // rows. The real multi-line ICH408I+IKJ56231I pair would only render
+    // correctly on the second call site onward.
+    if (!apfEntry.writable) {
+      return { ok: false, msg: `IKJ56231I DATA SET ${full} NOT ALLOCATED, REQUESTED ACCESS NOT AUTHORIZED (USER ${userid})` };
+    }
+    return { ok: true, msg: `IKJ56650I DATA SET ${full} ALLOCATED` };
+  }
   const prefix = dsname.split('.')[0];
   const existing = CATALOG[prefix] || [];
   if (existing.includes(dsname)) {
@@ -1800,8 +1817,8 @@ function handleConnection(socket) {
             state.tsoOutput = tryDisplayNet(cmd) || `IKJ56500I COMMAND ${cmd} NOT FOUND`;
             currentScreen = 'tsoCmd'; sendCurrentScreen();
           } else if (/^ALLOC(ATE)?\b/.test(cmd)) {
-            const result = tryAllocate(cmd);
-            state.readyMsg = result.ok ? '' : result.msg;
+            const result = tryAllocate(cmd, userid);
+            state.readyMsg = result.msg || '';
             currentScreen = result.ok ? 'ready' : 'readyOutput';
             sendCurrentScreen();
           } else if (/^AL(TUSER|U)\b/.test(cmd)) {
@@ -1866,8 +1883,8 @@ function handleConnection(socket) {
             state.tsoOutput = tryDisplayNet(cmd) || `IKJ56500I COMMAND ${cmd} NOT FOUND`;
             sendCurrentScreen();
           } else if (/^ALLOC(ATE)?\b/.test(cmd)) {
-            const result = tryAllocate(cmd);
-            state.tsoOutput = result.ok ? '' : result.msg;
+            const result = tryAllocate(cmd, userid);
+            state.tsoOutput = result.msg || '';
             sendCurrentScreen();
           } else if (/^AL(TUSER|U)\b/.test(cmd)) {
             const result = tryAltuser(cmd);

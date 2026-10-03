@@ -66,9 +66,12 @@ function _parseApf(text) {
   const libs = [];
   for (const line of text.split('\n')) {
     const t = line.trim();
-    // LISTAPF output: "  VOL     LIBRARY.NAME.HERE"
-    // Two tokens: volume (1-6 chars) + dataset name
-    const m = t.match(/^([A-Z0-9]{1,6})\s+([A-Z@#$][A-Z0-9@#$.]{1,43})\s*$/);
+    // LISTAPF output: "  VOL     LIBRARY.NAME.HERE", optionally followed by
+    // a "*** WRITABLE ***" marker on the mock's one flagged entry — the
+    // dataset-name capture has to stop at a word boundary, not end-of-line,
+    // or that one entry (the only one that actually matters for the
+    // Writability Checker below) silently fails to parse at all.
+    const m = t.match(/^([A-Z0-9]{1,6})\s+([A-Z@#$][A-Z0-9@#$.]{1,43})\b/);
     if (m && !['VOLUME', 'LIBRARY', '------'].includes(m[1])) {
       libs.push({ vol: m[1], library: m[2], racfStatus: null });
     }
@@ -103,6 +106,12 @@ export async function startApfScan() {
 
     _renderApf();
     _apfStatus(`Found ${_apfResults.length} APF librar${_apfResults.length === 1 ? 'y' : 'ies'} — checking RACF profiles…`);
+
+    // The LISTAPF output screen has no command line of its own (Enter/PF3
+    // both just return to READY without looking at what's typed) — issuing
+    // the first LISTDSD here without this step first silently went nowhere.
+    _pressEnter();
+    await _collectOutput(3000);
 
     // Probe RACF protection for each library via LISTDSD
     for (let i = 0; i < _apfResults.length; i++) {
@@ -284,7 +293,128 @@ function _buildSyscheckRows() {
     rows.push(['apf-scan', r.library, `VOL=${r.vol} RACF=${r.racfStatus || ''}`, _apfRisk(r.racfStatus), ts]);
   for (const r of _parmlibResults)
     rows.push(['parmlib-check', `SYS1.PARMLIB(${r.member})`, r.note, r.accessible === true ? 'CRITICAL' : r.accessible === false ? 'OK' : 'UNKNOWN', ts]);
+  for (const l of _apfWriteResults)
+    rows.push(['apf-write-check', l.library, l.note, _apfWriteRisk(l), ts]);
   return { rows, ts };
+}
+
+// ── Tool 3: APF Writability Checker ───────────────────────────────────────
+// The APF Library Scanner above only checks whether a RACF dataset profile
+// EXISTS (via LISTDSD); it never proves exploitability, a library can have
+// no profile and still turn out to reject the write for some other reason,
+// or carry a profile and still be writable through a UACC/access-list gap
+// LISTDSD's parsing doesn't catch. This tool actually attempts the write:
+// the same ALLOC...SHR + FREE pattern the PARMLIB Access Check above uses,
+// reused here against every APF library LISTAPF returns instead of a fixed
+// member list.
+
+let _apfWriteRunning = false;
+let _apfWriteResults = [];  // { vol, library, writable: bool|null, note }
+
+function _apfWriteStatus(msg) {
+  const el = document.getElementById('apfWriteStatus');
+  if (el) el.textContent = msg;
+}
+
+export async function startApfWriteCheck() {
+  if (_apfWriteRunning) return;
+  if (!_isReady(state.liveScreenText || '')) {
+    _apfWriteStatus('Navigate to a TSO READY prompt first'); return;
+  }
+  _apfWriteRunning = true;
+  _apfWriteResults = [];
+  _renderApfWrite();
+  document.getElementById('apfWriteBtn').disabled = true;
+  _apfWriteStatus('Issuing LISTAPF…');
+
+  try {
+    _fillInput('LISTAPF');
+    await new Promise(r => setTimeout(r, 120));
+    _pressEnter();
+    const raw = await _collectOutput(6000);
+    const libs = _parseApf(raw);
+
+    if (!libs.length) {
+      _apfWriteStatus('No APF libraries found — LISTAPF may require elevated authority on this system');
+      _apfWriteRunning = false;
+      document.getElementById('apfWriteBtn').disabled = false;
+      return;
+    }
+    _renderApfWrite();
+    _apfWriteStatus(`Found ${libs.length} APF librar${libs.length === 1 ? 'y' : 'ies'} — testing write access…`);
+
+    // LISTAPF's own output screen has no command line — Enter/PF3 both just
+    // return to READY regardless of what's typed — so the ALLOC loop below
+    // has to start from there, not from this screen.
+    _pressEnter();
+    await _collectOutput(3000);
+
+    for (let i = 0; i < libs.length; i++) {
+      const lib = libs[i];
+      _apfWriteStatus(`[${i + 1}/${libs.length}] Testing write access to ${lib.library}…`);
+      try {
+        _fillInput(`ALLOC FI(APFWR) DA('${lib.library}') SHR REUSE`);
+        await new Promise(r => setTimeout(r, 120));
+        _pressEnter();
+        const out = await _collectOutput(5000);
+
+        let writable, note;
+        if (/IKJ56650I/.test(out)) {
+          writable = true; note = 'write succeeded — exploitable now';
+          _fillInput('FREE FI(APFWR)');
+          await new Promise(r => setTimeout(r, 80));
+          _pressEnter();
+          await _collectOutput(3000);
+        } else if (/IKJ56231I/.test(out)) {
+          writable = false; note = 'write denied, RACF blocked it';
+        } else {
+          writable = null; note = 'unrecognized response';
+        }
+        _apfWriteResults.push({ vol: lib.vol, library: lib.library, writable, note });
+      } catch (err) {
+        _apfWriteResults.push({ vol: lib.vol, library: lib.library, writable: null, note: 'error: ' + err.message });
+      }
+      _renderApfWrite();
+      await new Promise(r => setTimeout(r, 300));
+    }
+
+    const writableCount = _apfWriteResults.filter(l => l.writable === true).length;
+    _apfWriteStatus(`Done — ${_apfWriteResults.length} librar${_apfWriteResults.length === 1 ? 'y' : 'ies'} tested, ${writableCount} writable`);
+  } catch (err) {
+    _apfWriteStatus('Error: ' + err.message);
+  }
+  _apfWriteRunning = false;
+  document.getElementById('apfWriteBtn').disabled = false;
+}
+
+function _apfWriteRisk(l) {
+  if (l.writable === true)  return 'CRITICAL';
+  if (l.writable === null)  return 'UNKNOWN';
+  return 'OK';
+}
+
+function _renderApfWrite() {
+  const el = document.getElementById('apfWriteOut');
+  if (!el) return;
+  if (!_apfWriteResults.length) { el.innerHTML = ''; return; }
+  const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  const RISK_C = { CRITICAL: '#e06060', UNKNOWN: '#666', OK: '#3a6a3a' };
+  const ORDER  = { CRITICAL: 0, UNKNOWN: 1, OK: 2 };
+  const sorted = [..._apfWriteResults].sort((a, b) => (ORDER[_apfWriteRisk(a)] ?? 3) - (ORDER[_apfWriteRisk(b)] ?? 3));
+  el.innerHTML =
+    '<table style="width:100%;border-collapse:collapse;font-size:10px;margin-top:4px">' +
+    '<tr style="color:var(--text-muted)"><th style="text-align:left;padding:2px 4px;font-weight:normal">LIBRARY</th>' +
+    '<th style="text-align:left;padding:2px 4px;font-weight:normal">VOL</th>' +
+    '<th style="text-align:left;padding:2px 4px;font-weight:normal">RISK</th>' +
+    '<th style="text-align:left;padding:2px 4px;font-weight:normal">NOTE</th></tr>' +
+    sorted.map(l => {
+      const risk = _apfWriteRisk(l);
+      return `<tr>` +
+        `<td style="padding:2px 4px;color:${risk === 'OK' ? '#555' : '#aaa'};font-family:'IBM Plex Mono',monospace;font-size:9px">${esc(l.library)}</td>` +
+        `<td style="padding:2px 4px;color:#444;font-family:'IBM Plex Mono',monospace;font-size:9px">${esc(l.vol)}</td>` +
+        `<td style="padding:2px 4px;color:${RISK_C[risk] || '#999'};font-weight:${risk === 'CRITICAL' ? '700' : 'normal'}">${esc(risk)}</td>` +
+        `<td style="padding:2px 4px;color:#999;font-size:9px">${esc(l.note)}</td></tr>`;
+    }).join('') + '</table>';
 }
 
 export function syscheckExportCsv() {
@@ -302,4 +432,5 @@ export function syscheckExportJson() {
 
 Object.assign(window, {
   syscheckOnScreen, startApfScan, parmlibLoadDefaults, startParmlibCheck, syscheckExportCsv, syscheckExportJson,
+  startApfWriteCheck,
 });

@@ -1463,6 +1463,46 @@ const _WALKTHROUGHS = [
     ],
   },
 
+  // ── SysCheck 3: APF Writability Checker ───────────────────────────
+  {
+    id:       'apf-writability-checker',
+    category: 'security',
+    title:    'APF Writability Checker',
+    desc:     'Actually attempts a write against every APF library LISTAPF returns, to prove exploitability rather than just flag a missing RACF profile.',
+    steps: [
+      {
+        title: 'Why this is different from the APF Library Scanner',
+        body:  'The scanner above only checks whether a RACF dataset profile EXISTS, via LISTDSD. That’s a necessary check, but not a sufficient one: a library can have no profile and still turn out to reject the write for some other reason, or carry a profile and still be writable through a UACC or access-list gap LISTDSD’s parsing never catches. This tool skips the inference entirely and actually attempts the write.',
+        highlight: 'apfWriteOut',
+        autoFn: null,
+      },
+      {
+        title: 'Navigate to TSO READY and unlock Security',
+        body:  'You must be at a TSO READY prompt. Click 🔒, enter the password, find SYSTEM ACCESS CHECKS → APF WRITABILITY CHECKER (below PARMLIB Access Check).',
+        highlight: 'secBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Run the check',
+        body:  'Click ▶ TEST WRITE ACCESS. The tool issues LISTAPF to enumerate every APF-authorized library, then for each one issues ALLOC FI(APFWR) DA(’library’) SHR REUSE, the same real command the PARMLIB check uses, this time against APF libraries instead of a fixed member list. A successful allocation is immediately FREEd, nothing is left allocated or modified.',
+        highlight: 'apfWriteBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Read the findings',
+        body:  'CRITICAL means the write actually succeeded, that library is exploitable right now: drop a backdoor program in it and it runs with supervisor authority on the next load. OK means RACF blocked the allocation. UNKNOWN means the response didn’t match either real message, worth a manual look.',
+        highlight: 'apfWriteOut', autoFn: null,
+      },
+      {
+        title: 'Export',
+        body:  'Click ↓ Export System Checks CSV (or the JSON button next to it). apf-write-check rows carry the library, the risk, and the note explaining why.',
+        highlight: 'apfWriteOut',
+        autoFn: 'syscheckExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
   // ── CICS 1: Transaction Scanner ───────────────────────────────────
   {
     id:       'cics-transaction-scanner',
