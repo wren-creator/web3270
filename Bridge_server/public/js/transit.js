@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { saveAs } from './utils.js';
+import { saveAs, exportFindingsJson } from './utils.js';
 
 // ── In-Transit Encryption Monitor ──────────────────────────────────────────
 // Reads TLS state from the active session and fetches the server traffic log.
@@ -105,8 +105,7 @@ export async function transitClear() {
   }
 }
 
-export function transitExportCsv() {
-  if (!_transitLog.length) return;
+function _buildTransitRows() {
   const rows = [['timestamp', 'wsId', 'direction', 'aid', 'tls', 'plaintext_exposed', 'screenText']];
   for (const e of _transitLog) {
     rows.push([
@@ -116,8 +115,20 @@ export function transitExportCsv() {
       (e.screenText || '').replace(/"/g, '""'),
     ]);
   }
+  return rows;
+}
+
+export function transitExportCsv() {
+  if (!_transitLog.length) return;
+  const rows = _buildTransitRows();
   const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
   saveAs(new Blob([csv], { type: 'text/csv' }), `transit-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.csv`);
 }
 
-Object.assign(window, { transitRefresh, transitClear, transitExportCsv });
+export function transitExportJson() {
+  if (!_transitLog.length) return;
+  const ts = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+  exportFindingsJson('in-transit-encryption-monitor', _buildTransitRows(), `transit-${ts}.json`);
+}
+
+Object.assign(window, { transitRefresh, transitClear, transitExportCsv, transitExportJson });

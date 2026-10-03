@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { saveAs } from './utils.js';
+import { saveAs, exportFindingsJson } from './utils.js';
 
 // ── Shared screen machinery ────────────────────────────────────────────────
 let _screenCb = null;
@@ -277,18 +277,29 @@ function _renderParmlib() {
 }
 
 // ── Combined CSV export ────────────────────────────────────────────────────
-export function syscheckExportCsv() {
+function _buildSyscheckRows() {
   const rows = [['tool', 'name', 'detail', 'risk', 'timestamp']];
   const ts = new Date().toISOString();
   for (const r of _apfResults)
     rows.push(['apf-scan', r.library, `VOL=${r.vol} RACF=${r.racfStatus || ''}`, _apfRisk(r.racfStatus), ts]);
   for (const r of _parmlibResults)
     rows.push(['parmlib-check', `SYS1.PARMLIB(${r.member})`, r.note, r.accessible === true ? 'CRITICAL' : r.accessible === false ? 'OK' : 'UNKNOWN', ts]);
+  return { rows, ts };
+}
+
+export function syscheckExportCsv() {
+  const { rows, ts } = _buildSyscheckRows();
   if (rows.length === 1) return;
   const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
   saveAs(new Blob([csv], { type: 'text/csv' }), `syscheck-${ts.slice(0, 19).replace(/:/g, '-')}.csv`);
 }
 
+export function syscheckExportJson() {
+  const { rows, ts } = _buildSyscheckRows();
+  if (rows.length === 1) return;
+  exportFindingsJson('syscheck', rows, `syscheck-${ts.slice(0, 19).replace(/:/g, '-')}.json`);
+}
+
 Object.assign(window, {
-  syscheckOnScreen, startApfScan, parmlibLoadDefaults, startParmlibCheck, syscheckExportCsv,
+  syscheckOnScreen, startApfScan, parmlibLoadDefaults, startParmlibCheck, syscheckExportCsv, syscheckExportJson,
 });

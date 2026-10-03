@@ -7,7 +7,7 @@
 // the Attribute Byte Inspector already shows one field at a time (see
 // inspector.js) into a sweep-the-whole-screen, log-it, export-it tool.
 import { state } from './state.js';
-import { saveAs } from './utils.js';
+import { saveAs, exportFindingsJson } from './utils.js';
 
 let _fdWatching = false;
 let _fdResults  = [];
@@ -75,15 +75,25 @@ function _fdRenderResults() {
     ).join('') + '</table>';
 }
 
-export function fieldDiscExportCsv() {
-  if (!_fdResults.length) return;
-  const rows = [
+function _buildFieldDiscRows() {
+  return [
     ['row', 'col', 'length', 'app', 'timestamp'],
     ..._fdResults.map(r => [r.row, r.col, r.length, r.app, r.ts]),
   ];
+}
+
+export function fieldDiscExportCsv() {
+  if (!_fdResults.length) return;
+  const rows = _buildFieldDiscRows();
   const csv  = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
   saveAs(blob, `field-length-disclosure-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.csv`);
+}
+
+export function fieldDiscExportJson() {
+  if (!_fdResults.length) return;
+  const ts = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+  exportFindingsJson('field-length-disclosure', _buildFieldDiscRows(), `field-length-disclosure-${ts}.json`);
 }
 
 export function fieldDiscClear() {
@@ -94,5 +104,5 @@ export function fieldDiscClear() {
 
 Object.assign(window, {
   toggleFieldDiscWatch, fieldDiscScanOnce, fieldDiscOnScreen,
-  fieldDiscExportCsv, fieldDiscClear,
+  fieldDiscExportCsv, fieldDiscExportJson, fieldDiscClear,
 });

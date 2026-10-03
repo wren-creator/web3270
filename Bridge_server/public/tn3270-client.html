@@ -561,6 +561,7 @@
           <div id="fdResultsTable"></div>
           <div style="margin-top:6px;display:flex;gap:6px">
             <button onclick="fieldDiscExportCsv()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ Export CSV</button>
+            <button onclick="fieldDiscExportJson()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ JSON</button>
             <button onclick="fieldDiscClear()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">Clear</button>
           </div>
         </div>
@@ -736,6 +737,7 @@
           <div id="probeResultsTable"></div>
           <div style="margin-top:6px">
             <button onclick="probeExportCsv()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ Export CSV</button>
+            <button onclick="probeExportJson()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ JSON</button>
           </div>
         </div>
       </div>
@@ -755,6 +757,7 @@
           <div id="bbResultsTable"></div>
           <div style="margin-top:6px;display:flex;gap:6px">
             <button onclick="bufferBleedExportCsv()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ Export CSV</button>
+            <button onclick="bufferBleedExportJson()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ JSON</button>
             <button onclick="bufferBleedClear()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">Clear</button>
           </div>
         </div>
@@ -771,6 +774,7 @@
           <div id="vmResultsTable"></div>
           <div style="margin-top:6px;display:flex;gap:6px">
             <button onclick="vmMinidiskExportCsv()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ Export CSV</button>
+            <button onclick="vmMinidiskExportJson()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ JSON</button>
             <button onclick="vmMinidiskClear()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">Clear</button>
           </div>
         </div>
@@ -867,6 +871,7 @@
             <button id="fuzzStartBtn" class="sec-inject-btn" onclick="startFuzz()" style="background:#1a2a1a">▶ START</button>
             <button id="fuzzStopBtn"  class="sec-inject-btn" onclick="stopFuzz()"  style="background:#2a1a1a;display:none">■ STOP</button>
             <button onclick="fuzzExportCsv()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:1px 8px;cursor:pointer">↓ CSV</button>
+            <button onclick="fuzzExportJson()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:1px 8px;cursor:pointer">↓ JSON</button>
           </div>
           <div id="fuzzStatus" style="font-size:10px;color:var(--text-muted);min-height:14px;margin-bottom:2px"></div>
           <div id="fuzzResultsTable"></div>
@@ -948,6 +953,7 @@
             <button onclick="transitRefresh()" class="sec-inject-btn" style="background:#1a2a1a">↺ Refresh</button>
             <button onclick="transitClear()"   class="sec-inject-btn" style="background:#2a1a1a">✕ Clear Log</button>
             <button onclick="transitExportCsv()" class="sec-inject-btn" style="background:#1a1a2a">↓ Export CSV</button>
+            <button onclick="transitExportJson()" class="sec-inject-btn" style="background:#1a1a2a">↓ JSON</button>
           </div>
           <div id="transitStatus" style="font-size:10px;color:var(--text-muted);margin-bottom:4px;min-height:14px"></div>
           <div id="transitLog" style="max-height:240px;overflow-y:auto;font-size:10px"></div>
@@ -1032,6 +1038,7 @@
           <!-- ── Shared export ── -->
           <div style="margin-top:8px;padding-top:6px;border-top:1px solid #111">
             <button onclick="reconExportCsv()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ Export all Recon results CSV</button>
+            <button onclick="reconExportJson()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ JSON</button>
           </div>
         </div>
       </div>
@@ -1066,6 +1073,7 @@
 
           <div style="margin-top:8px;padding-top:6px;border-top:1px solid #111">
             <button onclick="syscheckExportCsv()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ Export System Checks CSV</button>
+            <button onclick="syscheckExportJson()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ JSON</button>
           </div>
         </div>
       </div>
@@ -1087,6 +1095,7 @@
           <div id="cicsOut" style="max-height:200px;overflow-y:auto;margin-top:4px"></div>
           <div style="margin-top:8px;padding-top:6px;border-top:1px solid #111">
             <button onclick="cicsExportCsv()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ Export CICS Scan CSV</button>
+            <button onclick="cicsExportJson()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ JSON</button>
           </div>
         </div>
       </div>
@@ -1196,6 +1205,7 @@
 
           <div style="margin-top:8px;padding-top:6px;border-top:1px solid #111">
             <button onclick="as400ExportCsv()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ Export IBM i Audit CSV</button>
+            <button onclick="as400ExportJson()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ JSON</button>
           </div>
         </div>
       </div>
@@ -1209,6 +1219,7 @@
           <div style="margin-bottom:6px;display:flex;align-items:center;gap:6px">
             <button onclick="negotiateRefresh()" style="background:none;border:1px solid #446688;border-radius:3px;color:#446688;font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↺ Refresh</button>
             <button onclick="negotiateExportCsv()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ Export CSV</button>
+            <button onclick="negotiateExportJson()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ JSON</button>
             <span id="negotiateStatus" style="font-size:9px;color:var(--text-muted)">Click Refresh to analyze active sessions</span>
           </div>
 
@@ -1229,6 +1240,7 @@
             <div style="margin-bottom:6px;display:flex;align-items:center;gap:6px">
               <button onclick="sdsfRefresh()" style="background:none;border:1px solid #446688;border-radius:3px;color:#446688;font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↺ Refresh</button>
               <button onclick="sdsfExportCsv()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ Export CSV</button>
+              <button onclick="sdsfExportJson()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ JSON</button>
               <span id="sdsfStatus" style="font-size:9px;color:var(--text-muted)">Navigate to SDSF first</span>
             </div>
             <div style="font-size:9px;color:#555;font-family:'IBM Plex Mono',monospace;margin-bottom:2px">RISK         JOBNAME         JOBID           OWNER           PRTY    QUEUE</div>
@@ -1248,6 +1260,7 @@
               <button onclick="stopStcScan()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">■ Stop</button>
               <button onclick="stcImportFromSdsf()" style="background:none;border:1px solid #446688;border-radius:3px;color:#446688;font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">⇦ Import STCs from SDSF</button>
               <button onclick="stcExportCsv()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ Export CSV</button>
+              <button onclick="stcExportJson()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ JSON</button>
             </div>
             <div style="font-size:9px;color:var(--text-muted)" id="stcStatus">Idle</div>
             <div id="stcOut" style="margin-top:6px;min-height:20px"></div>
@@ -1318,6 +1331,7 @@
           <!-- ── Shared export ── -->
           <div style="margin-top:8px;padding-top:6px;border-top:1px solid #111">
             <button onclick="db2ExportCsv()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ Export all DB2 results CSV</button>
+            <button onclick="db2ExportJson()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ JSON</button>
           </div>
         </div>
       </div>

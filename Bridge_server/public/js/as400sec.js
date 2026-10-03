@@ -23,7 +23,7 @@
 //      detail) are ignored.
 
 import { state } from './state.js';
-import { saveAs } from './utils.js';
+import { saveAs, exportFindingsJson } from './utils.js';
 import {
   parseProfileNames, parseLabelValue, parseSpecialAuths, evaluateProfile, evaluateShippedProfile,
   parseSysvals, evaluateSysval, parseObjects, parseObjectGrants, evaluateObjectDetail,
@@ -356,7 +356,7 @@ export function startAs400ReginfScan()  { _start('REGINF'); }
 export function startAs400NetsvrScan()  { _start('NETSVR'); }
 export function startAs400IfsScan()     { _start('IFS'); }
 
-export function as400ExportCsv() {
+function _buildAs400Rows() {
   const ts = new Date().toISOString();
   const rows = [['tool', 'item', 'value', 'risk', 'detail', 'timestamp']];
   const add = (tool, label) => RESULTS[tool].forEach(r => rows.push([label, r.name, r.value, r.risk, r.detail, ts]));
@@ -371,13 +371,23 @@ export function as400ExportCsv() {
   add('REGINF',  'exit-point-audit');
   add('NETSVR',  'netserver-audit');
   add('IFS',     'ifs-permission-sweep');
+  return { rows, ts };
+}
+
+export function as400ExportCsv() {
+  const { rows, ts } = _buildAs400Rows();
   if (rows.length === 1) return;
   const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
   saveAs(new Blob([csv], { type: 'text/csv' }), `as400-audit-${ts.slice(0, 19).replace(/:/g, '-')}.csv`);
 }
 
+export function as400ExportJson() {
+  const { rows, ts } = _buildAs400Rows();
+  exportFindingsJson('as400-audit', rows, `as400-audit-${ts.slice(0, 19).replace(/:/g, '-')}.json`);
+}
+
 Object.assign(window, {
-  as400OnScreen, as400ExportCsv,
+  as400OnScreen, as400ExportCsv, as400ExportJson,
   startAs400UserScan, startAs400ShippedAudit, startAs400SysvalScan, startAs400ObjScan,
   startAs400NetattrScan, startAs400JobdScan, startAs400AutlScan, startAs400ActjobScan,
   startAs400ReginfScan, startAs400NetsvrScan, startAs400IfsScan,

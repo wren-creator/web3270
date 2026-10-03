@@ -10,7 +10,7 @@
 // checking the field's FA to show it was never masked in the first place.
 import { state } from './state.js';
 import { screenToText } from './rendering.js';
-import { saveAs } from './utils.js';
+import { saveAs, exportFindingsJson } from './utils.js';
 
 // Not anchored to line-start: the CP command line is prefixed with the
 // userid + mode indicator (e.g. "AUTOLOG1 CP  LINK MAINT 191 191 MR ..."),
@@ -90,15 +90,25 @@ function _vmRenderResults() {
     ).join('') + '</table>';
 }
 
-export function vmMinidiskExportCsv() {
-  if (!_vmResults.length) return;
-  const rows = [
+function _buildVmMinidiskRows() {
+  return [
     ['owner', 'vdev', 'mode', 'password', 'fieldFa', 'nondisplay', 'timestamp'],
     ..._vmResults.map(r => [r.owner, r.vdev, r.mode, r.password, r.fieldFa, r.nondisplay, r.ts]),
   ];
+}
+
+export function vmMinidiskExportCsv() {
+  if (!_vmResults.length) return;
+  const rows = _buildVmMinidiskRows();
   const csv  = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
   saveAs(blob, `vm-minidisk-exposure-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.csv`);
+}
+
+export function vmMinidiskExportJson() {
+  if (!_vmResults.length) return;
+  const ts = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+  exportFindingsJson('vm-minidisk-exposure', _buildVmMinidiskRows(), `vm-minidisk-exposure-${ts}.json`);
 }
 
 export function vmMinidiskClear() {
@@ -108,5 +118,5 @@ export function vmMinidiskClear() {
 }
 
 Object.assign(window, {
-  vmMinidiskOnScreen, vmMinidiskScanNow, vmMinidiskExportCsv, vmMinidiskClear,
+  vmMinidiskOnScreen, vmMinidiskScanNow, vmMinidiskExportCsv, vmMinidiskExportJson, vmMinidiskClear,
 });

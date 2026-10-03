@@ -9,7 +9,7 @@
 // "connecting" will carry non-blank, MDT-set field content the fresh
 // logon screen shouldn't have yet.
 import { state } from './state.js';
-import { saveAs } from './utils.js';
+import { saveAs, exportFindingsJson } from './utils.js';
 
 let _bbArmed      = false;
 let _bbCollecting = false;
@@ -92,15 +92,25 @@ function _bbRenderResults() {
     ).join('') + '</table>';
 }
 
-export function bufferBleedExportCsv() {
-  if (!_bbResults.length) return;
-  const rows = [
+function _buildBufferBleedRows() {
+  return [
     ['lu', 'row', 'col', 'nondisplay', 'length', 'sample', 'timestamp'],
     ..._bbResults.map(r => [r.lu, r.row, r.col, r.nondisplay, r.length, r.sample, r.ts]),
   ];
+}
+
+export function bufferBleedExportCsv() {
+  if (!_bbResults.length) return;
+  const rows = _buildBufferBleedRows();
   const csv  = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
   saveAs(blob, `buffer-bleed-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.csv`);
+}
+
+export function bufferBleedExportJson() {
+  if (!_bbResults.length) return;
+  const ts = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+  exportFindingsJson('buffer-bleed', _buildBufferBleedRows(), `buffer-bleed-${ts}.json`);
 }
 
 export function bufferBleedClear() {
@@ -110,5 +120,5 @@ export function bufferBleedClear() {
 
 Object.assign(window, {
   toggleBufferBleedWatch, bufferBleedOnStatus, bufferBleedOnScreen,
-  bufferBleedExportCsv, bufferBleedClear,
+  bufferBleedExportCsv, bufferBleedExportJson, bufferBleedClear,
 });

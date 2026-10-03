@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { saveAs } from './utils.js';
+import { saveAs, exportFindingsJson } from './utils.js';
 
 // ── Shared screen machinery (same pattern as probe.js / db2.js) ────────────
 let _screenCb = null;
@@ -492,7 +492,7 @@ function _renderEncrypt() {
 }
 
 // ── Combined CSV export ────────────────────────────────────────────────────
-export function reconExportCsv() {
+function _buildReconRows() {
   const rows = [['tool', 'key', 'value', 'flag', 'timestamp']];
   if (_settingsResult) {
     const r = _settingsResult;
@@ -510,14 +510,25 @@ export function reconExportCsv() {
     rows.push(['dataset-recon', d.name, '', d.flagged ? d.reason : '', new Date().toISOString()]);
   for (const e of _encryptResults)
     rows.push(['encrypt-audit', e.name, e.encrypted === null ? 'ERR' : e.encrypted ? 'ENCRYPTED' : 'UNENCRYPTED', e.keyLabel || e.risk, new Date().toISOString()]);
+  return rows;
+}
 
+export function reconExportCsv() {
+  const rows = _buildReconRows();
   if (rows.length === 1) return;
   const csv  = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
   saveAs(new Blob([csv], { type: 'text/csv' }), `recon-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.csv`);
 }
 
+export function reconExportJson() {
+  const rows = _buildReconRows();
+  if (rows.length === 1) return;
+  const ts = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+  exportFindingsJson('recon', rows, `recon-${ts}.json`);
+}
+
 Object.assign(window, {
   reconOnScreen, startReconSettings, startReconEnum, stopReconEnum,
-  datasetLoadDefaults, startReconDataset, stopReconDataset, reconExportCsv,
+  datasetLoadDefaults, startReconDataset, stopReconDataset, reconExportCsv, reconExportJson,
   encryptImportFlagged, startReconEncrypt, stopReconEncrypt,
 });

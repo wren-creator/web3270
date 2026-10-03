@@ -80,6 +80,32 @@ export function saveAs(blob, suggestedName) {
   });
 }
 
+// Structured JSON export. Every security tool's CSV exporter already builds
+// the exact same shape to get there, a `rows` matrix with a header row
+// first, then data rows, so this is the one place that reshapes it into a
+// stable envelope instead of a spreadsheet. Meant for an engagement
+// reporting pipeline (NetSPI or otherwise) rather than a human opening it in
+// Excel, which is what the CSV export next to it is still for — this is an
+// addition, not a replacement.
+export function exportFindingsJson(tool, rows, filename) {
+  if (!rows || rows.length < 2) return; // header only, or empty
+  const [header, ...data] = rows;
+  const findings = data.map(r => {
+    const o = {};
+    header.forEach((h, i) => { o[h] = r[i]; });
+    return o;
+  });
+  const payload = {
+    schema: 'webterm-3270-findings-v1',
+    tool,
+    generated: new Date().toISOString(),
+    count: findings.length,
+    findings,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  return saveAs(blob, filename);
+}
+
 export function openTrafficViewer() {
   const w = 900, h = 480;
   const left = Math.max(0, screen.width  - w - 20);
@@ -116,4 +142,4 @@ export function wireReplaySend(wsId, hex, no) {
 }
 
 // Assign to window so onclick attributes and dynamic HTML can use them
-Object.assign(window, { esc, escAttr, saveAs, openTrafficViewer, openLogsViewer, openWireInspector, wireReplaySend });
+Object.assign(window, { esc, escAttr, saveAs, exportFindingsJson, openTrafficViewer, openLogsViewer, openWireInspector, wireReplaySend });

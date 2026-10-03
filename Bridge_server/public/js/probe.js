@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { saveAs } from './utils.js';
+import { saveAs, exportFindingsJson } from './utils.js';
 
 const _PROBE_PROFILES = {
   TSO: {
@@ -383,15 +383,25 @@ export function stopProbe() {
   document.getElementById('probeStopBtn').style.display  = 'none';
 }
 
-export function probeExportCsv() {
-  if (!_probeResults.length) return;
-  const rows = [
+function _buildProbeRows() {
+  return [
     ['userid', 'password', 'result', 'response_ms', 'timestamp'],
     ..._probeResults.map(r => [r.userid, r.password, r.result, r.elapsed ?? '', r.ts]),
   ];
+}
+
+export function probeExportCsv() {
+  if (!_probeResults.length) return;
+  const rows = _buildProbeRows();
   const csv  = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
   saveAs(blob, `racf-probe-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.csv`);
+}
+
+export function probeExportJson() {
+  if (!_probeResults.length) return;
+  const ts = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+  exportFindingsJson('racf-probe', _buildProbeRows(), `racf-probe-${ts}.json`);
 }
 
 function _probeRenderResults() {
@@ -418,4 +428,4 @@ function _probeRenderResults() {
     }).join('') + '</table>';
 }
 
-Object.assign(window, { probeOnScreen, probeDetectSubsystem, probeLoadDefaults, probeLoadList, startProbe, stopProbe, probeExportCsv });
+Object.assign(window, { probeOnScreen, probeDetectSubsystem, probeLoadDefaults, probeLoadList, startProbe, stopProbe, probeExportCsv, probeExportJson });

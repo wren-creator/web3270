@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { saveAs } from './utils.js';
+import { saveAs, exportFindingsJson } from './utils.js';
 
 const FUZZ_ORDERS = [
   { label: 'SF  0x1D — Start Field',          byte: 0x1D },
@@ -231,18 +231,28 @@ export function fuzzModeChanged() {
   if (active) active.style.display = '';
 }
 
-export function fuzzExportCsv() {
-  if (!_fuzzResults.length) return;
-  const rows = [
+function _buildFuzzRows() {
+  return [
     ['#', 'label', 'response', 'raw_hex'],
     ..._fuzzResults.map((r, i) => [
       i + 1, r.label, r.response,
       (r.rawBytes || []).map(b => b.toString(16).padStart(2,'0')).join(' '),
     ]),
   ];
+}
+
+export function fuzzExportCsv() {
+  if (!_fuzzResults.length) return;
+  const rows = _buildFuzzRows();
   const csv  = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
   saveAs(blob, `fuzz-${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.csv`);
+}
+
+export function fuzzExportJson() {
+  if (!_fuzzResults.length) return;
+  const ts = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+  exportFindingsJson('protocol-fuzzer', _buildFuzzRows(), `fuzz-${ts}.json`);
 }
 
 function _fuzzRenderResults() {
@@ -269,4 +279,4 @@ function _fuzzRenderResults() {
     (_fuzzResults.length > 50 ? `<div style="font-size:9px;color:#555;margin-top:2px">Showing last 50 of ${_fuzzResults.length}</div>` : '');
 }
 
-Object.assign(window, { fuzzOnResult, startFuzz, stopFuzz, fuzzModeChanged, fuzzExportCsv });
+Object.assign(window, { fuzzOnResult, startFuzz, stopFuzz, fuzzModeChanged, fuzzExportCsv, fuzzExportJson });

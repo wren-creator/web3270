@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { saveAs } from './utils.js';
+import { saveAs, exportFindingsJson } from './utils.js';
 
 // ── Shared screen machinery ────────────────────────────────────────────────
 let _screenCb = null;
@@ -168,15 +168,26 @@ function _renderCics() {
     ).join('') + '</table>';
 }
 
-export function cicsExportCsv() {
-  if (!_cicsResults.length) return;
+function _buildCicsRows() {
   const rows = [['transaction', 'result', 'detail', 'timestamp']];
   const ts = new Date().toISOString();
   for (const r of _cicsResults) rows.push([r.txn, r.result, r.msg, ts]);
+  return rows;
+}
+
+export function cicsExportCsv() {
+  if (!_cicsResults.length) return;
+  const rows = _buildCicsRows();
   const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-  saveAs(new Blob([csv], { type: 'text/csv' }), `cics-txn-${ts.slice(0, 19).replace(/:/g, '-')}.csv`);
+  saveAs(new Blob([csv], { type: 'text/csv' }), `cics-txn-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.csv`);
+}
+
+export function cicsExportJson() {
+  if (!_cicsResults.length) return;
+  const ts = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+  exportFindingsJson('cics-txn-scanner', _buildCicsRows(), `cics-txn-${ts}.json`);
 }
 
 Object.assign(window, {
-  cicsOnScreen, cicsLoadDefaults, startCicsScan, stopCicsScan, cicsExportCsv,
+  cicsOnScreen, cicsLoadDefaults, startCicsScan, stopCicsScan, cicsExportCsv, cicsExportJson,
 });

@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { saveAs } from './utils.js';
+import { saveAs, exportFindingsJson } from './utils.js';
 
 // ── Screen hook (same pattern as probe.js) ─────────────────────────────────
 let _screenCb = null;
@@ -415,7 +415,7 @@ function _renderPermResults() {
 }
 
 // ── CSV export (all three tools) ───────────────────────────────────────────
-export function db2ExportCsv() {
+function _buildDb2Rows() {
   const rows = [['tool', 'key', 'status', 'detail', 'timestamp']];
   for (const r of _scanResults)
     rows.push(['subsystem-scan', r.subsystem, r.status, r.version || '', r.ts]);
@@ -424,15 +424,27 @@ export function db2ExportCsv() {
   for (const r of _permResults)
     rows.push(['perm-probe', r.resource, r.exists ? 'EXISTS' : 'NOT_DEFINED',
       r.permits.map(p => `${p.id}:${p.access}`).join(';'), r.ts]);
+  return rows;
+}
+
+export function db2ExportCsv() {
+  const rows = _buildDb2Rows();
   if (rows.length === 1) return;
   const csv  = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
   const name = `db2-scan-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.csv`;
   saveAs(new Blob([csv], { type: 'text/csv' }), name);
 }
 
+export function db2ExportJson() {
+  const rows = _buildDb2Rows();
+  if (rows.length === 1) return;
+  const ts = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+  exportFindingsJson('db2-scan', rows, `db2-scan-${ts}.json`);
+}
+
 Object.assign(window, {
   db2OnScreen, db2LoadDefaults, startDb2Scan, stopDb2Scan,
   startDb2AuthScan, stopDb2Auth,
   startDb2PermProbe, stopDb2Perm,
-  db2ExportCsv,
+  db2ExportCsv, db2ExportJson,
 });

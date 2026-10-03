@@ -2413,6 +2413,31 @@ Shops that lock DB2 libraries down meticulously often treat the IFS (`/`, `/QOpe
 
 ---
 
+## Appendix — Structured JSON findings export
+
+Every security tool's "Export CSV" button now has a "JSON" button right next to it. The CSV export was always meant for opening in a spreadsheet; the JSON export is for feeding a finding straight into a report or another tool without re-parsing a CSV. Same data, different shape, nothing about the CSV export changed.
+
+The file looks like this:
+
+```json
+{
+  "schema": "webterm-3270-findings-v1",
+  "tool": "as400-audit",
+  "generated": "2026-10-03T02:15:00.000Z",
+  "count": 3,
+  "findings": [
+    { "tool": "exit-point-audit", "item": "QIBM_QTMF_SERVER_REQ", "value": "*NONE", "risk": "CRITICAL", "detail": "Register an FTP exit program...", "timestamp": "2026-10-03T02:14:58.000Z" },
+    { "tool": "netserver-audit", "item": "GUESTUSRPRF", "value": "QNETSVRGST", "risk": "HIGH", "detail": "Guest profile is set...", "timestamp": "2026-10-03T02:14:59.000Z" }
+  ]
+}
+```
+
+The top-level `tool` field names the scanner that produced the file (matches the CSV filename's prefix — `as400-audit`, `racf-probe`, `recon`, `syscheck`, `cics-txn-scanner`, `db2-scan`, `fuzz`, `negotiation-analyzer`, `sdsf-job-scanner`, `stc-profile-scanner`, `buffer-bleed`, `field-length-disclosure`, `vm-minidisk-exposure`, `in-transit-encryption-monitor`). Each entry under `findings` carries whatever columns that tool's CSV export already has — the column names become the JSON keys, so the shape differs slightly tool to tool (an `as400-audit` entry has `risk`/`detail`, a `negotiation-analyzer` entry has `cipher`/`certExpiry`, and so on), but every tool's export always carries a `timestamp`.
+
+This is built on `exportFindingsJson()` in `public/js/utils.js` — a single shared function every tool's export button calls, reusing the exact same row-building logic the CSV export already had (refactored into a small `_buildXRows()` per module so CSV and JSON can't drift from each other).
+
+---
+
 ## Appendix — The .rec.json format
 
 The recording file is plain JSON and human-readable:

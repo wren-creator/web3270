@@ -1,4 +1,4 @@
-import { saveAs } from './utils.js';
+import { saveAs, exportFindingsJson } from './utils.js';
 
 // ── TN3270E Negotiation Analyzer + LU Fixation + Handshake Inspector ──────
 // Fetches /api/negotiate and surfaces TLS cipher, certificate chain,
@@ -143,8 +143,7 @@ export async function negotiateRefresh() {
   }
 }
 
-export function negotiateExportCsv() {
-  if (!_negotiateData.length) return;
+function _buildNegotiateRows() {
   const rows = [['wsId', 'host', 'port', 'tls', 'cipher', 'sessionReused', 'certSubject', 'certIssuer',
     'certExpiry', 'certSelfSigned', 'certChainDepth', 'tn3270e', 'model', 'luRequested', 'lu', 'luFixation']];
   for (const s of _negotiateData) {
@@ -155,8 +154,20 @@ export function negotiateExportCsv() {
       s.tn3270e ? 'YES' : 'NO', s.model || '',
       s.luRequested || '', s.lu || '', s.luFixation || '']);
   }
+  return rows;
+}
+
+export function negotiateExportCsv() {
+  if (!_negotiateData.length) return;
+  const rows = _buildNegotiateRows();
   const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
   saveAs(new Blob([csv], { type: 'text/csv' }), `negotiate-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.csv`);
 }
 
-Object.assign(window, { negotiateRefresh, negotiateExportCsv });
+export function negotiateExportJson() {
+  if (!_negotiateData.length) return;
+  const ts = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+  exportFindingsJson('negotiation-analyzer', _buildNegotiateRows(), `negotiate-${ts}.json`);
+}
+
+Object.assign(window, { negotiateRefresh, negotiateExportCsv, negotiateExportJson });

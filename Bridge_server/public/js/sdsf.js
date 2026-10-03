@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { saveAs } from './utils.js';
+import { saveAs, exportFindingsJson } from './utils.js';
 
 // ── Shared screen machinery ────────────────────────────────────────────────
 let _screenCb = null;
@@ -148,15 +148,25 @@ function _renderSdsf() {
   }).join('');
 }
 
-export function sdsfExportCsv() {
-  if (!_sdsfJobs.length) return;
+function _buildSdsfRows() {
   const rows = [['jobName', 'jobId', 'owner', 'prty', 'queue', 'status', 'risk', 'riskLabel']];
   for (const j of _sdsfJobs) {
     const r = _sdsfJobRisk(j);
     rows.push([j.jobName, j.jobId, j.owner, j.prty, j.queue, j.status, r.risk, r.label]);
   }
+  return rows;
+}
+
+export function sdsfExportCsv() {
+  if (!_sdsfJobs.length) return;
+  const rows = _buildSdsfRows();
   const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
   saveAs(new Blob([csv], { type: 'text/csv' }), `sdsf-jobs-${new Date().toISOString().slice(0, 10)}.csv`);
+}
+
+export function sdsfExportJson() {
+  if (!_sdsfJobs.length) return;
+  exportFindingsJson('sdsf-job-scanner', _buildSdsfRows(), `sdsf-jobs-${new Date().toISOString().slice(0, 10)}.json`);
 }
 
 // Export STC names so the STC profile scanner can import them
@@ -273,17 +283,27 @@ export function stcImportFromSdsf() {
   _stcStatus(`Imported ${names.length} STC name(s) from SDSF scan`);
 }
 
-export function stcExportCsv() {
-  if (!_stcResults.length) return;
+function _buildStcRows() {
   const rows = [['stc', 'status', 'user', 'group', 'privileged', 'risk', 'label']];
   for (const r of _stcResults) {
     rows.push([r.stc, r.status, r.user || '', r.group || '', r.privileged ? 'YES' : 'NO', r.risk, _stcRiskLabel(r)]);
   }
+  return rows;
+}
+
+export function stcExportCsv() {
+  if (!_stcResults.length) return;
+  const rows = _buildStcRows();
   const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
   saveAs(new Blob([csv], { type: 'text/csv' }), `stc-profiles-${new Date().toISOString().slice(0, 10)}.csv`);
 }
 
+export function stcExportJson() {
+  if (!_stcResults.length) return;
+  exportFindingsJson('stc-profile-scanner', _buildStcRows(), `stc-profiles-${new Date().toISOString().slice(0, 10)}.json`);
+}
+
 Object.assign(window, {
-  sdsfRefresh, sdsfExportCsv, sdsfGetStcNames,
-  startStcScan, stopStcScan, stcImportFromSdsf, stcExportCsv,
+  sdsfRefresh, sdsfExportCsv, sdsfExportJson, sdsfGetStcNames,
+  startStcScan, stopStcScan, stcImportFromSdsf, stcExportCsv, stcExportJson,
 });
