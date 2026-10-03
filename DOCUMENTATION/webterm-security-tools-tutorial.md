@@ -22,7 +22,7 @@ Once unlocked, the Security panel is organised into collapsible accordion sectio
 
 ### Guided walkthroughs
 
-The app ships **57 built-in narrated walkthroughs** (`public/js/walkthrough.js`). Open the **WALKTHROUGHS** section at the top of the Security panel, pick one from the dropdown, and click **▶ Start** — an overlay steps through the tool one instruction at a time, highlighting the control it's talking about, with an optional **"Do it for me"** button that fires the action. Six are general (connecting, multi-session tabs, split screen, macros, file transfer, AI assist); the other 51 map almost one-to-one to the parts in this document, including one each for the four z/TPF Security Console tools. The **z/TPF CONSOLE** section additionally has a combined tour of all four of its tools, launched with the **`?`** button in that section's header. These in-app walkthroughs and this document cover the same ground — use the walkthroughs for hands-on lab time, this document for reference and lesson planning.
+The app ships **69 built-in narrated walkthroughs** (`public/js/walkthrough.js`). Open the **WALKTHROUGHS** section at the top of the Security panel, pick one from the dropdown, and click **▶ Start** — an overlay steps through the tool one instruction at a time, highlighting the control it's talking about, with an optional **"Do it for me"** button that fires the action. Six are general (connecting, multi-session tabs, split screen, macros, file transfer, AI assist); the other 63 map almost one-to-one to the parts in this document, including one each for the four z/TPF Security Console tools. The **z/TPF CONSOLE** section additionally has a combined tour of all four of its tools, launched with the **`?`** button in that section's header. These in-app walkthroughs and this document cover the same ground — use the walkthroughs for hands-on lab time, this document for reference and lesson planning.
 
 ### Contents
 
@@ -45,8 +45,13 @@ The app ships **57 built-in narrated walkthroughs** (`public/js/walkthrough.js`)
 | 15 | Security Macros | 32 | **z/TPF Security Console** |
 | 16 | Mock z/OS LPAR | 33 | IBM i (AS/400) Security Tools — 33A/B/C |
 | 17 | Recon Tools | 34 | IBM i Security Tools, Wave 2 — 34A/B/C/D |
+| — | | 35 | IBM i Shipped Profile Audit |
+| — | | 36 | z/TPF Security Console, Wave 2 |
+| — | | 37 | IBM i Exit Point / IFS / NetServer Audit — 37A/B/C |
+| — | | 38 | IBM i Adopted-Authority Scanner / Menu Bypass Probe — 38A/B |
+| — | | 39 | VTAM Applid Enumerator |
 
-Appendix — The `.rec.json` format.
+Appendices — Structured JSON findings export, the `.rec.json` format.
 
 ---
 
@@ -2477,6 +2482,32 @@ This is distinct from the existing Exit Point audit (Part 37A): exit points are 
 ### Teaching scenario
 
 Every "Work with X" list screen the probe visits comes back CRITICAL, each one's command line genuinely executes `WRKACTJOB` (or, when the candidate itself *is* `WRKACTJOB`, `WRKOUTQ` instead) and lands on its real output. `DSPJOB`'s options screen comes back OK on the same test, its selection field only ever matches a two-digit option number or shows "not modelled," it never falls through to running arbitrary text as a command. The lesson for an engagement: never assume `LMTCPB(*YES)` on a profile means that profile can't run commands anywhere, it only means the *sign-on* command line is gone. Every custom menu option the user can reach needs the same check repeated.
+
+---
+
+## Part 39 — VTAM Applid Enumerator
+
+Issues `D NET,ID=applid` for a wordlist of VTAM application IDs, discovering what regions and consoles exist on the network without ever leaving TSO.
+
+### Location
+
+Security panel → RECON TOOLS → VTAM APPLID ENUMERATOR (below Encryption Audit Scanner)
+
+### How it works
+
+A real terminal switches to another VTAM application with `LOGON APPLID(x)`, but that command actually transfers the session there, so sweeping a wordlist of guesses that way would mean a fresh connection after every single attempt, the original item on the backlog that made this tool "needs a new-connection-per-probe approach." `D NET,ID=applid` sidesteps that entirely: it's a genuine VTAM operator/console display command, surfaced here straight from TSO READY (the same pragmatic shortcut this mock already takes with `ALLOCATE`/`ADDAPF`/`ALTUSER`, rather than modeling the full SDSF command-entry chain those normally go through). It answers whether a resource exists and its current state without the session ever leaving TSO.
+
+### Risk levels
+
+| Rating | Condition |
+|---|---|
+| FOUND_ACTIVE | the APPLID exists and is active right now |
+| FOUND_INACTIVE | the APPLID exists but isn't currently active — still discloses the naming convention is real |
+| NOT_FOUND | no VTAM resource matches — discloses nothing |
+
+### Teaching scenario
+
+On the mock, `TSO` comes back FOUND_ACTIVE, `CICSTEST` comes back FOUND_INACTIVE (sitting right next to `CICSPROD`, which is active), and anything not on the list comes back NOT_FOUND. The lesson: shops name VTAM resources predictably, a production region's name is usually enough to guess its test counterpart, and `D NET,ID=` confirms a guess without ever risking a `LOGON APPLID` that actually transfers the session somewhere you didn't mean to go.
 
 ---
 

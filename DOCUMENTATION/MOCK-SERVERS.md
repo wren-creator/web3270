@@ -125,6 +125,7 @@ Type a command at the `READY` line and press **Enter**.
 | `LISTA` / `LISTA STATUS` | Dataset list |
 | `WHOAMI` / `LISTUSER` | Userid/system/groups summary |
 | `PROFILE` | TSO profile settings |
+| `D NET,ID=applid` | VTAM operator display command — `IST075I`/`IST486I` if the APPLID exists (ACTIV/INACT), `IST663I` if it doesn't |
 | `GDDM` | GDDM graphics demo — see below |
 | *(anything else)* | `IKJ56500I COMMAND ... NOT FOUND` |
 

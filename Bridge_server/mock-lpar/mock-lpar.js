@@ -431,6 +431,37 @@ function tryListcat(cmd) {
   return lines.join('\n');
 }
 
+// VTAM resources this LPAR knows about, for `D NET,ID=applid`. A real shop's
+// APPLID list almost always includes regions nobody meant to expose this
+// way — CICSTEST sitting right next to CICSPROD, a NetView console APPLID
+// that's a finding on its own if it's reachable. `D NET,ID=` is a genuine
+// VTAM operator/console display command; this mock surfaces it straight
+// from TSO READY, the same pragmatic shortcut it already takes with
+// ALLOCATE/ADDAPF/ALTUSER, rather than modeling the full SDSF command-entry
+// chain those normally go through.
+const VTAM_APPLIDS = {
+  TSO:      { type: 'APPL', status: 'ACTIV' },
+  CICSPROD: { type: 'APPL', status: 'ACTIV' },
+  CICSTEST: { type: 'APPL', status: 'INACT' },
+  IMSPROD:  { type: 'APPL', status: 'ACTIV' },
+  NETVIEW:  { type: 'APPL', status: 'ACTIV' },
+};
+function tryDisplayNet(cmd) {
+  const m = cmd.match(/^D(?:ISPLAY)?\s+NET\s*,\s*ID=([\w$#@]+)/i);
+  if (!m) return null;
+  const id = m[1].toUpperCase();
+  const a = VTAM_APPLIDS[id];
+  const lines = ['IST097I DISPLAY ACCEPTED'];
+  if (!a) {
+    lines.push(`IST663I NO RESOURCES FOUND MATCHING ID=${id}`);
+  } else {
+    lines.push(`IST075I NAME = ${id}, TYPE = ${a.type}`);
+    lines.push(`IST486I STATUS= ${a.status}, DESIRED STATE= ${a.status}`);
+  }
+  lines.push('IST314I END');
+  return lines.join('\n');
+}
+
 function parseJclSteps(jclText) {
   const steps = [];
   const re = /^\/\/(\S+)\s+EXEC\s+PGM=(\S+)/gm;
@@ -1765,6 +1796,9 @@ function handleConnection(socket) {
           } else if (cmd.startsWith('LISTCAT')) {
             state.tsoOutput = tryListcat(cmd) || `IKJ56500I COMMAND ${cmd} NOT FOUND`;
             currentScreen = 'tsoCmd'; sendCurrentScreen();
+          } else if (/^D(?:ISPLAY)?\s+NET\s*,\s*ID=/i.test(cmd)) {
+            state.tsoOutput = tryDisplayNet(cmd) || `IKJ56500I COMMAND ${cmd} NOT FOUND`;
+            currentScreen = 'tsoCmd'; sendCurrentScreen();
           } else if (/^ALLOC(ATE)?\b/.test(cmd)) {
             const result = tryAllocate(cmd);
             state.readyMsg = result.ok ? '' : result.msg;
@@ -1827,6 +1861,9 @@ function handleConnection(socket) {
             sendCurrentScreen();
           } else if (cmd.startsWith('LISTCAT')) {
             state.tsoOutput = tryListcat(cmd) || `IKJ56500I COMMAND ${cmd} NOT FOUND`;
+            sendCurrentScreen();
+          } else if (/^D(?:ISPLAY)?\s+NET\s*,\s*ID=/i.test(cmd)) {
+            state.tsoOutput = tryDisplayNet(cmd) || `IKJ56500I COMMAND ${cmd} NOT FOUND`;
             sendCurrentScreen();
           } else if (/^ALLOC(ATE)?\b/.test(cmd)) {
             const result = tryAllocate(cmd);

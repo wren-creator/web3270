@@ -492,6 +492,116 @@ function _renderEncrypt() {
 }
 
 // ── Combined CSV export ────────────────────────────────────────────────────
+// ── Tool 5: VTAM Applid Enumerator ──────────────────────────────────────────
+// D NET,ID=applid is a genuine VTAM operator/console display command,
+// surfaced from TSO READY here the same pragmatic way the mock already
+// handles ALLOCATE/ADDAPF/ALTUSER. Unlike the credential probe's LOGON
+// APPLID(x) attempt (which actually transfers the session to that
+// application and can't just loop over a wordlist from TSO READY without
+// a new connection per try), D NET,ID= is non-destructive, it discloses
+// whether a resource exists and its state without ever leaving TSO.
+let _applidRunning = false;
+let _applidAborted = false;
+let _applidResults = [];   // { name, result, status, detail }
+
+const _APPLID_DEFAULTS = ['TSO', 'CICSPROD', 'CICSTEST', 'CICSPRD1', 'IMSPROD', 'IMSTEST', 'NETVIEW', 'VTAMAPPL'].join('\n');
+
+function _applidStatus(msg) {
+  const el = document.getElementById('reconApplidStatus');
+  if (el) el.textContent = msg;
+}
+
+export function applidLoadDefaults() {
+  const el = document.getElementById('reconApplidWordlist');
+  if (el) el.value = _APPLID_DEFAULTS;
+}
+
+export async function startReconApplid() {
+  if (_applidRunning) return;
+  if (!_isReady(state.liveScreenText || '')) {
+    _applidStatus('Navigate to a TSO READY prompt first'); return;
+  }
+  const raw = (document.getElementById('reconApplidWordlist') || {}).value || '';
+  const ids = raw.split('\n').map(s => s.trim().toUpperCase()).filter(s => s && !s.startsWith('#'));
+  if (!ids.length) { _applidStatus('Add APPLIDs to the wordlist'); return; }
+
+  _applidRunning = true;
+  _applidAborted = false;
+  _applidResults = [];
+  _renderApplid();
+  document.getElementById('reconApplidStartBtn').style.display = 'none';
+  document.getElementById('reconApplidStopBtn').style.display  = '';
+
+  for (let i = 0; i < ids.length; i++) {
+    if (_applidAborted) break;
+    const id = ids[i];
+    _applidStatus(`[${i + 1}/${ids.length}] D NET,ID=${id}…`);
+    try {
+      _fillInput(`D NET,ID=${id}`);
+      await new Promise(r => setTimeout(r, 120));
+      _pressEnter();
+      const output = await _collectOutput(6000);
+
+      let result, status, detail;
+      if (/IST663I/.test(output)) {
+        result = 'NOT_FOUND'; status = ''; detail = 'no VTAM resource matches this APPLID';
+      } else {
+        const nameLine   = output.match(/IST075I\s+NAME\s*=\s*(\S+?),\s*TYPE\s*=\s*(\S+)/);
+        const statusLine = output.match(/IST486I\s+STATUS=\s*(\S+?),/);
+        if (nameLine && statusLine) {
+          status  = statusLine[1];
+          result  = status === 'ACTIV' ? 'FOUND_ACTIVE' : 'FOUND_INACTIVE';
+          detail  = `TYPE=${nameLine[2]}, STATUS=${status}`;
+        } else {
+          result = 'ERR'; status = ''; detail = 'unrecognized response';
+        }
+      }
+      _applidResults.push({ name: id, result, status, detail });
+      _renderApplid();
+      await new Promise(r => setTimeout(r, 250));
+    } catch (err) {
+      _applidResults.push({ name: id, result: 'ERR', status: '', detail: err.message });
+      _renderApplid();
+    }
+  }
+
+  _applidRunning = false;
+  document.getElementById('reconApplidStartBtn').style.display = '';
+  document.getElementById('reconApplidStopBtn').style.display  = 'none';
+  if (!_applidAborted) {
+    const found = _applidResults.filter(r => r.result.startsWith('FOUND')).length;
+    _applidStatus(`Done — ${_applidResults.length} checked, ${found} found`);
+  }
+}
+
+export function stopReconApplid() {
+  _applidAborted = true;
+  _applidRunning = false;
+  _screenCb = null;
+  _applidStatus('Stopped');
+  document.getElementById('reconApplidStartBtn').style.display = '';
+  document.getElementById('reconApplidStopBtn').style.display  = 'none';
+}
+
+function _renderApplid() {
+  const el = document.getElementById('reconApplidOut');
+  if (!el) return;
+  if (!_applidResults.length) { el.innerHTML = ''; return; }
+  const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  const C = { FOUND_ACTIVE: '#e06060', FOUND_INACTIVE: '#d0a060', NOT_FOUND: '#555', ERR: '#e0a060' };
+  const sorted = [..._applidResults].sort((a, b) => (a.result.startsWith('FOUND') ? 0 : 1) - (b.result.startsWith('FOUND') ? 0 : 1));
+  el.innerHTML =
+    '<table style="width:100%;border-collapse:collapse;font-size:10px;margin-top:4px">' +
+    '<tr style="color:var(--text-muted)"><th style="text-align:left;padding:2px 4px;font-weight:normal">APPLID</th>' +
+    '<th style="text-align:left;padding:2px 4px;font-weight:normal">RESULT</th>' +
+    '<th style="text-align:left;padding:2px 4px;font-weight:normal">DETAIL</th></tr>' +
+    sorted.map(r =>
+      `<tr><td style="padding:2px 4px;color:#ccc;font-family:'IBM Plex Mono',monospace">${esc(r.name)}</td>` +
+      `<td style="padding:2px 4px;color:${C[r.result] || '#999'};font-weight:${r.result.startsWith('FOUND') ? '700' : 'normal'}">${esc(r.result)}</td>` +
+      `<td style="padding:2px 4px;color:#999;font-size:9px">${esc(r.detail)}</td></tr>`
+    ).join('') + '</table>';
+}
+
 function _buildReconRows() {
   const rows = [['tool', 'key', 'value', 'flag', 'timestamp']];
   if (_settingsResult) {
@@ -510,6 +620,8 @@ function _buildReconRows() {
     rows.push(['dataset-recon', d.name, '', d.flagged ? d.reason : '', new Date().toISOString()]);
   for (const e of _encryptResults)
     rows.push(['encrypt-audit', e.name, e.encrypted === null ? 'ERR' : e.encrypted ? 'ENCRYPTED' : 'UNENCRYPTED', e.keyLabel || e.risk, new Date().toISOString()]);
+  for (const a of _applidResults)
+    rows.push(['vtam-applid-enum', a.name, a.result, a.detail, new Date().toISOString()]);
   return rows;
 }
 
@@ -531,4 +643,5 @@ Object.assign(window, {
   reconOnScreen, startReconSettings, startReconEnum, stopReconEnum,
   datasetLoadDefaults, startReconDataset, stopReconDataset, reconExportCsv, reconExportJson,
   encryptImportFlagged, startReconEncrypt, stopReconEncrypt,
+  applidLoadDefaults, startReconApplid, stopReconApplid,
 });

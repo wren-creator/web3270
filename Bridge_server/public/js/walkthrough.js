@@ -1320,6 +1320,59 @@ const _WALKTHROUGHS = [
     ],
   },
 
+  // ── Recon 6: VTAM Applid Enumerator ───────────────────────────────
+  {
+    id:       'recon-vtam-applid',
+    category: 'security',
+    title:    'VTAM Applid Enumerator',
+    desc:     'Issue D NET,ID=applid for a wordlist of VTAM application IDs, discovering what regions and consoles exist on the network without ever leaving TSO.',
+    steps: [
+      {
+        title: 'Why this is different from LOGON APPLID',
+        body:  'A real terminal switches to another VTAM application with LOGON APPLID(x), but that actually transfers the session there, so sweeping a wordlist of guesses would mean reconnecting after every single attempt. D NET,ID=applid is a genuine VTAM operator display command instead: it answers whether a resource exists and its current state without ever leaving the TSO session it was issued from.',
+        highlight: 'reconApplidOut',
+        autoFn: null,
+      },
+      {
+        title: 'Navigate to TSO READY',
+        body:  'You must be at a TSO READY prompt. Exit ISPF if needed. The APP field in the OIA bar should show TSO in green.',
+        highlight: 'oiaApp',
+        autoFn: null,
+      },
+      {
+        title: 'Unlock and find the enumerator',
+        body:  'Click 🔒, enter the security password. In the RECON TOOLS section, scroll to the VTAM APPLID ENUMERATOR subsection at the bottom.',
+        highlight: 'secBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Load or edit the wordlist',
+        body:  'Click "Load defaults" for a starter set (TSO, a couple of CICS regions, IMS, NETVIEW), or paste your own guesses, one per line. Real shops often name regions predictably, CICSPROD next to CICSTEST, a NetView console APPLID nobody meant to make guessable.',
+        highlight: 'reconApplidWordlist',
+        autoFn: 'applidLoadDefaults',
+        autoLabel: 'Load the default wordlist for me',
+      },
+      {
+        title: 'Run the sweep',
+        body:  'Click ▶ ENUMERATE. The tool issues D NET,ID=applid for each name in turn and classifies the response. Read-only, nothing here ever leaves the TSO session.',
+        highlight: 'reconApplidStartBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Read the findings',
+        body:  'FOUND_ACTIVE means the resource exists and is live right now, the clearest hit. FOUND_INACTIVE still discloses that it exists, just not currently active, worth noting since it confirms the naming convention even if this particular instance isn’t reachable today. NOT_FOUND discloses nothing, that APPLID simply doesn’t exist on this network.',
+        highlight: 'reconApplidOut', autoFn: null,
+      },
+      {
+        title: 'Export and report',
+        body:  'Click "↓ Export all Recon results CSV" (or the JSON button next to it) to save the findings alongside the rest of this session’s recon results.',
+        highlight: 'reconApplidOut',
+        autoFn: 'reconExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
   // ── SysCheck 1: APF Library Scanner ──────────────────────────────
   {
     id:       'apf-library-scanner',
