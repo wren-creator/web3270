@@ -1776,6 +1776,46 @@ const _WALKTHROUGHS = [
     ],
   },
 
+  // ── SDSF 3: Job Output Harvester ──────────────────────────────────
+  {
+    id:       'sdsf-job-output-harvester',
+    category: 'security',
+    title:    'SDSF Job Output Harvester',
+    desc:     'Actively navigates into each job’s real output (S jobname) instead of just reading the list row, flagging non-zero condition codes and sensitive-looking keywords.',
+    steps: [
+      {
+        title: 'Why this is different from the SDSF Job Parser',
+        body:  'The parser above only reads whatever job list is already on screen, list-level status, nothing more. This tool actively drives into each job’s actual output the way an operator reviewing a failed run would, pulling the real step-by-step content: condition codes, step disposition messages, anything a step’s output named.',
+        highlight: 'sdsfHarvestOut',
+        autoFn: null,
+      },
+      {
+        title: 'Give it something to harvest',
+        body:  'At TSO READY, SUBMIT a job or two first if none are queued yet, e.g. SUBMIT BADJOB for a non-zero return code, SUBMIT QTRRPT for a clean one. Then navigate to SDSF (ISPF → option M → ST) so there’s a job list on screen.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Unlock and run the harvest',
+        body:  'Click 🔒, enter the password, find SDSF JOB &amp; STC SCANNER → SDSF JOB OUTPUT HARVESTER. Click ▶ HARVEST OUTPUT. For each job on the list, the tool types "S jobname", reads the real output screen, then PF3s back for the next one.',
+        highlight: 'sdsfHarvestBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Read the findings',
+        body:  'FLAGGED means either a non-zero condition code (the job didn’t end cleanly, worth knowing about) or a sensitive-looking keyword turned up in the harvested output (PASSWORD, CREDENTIAL, SECRET, and similar). OK means neither, nothing stood out in what was actually pulled from the job’s own output.',
+        highlight: 'sdsfHarvestOut', autoFn: null,
+      },
+      {
+        title: 'Export',
+        body:  'Click ↓ Export CSV (or the JSON button next to it) for a per-job record: name, job ID, flagged status, and the specific reason.',
+        highlight: 'sdsfHarvestOut',
+        autoFn: 'sdsfHarvestExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
   // ── DB2 Scenario 1: Subsystem Scanner ────────────────────────────
   {
     id:       'db2-subsystem-scan',

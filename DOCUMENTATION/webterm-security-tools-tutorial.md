@@ -22,7 +22,7 @@ Once unlocked, the Security panel is organised into collapsible accordion sectio
 
 ### Guided walkthroughs
 
-The app ships **70 built-in narrated walkthroughs** (`public/js/walkthrough.js`). Open the **WALKTHROUGHS** section at the top of the Security panel, pick one from the dropdown, and click **▶ Start** — an overlay steps through the tool one instruction at a time, highlighting the control it's talking about, with an optional **"Do it for me"** button that fires the action. Six are general (connecting, multi-session tabs, split screen, macros, file transfer, AI assist); the other 64 map almost one-to-one to the parts in this document, including one each for the four z/TPF Security Console tools. The **z/TPF CONSOLE** section additionally has a combined tour of all four of its tools, launched with the **`?`** button in that section's header. These in-app walkthroughs and this document cover the same ground — use the walkthroughs for hands-on lab time, this document for reference and lesson planning.
+The app ships **71 built-in narrated walkthroughs** (`public/js/walkthrough.js`). Open the **WALKTHROUGHS** section at the top of the Security panel, pick one from the dropdown, and click **▶ Start** — an overlay steps through the tool one instruction at a time, highlighting the control it's talking about, with an optional **"Do it for me"** button that fires the action. Six are general (connecting, multi-session tabs, split screen, macros, file transfer, AI assist); the other 65 map almost one-to-one to the parts in this document, including one each for the four z/TPF Security Console tools. The **z/TPF CONSOLE** section additionally has a combined tour of all four of its tools, launched with the **`?`** button in that section's header. These in-app walkthroughs and this document cover the same ground — use the walkthroughs for hands-on lab time, this document for reference and lesson planning.
 
 ### Contents
 
@@ -35,7 +35,7 @@ The app ships **70 built-in narrated walkthroughs** (`public/js/walkthrough.js`)
 | 5 | Session Viewer | 22 | DB2 Security Tools |
 | 6 | Proxy Viewer | 23 | TN3270E Negotiation Analyzer |
 | 7 | Extended Field Attribute Rendering (SFE / SA) | 24 | SDSF Job Scanner |
-| 8 | MITM Live Traffic Modification | 25 | STC Profile Scanner |
+| 8 | MITM Live Traffic Modification | 25 | STC Profile Scanner, 25A SDSF Job Output Harvester |
 | 9 | Screen Fingerprinting · Session Broadcast · Color Reveal | 26 | LU Name Fixation |
 | 10 | Traffic Recorder | 27 | TN3270E Handshake Trace |
 | 11 | Session Anomaly Annotations (ANOM) | 28 | Field Length Disclosure |
@@ -1534,6 +1534,38 @@ After running the SDSF Job Scanner, click "⇦ Import STCs from SDSF" to populat
 **Remediation:** For each HIGH finding, create a RACF STARTED profile: `RDEFINE STARTED stcname.* STDATA(USER(stcuser) GROUP(stcgrp))`. Then `SETROPTS RACLIST(STARTED) REFRESH` to activate. Create a dedicated low-privilege user ID for each STC rather than sharing one system account.
 
 > **Note:** All SDSF and RACF probe tools display `FOR AUTHORIZED USE ONLY` in the Security panel. Running these checks against a system without written authorization is illegal under the Computer Fraud and Abuse Act and equivalent laws.
+
+---
+
+## Part 25A — SDSF Job Output Harvester
+
+The SDSF Job Scanner (Part 24) only reads whatever job list is already on screen, list-level status, nothing more. This tool actively navigates into each job's real output the way an operator reviewing a failed run would: it types `S jobname` for every job on the current SDSF list, reads back the actual output screen, PF3s to the list, and repeats.
+
+### Location
+
+Security panel → SDSF JOB & STC SCANNER → SDSF JOB OUTPUT HARVESTER
+
+### Prerequisites
+
+Navigate to the SDSF ST or DA panel first (`ISPF` → option `M` → `ST`), with at least one job on the list. If nothing's queued yet, `SUBMIT` a JCL member or two from TSO READY before navigating to SDSF.
+
+### How it works
+
+For each job row the SDSF Job Scanner's own parser discovers, the Harvester issues `S jobname`, reads the resulting output screen, and checks it for two things:
+
+- **A non-zero condition code** — parsed from the real `ENDED -- MAXIMUM CONDITION CODE nnnn` line the mock's job-detail screen already shows.
+- **A sensitive-looking keyword** — `PASSWORD`, `CREDENTIAL`, `SECRET`, `PRIVATE KEY`, `PWD` — anywhere in the harvested output, the same keyword family the Dataset Recon Scanner already flags by.
+
+### Risk levels
+
+| Rating | Condition |
+|---|---|
+| FLAGGED | non-zero condition code, or a sensitive keyword in the output |
+| OK | neither |
+
+### Teaching scenario
+
+`SUBMIT BADJOB` then `SUBMIT QTRRPT`, navigate to SDSF ST, and run the Harvester. `BADJOB` comes back FLAGGED (condition code 0012, a step genuinely failed), `QTRRPT` comes back OK (clean two-step run, condition code 0000). The lesson: the list-level status column only ever says `OUTPUT`, the job finished, nothing about whether it finished *cleanly*. The real content is one `S jobname` away, and in a shop with dozens of jobs a day, nobody is reading all of it by hand.
 
 ---
 

@@ -74,23 +74,27 @@ function _isSdsfScreen(txt) {
     || /SDSF\s+PRIMARY/i.test(txt);
 }
 
-// Parse job rows from SDSF ST/DA/JDS panels
-// Typical format: NP JOBNAME JOBID OWNER PRTY QUEUE STATUS
+// Parse job rows from SDSF ST/DA/JDS panels. This mock's actual ST panel
+// (screenSdsfList in mock-lpar.js) is JOBNAME/JobID/Owner/Status/RC, five
+// columns, no PRTY or QUEUE at all — verified live, the original regex here
+// assumed a generic six-column SDSF shape this mock never actually produces
+// and silently returned zero rows against it every time. prty/queue are
+// kept as placeholder fields so _sdsfJobRisk/_renderSdsf/_buildSdsfRows
+// below don't need to change shape.
 function _parseSdsfJobs(txt) {
   const jobs = [];
   for (const line of txt.split('\n')) {
-    // Match: optional NP prefix, job name (≤8 chars), jobid (≤8 chars), owner, prty, queue, optional status
-    const m = line.match(/^\s*[_\s]{0,3}([A-Z@#$][A-Z0-9@#$]{0,7})\s+([A-Z]{3}[0-9]{3,6}|STC[0-9]{5}|TSU[0-9]{5})\s+([A-Z0-9@#$]{1,8})\s+(\d{1,3})\s+(\S+)(?:\s+\S+\s+\S+\s+(\S.*?))?\s*$/);
+    const m = line.match(/^\s*([A-Z@#$][A-Z0-9@#$]{0,7})\s+((?:JOB|STC|TSU)[0-9]{3,6})\s+([A-Z0-9@#$]{1,8})\s+(OUTPUT|ACTIVE|QUEUED|HOLD)\s+(\S+)\s*$/i);
     if (!m) continue;
-    const [, jobName, jobId, owner, prty, queue, status] = m;
-    if (['JOBNAME', 'NP'].includes(jobName)) continue;
+    const [, jobName, jobId, owner, status, rc] = m;
     jobs.push({
       jobName: jobName.trim(),
       jobId:   jobId.trim(),
       owner:   owner.trim(),
-      prty:    parseInt(prty, 10),
-      queue:   queue.trim(),
-      status:  (status || '').trim(),
+      prty:    0,
+      queue:   status.trim(),
+      status:  status.trim(),
+      rc:      rc.trim(),
     });
   }
   return jobs;
@@ -303,7 +307,121 @@ export function stcExportJson() {
   exportFindingsJson('stc-profile-scanner', _buildStcRows(), `stc-profiles-${new Date().toISOString().slice(0, 10)}.json`);
 }
 
+// ── Tool 3: SDSF Job Output Harvester ────────────────────────────────────────
+// Tool 1 only reads whatever job list is already on screen, it never looks
+// past the list row. This one actively navigates into each job's real
+// output (S jobname), the same way an operator drilling into SDSF ST would,
+// and harvests the actual content, step RC lines, step disposition
+// messages, anything that looks like a credential — instead of just the
+// list-level status a passive read already shows.
+
+let _harvestRunning  = false;
+let _harvestResults  = [];  // { jobName, jobId, rc, flagged, reason, excerpt }
+
+// Real JCL/output rarely spells out "PASSWORD=x" in a step-disposition
+// message (that would be a different, dataset-content-level finding), but a
+// job's own output routinely names what it touched, including anything
+// sensitive-looking a step referenced, which is exactly what harvesting is
+// for. Same keyword family the Dataset Recon Scanner already flags by.
+const _HARVEST_SENSITIVE = /PASSWORD|CREDENTIAL|SECRET|PRIVATE\.?KEY|\bPWD\b/i;
+
+function _harvestStatus(msg) {
+  const el = document.getElementById('sdsfHarvestStatus');
+  if (el) el.textContent = msg;
+}
+
+export async function startSdsfHarvest() {
+  if (_harvestRunning) return;
+  const txt = _currentScreenText();
+  if (!_isSdsfScreen(txt)) {
+    _harvestStatus('Navigate to the SDSF ST/DA panel first'); return;
+  }
+  const jobs = _parseSdsfJobs(txt);
+  if (!jobs.length) {
+    _harvestStatus('No jobs found on the current SDSF screen — submit a job or two first'); return;
+  }
+
+  _harvestRunning = true;
+  _harvestResults = [];
+  _renderHarvest();
+  document.getElementById('sdsfHarvestBtn').disabled = true;
+
+  for (let i = 0; i < jobs.length; i++) {
+    const job = jobs[i];
+    _harvestStatus(`[${i + 1}/${jobs.length}] Harvesting ${job.jobName} (${job.jobId})…`);
+    try {
+      _fillInput(`S ${job.jobName}`);
+      await new Promise(r => setTimeout(r, 120));
+      _pressEnter();
+      const out = await _collectOutput(6000);
+
+      const rcMatch = out.match(/MAXIMUM CONDITION CODE\s+(\d+)/);
+      const rc = rcMatch ? parseInt(rcMatch[1], 10) : null;
+      const hit = _HARVEST_SENSITIVE.exec(out);
+      const flagged = !!hit || (rc !== null && rc > 0);
+      const reason = hit ? `sensitive keyword "${hit[0]}" in output`
+        : rc !== null && rc > 0 ? `non-zero condition code ${rc}`
+        : rc === null ? 'job still queued/active, no RC yet' : '';
+      const excerpt = out.split('\n').map(l => l.trim()).filter(Boolean).slice(0, 4).join(' | ');
+
+      _harvestResults.push({ jobName: job.jobName, jobId: job.jobId, rc, flagged, reason, excerpt });
+
+      // Return to the list the same way a real operator would (PF3), ready
+      // for the next S jobname.
+      _send({ type: 'key', aid: 'PF3', fields: [] });
+      await new Promise(r => setTimeout(r, 150));
+    } catch (err) {
+      _harvestResults.push({ jobName: job.jobName, jobId: job.jobId, rc: null, flagged: false, reason: 'error: ' + err.message, excerpt: '' });
+    }
+    _renderHarvest();
+    await new Promise(r => setTimeout(r, 250));
+  }
+
+  const flaggedCount = _harvestResults.filter(r => r.flagged).length;
+  _harvestStatus(`Done — ${_harvestResults.length} job(s) harvested, ${flaggedCount} flagged`);
+  _harvestRunning = false;
+  document.getElementById('sdsfHarvestBtn').disabled = false;
+}
+
+function _renderHarvest() {
+  const el = document.getElementById('sdsfHarvestOut');
+  if (!el) return;
+  if (!_harvestResults.length) { el.innerHTML = ''; return; }
+  const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  const sorted = [..._harvestResults].sort((a, b) => (b.flagged ? 1 : 0) - (a.flagged ? 1 : 0));
+  el.innerHTML = sorted.map(r =>
+    `<div style="padding:3px 0;border-bottom:1px solid #111;font-size:9px;font-family:'IBM Plex Mono',monospace">` +
+    `<div style="display:flex;align-items:baseline;gap:6px">` +
+    `<span style="color:${r.flagged ? '#e0a060' : '#3a6a3a'};font-weight:700;min-width:52px">${r.flagged ? 'FLAGGED' : 'OK'}</span>` +
+    `<span style="color:#aaa;min-width:64px">${esc(r.jobName)}</span>` +
+    `<span style="color:#666;min-width:72px">${esc(r.jobId)}</span>` +
+    `<span style="color:#666">RC=${r.rc ?? '—'}</span>` +
+    `<span style="color:#888">${esc(r.reason)}</span></div>` +
+    (r.excerpt ? `<div style="color:#555;padding-left:58px;font-size:8px">${esc(r.excerpt)}</div>` : '') +
+    `</div>`
+  ).join('');
+}
+
+function _buildHarvestRows() {
+  const ts = new Date().toISOString();
+  return _harvestResults.map(r => [r.jobName, r.jobId, r.flagged ? 'FLAGGED' : 'OK', `RC=${r.rc ?? '—'} ${r.reason}`, ts]);
+}
+
+export function sdsfHarvestExportCsv() {
+  if (!_harvestResults.length) return;
+  const rows = [['jobName', 'jobId', 'flagged', 'detail', 'timestamp'], ..._buildHarvestRows()];
+  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+  saveAs(new Blob([csv], { type: 'text/csv' }), `sdsf-harvest-${new Date().toISOString().slice(0, 10)}.csv`);
+}
+
+export function sdsfHarvestExportJson() {
+  if (!_harvestResults.length) return;
+  const rows = [['jobName', 'jobId', 'flagged', 'detail', 'timestamp'], ..._buildHarvestRows()];
+  exportFindingsJson('sdsf-job-output-harvester', rows, `sdsf-harvest-${new Date().toISOString().slice(0, 10)}.json`);
+}
+
 Object.assign(window, {
   sdsfRefresh, sdsfExportCsv, sdsfExportJson, sdsfGetStcNames,
   startStcScan, stopStcScan, stcImportFromSdsf, stcExportCsv, stcExportJson,
+  startSdsfHarvest, sdsfHarvestExportCsv, sdsfHarvestExportJson,
 });
