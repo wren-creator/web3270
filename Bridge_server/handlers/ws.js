@@ -17,6 +17,7 @@ import { handleSshConnect } from '../features/ssh.js';
 import { handleFuzz } from '../features/fuzz.js';
 import * as mitm from '../features/mitm.js';
 import { createHandlers as createXferHandlers, screenToLinesMasked } from '../features/transfer.js';
+import { rejectPatternFor } from '../features/pool-limits.js';
 
 const CAPS = { mockLpar: true, securityTools: true };
 
@@ -135,6 +136,28 @@ export function createWsHandler({ config, logger, sessions, Ebcdic }) {
       session.connectedAt    = Date.now();
       session.lastActivityAt = Date.now();
       session.connState      = 'connecting';
+      session.poolRejected   = false;
+
+      // VTAM-Operator Pool/Session Dashboard, exhaustion-alerting layer (b):
+      // a shop-specific "no session/LU available" reject pattern, matched
+      // against the first screen only — same regex-on-screen-text trick
+      // probe.js already uses for lockout detection, just a one-shot check
+      // here instead of a sweep loop. Wording isn't standardized across
+      // installations, so this only ever fires when an operator has
+      // actually configured one for this LPAR in pool-limits.json.
+      {
+        const lparId = PROFILE_BY_HOST_PORT.get(`${host}:${port}`)?.id || null;
+        const poolRejectRe = lparId ? rejectPatternFor(lparId) : null;
+        if (poolRejectRe) {
+          session.once('screen', screenData => {
+            const text = (screenData.rows || []).map(r => r.map(c => c.char || ' ').join('')).join('\n');
+            if (poolRejectRe.test(text)) {
+              session.poolRejected = true;
+              logger.warn(`[ws:${wsId}] Pool-exhaustion reject pattern matched for LPAR ${lparId}`);
+            }
+          });
+        }
+      }
 
       const macroHandler = new MacroHandler(session, ws, wsId, macroStore);
       CopilotHandler.sendProviderInfo(ws);

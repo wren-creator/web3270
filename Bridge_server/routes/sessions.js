@@ -22,6 +22,7 @@ function _snapshot(wsId, s, now) {
     isMock:      !!s.isMock,
     tls:         s.tlsVersion || 'PLAIN',
     state,
+    poolRejected: !!s.poolRejected,
     orphaned:    s._destroyed || !wsOpen,
     originIp:    s.originIp || null,
     connectedAt: s.connectedAt || null,

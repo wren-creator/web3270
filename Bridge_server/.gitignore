@@ -10,6 +10,9 @@ macros/accounts/
 ssh-hosts.txt
 lpars.txt
 
+# VTAM pool-dashboard thresholds — operator/shop-specific, never commit
+pool-limits.json
+
 # RACF PROBE wordlist — operator's own default-credential list, edited in place
 default-accounts.txt
 

@@ -15,6 +15,7 @@ import * as wire       from '../routes/wire.js';
 import * as esm        from '../routes/esm.js';
 import * as probeWl    from '../routes/probe-wordlist.js';
 import * as sessionsRt from '../routes/sessions.js';
+import * as poolLimits from '../routes/pool-limits.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -30,7 +31,7 @@ const MIME = {
   '.woff2':'font/woff2',
 };
 
-const ROUTES = [traffic, logs, profiles, sshHosts, macros, macroRun, recording, security, negotiate, wire, esm, probeWl, sessionsRt];
+const ROUTES = [traffic, logs, profiles, sshHosts, macros, macroRun, recording, security, negotiate, wire, esm, probeWl, sessionsRt, poolLimits];
 
 export function createRequestHandler({ config, logger, sessions }) {
   const ctx = { config, logger, sessions };

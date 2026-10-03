@@ -1688,6 +1688,52 @@ const _WALKTHROUGHS = [
     ],
   },
 
+  // ── VTAM-Operator Pool/Session Dashboard ───────────────────────────
+  {
+    id:       'vtam-pool-dashboard',
+    category: 'security',
+    title:    'VTAM-Operator Pool/Session Dashboard',
+    desc:     'Groups every active session by LPAR, showing live count against a configured threshold and each session’s LU requested vs. granted — catches pool exhaustion before it takes an LPAR down.',
+    steps: [
+      {
+        title: 'Why this matters',
+        body:  'A VTAM session/LU pool has a fixed size. A shop that never watches how close to that ceiling it’s running finds out the hard way, new connections start failing, usually at the worst possible time. This dashboard surfaces the count per LPAR continuously instead of discovering the limit by hitting it.',
+        highlight: 'poolOut',
+        autoFn: null,
+      },
+      {
+        title: 'Optional: set a threshold',
+        body:  'Copy pool-limits.json.example to pool-limits.json and add a maxSessions value for any LPAR id (matching the id column in lpars.txt) you want WARN/CRITICAL thresholds for. An LPAR with no entry still shows its live count, just without a percentage-based alert.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Unlock and refresh',
+        body:  'Click 🔒, enter the password, find VTAM-OPERATOR POOL/SESSION DASHBOARD (below the TN3270E Negotiation Analyzer). Click ↺ Refresh. It groups every active session by the LPAR it’s connected to.',
+        highlight: 'poolOut',
+        autoFn: 'poolRefresh',
+        autoLabel: 'Refresh for me',
+      },
+      {
+        title: 'Reading a card',
+        body:  'Each LPAR gets one card: session count against its configured max (or just a live count if none is set), colored by severity, and a table of every session on it with LU requested vs. granted and connection state. WARN at 80% of the configured max, CRITICAL at 100%, or CRITICAL immediately regardless of count if a session’s very first screen matched a configured shop-specific reject pattern (see below).',
+        highlight: 'poolOut', autoFn: null,
+      },
+      {
+        title: 'Reject-pattern detection',
+        body:  'Some shops reject a connection outright when the pool is exhausted, showing something like "NO LU AVAILABLE" or "SESSION LIMIT REACHED" instead of a normal logon screen, wording isn’t standardized across installations, so add a rejectPattern regex for that LPAR’s id in pool-limits.json if you know your shop’s wording. It’s checked once, against the first screen only, right after connect, same regex-on-screen-text approach the RACF Probe already uses for lockout detection.',
+        highlight: 'poolOut', autoFn: null,
+      },
+      {
+        title: 'Export',
+        body:  'Click ↓ Export CSV (or the JSON button next to it) for a per-LPAR record: count, configured max, severity, and reject-pattern match count.',
+        highlight: 'poolOut',
+        autoFn: 'poolExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
   // ── Wave 14: SDSF Job Scanner ─────────────────────────────────────
   {
     id:       'sdsf-job-scanner',

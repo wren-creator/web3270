@@ -1279,6 +1279,23 @@
         </div>
       </div>
 
+      <!-- VTAM-OPERATOR POOL/SESSION DASHBOARD section -->
+      <div class="sec-section">
+        <div class="sec-section-hdr">VTAM-OPERATOR POOL/SESSION DASHBOARD</div>
+        <div class="sec-section-body">
+          <div class="sec-panel-hint" style="margin-bottom:8px">Groups every active session by LPAR, showing live count against an optional configured threshold (pool-limits.json — WARN at 80%, CRITICAL at 100%) and each session's LU requested vs. granted. CRITICAL also fires immediately if a session's first screen matched a configured shop-specific "no session available" reject pattern, regardless of count.</div>
+
+          <div style="margin-bottom:6px;display:flex;align-items:center;gap:6px">
+            <button onclick="poolRefresh()" style="background:none;border:1px solid #446688;border-radius:3px;color:#446688;font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↺ Refresh</button>
+            <button onclick="poolExportCsv()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ Export CSV</button>
+            <button onclick="poolExportJson()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ JSON</button>
+            <span id="poolStatus" style="font-size:9px;color:var(--text-muted)">Click Refresh to group active sessions by LPAR</span>
+          </div>
+
+          <div id="poolOut" style="min-height:30px"></div>
+        </div>
+      </div>
+
       <!-- SDSF JOB SCANNER + STC PROFILE SCANNER section -->
       <div class="sec-section">
         <div class="sec-section-hdr">SDSF JOB &amp; STC SCANNER</div>

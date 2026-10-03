@@ -1,0 +1,7 @@
+{
+  "_comment": "VTAM-Operator Pool/Session Dashboard — per-LPAR session thresholds and shop-specific reject-text patterns. Copy to pool-limits.json (gitignored) and edit. Both fields are optional per LPAR id; an LPAR with no entry here just shows a live count with no WARN/CRIT threshold.",
+  "GIBSON": {
+    "maxSessions": 5,
+    "rejectPattern": "NO LU AVAILABLE|SESSION LIMIT REACHED"
+  }
+}

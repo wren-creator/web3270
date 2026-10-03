@@ -22,7 +22,7 @@ Once unlocked, the Security panel is organised into collapsible accordion sectio
 
 ### Guided walkthroughs
 
-The app ships **71 built-in narrated walkthroughs** (`public/js/walkthrough.js`). Open the **WALKTHROUGHS** section at the top of the Security panel, pick one from the dropdown, and click **▶ Start** — an overlay steps through the tool one instruction at a time, highlighting the control it's talking about, with an optional **"Do it for me"** button that fires the action. Six are general (connecting, multi-session tabs, split screen, macros, file transfer, AI assist); the other 65 map almost one-to-one to the parts in this document, including one each for the four z/TPF Security Console tools. The **z/TPF CONSOLE** section additionally has a combined tour of all four of its tools, launched with the **`?`** button in that section's header. These in-app walkthroughs and this document cover the same ground — use the walkthroughs for hands-on lab time, this document for reference and lesson planning.
+The app ships **72 built-in narrated walkthroughs** (`public/js/walkthrough.js`). Open the **WALKTHROUGHS** section at the top of the Security panel, pick one from the dropdown, and click **▶ Start** — an overlay steps through the tool one instruction at a time, highlighting the control it's talking about, with an optional **"Do it for me"** button that fires the action. Six are general (connecting, multi-session tabs, split screen, macros, file transfer, AI assist); the other 66 map almost one-to-one to the parts in this document, including one each for the four z/TPF Security Console tools. The **z/TPF CONSOLE** section additionally has a combined tour of all four of its tools, launched with the **`?`** button in that section's header. These in-app walkthroughs and this document cover the same ground — use the walkthroughs for hands-on lab time, this document for reference and lesson planning.
 
 ### Contents
 
@@ -37,7 +37,7 @@ The app ships **71 built-in narrated walkthroughs** (`public/js/walkthrough.js`)
 | 7 | Extended Field Attribute Rendering (SFE / SA) | 24 | SDSF Job Scanner |
 | 8 | MITM Live Traffic Modification | 25 | STC Profile Scanner, 25A SDSF Job Output Harvester |
 | 9 | Screen Fingerprinting · Session Broadcast · Color Reveal | 26 | LU Name Fixation |
-| 10 | Traffic Recorder | 27 | TN3270E Handshake Trace |
+| 10 | Traffic Recorder | 27 | TN3270E Handshake Trace, 27A VTAM Pool Dashboard |
 | 11 | Session Anomaly Annotations (ANOM) | 28 | Field Length Disclosure |
 | 12 | RACF Auto-Probe | 29 | Cross-Session Buffer Bleed |
 | 13 | Macro Recorder | 30 | VM Minidisk Password Exposure |
@@ -1658,6 +1658,53 @@ The `/api/negotiate` route includes this log. The client renders it in order wit
 **No trace visible:** If the trace is empty, TN3270E was not negotiated — the session is using classic TN3270. The OIA APP field will not show a negotiated LU. This typically means `useTn3270e` was disabled at connect time or the host refused TN3270E.
 
 > **Note:** All Tier 5 tools are passive protocol inspectors. They observe the negotiation that already occurred — no additional data is sent to the host.
+
+---
+
+## Part 27A — VTAM-Operator Pool/Session Dashboard
+
+A VTAM session/LU pool has a fixed size. A shop that never watches how close to that ceiling it's running finds out the hard way, new connections start failing, usually at the worst possible time. This dashboard groups every active session by LPAR and surfaces the count continuously instead.
+
+### Location
+
+Security panel → VTAM-OPERATOR POOL/SESSION DASHBOARD (below the TN3270E Negotiation Analyzer, whose card styling this panel reuses directly)
+
+### How it works
+
+No new `/api/pool` route was needed, every field this needs was already exposed somewhere: `/api/sessions` for connection state and a `poolRejected` flag, `/api/negotiate` for the LU requested/granted split `routes/negotiate.js` already computes, `/api/profiles` to match a session's `host:port` back to its LPAR id and name (the same matching key the bridge itself uses server-side when a connection comes in — a session only ever carries host/port, not a profile id). The dashboard is a client-side join of those three, plus a fourth: `/api/pool-limits`, serving the operator-configured thresholds below.
+
+### Configuration: `pool-limits.json`
+
+Copy `pool-limits.json.example` to `pool-limits.json` (gitignored, like `lpars.txt`) and add an entry per LPAR id:
+
+```json
+{
+  "GIBSON": {
+    "maxSessions": 5,
+    "rejectPattern": "NO LU AVAILABLE|SESSION LIMIT REACHED"
+  }
+}
+```
+
+Both fields are optional. An LPAR with no entry still shows a live count, just with no threshold-based alert. This lives in its own file rather than as extra trailing columns on `lpars.txt` — that file is already a dense 10-column format, and a session-pool threshold isn't a property of the connection itself the way host/port/model are, it's a separate operational concern an operator sets independently.
+
+**Read fresh on every request**, not cached at startup, so editing the file while the bridge is running (to tune a threshold after a false WARN, say) takes effect on the next refresh or the next new connection, no restart needed.
+
+### Risk levels
+
+| Rating | Condition |
+|---|---|
+| CRITICAL | a session's first screen matched the LPAR's configured `rejectPattern` (regardless of count), or the live count has reached `maxSessions` |
+| WARN | live count is at or above 80% of `maxSessions` |
+| OK | neither — includes LPARs with no threshold configured at all, which only show a live count |
+
+### Reject-pattern detection
+
+`maxSessions` catches gradual exhaustion. Some shops instead reject a new connection outright when the pool is already full, showing something like "NO LU AVAILABLE" instead of a normal logon screen, wording isn't standardized across installations, so this only ever fires when an operator has actually configured a pattern for that LPAR. It's checked **once**, against the first screen only, right after connect (`handlers/ws.js`, a one-shot `session.once('screen', ...)` listener), the same regex-on-screen-text approach the RACF Probe already uses for lockout detection, just a single check instead of a sweep loop.
+
+### Teaching scenario
+
+Configure `maxSessions: 2` for a test LPAR and open three sessions against it, the card goes CRITICAL at the second connection (count has reached max) without needing a third. Configure a `rejectPattern` that matches real text on that host's actual first screen (even something as plain as part of its banner) and connect once, the card goes CRITICAL immediately, with that one session's row showing a `REJECT-PATTERN MATCH` flag, regardless of how far under the count threshold the pool actually is, confirming the two layers are independent, a count that looks fine doesn't mean a shop-specific rejection didn't just happen anyway.
 
 ---
 
