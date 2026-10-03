@@ -30,6 +30,7 @@ import {
   parseNetattrs, evaluateNetattr, parseJobds, evaluateJobd,
   parseAutls, parseAutlSecured, evaluateAutl, parseActjobs, evaluateActjob,
   evaluateExitPoint, evaluateNetsvr, parseIfsObjects, evaluateIfsObject,
+  parseCallStack, evaluateAdoptedAuthority,
 } from './as400sec-parse.js';
 
 // ── Screen / transport helpers ─────────────────────────────────────────────
@@ -192,18 +193,41 @@ const TOOLS = {
       return { name: o.path, value: `${o.owner} / ${o.auth}`, risk, detail: finding };
     }),
   },
+  PGMSTK: {
+    cmd: 'WRKJOB OPTION(*PGMSTK)', title: 'Display Call Stack', ids: 'Pgmstk',
+    drill: {
+      // Only stack levels that actually adopt are worth a DSPPGM round trip —
+      // an entry that doesn't adopt can't be this finding regardless of owner.
+      collect: lines => parseCallStack(lines).filter(e => e.adopt).map(e => ({
+        key: `${e.lib}/${e.program}`, cmd: `DSPPGM PGM(${e.lib}/${e.program})`,
+      })),
+      detailTitle: 'Display Program',
+      parse: (lines, text, item) => {
+        const owner           = parseLabelValue(lines, 'Owner');
+        const useAdoptedAuth  = parseLabelValue(lines, 'Use adopted authority');
+        const { risk, finding } = evaluateAdoptedAuthority({ owner, useAdoptedAuth });
+        return { name: item.key, value: `owner=${owner}`, risk, detail: finding };
+      },
+    },
+  },
+  // Menu/Command-Line Bypass Probe is driven by its own bespoke state machine
+  // below (not the generic single/drill shape — it hops between several
+  // different top-level commands in one run), this entry exists only so the
+  // shared _render()/_status() helpers have somewhere to look up DOM ids.
+  BYPASS: { ids: 'Bypass' },
 };
 
 // Persisted results per tool (so all tables/CSV survive across scans).
 const RESULTS = {
   USRPRF: [], SHIPPRF: [], SYSVAL: [], OBJ: [], NETATTR: [], JOBD: [], AUTL: [], ACTJOB: [],
-  REGINF: [], NETSVR: [], IFS: [],
+  REGINF: [], NETSVR: [], IFS: [], PGMSTK: [], BYPASS: [],
 };
 
 // ── State machine ───────────────────────────────────────────────────────────
 let as400 = { running: false, tool: null, expecting: null, items: [], idx: 0, pageItems: [], pages: 0 };
 
 export function as400OnScreen(msg) {
+  _bypassOnScreen(msg); // independent state machine, guards on its own .running
   if (!as400.running) return;
   const lines = _screenLines(msg);
   const text  = lines.join('\n');
@@ -305,6 +329,8 @@ const COLS = {
   REGINF:  ['EXIT POINT', 'EXIT PROGRAM'],
   NETSVR:  ['ATTRIBUTE', 'VALUE'],
   IFS:     ['OBJECT LINK', 'OWNER / *PUBLIC'],
+  PGMSTK:  ['PROGRAM', 'OWNER'],
+  BYPASS:  ['SCREEN', 'COMMAND TESTED'],
 };
 
 function _render(tool) {
@@ -344,6 +370,111 @@ function _start(tool) {
   _pressEnter();
 }
 
+// ── Menu/Command-Line Bypass Probe ──────────────────────────────────────────
+// LMTCPB(*YES) only gates the sign-on session's own command line. A custom
+// menu system that routes a restricted user into stock "Work with X"
+// screens often leaves THOSE screens' own command lines live, since LMTCPB
+// is never re-checked there. This drives a fixed set of stock utilities and
+// actually executes a real command from each one's command line, not just
+// checking whether a field exists — contrasted against DSPJOB's options
+// screen (a numeric-only selection field, never a raw command line) to show
+// the difference live, same two-bucket shape a real audit would use.
+const BYPASS_CANDIDATES = [
+  { cmd: 'WRKSPLF',   label: 'Work with Spooled Files',    test: 'WRKACTJOB', testLabel: 'Work with Active Jobs' },
+  { cmd: 'WRKOUTQ',   label: 'Work with Output Queues',    test: 'WRKACTJOB', testLabel: 'Work with Active Jobs' },
+  { cmd: 'WRKJOBD',   label: 'Work with Job Descriptions', test: 'WRKACTJOB', testLabel: 'Work with Active Jobs' },
+  { cmd: 'WRKUSRJOB', label: 'Work with User Jobs',        test: 'WRKACTJOB', testLabel: 'Work with Active Jobs' },
+  { cmd: 'WRKACTJOB', label: 'Work with Active Jobs',      test: 'WRKOUTQ',   testLabel: 'Work with Output Queues' },
+  { cmd: 'DSPJOB',    label: 'Display Job (options menu)', test: 'WRKACTJOB', testLabel: 'Work with Active Jobs' },
+];
+
+let bypass = { running: false, idx: 0, stage: null };
+
+// Unlike _fillFirstInput (right for a menu's single command line), a "Work
+// with" list screen's Opt column fields come BEFORE its trailing command
+// line in buffer order — the LAST unprotected field is the one we want here,
+// and it degrades to the same single field _fillFirstInput would find on a
+// screen (like DSPJOB's options panel) that only has one input at all.
+function _fillCommandLine(text) {
+  const scr  = state.liveScreen;
+  const cols = scr?.cols || 80;
+  const unprotected = scr?.fields?.filter(fld => !fld.protected) || [];
+  const f = unprotected[unprotected.length - 1];
+  if (!f) return false;
+  const da = f.startAddr + 1;
+  _send({ type: 'fillField', row: Math.floor(da / cols), col: da % cols, text });
+  return true;
+}
+
+function _bypassStep() {
+  const cand = BYPASS_CANDIDATES[bypass.idx];
+  if (!cand) { _bypassFinish(); return; }
+  _status('BYPASS', `[${bypass.idx + 1}/${BYPASS_CANDIDATES.length}] Testing ${cand.cmd}…`);
+  bypass.stage = 'NAV';
+  _fillCommandLine(cand.cmd);
+  _pressEnter();
+}
+
+function _bypassOnScreen(msg) {
+  if (!bypass.running) return;
+  const lines = _screenLines(msg);
+  const text  = lines.join('\n');
+  const cand  = BYPASS_CANDIDATES[bypass.idx];
+
+  if (bypass.stage === 'NAV') {
+    // Arrived at the candidate's own screen — now try the test command from
+    // here, whatever "here" turns out to expose as an input field.
+    bypass.stage = 'PROBE';
+    _fillCommandLine(cand.test);
+    _pressEnter();
+    return;
+  }
+
+  if (bypass.stage === 'PROBE') {
+    const executed = text.includes(cand.testLabel);
+    const risk     = executed ? 'CRITICAL' : 'OK';
+    const finding  = executed
+      ? `command entry succeeded from this screen (ran ${cand.test} and landed on its output) — LMTCPB(*YES) does not reach this screen`
+      : `no live command entry here — ${cand.test} was rejected or not modelled`;
+    RESULTS.BYPASS.push({ name: cand.label, value: cand.cmd, risk, detail: finding });
+    _render('BYPASS');
+    bypass.stage = 'BACK';
+    _send({ type: 'key', aid: 'F12', fields: [] });
+    return;
+  }
+
+  if (bypass.stage === 'BACK') {
+    if (!text.includes('Selection or command')) {
+      _send({ type: 'key', aid: 'F12', fields: [] }); // one more hop back out
+      return;
+    }
+    bypass.idx++;
+    _bypassStep();
+  }
+}
+
+function _bypassFinish() {
+  bypass.running = false;
+  const btn = document.getElementById('as400BypassBtn');
+  if (btn) btn.disabled = false;
+  const crit = RESULTS.BYPASS.filter(r => r.risk === 'CRITICAL').length;
+  _status('BYPASS', `Done — ${crit}/${RESULTS.BYPASS.length} screen(s) had a live command line.`, crit ? 'error' : 'success');
+}
+
+export function startAs400BypassProbe() {
+  if (bypass.running) return;
+  if (!state.liveScreen || !(state.liveScreenText || '').includes('Selection or command')) {
+    _status('BYPASS', 'Sign on and navigate to an AS/400 menu (with a command line) first.', 'error');
+    return;
+  }
+  RESULTS.BYPASS = [];
+  _render('BYPASS');
+  bypass = { running: true, idx: 0, stage: null };
+  const btn = document.getElementById('as400BypassBtn');
+  if (btn) btn.disabled = true;
+  _bypassStep();
+}
+
 export function startAs400UserScan()    { _start('USRPRF'); }
 export function startAs400ShippedAudit() { _start('SHIPPRF'); }
 export function startAs400SysvalScan()  { _start('SYSVAL'); }
@@ -355,6 +486,7 @@ export function startAs400ActjobScan()  { _start('ACTJOB'); }
 export function startAs400ReginfScan()  { _start('REGINF'); }
 export function startAs400NetsvrScan()  { _start('NETSVR'); }
 export function startAs400IfsScan()     { _start('IFS'); }
+export function startAs400PgmstkScan()  { _start('PGMSTK'); }
 
 function _buildAs400Rows() {
   const ts = new Date().toISOString();
@@ -371,6 +503,8 @@ function _buildAs400Rows() {
   add('REGINF',  'exit-point-audit');
   add('NETSVR',  'netserver-audit');
   add('IFS',     'ifs-permission-sweep');
+  add('PGMSTK',  'adopted-authority-scanner');
+  add('BYPASS',  'menu-bypass-probe');
   return { rows, ts };
 }
 
@@ -391,4 +525,5 @@ Object.assign(window, {
   startAs400UserScan, startAs400ShippedAudit, startAs400SysvalScan, startAs400ObjScan,
   startAs400NetattrScan, startAs400JobdScan, startAs400AutlScan, startAs400ActjobScan,
   startAs400ReginfScan, startAs400NetsvrScan, startAs400IfsScan,
+  startAs400PgmstkScan, startAs400BypassProbe,
 });

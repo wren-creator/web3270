@@ -325,6 +325,39 @@ export function evaluateIfsObject({ path, auth }) {
   return { risk: 'OK', finding: `*PUBLIC ${auth}` };
 }
 
+// ── Adopted-Authority Runtime Scanner (WRKJOB OPTION(*PGMSTK) -> DSPPGM) ────
+// Call-stack columns: Program 2–13, Library 14–24, Activation group 25–45,
+// Statement 47–55, Adopt 58+. Scans every line rather than a fixed start
+// row — this is a flat report screen, not a paged "Work with" list, so there
+// is no header row to skip past by position, just real-program-name lines
+// mixed in with title/footer text the pattern won't match.
+export function parseCallStack(lines) {
+  const out = [];
+  for (const line of lines) {
+    const program = (line.slice(2, 13) || '').trim();
+    if (!/^[A-Z][A-Z0-9$#@]*$/.test(program)) continue;
+    const lib = line.slice(14, 24).trim();
+    if (!lib) continue;
+    out.push({
+      program, lib,
+      actgrp: line.slice(25, 45).trim(),
+      stmt:   line.slice(47, 55).trim(),
+      adopt:  line.slice(58).trim().split(/\s+/)[0] === '*YES',
+    });
+  }
+  return out;
+}
+// A program running under adopted authority runs the OWNER's authority at
+// that stack level — any caller, including an unchecked CL/RPG parameter,
+// gets that authority for free. QSECOFR-owned is the headline case; any
+// other named owner still needs the same cross-reference (DSPUSRPRF on the
+// owner) before ruling it out, hence HIGH rather than OK.
+export function evaluateAdoptedAuthority({ owner, useAdoptedAuth }) {
+  if (useAdoptedAuth !== '*YES') return { risk: 'OK', finding: 'does not adopt owner authority' };
+  const risk = /^QSEC/.test(owner) ? 'CRITICAL' : 'HIGH';
+  return { risk, finding: `runs under adopted authority of ${owner} — any caller gets ${owner}'s authority at this stack level` };
+}
+
 // ── Wave 2: Job descriptions (WRKJOBD list) ─────────────────────────────────
 // Columns: Job Desc 6–15, Library 17–26, User 28–38, *PUBLIC 40+.
 export function parseJobds(lines) {

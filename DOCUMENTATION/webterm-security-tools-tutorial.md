@@ -2413,6 +2413,65 @@ Shops that lock DB2 libraries down meticulously often treat the IFS (`/`, `/QOpe
 
 ---
 
+## Part 38 — IBM i (AS/400) Adopted-Authority Scanner / Menu Bypass Probe
+
+Part 37 covered the auxiliary surfaces (exit points, NetServer, the IFS). Part 38 adds two tools aimed at a different failure mode: not a misconfigured surface, but a restriction that looks solid on paper and isn't in practice. Same panel section, same prerequisite as Part 33.
+
+---
+
+## Part 38A — Adopted-Authority Runtime Scanner
+
+Reads the current job's call stack with `WRKJOB OPTION(*PGMSTK)`, then `DSPPGM` on every level that adopts, to find out whose authority it's actually running under.
+
+### Location
+
+Security panel → IBM i SECURITY (AS/400) → ADOPTED-AUTHORITY RUNTIME SCANNER
+
+### How it works
+
+A program compiled `USRPRF(*OWNER)` with `USEADPAUT(*YES)` runs under its *owner's* authority at that stack level, not the authority of whoever's actually signed on. The call stack only shows *whether* a level adopts (the `Adopt` column); it doesn't say whose authority that is, that takes a `DSPPGM` on the program itself. This is distinct from the existing User Profile & Special-Authority Enumerator, which checks special authorities on profiles sitting at rest, not adopted authority of programs actually running right now.
+
+### Risk levels
+
+| Rating | Condition |
+|---|---|
+| CRITICAL | an adopting stack level owned by `QSECOFR` |
+| HIGH | an adopting stack level owned by any other profile (still needs that profile's own special authorities cross-referenced, but adoption alone is already a real exposure) |
+| OK | a stack level that doesn't adopt at all |
+
+### Teaching scenario
+
+On the mock, the current job's stack is `QCMD` → `APPMENU` → `PAYUPD`, three ordinary-looking levels. Only `PAYUPD` adopts, and `DSPPGM APPLIB/PAYUPD` shows `Owner . . . : QSECOFR` and `Use adopted authority . . . : *YES` → CRITICAL. The lesson: an "ordinary" payroll update program sitting three levels deep in a normal interactive job can be running with the security officer's full authority the whole time, and nothing about the call stack screen itself says so until you check the one program that adopts.
+
+---
+
+## Part 38B — Menu/Command-Line Bypass Probe
+
+Drives a fixed set of stock "Work with X" utilities and actually executes a command from each one's own command line, to find out where `LMTCPB(*YES)` stops reaching.
+
+### Location
+
+Security panel → IBM i SECURITY (AS/400) → MENU/COMMAND-LINE BYPASS PROBE
+
+### How it works
+
+`LMTCPB(*YES)` is supposed to deny command entry. In practice it only gates the sign-on session's own command line. A custom menu system that routes a restricted user into a stock IBM utility screen often leaves *that* screen's own command line live, since `LMTCPB` is never re-checked there, it was only ever checked once, at sign-on. The probe visits `WRKSPLF`, `WRKOUTQ`, `WRKJOBD`, `WRKUSRJOB`, and `WRKACTJOB` in turn and tries to run a real command from each one's command line, then contrasts the result against `DSPJOB`'s options screen, which only has a numeric selection field and never interprets what's typed into it as a command at all.
+
+This is distinct from the existing Exit Point audit (Part 37A): exit points are *registration-facility* hooks for things like FTP and remote SQL, this probe is about the 5250 command line itself showing up somewhere it isn't supposed to.
+
+### Risk levels
+
+| Rating | Condition |
+|---|---|
+| CRITICAL | the test command actually ran from that screen's command line and landed on its own output |
+| OK | the command was rejected, or the screen never interpreted it as a command at all |
+
+### Teaching scenario
+
+Every "Work with X" list screen the probe visits comes back CRITICAL, each one's command line genuinely executes `WRKACTJOB` (or, when the candidate itself *is* `WRKACTJOB`, `WRKOUTQ` instead) and lands on its real output. `DSPJOB`'s options screen comes back OK on the same test, its selection field only ever matches a two-digit option number or shows "not modelled," it never falls through to running arbitrary text as a command. The lesson for an engagement: never assume `LMTCPB(*YES)` on a profile means that profile can't run commands anywhere, it only means the *sign-on* command line is gone. Every custom menu option the user can reach needs the same check repeated.
+
+---
+
 ## Appendix — Structured JSON findings export
 
 Every security tool's "Export CSV" button now has a "JSON" button right next to it. The CSV export was always meant for opening in a spreadsheet; the JSON export is for feeding a finding straight into a report or another tool without re-parsing a CSV. Same data, different shape, nothing about the CSV export changed.

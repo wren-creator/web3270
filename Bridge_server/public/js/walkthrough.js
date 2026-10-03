@@ -2636,6 +2636,84 @@ const _WALKTHROUGHS = [
     ],
   },
 
+  // ── IBM i (AS/400) Adopted-Authority Runtime Scanner ──────────────
+  {
+    id:       'as400-adopted-authority-scanner',
+    category: 'security',
+    title:    'IBM i: Adopted-Authority Runtime Scanner',
+    desc:     'Uses WRKJOB OPTION(*PGMSTK) and DSPPGM to find a program in the current call stack running under adopted authority, and whose owner that authority actually is.',
+    steps: [
+      {
+        title: 'Prerequisites',
+        body:  'Connect to a TN5250 (IBM i / AS/400) target, sign on, and stop at a menu with a "Selection or command" line. The tool types WRKJOB OPTION(*PGMSTK) there.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click 🔒 in the OIA status bar and enter the security password (default: 2970).',
+        highlight: 'secBtn', autoFn: null,
+      },
+      {
+        title: 'Run the scan',
+        body:  'Scroll to the IBM i SECURITY (AS/400) section and click ▶ SCAN CALL STACK. The tool reads the call stack, then issues DSPPGM for every level that adopts, reading its owner. Read-only.',
+        highlight: 'as400PgmstkBtn',
+        autoFn: 'startAs400PgmstkScan',
+        autoLabel: 'Run it for me',
+      },
+      {
+        title: 'Read the findings',
+        body:  'A stack level that doesn’t adopt is OK, nothing to chase. A level that does adopt runs under its OWNER’s authority, so any caller at or above that level, including an unchecked CL or RPG parameter, gets that authority for free. CRITICAL when the owner is QSECOFR; HIGH for any other owner, since that still needs its own special authorities cross-referenced before ruling it out.',
+        highlight: 'as400PgmstkOut', autoFn: null,
+      },
+      {
+        title: 'Export the audit',
+        body:  'Click ↓ Export IBM i Audit CSV to save the findings.',
+        highlight: 'as400PgmstkOut',
+        autoFn: 'as400ExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
+  // ── IBM i (AS/400) Menu/Command-Line Bypass Probe ─────────────────
+  {
+    id:       'as400-menu-bypass-probe',
+    category: 'security',
+    title:    'IBM i: Menu/Command-Line Bypass Probe',
+    desc:     'Drives a fixed set of stock "Work with X" utilities and actually executes a command from each one’s command line, to show where LMTCPB(*YES) stops reaching.',
+    steps: [
+      {
+        title: 'Prerequisites',
+        body:  'Connect to a TN5250 (IBM i / AS/400) target, sign on, and stop at a menu with a "Selection or command" line. The probe navigates to several stock utility screens on its own from there.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click 🔒 in the OIA status bar and enter the security password (default: 2970).',
+        highlight: 'secBtn', autoFn: null,
+      },
+      {
+        title: 'Run the probe',
+        body:  'Scroll to the IBM i SECURITY (AS/400) section and click ▶ PROBE FOR BYPASSES. The tool visits WRKSPLF, WRKOUTQ, WRKJOBD, WRKUSRJOB, WRKACTJOB, and DSPJOB in turn, tries to run a real command from each one’s own command line, and returns to the menu between each. Read-only, but it does execute commands, same as a real LMTCPB(*YES) bypass attempt would.',
+        highlight: 'as400BypassBtn',
+        autoFn: 'startAs400BypassProbe',
+        autoLabel: 'Run it for me',
+      },
+      {
+        title: 'Read the findings',
+        body:  'CRITICAL means the test command actually ran from that screen’s command line and landed on its output, LMTCPB(*YES) does not reach this screen no matter what the signed-on profile’s own command line looks like. OK means the command was rejected or not modelled, DSPJOB’s numeric-only options screen is the contrast case built in here on purpose: a genuinely gated screen never executes raw text typed into it.',
+        highlight: 'as400BypassOut', autoFn: null,
+      },
+      {
+        title: 'Export the audit',
+        body:  'Click ↓ Export IBM i Audit CSV to save the findings.',
+        highlight: 'as400BypassOut',
+        autoFn: 'as400ExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
   // ── FUNC KEY Inject ──────────────────────────────────────────────
   {
     id:       'func-key-inject',

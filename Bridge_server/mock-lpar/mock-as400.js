@@ -559,6 +559,22 @@ const IFS_OBJECTS = [
   { path: '/QSYS.LIB',                  type: '*DIR',  owner: 'QSYS',    auth: '*RX'  },
 ];
 
+// Adopted-authority runtime scanner (WRKJOB OPTION(*PGMSTK) -> DSPPGM per
+// adopting entry). A program compiled with USRPRF(*OWNER) runs under the
+// owning profile's authority at that stack level once invoked — if the
+// owner holds *ALLOBJ, an unchecked parameter in whatever calls into it
+// (a CL or RPG wrapper) runs with the owner's full authority. The call
+// stack itself only shows *whether* a level adopts; DSPPGM is the real
+// command that shows *whose* authority it adopts.
+const CALL_STACK = [
+  { program: 'QCMD',    lib: 'QSYS',   actgrp: 'QDFTACTGRP', stmt: '000010', adopt: false },
+  { program: 'APPMENU', lib: 'APPLIB', actgrp: 'QDFTACTGRP', stmt: '000120', adopt: false },
+  { program: 'PAYUPD',  lib: 'APPLIB', actgrp: 'QDFTACTGRP', stmt: '000045', adopt: true  },
+];
+const PGM_OWNERS = {
+  'APPLIB/PAYUPD': { owner: 'QSECOFR', usrprf: '*OWNER', useAdoptedAuth: '*YES' },
+};
+
 // Job descriptions (WRKJOBD/DSPJOBD). A JOBD that names a real USER() and is
 // usable by *PUBLIC lets any user SBMJOB and run code as that user — the
 // classic IBM i privilege-escalation path when the user is privileged.
@@ -906,7 +922,13 @@ function runCommand(raw) {
     // Wave 3 — everyday operator / PDM / SQL
     case 'WRKSPLF': return { type: 'screen', screen: 'SPLF_LIST' };
     case 'WRKOUTQ': return { type: 'screen', screen: 'OUTQ_LIST' };
-    case 'WRKJOB':  return { type: 'detail', screen: 'JOB_DETAIL', target: '*CURRENT' };
+    case 'WRKJOB':
+      if (params.OPTION === '*PGMSTK') return { type: 'detail', screen: 'PGMSTK_LIST', target: null };
+      return { type: 'detail', screen: 'JOB_DETAIL', target: '*CURRENT' };
+    case 'DSPPGM': {
+      const pgm = params.PGM;
+      return pgm ? { type: 'detail', screen: 'PGM_DETAIL', target: pgm } : { type: 'error', message: 'CPF9801 - Object not specified.' };
+    }
     case 'DSPJOB':  return { type: 'screen', screen: 'DSPJOB_OPTS' };
     case 'WRKUSRJOB': return { type: 'screen', screen: 'USRJOB_LIST' };
     case 'WRKBCHJOB': return { type: 'screen', screen: 'BCHJOB_LIST' };
@@ -994,7 +1016,7 @@ const LIST_META = {
 };
 // Detail/display screens where Enter/F3/F12 all navigate back one level.
 const DETAIL_SCREENS = new Set([
-  'SYSVAL_DETAIL', 'USRPRF_DETAIL', 'OBJ_DETAIL', 'NETA', 'REGINF', 'NETSVR', 'JOBD_DETAIL', 'AUTL_DETAIL',
+  'SYSVAL_DETAIL', 'USRPRF_DETAIL', 'OBJ_DETAIL', 'NETA', 'REGINF', 'NETSVR', 'PGMSTK_LIST', 'PGM_DETAIL', 'JOBD_DETAIL', 'AUTL_DETAIL',
   'SPLF_DETAIL', 'JOB_DETAIL', 'LIB_DETAIL', 'LIBL_DETAIL', 'MBR_DETAIL',
   'SST_DETAIL', 'ANZDFTPWD_DETAIL',
 ]);
@@ -1392,6 +1414,45 @@ function screenIfsList(ctx) {
   });
   listTrailer(fields, ctx.message);
   return wrapPanel(fields, { row: LIST_START_ROW, col: 2 });
+}
+
+function screenPgmstkDetail() {
+  const fields = [
+    { row: 0, col: 29, text: 'Display Call Stack', input: false },
+    { row: 0, col: 68, text: SYSNAME, input: false },
+    { row: 2, col: 2,  text: 'Program     Library    Activation group     Statement  Adopt', input: false },
+  ];
+  CALL_STACK.forEach((e, idx) => {
+    const row = 4 + idx;
+    fields.push({ row, col: 2,  text: e.program.padEnd(11, ' '), input: false });
+    fields.push({ row, col: 14, text: e.lib.padEnd(10, ' '), input: false });
+    fields.push({ row, col: 25, text: e.actgrp.padEnd(20, ' '), input: false });
+    fields.push({ row, col: 47, text: e.stmt, input: false });
+    fields.push({ row, col: 58, text: e.adopt ? '*YES' : '*NO', input: false, attr: authAttr(e.adopt) });
+  });
+  fields.push({ row: 22, col: 2,  text: 'Press Enter to continue', input: false });
+  fields.push({ row: 23, col: 2,  text: 'F3=Exit   F12=Cancel', input: false });
+  fields.push({ row: 22, col: 44, text: '', input: true, length: 1 });
+  return wrapPanel(fields, { row: 22, col: 44 });
+}
+
+function screenPgmDetail(target) {
+  const [lib, name] = (target || '').split('/');
+  const info = PGM_OWNERS[target] || { owner: lib === 'QSYS' ? 'QSYS' : 'QPGMR', usrprf: '*USER', useAdoptedAuth: '*NO' };
+  const fields = [
+    { row: 0, col: 30, text: 'Display Program', input: false },
+    { row: 2, col: 2,  text: `Program  . . . . . . . . . :   ${name || ''}`, input: false },
+    { row: 3, col: 2,  text: `Library  . . . . . . . . . :   ${lib || ''}`, input: false },
+    { row: 5, col: 2,  text: `User profile . . . . . . . :   ${info.usrprf}`, input: false },
+    { row: 6, col: 2,  text: 'Owner  . . . . . . . . . . :', input: false },
+    { row: 6, col: 33, text: info.owner, input: false },
+    { row: 7, col: 2,  text: 'Use adopted authority  . . :', input: false },
+    { row: 7, col: 33, text: info.useAdoptedAuth, input: false, attr: authAttr(info.useAdoptedAuth === '*YES') },
+  ];
+  fields.push({ row: 22, col: 2,  text: 'Press Enter to continue', input: false });
+  fields.push({ row: 23, col: 2,  text: 'F3=Exit   F12=Cancel', input: false });
+  fields.push({ row: 22, col: 44, text: '', input: true, length: 1 });
+  return wrapPanel(fields, { row: 22, col: 44 });
 }
 
 function screenJobdList(ctx) {
@@ -2182,6 +2243,10 @@ function handleConnection(socket) {
       ds = screenNetsvrDetail();
     } else if (screen === 'IFS_LIST') {
       ds = screenIfsList({ message: menuMessage });
+    } else if (screen === 'PGMSTK_LIST') {
+      ds = screenPgmstkDetail();
+    } else if (screen === 'PGM_DETAIL') {
+      ds = screenPgmDetail(cmdTarget);
     } else if (screen === 'JOBD_LIST') {
       ds = screenJobdList({ message: menuMessage });
     } else if (screen === 'JOBD_DETAIL') {
@@ -2389,13 +2454,14 @@ function handleConnection(socket) {
       }
     } else if (screen === 'DSPJOB_OPTS') {
       // Display Job options screen (also the System Request -> 3 landing).
-      // Only option 13 (Display library list) is wired.
+      // Options 11 (call stack) and 13 (library list) are wired.
       if (aid === AID_F3 || aid === AID_F12) {
         goBack();
       } else {
         const sel = fieldAt(runs, 20).trim();
-        if (sel === '13')  goTo('DSPJOB_LIBL');
-        else if (sel)      menuMessage = `Option ${sel} is not modelled — use 13 (Display library list).`;
+        if (sel === '13')      goTo('DSPJOB_LIBL');
+        else if (sel === '11') goTo('PGMSTK_LIST');
+        else if (sel)          menuMessage = `Option ${sel} is not modelled — use 11 (call stack) or 13 (library list).`;
         // blank → redraw
       }
     } else if (screen === 'DSPLIB_OBJS') {
