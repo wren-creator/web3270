@@ -518,6 +518,47 @@ const NETA = {
   ALRSTS:    { value: '*ON',     text: 'Alert status',                   weak: false },
 };
 
+// Exit point / service registration audit (WRKREGINF). An exit point with no
+// registered validation program means nothing gates requests coming through
+// it — the classic way a restricted shell (LMTCPB(*YES)) turns out not to
+// matter, FTP/remote-SQL/remote-command/NetServer all bypass it untouched.
+// Classification lives client-side (as400sec-parse.js), same split as NETA.
+const EXIT_POINTS = {
+  QIBM_QZDA_INIT:       { value: '*NONE' },
+  QIBM_QZDA_SQL1:       { value: 'SQLEXITPGM' },
+  QIBM_QTMF_SERVER_REQ: { value: '*NONE' },
+  QIBM_QTMF_CLIENT_REQ: { value: '*NONE' },
+  QIBM_QPWFS_FILE_SERV: { value: '*NONE' },
+  QIBM_QCA_RTV_COMMAND: { value: '*NONE' },
+};
+
+// NetServer (SMB) configuration. A genuine IBM i has no single green-screen
+// CL command for this (iSeries Navigator / the QZLSCFG API own it there), but
+// a flat report screen under an invented DSPNETSVR command matches this
+// mock's existing DSPNETA shape closely enough to teach the same finding. A
+// set guest profile means unauthenticated SMB clients get mapped to it;
+// unsigned SMB lets requests be tampered with or replayed in transit.
+const NETSVR = {
+  SERVERNAME:  { value: 'MOCKSRV' },
+  GUESTUSRPRF: { value: 'QNETSVRGST' },
+  AUTOSTART:   { value: '*YES' },
+  SIGNEDSMB:   { value: '*NO' },
+  BROWSEABLE:  { value: '*YES' },
+};
+
+// IFS permission sweep (WRKLNK). Shops that lock DB2 libraries down tight
+// often treat the IFS like an unmonitored NFS share — world-writable scripts,
+// plaintext credentials in config, and readable private keys are common
+// finds. No drill-down needed, same shape as the Job Description scanner:
+// the list already carries everything the classifier needs.
+const IFS_OBJECTS = [
+  { path: '/home/webadmin/deploy.sh',   type: '*STMF', owner: 'WEBADMIN', auth: '*RWX' },
+  { path: '/www/myapp/config/db.conf',  type: '*STMF', owner: 'QTMHHTTP', auth: '*RW'  },
+  { path: '/home/webadmin/.ssh/id_rsa', type: '*STMF', owner: 'WEBADMIN', auth: '*R'   },
+  { path: '/QOpenSys/var/log/app.log',  type: '*STMF', owner: 'APPADMIN', auth: '*RW'  },
+  { path: '/QSYS.LIB',                  type: '*DIR',  owner: 'QSYS',    auth: '*RX'  },
+];
+
 // Job descriptions (WRKJOBD/DSPJOBD). A JOBD that names a real USER() and is
 // usable by *PUBLIC lets any user SBMJOB and run code as that user — the
 // classic IBM i privilege-escalation path when the user is privileged.
@@ -821,6 +862,9 @@ function runCommand(raw) {
       return { type: 'detail', screen: 'OBJ_DETAIL', target: idx };
     }
     case 'DSPNETA': return { type: 'detail', screen: 'NETA', target: null };
+    case 'WRKREGINF': return { type: 'detail', screen: 'REGINF', target: null };
+    case 'DSPNETSVR': return { type: 'detail', screen: 'NETSVR', target: null };
+    case 'WRKLNK':    return { type: 'screen', screen: 'IFS_LIST' };
     case 'WRKJOBD': return { type: 'screen', screen: 'JOBD_LIST' };
     case 'DSPJOBD': {
       const jobd = params.JOBD;
@@ -938,6 +982,7 @@ const LIST_META = {
   AUTL_LIST:   { count: () => AUTLS.length,        detail: i => ['AUTL_DETAIL', AUTLS[i].name] },
   ACTJOB_LIST: { count: () => ACTJOBS.length,      detail: null },
   SBS_LIST:    { count: () => SBS.length,           detail: null },
+  IFS_LIST:    { count: () => IFS_OBJECTS.length,   detail: null },
   // Wave 3
   SPLF_LIST:   { count: () => SPLFILES.length,     detail: i => ['SPLF_DETAIL', i] },
   OUTQ_LIST:   { count: () => OUTQS.length,        detail: null },
@@ -949,7 +994,7 @@ const LIST_META = {
 };
 // Detail/display screens where Enter/F3/F12 all navigate back one level.
 const DETAIL_SCREENS = new Set([
-  'SYSVAL_DETAIL', 'USRPRF_DETAIL', 'OBJ_DETAIL', 'NETA', 'JOBD_DETAIL', 'AUTL_DETAIL',
+  'SYSVAL_DETAIL', 'USRPRF_DETAIL', 'OBJ_DETAIL', 'NETA', 'REGINF', 'NETSVR', 'JOBD_DETAIL', 'AUTL_DETAIL',
   'SPLF_DETAIL', 'JOB_DETAIL', 'LIB_DETAIL', 'LIBL_DETAIL', 'MBR_DETAIL',
   'SST_DETAIL', 'ANZDFTPWD_DETAIL',
 ]);
@@ -1289,6 +1334,64 @@ function screenNetaDetail() {
   fields.push({ row: 23, col: 2,  text: 'F3=Exit   F12=Cancel', input: false });
   fields.push({ row: 22, col: 44, text: '', input: true, length: 1 });
   return wrapPanel(fields, { row: 22, col: 44 });
+}
+
+function screenReginfDetail() {
+  const fields = [
+    { row: 0, col: 24, text: 'Work with Registration Information', input: false },
+    { row: 0, col: 68, text: SYSNAME, input: false },
+  ];
+  let r = 2;
+  for (const [name, a] of Object.entries(EXIT_POINTS)) {
+    const weak = a.value === '*NONE';
+    fields.push({ row: r, col: 2,  text: `${name.padEnd(22, ' ')}. . :`, input: false });
+    fields.push({ row: r, col: 30, text: a.value, input: false, attr: authAttr(weak) });
+    r++;
+  }
+  fields.push({ row: 22, col: 2,  text: 'Press Enter to continue', input: false });
+  fields.push({ row: 23, col: 2,  text: 'F3=Exit   F12=Cancel', input: false });
+  fields.push({ row: 22, col: 44, text: '', input: true, length: 1 });
+  return wrapPanel(fields, { row: 22, col: 44 });
+}
+
+function screenNetsvrDetail() {
+  const fields = [
+    { row: 0, col: 25, text: 'Display NetServer Attributes', input: false },
+    { row: 0, col: 68, text: SYSNAME, input: false },
+  ];
+  let r = 2;
+  for (const [name, a] of Object.entries(NETSVR)) {
+    const weak = (name === 'GUESTUSRPRF' && a.value && a.value !== '*NONE') ||
+                 (name === 'SIGNEDSMB' && a.value === '*NO');
+    fields.push({ row: r, col: 2,  text: `${name.padEnd(11, ' ')}. . . . . . . :`, input: false });
+    fields.push({ row: r, col: 33, text: a.value, input: false, attr: authAttr(weak) });
+    r++;
+  }
+  fields.push({ row: 22, col: 2,  text: 'Press Enter to continue', input: false });
+  fields.push({ row: 23, col: 2,  text: 'F3=Exit   F12=Cancel', input: false });
+  fields.push({ row: 22, col: 44, text: '', input: true, length: 1 });
+  return wrapPanel(fields, { row: 22, col: 44 });
+}
+
+function screenIfsList(ctx) {
+  const fields = [
+    { row: 0, col: 26, text: 'Work with Object Links', input: false },
+    { row: 0, col: 68, text: SYSNAME, input: false },
+    { row: 2, col: 2,  text: 'Type options, press Enter.', input: false },
+    { row: 3, col: 4,  text: '5=Display', input: false },
+    { row: 5, col: 2,  text: 'Opt  Object link                         Type   Owner      *PUBLIC', input: false },
+  ];
+  IFS_OBJECTS.forEach((o, idx) => {
+    const row = LIST_START_ROW + idx;
+    const weak = /W/.test(o.auth) || (/R/.test(o.auth) && /\.ssh|id_rsa|\.conf$|\.env$|passwd/i.test(o.path));
+    fields.push({ row, col: 2,  text: '', input: true, length: 2 });
+    fields.push({ row, col: 6,  text: o.path.padEnd(35, ' '), input: false });
+    fields.push({ row, col: 42, text: o.type.padEnd(6, ' '), input: false });
+    fields.push({ row, col: 48, text: o.owner.padEnd(10, ' '), input: false });
+    fields.push({ row, col: 60, text: o.auth, input: false, attr: authAttr(weak) });
+  });
+  listTrailer(fields, ctx.message);
+  return wrapPanel(fields, { row: LIST_START_ROW, col: 2 });
 }
 
 function screenJobdList(ctx) {
@@ -2073,6 +2176,12 @@ function handleConnection(socket) {
       ds = screenObjDetail(cmdTarget);
     } else if (screen === 'NETA') {
       ds = screenNetaDetail();
+    } else if (screen === 'REGINF') {
+      ds = screenReginfDetail();
+    } else if (screen === 'NETSVR') {
+      ds = screenNetsvrDetail();
+    } else if (screen === 'IFS_LIST') {
+      ds = screenIfsList({ message: menuMessage });
     } else if (screen === 'JOBD_LIST') {
       ds = screenJobdList({ message: menuMessage });
     } else if (screen === 'JOBD_DETAIL') {

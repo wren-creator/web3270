@@ -242,11 +242,14 @@ export function evaluateShippedProfile({ name, status, pwdNone, defaultPwd, auth
 
 // ── Wave 2: Network attributes (DSPNETA) ────────────────────────────────────
 // Detail screen lines look like "JOBACN     . . . . . :     *FILE". All-caps
-// names with a colon; the title/footer lines don't match.
+// names with a colon; the title/footer lines don't match. The name class also
+// allows underscores — the same shape covers any flat key/value report
+// screen, not just DSPNETA, so WRKREGINF (QIBM_QZDA_INIT, ...) and the
+// invented DSPNETSVR both reuse this parser instead of a near-duplicate.
 export function parseNetattrs(lines) {
   const out = [];
   for (const line of lines) {
-    const m = line.match(/^\s+([A-Z][A-Z0-9]+)\b.*?:\s*(\S+)/);
+    const m = line.match(/^\s+([A-Z][A-Z0-9_]+)\b.*?:\s*(\S+)/);
     if (m) out.push({ name: m[1], value: m[2] });
   }
   return out;
@@ -261,6 +264,65 @@ export function evaluateNetattr(name, value) {
   const R = NETA_RULES[name];
   if (!R) return { risk: 'INFO', rec: '' };
   return R.test(value) ? { risk: R.risk, rec: R.rec } : { risk: 'OK', rec: '' };
+}
+
+// ── Exit Point & Service Registration Audit (WRKREGINF) ─────────────────────
+// An exit point with no registered program means nothing validates requests
+// coming through it — the classic way a restricted shell (LMTCPB(*YES)) turns
+// out not to matter: FTP, remote SQL/ODBC, remote command call, and NetServer
+// all bypass it untouched when its exit point is unregistered.
+const REGINF_RULES = {
+  QIBM_QZDA_INIT:       { risk: 'HIGH',     rec: 'Register a validation exit program — unauthenticated DRDA/ODBC connections reach the SQL server unchecked.' },
+  QIBM_QZDA_SQL1:       { risk: 'MEDIUM',   rec: 'Register a validation exit program for ad hoc remote SQL requests.' },
+  QIBM_QTMF_SERVER_REQ: { risk: 'CRITICAL', rec: 'Register an FTP exit program — without one, GET/PUT/RCMD all bypass LMTCPB(*YES) entirely.' },
+  QIBM_QTMF_CLIENT_REQ: { risk: 'LOW',      rec: 'Outbound FTP client requests — lower exposure than server-side, still worth gating.' },
+  QIBM_QPWFS_FILE_SERV: { risk: 'CRITICAL', rec: 'Register a NetServer exit program — without one, any mapped SMB drive reaches the IFS unchecked.' },
+  QIBM_QCA_RTV_COMMAND: { risk: 'CRITICAL', rec: 'Register a remote-command exit program — without one, Client Access RMTCMD bypasses LMTCPB(*YES) entirely.' },
+};
+export function evaluateExitPoint(name, value) {
+  const R = REGINF_RULES[name];
+  if (!R) return { risk: 'INFO', rec: '' };
+  const registered = value && value !== '*NONE';
+  return registered ? { risk: 'OK', rec: `exit program ${value} registered` } : { risk: R.risk, rec: R.rec };
+}
+
+// ── NetServer / SMB Configuration Audit (DSPNETSVR) ─────────────────────────
+const NETSVR_RULES = {
+  GUESTUSRPRF: { risk: 'HIGH',   test: v => !!v && v !== '*NONE', rec: 'Guest profile is set — unauthenticated SMB clients get mapped to it. Set *NONE unless anonymous share access is actually required.' },
+  SIGNEDSMB:   { risk: 'MEDIUM', test: v => v === '*NO', rec: 'SMB signing not required — requests can be tampered with or replayed in transit. Require signing.' },
+};
+export function evaluateNetsvr(name, value) {
+  const R = NETSVR_RULES[name];
+  if (!R) return { risk: 'INFO', rec: '' };
+  return R.test(value) ? { risk: R.risk, rec: R.rec } : { risk: 'OK', rec: '' };
+}
+
+// ── IFS Permission Sweep (WRKLNK) ────────────────────────────────────────────
+// Columns: Object link 6–41 (paths run long, wider than the other Work-with
+// panels), Type 42–47, Owner 48–58, *PUBLIC authority 60+.
+export function parseIfsObjects(lines) {
+  const out = [];
+  for (let r = LIST_START_ROW; r < lines.length; r++) {
+    const line = lines[r] || '';
+    const objPath = line.slice(6, 42).trim();
+    if (!objPath.startsWith('/')) continue;
+    const auth = line.slice(60).trim().split(/\s+/)[0] || '';
+    if (!auth) continue;
+    out.push({ path: objPath, type: line.slice(42, 48).trim(), owner: line.slice(48, 60).trim(), auth });
+  }
+  return out;
+}
+// World-writable is always a finding; world-readable only matters on a path
+// that looks like it holds something worth stealing (keys/creds/config).
+const IFS_SENSITIVE = /\.ssh\/|id_rsa|\.pem$|passwd|password|\.conf$|\.cfg$|\.env$/i;
+export function evaluateIfsObject({ path, auth }) {
+  const writable  = /W/.test(auth);
+  const readable  = /R/.test(auth);
+  const sensitive = IFS_SENSITIVE.test(path);
+  if (writable && sensitive) return { risk: 'CRITICAL', finding: `*PUBLIC ${auth} — world-writable on a sensitive-looking path` };
+  if (writable)              return { risk: 'HIGH',     finding: `*PUBLIC ${auth} — world-writable` };
+  if (readable && sensitive) return { risk: 'HIGH',     finding: `*PUBLIC ${auth} — world-readable, path looks like credentials/key material` };
+  return { risk: 'OK', finding: `*PUBLIC ${auth}` };
 }
 
 // ── Wave 2: Job descriptions (WRKJOBD list) ─────────────────────────────────

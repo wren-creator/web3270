@@ -2331,6 +2331,88 @@ local `sshd`. A panel version is backlog item 24.
 
 ---
 
+## Part 37 — IBM i (AS/400) Exit Point / IFS / NetServer Audit
+
+Parts 33–34 cover the core trio and the extended surfaces (network attributes, job descriptions, authorization lists, active jobs). Part 37 adds three tools aimed at the surfaces a shop locking down DB2 libraries tight often leaves unmonitored by comparison: registration-facility exit points, the IFS, and NetServer (SMB). All three live in the same **IBM i SECURITY (AS/400)** panel section and are single-screen reads — no drill-down. Same prerequisite as Part 33: connect over TN5250, sign on, and stop at a menu with a "Selection or command" line.
+
+---
+
+## Part 37A — Exit Point & Service Registration Audit
+
+Reads the registration-facility exit points with `WRKREGINF` (one screen) and flags any exit point with no program registered.
+
+### Location
+
+Security panel → IBM i SECURITY (AS/400) → EXIT POINT &amp; SERVICE REGISTRATION AUDIT
+
+### How it works
+
+An exit point is a named hook IBM i calls out to before servicing certain requests (FTP, remote SQL, remote command, NetServer file access, …). With no program registered at that hook, nothing validates the request at all — this is the usual explanation when a restricted shell (`LMTCPB(*YES)`) turns out not to matter: the user never goes through a 5250 command line, they go through FTP or Client Access instead, channels an unregistered exit point leaves completely open.
+
+### Risk levels
+
+| Rating | Exit point |
+|---|---|
+| CRITICAL | `QIBM_QTMF_SERVER_REQ` (FTP server request validation), `QIBM_QPWFS_FILE_SERV` (NetServer file-serving validation), `QIBM_QCA_RTV_COMMAND` (remote command call) — each bypasses `LMTCPB(*YES)` entirely over its own channel when unregistered |
+| HIGH | `QIBM_QZDA_INIT` (remote SQL/ODBC server init) unregistered |
+| MEDIUM | `QIBM_QZDA_SQL1` (ad hoc remote SQL) unregistered |
+| LOW | `QIBM_QTMF_CLIENT_REQ` (outbound FTP client requests) unregistered — lower exposure than server-side |
+| OK | any exit point showing a real registered program name |
+
+### Teaching scenario
+
+On the mock, `QIBM_QTMF_SERVER_REQ` shows `*NONE` → CRITICAL: any FTP client can `GET`/`PUT`/`RCMD` against this box regardless of what the user's 5250 session is restricted to. Contrast `QIBM_QZDA_SQL1`, which shows a real exit program (`SQLEXITPGM`) registered → OK. The lesson for an engagement: always check `WRKREGINF` before trusting that `LMTCPB(*YES)` actually restricts a user — it only restricts the 5250 command line, not every other way onto the box.
+
+---
+
+## Part 37B — NetServer / SMB Configuration Audit
+
+Reads the NetServer (SMB) configuration in one screen and flags a set guest profile and unenforced SMB signing. (A genuine IBM i has no single green-screen command for this — iSeries Navigator or the `QZLSCFG` API own it there — so the mock models it as a flat report screen the same shape as `DSPNETA`, under an invented `DSPNETSVR` command, to teach the same finding without requiring a GUI.)
+
+### Location
+
+Security panel → IBM i SECURITY (AS/400) → NETSERVER / SMB CONFIGURATION AUDIT
+
+### Risk levels
+
+| Rating | Attribute |
+|---|---|
+| HIGH | `GUESTUSRPRF` names a real profile — unauthenticated SMB clients get mapped to it |
+| MEDIUM | `SIGNEDSMB(*NO)` — SMB requests aren't signed, so they can be tampered with or replayed in transit |
+| OK | `GUESTUSRPRF` blank/`*NONE`, `SIGNEDSMB(*YES)`, and other non-exposing attributes |
+
+### Teaching scenario
+
+The mock ships `GUESTUSRPRF(QNETSVRGST)` and `SIGNEDSMB(*NO)` — both findings at once, a realistic default-install posture. The guest profile means anyone who can reach the share at all gets in without a credential; unsigned SMB means even a legitimate session's traffic can be tampered with on the wire. Recommend `GUESTUSRPRF(*NONE)` unless anonymous share access is actually a requirement, and `SIGNEDSMB(*YES)`.
+
+---
+
+## Part 37C — IFS Permission Sweep
+
+Uses `WRKLNK` to list IFS object links and flags `*PUBLIC` authority the same way the Object Scanner flags library objects — except the IFS is usually the blind spot, not the audited surface.
+
+### Location
+
+Security panel → IBM i SECURITY (AS/400) → IFS PERMISSION SWEEP
+
+### How it works
+
+Shops that lock DB2 libraries down meticulously often treat the IFS (`/`, `/QOpenSys`, `/home`, a PASE web root) like an unmonitored NFS share. `WRKLNK` gives the object link, type, owner, and `*PUBLIC` authority in one list — no drill-down needed, the list already carries everything the classifier needs.
+
+### Risk levels
+
+| Rating | Condition |
+|---|---|
+| CRITICAL | world-writable (`*PUBLIC` includes `W`) **and** the path looks sensitive (a `.conf`/`.env` file, something under `.ssh/`) |
+| HIGH | world-writable anywhere, **or** world-readable on a path that looks like credentials/key material (`id_rsa`, `.pem`, `passwd`) |
+| OK | everything else |
+
+### Teaching scenario
+
+`/www/myapp/config/db.conf` at `*PUBLIC *RW` is CRITICAL — world-writable *and* almost certainly holds a database credential. `/home/webadmin/.ssh/id_rsa` at `*PUBLIC *R` is HIGH even though it's only readable, not writable — a world-readable private key is still a complete compromise of whatever it authenticates to. `/home/webadmin/deploy.sh` at `*PUBLIC *RWX` is HIGH on write alone, regardless of content. Contrast `/QSYS.LIB` at `*PUBLIC *RX`, the ordinary baseline → OK. The lesson: the IFS needs the same `*PUBLIC`-authority discipline as DB2 libraries, and in practice it rarely gets it.
+
+---
+
 ## Appendix — The .rec.json format
 
 The recording file is plain JSON and human-readable:

@@ -277,6 +277,14 @@ tasks*, MAIN option 3, options 5/6/7):
 | `WRKACTJOB` | Active jobs | Jobs running under privileged profiles (`QSECOFR` maintenance job, `APPADMIN` batch), the `QZDASOINIT` DB host server |
 | `WRKSBS` | Subsystems | Active subsystems (context for the active-job view) |
 
+**Exit Point / IFS / NetServer audit** (command-line reachable, no menu option):
+
+| Command | Panel | What a tool would flag |
+|---------|-------|------------------------|
+| `WRKREGINF` | Registration information | Exit points with no program registered — `QIBM_QTMF_SERVER_REQ` (FTP), `QIBM_QPWFS_FILE_SERV` (NetServer), `QIBM_QCA_RTV_COMMAND` (remote command) all `*NONE`; `QIBM_QZDA_SQL1` registered (`SQLEXITPGM`) for contrast |
+| `DSPNETSVR` | NetServer configuration (invented — no real single CL command exists for this) | `GUESTUSRPRF(QNETSVRGST)` (guest access enabled), `SIGNEDSMB(*NO)` |
+| `WRKLNK` | IFS object links | World-writable `/home/webadmin/deploy.sh`, a plaintext-credential-looking `/www/myapp/config/db.conf`, a world-readable `/home/webadmin/.ssh/id_rsa` |
+
 On the "Work with" panels, type `5` in the **Opt** column next to a row and
 press Enter to drill into its detail panel; `F3`/`F12` steps back out. An
 unrecognized command returns a realistic `CPD0030`/`CPF…` message.

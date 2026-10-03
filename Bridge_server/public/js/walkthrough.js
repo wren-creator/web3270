@@ -2519,6 +2519,123 @@ const _WALKTHROUGHS = [
     ],
   },
 
+  // ── IBM i (AS/400) Exit Point & Service Registration Audit ────────
+  {
+    id:       'as400-exit-point-audit',
+    category: 'security',
+    title:    'IBM i: Exit Point & Service Registration Audit',
+    desc:     'Uses WRKREGINF to find registration-facility exit points with no validation program registered — the way a restricted shell turns out not to matter over FTP, remote SQL, remote command, or NetServer.',
+    steps: [
+      {
+        title: 'Prerequisites',
+        body:  'Connect to a TN5250 (IBM i / AS/400) target, sign on, and stop at a menu with a "Selection or command" line. The tool types WRKREGINF there.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click 🔒 in the OIA status bar and enter the security password (default: 2970).',
+        highlight: 'secBtn', autoFn: null,
+      },
+      {
+        title: 'Run the audit',
+        body:  'Scroll to the IBM i SECURITY (AS/400) section and click ▶ AUDIT EXIT POINTS. The tool issues WRKREGINF and reads which exit points have a program registered. Read-only.',
+        highlight: 'as400ReginfBtn',
+        autoFn: 'startAs400ReginfScan',
+        autoLabel: 'Run it for me',
+      },
+      {
+        title: 'Read the findings',
+        body:  'CRITICAL — FTP server request validation, NetServer file-serving validation, or remote command call with no exit program registered: each one bypasses LMTCPB(*YES) entirely over its own channel. HIGH — remote SQL/ODBC init unregistered. An exit point showing a real program name is OK — something is actually gating that channel.',
+        highlight: 'as400ReginfOut', autoFn: null,
+      },
+      {
+        title: 'Export the audit',
+        body:  'Click ↓ Export IBM i Audit CSV to save the findings.',
+        highlight: 'as400ReginfOut',
+        autoFn: 'as400ExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
+  // ── IBM i (AS/400) NetServer / SMB Configuration Audit ────────────
+  {
+    id:       'as400-netserver-audit',
+    category: 'security',
+    title:    'IBM i: NetServer / SMB Configuration Audit',
+    desc:     'Reads the NetServer (SMB) configuration in one screen and flags a set guest profile and unenforced SMB signing.',
+    steps: [
+      {
+        title: 'Prerequisites',
+        body:  'Connect to a TN5250 (IBM i / AS/400) target, sign on, and stop at a menu with a "Selection or command" line.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click 🔒 in the OIA status bar and enter the security password (default: 2970).',
+        highlight: 'secBtn', autoFn: null,
+      },
+      {
+        title: 'Run the audit',
+        body:  'Scroll to the IBM i SECURITY (AS/400) section and click ▶ AUDIT NETSERVER CONFIG. The tool reads the NetServer attributes from the one display screen. Read-only.',
+        highlight: 'as400NetsvrBtn',
+        autoFn: 'startAs400NetsvrScan',
+        autoLabel: 'Run it for me',
+      },
+      {
+        title: 'Read the findings',
+        body:  'HIGH — GUESTUSRPRF names a real profile, so unauthenticated SMB clients get mapped to it. MEDIUM — SMB signing isn’t required, so requests in transit can be tampered with or replayed. The DETAIL column carries the fix for each.',
+        highlight: 'as400NetsvrOut', autoFn: null,
+      },
+      {
+        title: 'Export the audit',
+        body:  'Click ↓ Export IBM i Audit CSV to save the findings.',
+        highlight: 'as400NetsvrOut',
+        autoFn: 'as400ExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
+  // ── IBM i (AS/400) IFS Permission Sweep ────────────────────────────
+  {
+    id:       'as400-ifs-permission-sweep',
+    category: 'security',
+    title:    'IBM i: IFS Permission Sweep',
+    desc:     'Uses WRKLNK to list IFS object links and flags world-writable objects and world-readable objects on paths that look like credentials or key material.',
+    steps: [
+      {
+        title: 'Prerequisites',
+        body:  'Connect to a TN5250 (IBM i / AS/400) target, sign on, and stop at a menu with a "Selection or command" line. The tool types WRKLNK there.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click 🔒 in the OIA status bar and enter the security password (default: 2970).',
+        highlight: 'secBtn', autoFn: null,
+      },
+      {
+        title: 'Run the sweep',
+        body:  'Scroll to the IBM i SECURITY (AS/400) section and click ▶ SWEEP IFS PERMISSIONS. The tool issues WRKLNK and reads each object link’s owner and *PUBLIC authority. Read-only.',
+        highlight: 'as400IfsBtn',
+        autoFn: 'startAs400IfsScan',
+        autoLabel: 'Run it for me',
+      },
+      {
+        title: 'Read the findings',
+        body:  'CRITICAL — world-writable (*W in *PUBLIC authority) on a path that also looks sensitive (a .conf/.env file, something under .ssh). HIGH — world-writable anywhere, or world-readable on a path that looks like credentials or key material (id_rsa, .pem, passwd). Shops that lock DB2 libraries down tight often leave the IFS wide open by comparison — this is the everyday-hygiene check for that blind spot.',
+        highlight: 'as400IfsOut', autoFn: null,
+      },
+      {
+        title: 'Export the audit',
+        body:  'Click ↓ Export IBM i Audit CSV to save the findings.',
+        highlight: 'as400IfsOut',
+        autoFn: 'as400ExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
   // ── FUNC KEY Inject ──────────────────────────────────────────────
   {
     id:       'func-key-inject',

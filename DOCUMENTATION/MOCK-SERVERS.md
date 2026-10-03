@@ -489,6 +489,9 @@ Type these on any "Selection or command" / "Command ===>" line. Anything not mod
 | `WRKAUTL` / `DSPAUTL AUTL(x)` | Authorization lists and the objects they secure |
 | `WRKACTJOB` | Active jobs with their user, subsystem, and function |
 | `WRKSBS` | Subsystems |
+| `WRKREGINF` | Registration-facility exit points and whether a program is registered at each |
+| `DSPNETSVR` | NetServer (SMB) configuration — guest profile and signing requirement (invented command; no single green-screen equivalent exists on a real IBM i) |
+| `WRKLNK` | IFS object links: path, type, owner, `*PUBLIC` authority |
 | `STRSST` | Service Tools user IDs (SST option 8): `QSECOFR`, `22222222`, `QSRV`, all still on the shipped default password |
 | `ANZDFTPWD ACTION(*NONE)` | Analyze Default Passwords — lists profiles whose password equals the profile name; reads live from the profile table |
 | `CHGUSRPRF USRPRF(x) PASSWORD(*NONE) STATUS(*DISABLED)` | Remediation — only `PASSWORD(*NONE)` and `STATUS` are modelled; the change persists for the life of the mock process |

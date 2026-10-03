@@ -29,6 +29,7 @@ import {
   parseSysvals, evaluateSysval, parseObjects, parseObjectGrants, evaluateObjectDetail,
   parseNetattrs, evaluateNetattr, parseJobds, evaluateJobd,
   parseAutls, parseAutlSecured, evaluateAutl, parseActjobs, evaluateActjob,
+  evaluateExitPoint, evaluateNetsvr, parseIfsObjects, evaluateIfsObject,
 } from './as400sec-parse.js';
 
 // ── Screen / transport helpers ─────────────────────────────────────────────
@@ -168,10 +169,36 @@ const TOOLS = {
       });
     },
   },
+
+  // ── Wave: Exit Point / IFS / NetServer audit ───────────────────────────────
+  REGINF: {
+    cmd: 'WRKREGINF', title: 'Work with Registration Information', ids: 'Reginf',
+    single: lines => parseNetattrs(lines).map(a => {
+      const { risk, rec } = evaluateExitPoint(a.name, a.value);
+      return { name: a.name, value: a.value, risk, detail: rec };
+    }),
+  },
+  NETSVR: {
+    cmd: 'DSPNETSVR', title: 'Display NetServer Attributes', ids: 'Netsvr',
+    single: lines => parseNetattrs(lines).map(a => {
+      const { risk, rec } = evaluateNetsvr(a.name, a.value);
+      return { name: a.name, value: a.value, risk, detail: rec };
+    }),
+  },
+  IFS: {
+    cmd: 'WRKLNK', title: 'Work with Object Links', ids: 'Ifs',
+    single: lines => parseIfsObjects(lines).map(o => {
+      const { risk, finding } = evaluateIfsObject(o);
+      return { name: o.path, value: `${o.owner} / ${o.auth}`, risk, detail: finding };
+    }),
+  },
 };
 
 // Persisted results per tool (so all tables/CSV survive across scans).
-const RESULTS = { USRPRF: [], SHIPPRF: [], SYSVAL: [], OBJ: [], NETATTR: [], JOBD: [], AUTL: [], ACTJOB: [] };
+const RESULTS = {
+  USRPRF: [], SHIPPRF: [], SYSVAL: [], OBJ: [], NETATTR: [], JOBD: [], AUTL: [], ACTJOB: [],
+  REGINF: [], NETSVR: [], IFS: [],
+};
 
 // ── State machine ───────────────────────────────────────────────────────────
 let as400 = { running: false, tool: null, expecting: null, items: [], idx: 0, pageItems: [], pages: 0 };
@@ -275,6 +302,9 @@ const COLS = {
   JOBD:    ['JOB DESC', 'USER / *PUBLIC'],
   AUTL:    ['AUTH LIST', '*PUBLIC'],
   ACTJOB:  ['JOB', 'USER'],
+  REGINF:  ['EXIT POINT', 'EXIT PROGRAM'],
+  NETSVR:  ['ATTRIBUTE', 'VALUE'],
+  IFS:     ['OBJECT LINK', 'OWNER / *PUBLIC'],
 };
 
 function _render(tool) {
@@ -322,6 +352,9 @@ export function startAs400NetattrScan() { _start('NETATTR'); }
 export function startAs400JobdScan()    { _start('JOBD'); }
 export function startAs400AutlScan()    { _start('AUTL'); }
 export function startAs400ActjobScan()  { _start('ACTJOB'); }
+export function startAs400ReginfScan()  { _start('REGINF'); }
+export function startAs400NetsvrScan()  { _start('NETSVR'); }
+export function startAs400IfsScan()     { _start('IFS'); }
 
 export function as400ExportCsv() {
   const ts = new Date().toISOString();
@@ -335,6 +368,9 @@ export function as400ExportCsv() {
   add('JOBD',    'jobd-privesc');
   add('AUTL',    'authlist-scanner');
   add('ACTJOB',  'actjob-scanner');
+  add('REGINF',  'exit-point-audit');
+  add('NETSVR',  'netserver-audit');
+  add('IFS',     'ifs-permission-sweep');
   if (rows.length === 1) return;
   const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
   saveAs(new Blob([csv], { type: 'text/csv' }), `as400-audit-${ts.slice(0, 19).replace(/:/g, '-')}.csv`);
@@ -344,4 +380,5 @@ Object.assign(window, {
   as400OnScreen, as400ExportCsv,
   startAs400UserScan, startAs400ShippedAudit, startAs400SysvalScan, startAs400ObjScan,
   startAs400NetattrScan, startAs400JobdScan, startAs400AutlScan, startAs400ActjobScan,
+  startAs400ReginfScan, startAs400NetsvrScan, startAs400IfsScan,
 });
