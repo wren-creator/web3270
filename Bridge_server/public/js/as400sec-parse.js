@@ -468,6 +468,43 @@ function _rowsToObjects(cols, rows) {
   });
 }
 
+// STRSQL renders its result grid as fixed-width text (the mock's screenSql()
+// layout: header at row 9, data rows from row 10, each column padEnd(15)
+// from col 2). This reverses that into the same { cols, rows } shape
+// runSql() returns server-side, so the client can classify a live STRSQL
+// screen the same way the mock's own test harness classifies runSql()'s
+// direct output. Generic by construction — works for any result table
+// rendered this way, not just CVE_INFO/GROUP_PTF_CURRENCY_LOCAL.
+//
+// colStart is 3, not the field's declared col:2 -- confirmed live against
+// the real mock over an actual TN5250 socket (not just hand-built test
+// strings): every 5250 field reserves one FA (Start Field) byte at its
+// declared buffer address, with visible content starting at address+1.
+// as400sec-parse.js's OTHER parsers (parseSysvals etc.) get away with
+// using the raw declared col because their generous slice+trim() happens
+// to absorb the 1-column error; a fixed-width table parser can't be that
+// loose, since an off-by-one here shifts every chunk boundary.
+// Must match mock-as400.js's SQL_COL_WIDTH (15) -- that's the only place
+// the actual width lives; this default just mirrors it for the client side.
+export function parseSqlResultTable(lines, { headerRow = 9, colStart = 3, colWidth = 15 } = {}) {
+  const hLine = (lines[headerRow] || '').slice(colStart);
+  const cols = [];
+  for (let i = 0; i < hLine.length; i += colWidth) {
+    const c = hLine.slice(i, i + colWidth).trim();
+    if (!c) break; // first blank header chunk marks the end of real columns
+    cols.push(c);
+  }
+  const rows = [];
+  for (let r = headerRow + 1; r < lines.length; r++) {
+    const line = lines[r] || '';
+    if (line.includes('F3=Exit')) break;
+    const raw = line.slice(colStart);
+    if (!raw.trim()) continue;
+    rows.push(cols.map((_, i) => raw.slice(i * colWidth, i * colWidth + colWidth).trim()));
+  }
+  return { cols, rows };
+}
+
 export function parseCveInfo(cols, rows) {
   return _rowsToObjects(cols, rows);
 }
@@ -491,10 +528,14 @@ export function evaluateCveRow(row) {
 export function parsePtfCurrency(cols, rows) {
   return _rowsToObjects(cols, rows);
 }
+// Column names here (LVL_INST/LVL_AVAIL/STALE_DAYS) are the mock's short
+// aliases for the real service's PTF_GROUP_LEVEL_INSTALLED/
+// PTF_GROUP_LEVEL_AVAILABLE/DAYS_SINCE_CHECK -- see the alias comment next
+// to the mock table definition in mock-as400.js for why.
 export function evaluatePtfGroupRow(row) {
-  const installed = parseInt(row.PTF_GROUP_LEVEL_INSTALLED, 10);
-  const available  = parseInt(row.PTF_GROUP_LEVEL_AVAILABLE, 10);
-  const staleDays   = parseInt(row.DAYS_SINCE_CHECK, 10);
+  const installed = parseInt(row.LVL_INST, 10);
+  const available  = parseInt(row.LVL_AVAIL, 10);
+  const staleDays   = parseInt(row.STALE_DAYS, 10);
   const gap = (!isNaN(installed) && !isNaN(available)) ? available - installed : null;
   if (gap === null) return { risk: 'INFO', detail: 'level not reported' };
   if (gap === 0)    return { risk: 'OK',     detail: 'current' };

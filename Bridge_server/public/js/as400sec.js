@@ -31,6 +31,7 @@ import {
   parseAutls, parseAutlSecured, evaluateAutl, parseActjobs, evaluateActjob,
   evaluateExitPoint, evaluateNetsvr, parseIfsObjects, evaluateIfsObject,
   parseCallStack, evaluateAdoptedAuthority,
+  parseSqlResultTable, parseCveInfo, evaluateCveRow, parsePtfCurrency, evaluatePtfGroupRow,
 } from './as400sec-parse.js';
 
 // ── Screen / transport helpers ─────────────────────────────────────────────
@@ -210,17 +211,18 @@ const TOOLS = {
       },
     },
   },
-  // Menu/Command-Line Bypass Probe is driven by its own bespoke state machine
-  // below (not the generic single/drill shape — it hops between several
-  // different top-level commands in one run), this entry exists only so the
-  // shared _render()/_status() helpers have somewhere to look up DOM ids.
+  // Menu/Command-Line Bypass Probe and the PTF/CVE Currency Checker are each
+  // driven by their own bespoke state machine below (not the generic
+  // single/drill shape), these entries exist only so the shared
+  // _render()/_status() helpers have somewhere to look up DOM ids.
   BYPASS: { ids: 'Bypass' },
+  PTFCVE: { ids: 'Ptfcve' },
 };
 
 // Persisted results per tool (so all tables/CSV survive across scans).
 const RESULTS = {
   USRPRF: [], SHIPPRF: [], SYSVAL: [], OBJ: [], NETATTR: [], JOBD: [], AUTL: [], ACTJOB: [],
-  REGINF: [], NETSVR: [], IFS: [], PGMSTK: [], BYPASS: [],
+  REGINF: [], NETSVR: [], IFS: [], PGMSTK: [], BYPASS: [], PTFCVE: [],
 };
 
 // ── State machine ───────────────────────────────────────────────────────────
@@ -228,6 +230,7 @@ let as400 = { running: false, tool: null, expecting: null, items: [], idx: 0, pa
 
 export function as400OnScreen(msg) {
   _bypassOnScreen(msg); // independent state machine, guards on its own .running
+  _ptfcveOnScreen(msg); // independent state machine, guards on its own .running
   if (!as400.running) return;
   const lines = _screenLines(msg);
   const text  = lines.join('\n');
@@ -331,6 +334,7 @@ const COLS = {
   IFS:     ['OBJECT LINK', 'OWNER / *PUBLIC'],
   PGMSTK:  ['PROGRAM', 'OWNER'],
   BYPASS:  ['SCREEN', 'COMMAND TESTED'],
+  PTFCVE:  ['CVE / PTF GROUP', 'CVSS / LEVEL'],
 };
 
 function _render(tool) {
@@ -461,6 +465,110 @@ function _bypassFinish() {
   _status('BYPASS', `Done — ${crit}/${RESULTS.BYPASS.length} screen(s) had a live command line.`, crit ? 'error' : 'success');
 }
 
+// ── PTF/CVE Currency Checker ────────────────────────────────────────────────
+// Queries IBM i's two real built-in SQL services, SYSTOOLS.CVE_INFO() and
+// SYSTOOLS.GROUP_PTF_CURRENCY_LOCAL(), via STRSQL, then classifies whatever
+// rows come back (CVSS-band risk, PTF level-gap/staleness risk). No CVE list
+// lives in this file or as400sec-parse.js — see the comment on
+// evaluateCveRow() in as400sec-parse.js and ROADMAP.md's Security Tools
+// section for why that's deliberate.
+//
+// Bespoke state machine (not the generic single/drill TOOLS shape) because
+// it drives STRSQL through two different statements in one run rather than
+// a single WRK*/DSP* command. Unlike the Bypass Probe, every stage here
+// checks the arriving screen's actual content before acting — STRSQL's
+// fillField-then-Enter sequence emits an echo screen first (same risk the
+// generic TOOLS machine guards against, see this file's header), and
+// checking content rather than reacting to "a screen arrived" at all is the
+// more robust way to skip that echo.
+const PTFCVE_QUERIES = [
+  { key: 'CVE', stmt: 'SELECT * FROM SYSTOOLS.CVE_INFO()',
+    parse: lines => { const { cols, rows } = parseSqlResultTable(lines); return parseCveInfo(cols, rows); },
+    evaluate: evaluateCveRow, nameCol: 'CVE_ID', valueCol: 'CVSS_SCORE', valuePrefix: 'CVSS ' },
+  { key: 'PTF', stmt: 'SELECT * FROM SYSTOOLS.GROUP_PTF_CURRENCY_LOCAL()',
+    parse: lines => { const { cols, rows } = parseSqlResultTable(lines); return parsePtfCurrency(cols, rows); },
+    evaluate: evaluatePtfGroupRow, nameCol: 'PTF_GROUP', valueCol: 'LVL_INST', valuePrefix: 'level ' },
+];
+
+let ptfcve = { running: false, idx: 0, stage: null };
+
+function _ptfcveStep() {
+  const q = PTFCVE_QUERIES[ptfcve.idx];
+  if (!q) { _ptfcveFinish(); return; }
+  _status('PTFCVE', `[${ptfcve.idx + 1}/${PTFCVE_QUERIES.length}] Running ${q.stmt}…`);
+  ptfcve.stage = 'RESULT';
+  _fillFirstInput(q.stmt);
+  _pressEnter();
+}
+
+function _ptfcveOnScreen(msg) {
+  if (!ptfcve.running) return;
+  const lines = _screenLines(msg);
+  const text  = lines.join('\n');
+  const q = PTFCVE_QUERIES[ptfcve.idx];
+
+  if (ptfcve.stage === 'NAV') {
+    if (!text.includes('Interactive SQL')) return; // still the menu echo, keep waiting
+    ptfcve.stage = 'RESULT';
+    _fillFirstInput(q.stmt);
+    _pressEnter();
+    return;
+  }
+
+  if (ptfcve.stage === 'RESULT') {
+    const sqlError = /SQL\d{4}/.exec(text);
+    const rowsSelected = /(\d+) rows selected\./.exec(text);
+    if (!sqlError && !rowsSelected) return; // fillField echo of the typed statement, keep waiting
+
+    if (sqlError) {
+      RESULTS.PTFCVE.push({ name: q.key, value: '—', risk: 'INFO', detail: `query failed: ${sqlError[0]} — skipped` });
+    } else {
+      q.parse(lines).forEach(row => {
+        const { risk, detail } = q.evaluate(row);
+        RESULTS.PTFCVE.push({ name: row[q.nameCol], value: `${q.valuePrefix}${row[q.valueCol] ?? '?'}`, risk, detail });
+      });
+    }
+    _render('PTFCVE');
+    ptfcve.idx++;
+    if (ptfcve.idx < PTFCVE_QUERIES.length) {
+      _ptfcveStep();
+    } else {
+      ptfcve.stage = 'BACK';
+      _pressF3();
+    }
+    return;
+  }
+
+  if (ptfcve.stage === 'BACK') {
+    if (!text.includes('Selection or command')) return; // still the SQL screen's own F3 echo
+    _ptfcveFinish();
+  }
+}
+
+function _ptfcveFinish() {
+  ptfcve.running = false;
+  const btn = document.getElementById('as400PtfcveBtn');
+  if (btn) btn.disabled = false;
+  const bad = RESULTS.PTFCVE.filter(r => r.risk === 'CRITICAL' || r.risk === 'HIGH').length;
+  _status('PTFCVE', `Done — ${bad}/${RESULTS.PTFCVE.length} finding(s) need attention.`, bad ? 'error' : 'success');
+}
+
+export function startAs400PtfCveScan() {
+  if (ptfcve.running) return;
+  if (!state.liveScreen || !(state.liveScreenText || '').includes('Selection or command')) {
+    _status('PTFCVE', 'Sign on and navigate to an AS/400 menu (with a command line) first.', 'error');
+    return;
+  }
+  RESULTS.PTFCVE = [];
+  _render('PTFCVE');
+  ptfcve = { running: true, idx: 0, stage: 'NAV' };
+  const btn = document.getElementById('as400PtfcveBtn');
+  if (btn) btn.disabled = true;
+  _status('PTFCVE', 'Issuing STRSQL…');
+  _fillFirstInput('STRSQL');
+  _pressEnter();
+}
+
 export function startAs400BypassProbe() {
   if (bypass.running) return;
   if (!state.liveScreen || !(state.liveScreenText || '').includes('Selection or command')) {
@@ -505,6 +613,7 @@ function _buildAs400Rows() {
   add('IFS',     'ifs-permission-sweep');
   add('PGMSTK',  'adopted-authority-scanner');
   add('BYPASS',  'menu-bypass-probe');
+  add('PTFCVE',  'ptf-cve-currency-checker');
   return { rows, ts };
 }
 
@@ -525,5 +634,5 @@ Object.assign(window, {
   startAs400UserScan, startAs400ShippedAudit, startAs400SysvalScan, startAs400ObjScan,
   startAs400NetattrScan, startAs400JobdScan, startAs400AutlScan, startAs400ActjobScan,
   startAs400ReginfScan, startAs400NetsvrScan, startAs400IfsScan,
-  startAs400PgmstkScan, startAs400BypassProbe,
+  startAs400PgmstkScan, startAs400BypassProbe, startAs400PtfCveScan,
 });

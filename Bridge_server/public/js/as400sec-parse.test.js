@@ -3,7 +3,10 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { evaluateShippedProfile, evaluateSysval } from './as400sec-parse.js';
+import {
+  evaluateShippedProfile, evaluateSysval,
+  parseSqlResultTable, parseCveInfo, evaluateCveRow, parsePtfCurrency, evaluatePtfGroupRow,
+} from './as400sec-parse.js';
 
 test('evaluateShippedProfile: default password is always CRITICAL, even when disabled', () => {
   const enabled = evaluateShippedProfile({ name: 'QSECOFR', status: '*ENABLED', pwdNone: '*NO', defaultPwd: true, auths: ['*ALLOBJ'] });
@@ -64,4 +67,79 @@ test('evaluateSysval: QAUTOVRT flags anything other than 0', () => {
   assert.equal(evaluateSysval('QAUTOVRT', '*NOMAX').risk, 'MEDIUM');
   assert.equal(evaluateSysval('QAUTOVRT', '250').risk, 'MEDIUM');
   assert.equal(evaluateSysval('QAUTOVRT', '0').risk, 'OK');
+});
+
+// ── PTF/CVE Currency Checker ────────────────────────────────────────────────
+// Builds a fixed-width STRSQL result screen the same way mock-as400.js's
+// screenSql() renders one (SQL_COL_WIDTH-wide cells, padEnd+slice, from col
+// 2, header on row 9, data from row 10) and feeds it through the client's
+// own screen-scraping parser — this is what originally caught two real bugs:
+// values wider than the column width breaking alignment, and two IBM-style
+// long column names (PTF_GROUP_LEVEL_INSTALLED / _AVAILABLE) truncating to
+// the same string and colliding. Keep SQL_COL_WIDTH (15) in sync with
+// mock-as400.js if either ever changes.
+const SQL_COL_WIDTH = 15;
+// 3-space prefix, not 2 -- the field's declared col:2 plus the 1-byte FA
+// (Start Field) every 5250 field reserves before its visible content.
+// Confirmed live against the real mock over an actual TN5250 socket; see
+// the colStart comment on parseSqlResultTable itself.
+function renderSqlResult(cols, rows) {
+  const cell = v => String(v).padEnd(SQL_COL_WIDTH, ' ').slice(0, SQL_COL_WIDTH);
+  const lines = new Array(24).fill('');
+  lines[9] = '   ' + cols.map(cell).join('').slice(0, 76);
+  rows.forEach((r, i) => { lines[10 + i] = '   ' + r.map(cell).join('').slice(0, 76); });
+  lines[10 + rows.length] = '   F3=Exit';
+  return lines;
+}
+
+test('parseSqlResultTable: round-trips a rendered CVE_INFO result, values wider than the column width intact', () => {
+  const cols = ['CVE_ID', 'DESCRIPTION', 'CVSS_SCORE', 'PRODUCT', 'PTF_STATUS'];
+  const rows = [
+    ['CVE-MOCK-0001', 'RCE in a legacy LPD listener', '9.8', 'IBM i Base', 'NOT INSTALLED'],
+    ['CVE-MOCK-0003', 'Debug Server remote manipulation', '9.1', 'IBM i Base', 'INSTALLED'],
+  ];
+  const lines = renderSqlResult(cols, rows);
+  const { cols: outCols, rows: outRows } = parseSqlResultTable(lines);
+  assert.deepEqual(outCols, cols);
+  assert.equal(outRows[0][0], 'CVE-MOCK-0001'); // 13 chars, wider than 10, must not be clipped
+  assert.equal(outRows[0][4], 'NOT INSTALLED'); // 13 chars, same requirement
+  assert.equal(outRows[1][4], 'INSTALLED');
+});
+
+test('evaluateCveRow: unpatched CVE risk follows CVSS band; an applied PTF is always OK regardless of score', () => {
+  const objs = parseCveInfo(['CVE_ID', 'CVSS_SCORE', 'PTF_STATUS'], [
+    ['CVE-MOCK-0001', '9.8', 'NOT INSTALLED'],
+    ['CVE-MOCK-0002', '8.8', 'NOT INSTALLED'],
+    ['CVE-MOCK-0003', '9.1', 'INSTALLED'],
+  ]);
+  assert.equal(evaluateCveRow(objs[0]).risk, 'CRITICAL'); // >= 9.0
+  assert.equal(evaluateCveRow(objs[1]).risk, 'HIGH');     // >= 7.0, < 9.0
+  assert.equal(evaluateCveRow(objs[2]).risk, 'OK');       // PTF applied, high CVSS doesn't matter
+});
+
+test('evaluatePtfGroupRow: level gap and staleness, by column name not position (short aliases)', () => {
+  const objs = parsePtfCurrency(['PTF_GROUP', 'TITLE', 'LVL_INST', 'LVL_AVAIL', 'STALE_DAYS'], [
+    ['SF99115', 'Security Group', '9', '14', '90'],  // 5 behind, stale
+    ['SF99666', 'TCP/IP Group',   '45', '45', '3'],  // current
+  ]);
+  const behind = evaluatePtfGroupRow(objs[0]);
+  assert.equal(behind.risk, 'HIGH');
+  assert.match(behind.detail, /5 levels behind/);
+  assert.match(behind.detail, /90d/);
+  assert.equal(evaluatePtfGroupRow(objs[1]).risk, 'OK');
+});
+
+test('parseSqlResultTable + evaluatePtfGroupRow: the exact IBM column names this mock aliases must not collide when truncated', () => {
+  // Guards the specific bug: PTF_GROUP_LEVEL_INSTALLED and
+  // PTF_GROUP_LEVEL_AVAILABLE both truncate to "PTF_GROUP_LEVEL" at 15
+  // chars, so the mock aliases them (LVL_INST/LVL_AVAIL) instead. If
+  // someone reverts that aliasing without widening SQL_COL_WIDTH to fit
+  // both full names, this test catches it.
+  const cols = ['PTF_GROUP', 'TITLE', 'LVL_INST', 'LVL_AVAIL', 'STALE_DAYS'];
+  const lines = renderSqlResult(cols, [['SF99115', 'Security Group', '9', '14', '90']]);
+  const { cols: outCols, rows } = parseSqlResultTable(lines);
+  assert.equal(new Set(outCols).size, outCols.length, 'column names must not collide after truncation');
+  const [row] = parsePtfCurrency(outCols, rows);
+  assert.equal(row.LVL_INST, '9');
+  assert.equal(row.LVL_AVAIL, '14');
 });

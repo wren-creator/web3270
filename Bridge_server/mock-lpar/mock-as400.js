@@ -835,8 +835,19 @@ const SQL_TABLES = {
       ['CVE-MOCK-0004', 'DDM interface out-of-bounds write',                     '7.2', 'IBM i Base', 'INSTALLED'],
     ],
   },
+  // Short column aliases, not the real service's actual (much longer)
+  // column names -- PTF_GROUP_LEVEL_INSTALLED and PTF_GROUP_LEVEL_AVAILABLE
+  // are 25 chars each and collide once truncated to this mock's fixed
+  // SQL_COL_WIDTH, which is itself a simplification of a real 5250 STRSQL
+  // screen that would show the true names and let you ROLL right to see
+  // columns the 80-col width can't fit. A real query against the live
+  // service should alias these explicitly for the same reason an analyst
+  // would on real hardware, e.g.
+  // SELECT PTF_GROUP, PTF_GROUP_LEVEL_INSTALLED AS LVL_INST, ... --
+  // this mock's runSql() only understands SELECT * FROM lib.func() though,
+  // so the alias has to live in the mock table definition instead.
   'SYSTOOLS/GROUP_PTF_CURRENCY_LOCAL': {
-    columns: ['PTF_GROUP', 'PTF_GROUP_TITLE', 'PTF_GROUP_LEVEL_INSTALLED', 'PTF_GROUP_LEVEL_AVAILABLE', 'DAYS_SINCE_CHECK'],
+    columns: ['PTF_GROUP', 'TITLE', 'LVL_INST', 'LVL_AVAIL', 'STALE_DAYS'],
     rows: [
       ['SF99738', 'Database Group',   '12', '18', '41'],
       ['SF99666', 'TCP/IP Group',     '45', '45', '3'],
@@ -2041,6 +2052,10 @@ const SNDMSG_TEXT_ROW   = 5;
 // is IBM's real sample table, so this is the same command worth trying on
 // real hardware.
 const SQL_CMD_ROW = 5;
+// 15 rather than a tighter width because CVE_ID ("CVE-MOCK-0001") and
+// PTF_STATUS ("NOT INSTALLED") both run to 13 chars -- the client's
+// parseSqlResultTable() (as400sec-parse.js) must use the same width.
+const SQL_COL_WIDTH = 15;
 function runSql(stmt) {
   // Trailing (...)? covers table FUNCTIONS like SYSTOOLS.CVE_INFO() --
   // real IBM i services take no args in their simplest form, same as here.
@@ -2062,10 +2077,17 @@ function screenSql(ctx) {
   ];
   if (ctx.message) fields.push({ row: 7, col: 2, text: ctx.message, input: false });
   if (ctx.resultCols) {
-    const header = ctx.resultCols.map(c => c.padEnd(10, ' ')).join('').slice(0, 76);
+    // Fixed-width columns, SQL_COL_WIDTH wide each. padEnd alone doesn't
+    // truncate a value already >= the width (CVE_ID values like
+    // "CVE-MOCK-0001" and PTF_STATUS's "NOT INSTALLED" both run past 10),
+    // which silently shifted every later column out of alignment -- the
+    // .slice(0, SQL_COL_WIDTH) after padEnd is what actually enforces the
+    // fixed width per field, not just the join()'s overall .slice(0, 76).
+    const cell = v => String(v).padEnd(SQL_COL_WIDTH, ' ').slice(0, SQL_COL_WIDTH);
+    const header = ctx.resultCols.map(cell).join('').slice(0, 76);
     fields.push({ row: 9, col: 2, text: header, input: false });
     ctx.resultRows.slice(0, 10).forEach((rvals, idx) => {
-      const line = rvals.map(v => String(v).padEnd(10, ' ')).join('').slice(0, 76);
+      const line = rvals.map(cell).join('').slice(0, 76);
       fields.push({ row: 10 + idx, col: 2, text: line, input: false });
     });
   }
