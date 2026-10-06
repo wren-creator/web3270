@@ -71,6 +71,7 @@ Platform key: **z/OS** (TSO/RACF/SDSF/DB2/CICS) · **IBM i** (AS/400) · **z/VM*
 | IFS Permission Sweep | Scans IFS (the Unix-like file system side of IBM i) for world-writable and world-readable-and-sensitive objects. | Run from a menu. | Finds a writable shell script or an exposed key/credential file sitting in the file system, not the traditional object space. |
 | Adopted-Authority Runtime Scanner | Walks the program call stack and flags any program adopting a more privileged owner's authority. | Run from a menu. | A program that adopts `QSECOFR` is a privilege-escalation path by design, this finds exactly which one. |
 | Menu/Command-Line Bypass Probe | Drives several "Work with X" screens' command lines directly, exploiting the fact that `LMTCPB` is often never actually enforced there. | Run from a menu. | Proves a "limited capability" user can run real commands anyway, one of the most common IBM i misconfigurations. |
+| PTF/CVE Currency Checker | Runs `SYSTOOLS.CVE_INFO()` and `SYSTOOLS.GROUP_PTF_CURRENCY_LOCAL()` via STRSQL and classifies whatever rows come back against published CVSS bands and PTF-group level gaps. | Run from a menu. | Answers "is this box patched" from the partition's own live data, no hardcoded CVE list to go stale. |
 
 ## z/VM
 

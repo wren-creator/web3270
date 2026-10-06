@@ -22,7 +22,7 @@ Once unlocked, the Security panel is organised into collapsible accordion sectio
 
 ### Guided walkthroughs
 
-The app ships **72 built-in narrated walkthroughs** (`public/js/walkthrough.js`). Open the **WALKTHROUGHS** section at the top of the Security panel, pick one from the dropdown, and click **▶ Start** — an overlay steps through the tool one instruction at a time, highlighting the control it's talking about, with an optional **"Do it for me"** button that fires the action. Six are general (connecting, multi-session tabs, split screen, macros, file transfer, AI assist); the other 66 map almost one-to-one to the parts in this document, including one each for the four z/TPF Security Console tools. The **z/TPF CONSOLE** section additionally has a combined tour of all four of its tools, launched with the **`?`** button in that section's header. These in-app walkthroughs and this document cover the same ground — use the walkthroughs for hands-on lab time, this document for reference and lesson planning.
+The app ships **74 built-in narrated walkthroughs** (`public/js/walkthrough.js`). Open the **WALKTHROUGHS** section at the top of the Security panel, pick one from the dropdown, and click **▶ Start** — an overlay steps through the tool one instruction at a time, highlighting the control it's talking about, with an optional **"Do it for me"** button that fires the action. Six are general (connecting, multi-session tabs, split screen, macros, file transfer, AI assist); the other 68 map almost one-to-one to the parts in this document, including one each for the four z/TPF Security Console tools. The **z/TPF CONSOLE** section additionally has a combined tour of all four of its tools, launched with the **`?`** button in that section's header. These in-app walkthroughs and this document cover the same ground — use the walkthroughs for hands-on lab time, this document for reference and lesson planning.
 
 ### Contents
 
@@ -50,6 +50,7 @@ The app ships **72 built-in narrated walkthroughs** (`public/js/walkthrough.js`)
 | — | | 37 | IBM i Exit Point / IFS / NetServer Audit — 37A/B/C |
 | — | | 38 | IBM i Adopted-Authority Scanner / Menu Bypass Probe — 38A/B |
 | — | | 39 | VTAM Applid Enumerator |
+| — | | 40 | IBM i PTF/CVE Currency Checker |
 
 Appendices — Structured JSON findings export, the `.rec.json` format.
 
@@ -2623,6 +2624,55 @@ A real terminal switches to another VTAM application with `LOGON APPLID(x)`, but
 ### Teaching scenario
 
 On the mock, `TSO` comes back FOUND_ACTIVE, `CICSTEST` comes back FOUND_INACTIVE (sitting right next to `CICSPROD`, which is active), and anything not on the list comes back NOT_FOUND. The lesson: shops name VTAM resources predictably, a production region's name is usually enough to guess its test counterpart, and `D NET,ID=` confirms a guess without ever risking a `LOGON APPLID` that actually transfers the session somewhere you didn't mean to go.
+
+---
+
+## Part 40 — IBM i (AS/400) PTF/CVE Currency Checker
+
+Parts 33–38 all read a configuration or authority setting and compare it against a known-good value baked into the tool itself. Part 40 is different: it asks the partition what *it* knows about its own patch currency, rather than the tool carrying any opinion about specific CVEs.
+
+### Location
+
+Security panel → IBM i SECURITY (AS/400) → PTF/CVE CURRENCY CHECKER
+
+### How it works
+
+IBM i ships two built-in SQL services for exactly this question, both queryable from Interactive SQL (`STRSQL`) like any other table:
+
+- `SYSTOOLS.CVE_INFO()` — known CVEs affecting the release, whether a PTF is available, and whether it's installed.
+- `SYSTOOLS.GROUP_PTF_CURRENCY_LOCAL()` — each PTF group's installed level versus the level IBM currently recommends, and how long it's been since the partition last checked.
+
+The tool opens `STRSQL`, runs `SELECT * FROM SYSTOOLS.CVE_INFO()`, reads the result grid, runs `SELECT * FROM SYSTOOLS.GROUP_PTF_CURRENCY_LOCAL()`, reads that too, then exits back to the menu. Both queries are the same thing an analyst would type by hand on real hardware — nothing here is 3270/5250-specific trickery, it's exactly how you'd check this yourself.
+
+**The deliberate design choice:** the classifier (`as400sec-parse.js`'s `evaluateCveRow`/`evaluatePtfGroupRow`) does not contain a list of CVE IDs anywhere. It reads whatever rows come back, by column name, and scores them against NVD's published CVSS severity bands — a fixed, public scoring convention, not CVE-specific data. A tool that shipped its own hardcoded CVE list would need updating every time a new one dropped, and would be wrong the moment it went stale. This one can't go stale, because it never carries an opinion about any specific CVE — it only relays what the partition's own SQL services say *right now*.
+
+### Risk levels
+
+**CVE rows** — scored by CVSS severity band, but only when no PTF is applied:
+
+| Rating | Condition |
+|---|---|
+| CRITICAL | no PTF applied, CVSS ≥ 9.0 |
+| HIGH | no PTF applied, CVSS 7.0–8.9 |
+| MEDIUM | no PTF applied, CVSS 4.0–6.9 |
+| LOW | no PTF applied, CVSS < 4.0 |
+| OK | a PTF is already applied, regardless of CVSS score |
+
+**PTF group rows** — scored by how far behind the installed level is, and how long it's been since the partition checked:
+
+| Rating | Condition |
+|---|---|
+| HIGH | installed level is 5+ levels behind available, or the group hasn't been checked in 60+ days |
+| MEDIUM | installed level is 1–4 levels behind, checked recently |
+| OK | installed level matches available |
+
+### Teaching scenario
+
+On the mock, `CVE-MOCK-0001` (CVSS 9.8, no PTF applied) and `CVE-MOCK-0002` (CVSS 8.8, no PTF applied) both come back as unpatched findings — CRITICAL and HIGH respectively — while `CVE-MOCK-0003` and `CVE-MOCK-0004` show a PTF already installed and land at OK despite their own CVSS scores being just as high. That contrast is the point: patch status, not raw severity, is what actually matters once a fix exists. On the PTF side, the Security Group (`SF99115`) is 5 levels behind and hasn't been checked in 90 days — HIGH on both counts — while the TCP/IP Group (`SF99666`) is fully current. The lesson for an engagement: don't ask "is this system vulnerable to CVE-X" from memory or a cheat sheet, ask the partition directly, every time, because the answer changes out from under you the moment IBM ships a new PTF and it doesn't update a tool's hardcoded list on its own.
+
+### A caveat worth stating plainly
+
+The mock's column names for `GROUP_PTF_CURRENCY_LOCAL()` (`LVL_INST`, `LVL_AVAIL`, `STALE_DAYS`) are short aliases, not the real service's actual column names (`PTF_GROUP_LEVEL_INSTALLED`, `PTF_GROUP_LEVEL_AVAILABLE`, `DAYS_SINCE_CHECK`) — those collide once truncated to the mock's fixed-width result screen, the same way an analyst would alias them in a real query to fit an 80-column display. Before running this tool's logic against a real partition, confirm the actual column names either service returns with a `DESCRIBE` or against IBM's current SQL services reference — this mock's names are a reasonable stand-in, not a confirmed match to IBM's documentation.
 
 ---
 

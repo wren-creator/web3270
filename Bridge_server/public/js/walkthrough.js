@@ -2979,6 +2979,45 @@ const _WALKTHROUGHS = [
     ],
   },
 
+  // ── IBM i (AS/400) PTF/CVE Currency Checker ───────────────────────
+  {
+    id:       'as400-ptf-cve-currency-checker',
+    category: 'security',
+    title:    'IBM i: PTF/CVE Currency Checker',
+    desc:     'Runs SYSTOOLS.CVE_INFO() and SYSTOOLS.GROUP_PTF_CURRENCY_LOCAL() via STRSQL, IBM i’s own built-in SQL services, and classifies whatever rows come back against published CVSS bands and PTF-group level gaps. No CVE list is baked into the tool — it only reports what the partition itself says.',
+    steps: [
+      {
+        title: 'Prerequisites',
+        body:  'Connect to a TN5250 (IBM i / AS/400) target, sign on, and stop at a menu with a "Selection or command" line. The tool types STRSQL there on its own.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click 🔒 in the OIA status bar and enter the security password (default: 2970).',
+        highlight: 'secBtn', autoFn: null,
+      },
+      {
+        title: 'Run the check',
+        body:  'Scroll to the IBM i SECURITY (AS/400) section and click ▶ CHECK PTF/CVE CURRENCY. The tool opens Interactive SQL, runs SELECT * FROM SYSTOOLS.CVE_INFO(), then SELECT * FROM SYSTOOLS.GROUP_PTF_CURRENCY_LOCAL(), and returns to the menu. Read-only — both are IBM i built-in query services, nothing is changed on the host.',
+        highlight: 'as400PtfcveBtn',
+        autoFn: 'startAs400PtfCveScan',
+        autoLabel: 'Run it for me',
+      },
+      {
+        title: 'Read the findings',
+        body:  'CVE rows: CRITICAL/HIGH/MEDIUM/LOW follows the CVSS score of any CVE with no PTF applied — a CVE with a PTF already installed is always OK regardless of its score. PTF group rows: HIGH means the installed level is 5+ levels behind available, or the group hasn’t been checked against IBM’s service in 60+ days; OK means current. Nothing here is a fixed list — every finding is read straight off whatever the partition’s own SQL services report right now.',
+        highlight: 'as400PtfcveOut', autoFn: null,
+      },
+      {
+        title: 'Export the audit',
+        body:  'Click ↓ Export IBM i Audit CSV to save the findings.',
+        highlight: 'as400PtfcveOut',
+        autoFn: 'as400ExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
   // ── FUNC KEY Inject ──────────────────────────────────────────────
   {
     id:       'func-key-inject',
