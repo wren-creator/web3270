@@ -448,3 +448,59 @@ export function evaluateActjob(job, privUsers = new Set()) {
   if (server) return { risk: 'MEDIUM', finding: `network host server (${job.user}) — remote attack surface` };
   return { risk: 'OK', finding: `${job.type || 'job'}` };
 }
+
+// ── Wave: PTF/CVE Currency Checker (SYSTOOLS.CVE_INFO() / GROUP_PTF_CURRENCY_LOCAL()) ──
+// These are built-in IBM i SQL services (STRSQL table functions), run live
+// against the partition under audit. Deliberately NOT a hardcoded CVE list:
+// this module only classifies whatever columns come back from the service,
+// by name, so it stays correct if IBM adds/renames columns and never needs
+// updating when a new CVE ships. The one CVSS cutoff below is a published,
+// static scoring convention (NVD severity bands), not a list of CVE IDs.
+//
+// `cols`/`rows` are STRSQL's raw result shape ({ cols: string[], rows: string[][] }),
+// same as runSql()'s return in the mock and whatever the real bridge's SQL
+// path hands back from a live partition.
+function _rowsToObjects(cols, rows) {
+  return rows.map(r => {
+    const o = {};
+    cols.forEach((c, i) => { o[c.toUpperCase()] = r[i]; });
+    return o;
+  });
+}
+
+export function parseCveInfo(cols, rows) {
+  return _rowsToObjects(cols, rows);
+}
+// NVD's own published severity bands (nvd.nist.gov CVSS v3 ratings) — a
+// scoring convention, not CVE-specific data, so this doesn't need touching
+// as new CVEs ship.
+export function evaluateCveRow(row) {
+  const score = parseFloat(row.CVSS_SCORE);
+  const installed = /^(INSTALLED|CURRENT|Y|YES)$/i.test(row.PTF_STATUS || '');
+  if (installed) return { risk: 'OK', detail: `PTF applied (CVSS ${isNaN(score) ? '?' : score})` };
+  let risk = 'INFO';
+  if (!isNaN(score)) {
+    if (score >= 9.0) risk = 'CRITICAL';
+    else if (score >= 7.0) risk = 'HIGH';
+    else if (score >= 4.0) risk = 'MEDIUM';
+    else risk = 'LOW';
+  }
+  return { risk, detail: `no PTF applied — CVSS ${isNaN(score) ? 'unscored' : score}` };
+}
+
+export function parsePtfCurrency(cols, rows) {
+  return _rowsToObjects(cols, rows);
+}
+export function evaluatePtfGroupRow(row) {
+  const installed = parseInt(row.PTF_GROUP_LEVEL_INSTALLED, 10);
+  const available  = parseInt(row.PTF_GROUP_LEVEL_AVAILABLE, 10);
+  const staleDays   = parseInt(row.DAYS_SINCE_CHECK, 10);
+  const gap = (!isNaN(installed) && !isNaN(available)) ? available - installed : null;
+  if (gap === null) return { risk: 'INFO', detail: 'level not reported' };
+  if (gap === 0)    return { risk: 'OK',     detail: 'current' };
+  const stale = !isNaN(staleDays) && staleDays > 60;
+  const risk = gap >= 5 || stale ? 'HIGH' : 'MEDIUM';
+  const parts = [`${gap} level${gap === 1 ? '' : 's'} behind`];
+  if (stale) parts.push(`not checked in ${staleDays}d`);
+  return { risk, detail: parts.join(', ') };
+}

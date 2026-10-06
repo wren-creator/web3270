@@ -815,6 +815,35 @@ const SQL_TABLES = {
       ['10502', 'A GARCIA', 'ACCT', '54900.00'],
     ],
   },
+  // Table FUNCTIONS, not tables -- SYSTOOLS.CVE_INFO() and
+  // SYSTOOLS.GROUP_PTF_CURRENCY_LOCAL() are real IBM i built-in SQL services
+  // (DB2 for i), queried the same way on a physical partition. runSql()
+  // strips the trailing () before the LIB/TABLE lookup below.
+  //
+  // IDs here are deliberately fake-looking (CVE-MOCK-NNNN, not a real CVE
+  // format) so nobody mistakes this mock's canned rows for an actual
+  // advisory. The real client tool (as400sec-parse.js) must never ship a
+  // hardcoded CVE list of its own -- it only classifies whatever columns
+  // come back from a live call to these two services. See ROADMAP.md,
+  // Security Tools, "PTF/CVE Currency Checker" for the reasoning.
+  'SYSTOOLS/CVE_INFO': {
+    columns: ['CVE_ID', 'DESCRIPTION', 'CVSS_SCORE', 'PRODUCT', 'PTF_STATUS'],
+    rows: [
+      ['CVE-MOCK-0001', 'Remote code execution in a legacy LPD listener',        '9.8', 'IBM i Base', 'NOT INSTALLED'],
+      ['CVE-MOCK-0002', 'Host Server authentication bypass via client identity', '8.8', 'IBM i Base', 'NOT INSTALLED'],
+      ['CVE-MOCK-0003', 'Debug Server unauthenticated remote manipulation',      '9.1', 'IBM i Base', 'INSTALLED'],
+      ['CVE-MOCK-0004', 'DDM interface out-of-bounds write',                     '7.2', 'IBM i Base', 'INSTALLED'],
+    ],
+  },
+  'SYSTOOLS/GROUP_PTF_CURRENCY_LOCAL': {
+    columns: ['PTF_GROUP', 'PTF_GROUP_TITLE', 'PTF_GROUP_LEVEL_INSTALLED', 'PTF_GROUP_LEVEL_AVAILABLE', 'DAYS_SINCE_CHECK'],
+    rows: [
+      ['SF99738', 'Database Group',   '12', '18', '41'],
+      ['SF99666', 'TCP/IP Group',     '45', '45', '3'],
+      ['SF99704', 'HIPER Group',      '203', '211', '41'],
+      ['SF99115', 'Security Group',   '9',  '14', '90'],
+    ],
+  },
 };
 
 // ── CL command interpreter ─────────────────────────────────────────
@@ -2013,7 +2042,9 @@ const SNDMSG_TEXT_ROW   = 5;
 // real hardware.
 const SQL_CMD_ROW = 5;
 function runSql(stmt) {
-  const m = /^SELECT\s+\*\s+FROM\s+([A-Z0-9_]+)\.([A-Z0-9_]+)\s*;?$/i.exec(stmt.trim());
+  // Trailing (...)? covers table FUNCTIONS like SYSTOOLS.CVE_INFO() --
+  // real IBM i services take no args in their simplest form, same as here.
+  const m = /^SELECT\s+\*\s+FROM\s+([A-Z0-9_]+)\.([A-Z0-9_]+)\s*(\([^)]*\))?\s*;?$/i.exec(stmt.trim());
   if (!m) return { error: 'SQL0104 - Statement not understood by this mock (try: SELECT * FROM lib.table).' };
   const key = `${m[1].toUpperCase()}/${m[2].toUpperCase()}`;
   const table = SQL_TABLES[key];
