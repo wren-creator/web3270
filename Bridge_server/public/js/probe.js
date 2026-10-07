@@ -1,5 +1,6 @@
 import { state } from './state.js';
 import { saveAs, exportFindingsJson } from './utils.js';
+import { STANDARD_DEFAULTS, buildPlan } from './as400-defaults.js';
 
 const _PROBE_PROFILES = {
   TSO: {
@@ -93,13 +94,16 @@ const _PROBE_PROFILES = {
     // EXISTS — a positive enumeration hit against the full Q* set.
     exists:  t => /CPF1107|CPF1118|CPF1392|CPF1394|password not correct|no password associated|cannot sign on/i.test(t),
     failure: t => /CPF1120|does not exist/i.test(t),
-    defaults: [
-      'QSECOFR,QSECOFR', 'QSRV,QSRV', 'QUSER,QUSER',
-      'QPGMR,QPGMR', 'QSYSOPR,QSYSOPR', 'QSECADM,QSECADM',
-      'QSYS,QSYS', 'QSYSOPR,SYSOPR',
-    ],
+    // One source of truth with the IBM i Default Credential Audit panel.
+    defaults: STANDARD_DEFAULTS.map(d => `${d.user},${d.pass}`),
   },
 };
+
+// The sweep engine serves two panels: RACF PROBE (all subsystems) and the IBM i
+// Default Credential Audit. _ui points at whichever one started the run.
+const _PROBE_UI = { status: 'probeStatus', start: 'probeStartBtn', stop: 'probeStopBtn', results: 'probeResultsTable' };
+const _AUDIT_UI = { status: 'credAuditStatus', start: 'credAuditStartBtn', stop: 'credAuditStopBtn', results: 'credAuditResults' };
+let _ui = _PROBE_UI;
 
 let _probeRunning   = false;
 let _probeAborted   = false;
@@ -175,7 +179,7 @@ async function _probeLogoff(profile) {
 }
 
 function _probeSetStatus(msg) {
-  const el = document.getElementById('probeStatus');
+  const el = document.getElementById(_ui.status);
   if (el) el.textContent = msg;
 }
 
@@ -229,6 +233,7 @@ export async function probeLoadList() {
 
 export async function startProbe() {
   if (_probeRunning) return;
+  _ui = _PROBE_UI;
 
   // MITM Intercept holds every outbound AID mid-flight, so the probe's Enter
   // never reaches the host and every attempt times out. Refuse up front.
@@ -254,6 +259,11 @@ export async function startProbe() {
   // carry on with the rest of the list instead of stopping at the first hit.
   const enumAll = !!document.getElementById('probeEnumAll')?.checked;
 
+  await _probeSweep({ sysName, profile, pairs, delay, enumAll });
+}
+
+// The sweep loop itself: shared by RACF PROBE and the IBM i audit panel.
+async function _probeSweep({ sysName, profile, pairs, delay, enumAll }) {
   _probeRunning   = true;
   _probeAborted   = false;
   _probeResults    = [];
@@ -261,8 +271,8 @@ export async function startProbe() {
   _probeEnumerated = [];
   _probeRenderResults();
 
-  document.getElementById('probeStartBtn').style.display = 'none';
-  document.getElementById('probeStopBtn').style.display  = '';
+  document.getElementById(_ui.start).style.display = 'none';
+  document.getElementById(_ui.stop).style.display  = '';
   _probeSetStatus(`Probing ${sysName} — ${pairs.length} pair(s)${enumAll ? ' (enumerate all)' : ''}`);
 
   let consecErr = 0;
@@ -358,8 +368,8 @@ export async function startProbe() {
   }
 
   _probeRunning = false;
-  document.getElementById('probeStartBtn').style.display = '';
-  document.getElementById('probeStopBtn').style.display  = 'none';
+  document.getElementById(_ui.start).style.display = '';
+  document.getElementById(_ui.stop).style.display  = 'none';
 
   const last = _probeResults[_probeResults.length - 1];
   const enumNote = _probeEnumerated.length
@@ -379,8 +389,8 @@ export function stopProbe() {
   _probeRunning  = false;
   _probeScreenCb = null;
   _probeSetStatus('Stopped');
-  document.getElementById('probeStartBtn').style.display = '';
-  document.getElementById('probeStopBtn').style.display  = 'none';
+  document.getElementById(_ui.start).style.display = '';
+  document.getElementById(_ui.stop).style.display  = 'none';
 }
 
 function _buildProbeRows() {
@@ -405,7 +415,7 @@ export function probeExportJson() {
 }
 
 function _probeRenderResults() {
-  const el = document.getElementById('probeResultsTable');
+  const el = document.getElementById(_ui.results);
   if (!el) return;
   if (!_probeResults.length) { el.innerHTML = ''; return; }
   const C = { SUCCESS: '#3a9a6a', EXISTS: '#c9a227', LOCKOUT: '#e06060', FAILURE: '#555', ERR: '#e0a060' };
@@ -428,4 +438,148 @@ function _probeRenderResults() {
     }).join('') + '</table>';
 }
 
-Object.assign(window, { probeOnScreen, probeDetectSubsystem, probeLoadDefaults, probeLoadList, startProbe, stopProbe, probeExportCsv, probeExportJson });
+// ── IBM i Default Credential Audit ─────────────────────────────────────────
+// Standard IBM i list + an operator intel list (pre-audit notes: names from
+// the kickoff call, an HR/AD export, a prior engagement) → a capped,
+// interleaved plan (as400-defaults.js) → the same sweep engine as RACF PROBE.
+// Runs at the IBM i Sign On screen, before any signed-on as400sec tool.
+
+let _auditResults = [];   // snapshot of the last audit run, survives a later RACF PROBE run
+
+function _auditSetStatus(msg) {
+  const el = document.getElementById(_AUDIT_UI.status);
+  if (el) el.textContent = msg;
+}
+
+function _auditPlan() {
+  const v = id => document.getElementById(id);
+  const cap = parseInt(v('credAuditCap')?.value ?? '2', 10);
+  return buildPlan({
+    intel:          v('credAuditIntel')?.value || '',
+    useStandard:    v('credAuditStd')?.checked !== false,
+    userAsPass:     v('credAuditUserPass')?.checked !== false,
+    maxPerProfile:  Number.isFinite(cap) ? cap : 2,
+  });
+}
+
+function _auditStatsLine(st) {
+  const bits = [`${st.attempts} attempt(s) across ${st.profiles} profile(s)`];
+  if (st.maxPerProfile) bits.push(`max ${st.maxPerProfile} per profile`);
+  if (st.droppedByCap)  bits.push(`${st.droppedByCap} trimmed by the cap`);
+  if (st.duplicates)    bits.push(`${st.duplicates} duplicate(s) merged`);
+  if (st.skippedInvalid) bits.push(`${st.skippedInvalid} line(s) skipped, not valid IBM i userids`);
+  return bits.join(' · ');
+}
+
+export function credAuditPreview() {
+  const { stats } = _auditPlan();
+  _auditSetStatus(stats.attempts ? `Plan: ${_auditStatsLine(stats)}` : 'Nothing to try. Add an intel list or turn the standard list on.');
+}
+
+function _auditAppendIntel(text, label) {
+  const el = document.getElementById('credAuditIntel');
+  if (!el) return;
+  el.value = el.value.trim() ? `${el.value.replace(/\s+$/, '')}\n${text}` : text;
+  credAuditPreview();
+  _auditSetStatus(`${label} · ${document.getElementById('credAuditStatus').textContent}`);
+}
+
+// Intel from a local file the operator picked (browser-side, nothing uploaded).
+export function credAuditLoadFile(input) {
+  const f = input?.files?.[0];
+  if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => { _auditAppendIntel(String(rd.result || ''), `Loaded ${f.name}`); input.value = ''; };
+  rd.onerror = () => _auditSetStatus(`Could not read ${f.name}`);
+  rd.readAsText(f);
+}
+
+// Intel from the bridge host's default-accounts.txt (same route RACF PROBE uses).
+export async function credAuditLoadList() {
+  try {
+    const r = await fetch('/api/default-accounts', { cache: 'no-store' });
+    const j = r.ok ? await r.json() : null;
+    if (j && j.found && Array.isArray(j.pairs) && j.pairs.length) {
+      _auditAppendIntel(j.pairs.map(([u, p]) => `${u}:${p}`).join('\n'), `Loaded ${j.pairs.length} pair(s) from the bridge host`);
+      return;
+    }
+    _auditSetStatus(j && j.reason === 'multi-tenant'
+      ? 'Host file list is disabled on this deployment. Paste a list or load a file instead.'
+      : 'No wordlist file on the bridge host. Paste a list or load a file instead.');
+  } catch {
+    _auditSetStatus('Could not reach the bridge to read the account list');
+  }
+}
+
+export function credAuditClear() {
+  const el = document.getElementById('credAuditIntel');
+  if (el) el.value = '';
+  credAuditPreview();
+}
+
+export async function startAs400CredAudit() {
+  if (_probeRunning) return;
+  _ui = _AUDIT_UI;
+
+  if (document.getElementById('mitmBtn')?.classList.contains('sec-panel-btn-active')) {
+    _auditSetStatus('Turn off ⚡ MITM Intercept first, it holds the Enter key.');
+    return;
+  }
+  const det = probeDetectSubsystem();
+  if (!det || det.name !== 'AS400') {
+    _auditSetStatus('Navigate to the IBM i Sign On screen first (TN5250, before signing on).');
+    return;
+  }
+  const { candidates, stats } = _auditPlan();
+  if (!candidates.length) { _auditSetStatus('Nothing to try. Add an intel list or turn the standard list on.'); return; }
+
+  const delay = parseInt(document.getElementById('credAuditDelay')?.value || '1500', 10) || 1500;
+  const enumAll = !!document.getElementById('credAuditEnumAll')?.checked;
+  const source = new Map(candidates.map(([u, p, src]) => [`${u}\0${p}`, src]));
+
+  _auditSetStatus(`Starting: ${_auditStatsLine(stats)}`);
+  await _probeSweep({ sysName: 'IBM i', profile: det.profile, pairs: candidates, delay, enumAll });
+  _auditResults = _probeResults.map(r => ({ ...r, source: source.get(`${r.userid}\0${r.password}`) || '' }));
+}
+
+// Findings rows in the shape as400sec.js's combined CSV/JSON export uses:
+// { name, value, risk, detail }. A rejected guess against a nonexistent
+// profile (FAILURE) is not a finding and is left out.
+export function credAuditFindings() {
+  const rank = { SUCCESS: 3, LOCKOUT: 2, EXISTS: 1 };
+  const best = new Map();   // userid -> the strongest result seen for it
+  for (const r of _auditResults) {
+    if (rank[r.result] && (!best.has(r.userid) || rank[r.result] > rank[best.get(r.userid).result])) best.set(r.userid, r);
+  }
+  return [...best.values()].map(r => {
+    if (r.result === 'SUCCESS') return { name: r.userid, value: 'valid credential', risk: 'CRITICAL',
+      detail: `Signed on with password "${r.password}" (${r.source || 'list'}). Change it, and check what this profile can do.` };
+    if (r.result === 'LOCKOUT') return { name: r.userid, value: 'profile disabled', risk: 'HIGH',
+      detail: 'The audit itself disabled this profile (QMAXSIGN reached) and stopped. Re-enable it and lower the per-profile cap.' };
+    return { name: r.userid, value: 'profile exists', risk: 'INFO',
+      detail: 'Sign On confirmed the profile is real while rejecting the credential (CPF code oracle).' };
+  });
+}
+
+function _auditRows() {
+  return [
+    ['userid', 'password', 'result', 'source', 'response_ms', 'timestamp'],
+    ..._auditResults.map(r => [r.userid, r.password, r.result, r.source, r.elapsed ?? '', r.ts]),
+  ];
+}
+
+export function credAuditExportCsv() {
+  if (!_auditResults.length) return;
+  const csv = _auditRows().map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+  saveAs(new Blob([csv], { type: 'text/csv' }), `ibmi-default-creds-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.csv`);
+}
+
+export function credAuditExportJson() {
+  if (!_auditResults.length) return;
+  exportFindingsJson('ibmi-default-creds', _auditRows(), `ibmi-default-creds-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`);
+}
+
+Object.assign(window, {
+  probeOnScreen, probeDetectSubsystem, probeLoadDefaults, probeLoadList, startProbe, stopProbe, probeExportCsv, probeExportJson,
+  startAs400CredAudit, credAuditPreview, credAuditLoadFile, credAuditLoadList, credAuditClear, credAuditExportCsv, credAuditExportJson,
+});

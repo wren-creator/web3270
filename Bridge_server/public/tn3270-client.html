@@ -1167,12 +1167,58 @@
         <div class="sec-section-body">
           <div class="sec-panel-hint" style="margin-bottom:8px">TN5250 targets only. Sign on and stop at an AS/400 menu (with a "Selection or command" line) before running. FOR AUTHORIZED USE ONLY.</div>
 
+          <!-- Default Credential Audit — runs BEFORE sign-on, at the Sign On screen -->
+          <div style="font-size:10px;color:var(--text-muted);font-weight:600;letter-spacing:.06em;margin-bottom:4px">DEFAULT CREDENTIAL AUDIT <span style="font-weight:400;text-transform:none">(run at the Sign On screen, before signing on)</span></div>
+          <div class="sec-panel-hint" style="margin-bottom:6px">Tries the standard IBM i default pairs plus your own pre-audit intel (userids from a kickoff call, a directory export, a prior report). Bare userids are tried as userid=userid. Capped and interleaved per profile so a long list does not trip QMAXSIGN. FOR AUTHORIZED USE ONLY.</div>
+          <div class="sec-row" style="justify-content:space-between;align-items:center;margin-bottom:4px">
+            <span style="font-size:10px;color:var(--text-muted)">Pre-audit intel — USERID:PASSWORD or bare USERID per line</span>
+            <span style="display:flex;gap:4px">
+              <input id="credAuditFile" type="file" accept=".txt,.csv" style="display:none" onchange="credAuditLoadFile(this)">
+              <button onclick="document.getElementById('credAuditFile').click()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:1px 8px;cursor:pointer" title="Load a local file of pre-audit intel">Load file</button>
+              <button onclick="credAuditLoadList()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:1px 8px;cursor:pointer" title="Read default-accounts.txt on the bridge host">Load from host</button>
+              <button onclick="credAuditClear()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:1px 8px;cursor:pointer">Clear</button>
+            </span>
+          </div>
+          <textarea id="credAuditIntel" rows="4" oninput="credAuditPreview()"
+            placeholder="jsmith:Summer24&#10;bjones&#10;# lines starting with # are comments"
+            style="width:100%;box-sizing:border-box;background:#000;border:1px solid #2a2a2a;border-radius:3px;color:#8acce8;font-family:'IBM Plex Mono',monospace;font-size:10px;padding:4px 6px;resize:vertical;outline:none"></textarea>
+          <div class="sec-row" style="gap:10px;align-items:center;margin-top:4px;flex-wrap:wrap">
+            <label style="font-size:10px;color:var(--text-muted);display:flex;align-items:center;gap:4px;cursor:pointer" title="Also try the built-in IBM-supplied / common-default pairs">
+              <input type="checkbox" id="credAuditStd" checked style="margin:0" onchange="credAuditPreview()"> Standard list
+            </label>
+            <label style="font-size:10px;color:var(--text-muted);display:flex;align-items:center;gap:4px;cursor:pointer" title="For every userid seen, also try userid as its own password">
+              <input type="checkbox" id="credAuditUserPass" checked style="margin:0" onchange="credAuditPreview()"> Try userid=password
+            </label>
+            <label style="font-size:10px;color:var(--text-muted);display:flex;align-items:center;gap:4px;cursor:pointer" title="On each match, sign the account off and keep trying the rest of the list">
+              <input type="checkbox" id="credAuditEnumAll" style="margin:0"> Keep going after a match
+            </label>
+          </div>
+          <div class="sec-row" style="gap:8px;align-items:center;margin-top:4px">
+            <span style="font-size:10px;color:var(--text-muted);flex-shrink:0">Max attempts / profile</span>
+            <input id="credAuditCap" type="number" value="2" min="0" max="10" step="1" oninput="credAuditPreview()"
+              style="width:48px;background:#000;border:1px solid #333;border-radius:3px;color:#ccc;font-family:inherit;font-size:10px;padding:2px 6px;outline:none" title="0 = no cap. Default 2, one under the stock QMAXSIGN of 3.">
+            <span style="font-size:10px;color:var(--text-muted);flex-shrink:0">Delay (ms)</span>
+            <input id="credAuditDelay" type="number" value="1500" min="500" max="10000" step="100"
+              style="width:68px;background:#000;border:1px solid #333;border-radius:3px;color:#ccc;font-family:inherit;font-size:10px;padding:2px 6px;outline:none">
+            <div style="flex:1"></div>
+            <button id="credAuditStartBtn" class="sec-inject-btn" onclick="startAs400CredAudit()" style="background:#1a2a1a">▶ START</button>
+            <button id="credAuditStopBtn"  class="sec-inject-btn" onclick="stopProbe()" style="background:#2a1a1a;display:none">■ STOP</button>
+          </div>
+          <div id="credAuditStatus" style="font-size:10px;color:var(--text-muted);margin-top:4px;min-height:14px"></div>
+          <div id="credAuditResults"></div>
+          <div style="margin-top:6px">
+            <button onclick="credAuditExportCsv()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ Export CSV</button>
+            <button onclick="credAuditExportJson()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ JSON</button>
+          </div>
+
           <!-- System Value Security Analyzer -->
-          <div style="font-size:10px;color:var(--text-muted);font-weight:600;letter-spacing:.06em;margin-bottom:4px">SYSTEM VALUE SECURITY ANALYZER</div>
-          <div class="sec-panel-hint" style="margin-bottom:6px">WRKSYSVAL reads the security system values in one screen and flags weak settings — QSECURITY &lt; 40, QMAXSIGN(*NOMAX), QAUDCTL(*NONE), weak QPWD* / QCRTAUT / QALWOBJRST — with a recommended value.</div>
-          <button id="as400SysvalBtn" class="sec-inject-btn" onclick="startAs400SysvalScan()" style="background:#1a2a1a">▶ ANALYZE SYSTEM VALUES</button>
-          <div id="as400SysvalStatus" style="font-size:10px;color:var(--text-muted);margin-top:4px;min-height:14px"></div>
-          <div id="as400SysvalOut" style="max-height:220px;overflow-y:auto;margin-top:4px"></div>
+          <div style="margin-top:10px;padding-top:8px;border-top:1px solid #1a1a1a">
+            <div style="font-size:10px;color:var(--text-muted);font-weight:600;letter-spacing:.06em;margin-bottom:4px">SYSTEM VALUE SECURITY ANALYZER</div>
+            <div class="sec-panel-hint" style="margin-bottom:6px">WRKSYSVAL reads the security system values in one screen and flags weak settings — QSECURITY &lt; 40, QMAXSIGN(*NOMAX), QAUDCTL(*NONE), weak QPWD* / QCRTAUT / QALWOBJRST — with a recommended value.</div>
+            <button id="as400SysvalBtn" class="sec-inject-btn" onclick="startAs400SysvalScan()" style="background:#1a2a1a">▶ ANALYZE SYSTEM VALUES</button>
+            <div id="as400SysvalStatus" style="font-size:10px;color:var(--text-muted);margin-top:4px;min-height:14px"></div>
+            <div id="as400SysvalOut" style="max-height:220px;overflow-y:auto;margin-top:4px"></div>
+          </div>
 
           <!-- User Profile & Special-Authority Enumerator -->
           <div style="margin-top:10px;padding-top:8px;border-top:1px solid #1a1a1a">

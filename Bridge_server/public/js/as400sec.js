@@ -24,6 +24,7 @@
 
 import { state } from './state.js';
 import { saveAs, exportFindingsJson } from './utils.js';
+import { credAuditFindings } from './probe.js';
 import {
   parseProfileNames, parseLabelValue, parseSpecialAuths, evaluateProfile, evaluateShippedProfile,
   parseSysvals, evaluateSysval, parseObjects, parseObjectGrants, evaluateObjectDetail,
@@ -614,6 +615,8 @@ function _buildAs400Rows() {
   add('PGMSTK',  'adopted-authority-scanner');
   add('BYPASS',  'menu-bypass-probe');
   add('PTFCVE',  'ptf-cve-currency-checker');
+  // Pre sign-on tool: its results live in probe.js, not RESULTS.
+  credAuditFindings().forEach(r => rows.push(['default-credential-audit', r.name, r.value, r.risk, r.detail, ts]));
   return { rows, ts };
 }
 
