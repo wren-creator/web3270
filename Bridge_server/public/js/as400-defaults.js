@@ -16,15 +16,44 @@
 // Tier 'common' = weak pairs that turn up again and again on real IBM i audits.
 // Deliberately short: a long blind list on a live box is how you disable
 // accounts. Bigger lists belong in the operator's intel file.
+//
+// `role` and `action` on the 'ibm' tier entries are from an operator-compiled
+// IBM-supplied-profile reference (role/subsystem + IBM's recommended
+// hardening, e.g. "PASSWORD(*NONE), STATUS(*DISABLED)"). Several of these
+// profiles ship with NO password at all — the recommended action says so —
+// so userid=userid against them isn't really a "default password" guess,
+// it's the CPF1118/"no password associated" enumeration oracle (profile.exists
+// in probe.js) confirming the profile is real. A profile here that DOES
+// accept its own name as a password is itself a finding: it should have
+// shipped *NONE and someone set one. describeStandard() surfaces role/action
+// for the findings detail text either way.
 export const STANDARD_DEFAULTS = [
-  { user: 'QSECOFR', pass: 'QSECOFR',  tier: 'ibm' },
-  { user: 'QSRV',    pass: 'QSRV',     tier: 'ibm' },
-  { user: 'QSRVBAS', pass: 'QSRVBAS',  tier: 'ibm' },
-  { user: 'QSYSOPR', pass: 'QSYSOPR',  tier: 'ibm' },
-  { user: 'QPGMR',   pass: 'QPGMR',    tier: 'ibm' },
-  { user: 'QUSER',   pass: 'QUSER',    tier: 'ibm' },
-  { user: 'QSECADM', pass: 'QSECADM',  tier: 'ibm' },
-  { user: 'QSYS',    pass: 'QSYS',     tier: 'ibm' },
+  { user: 'QSECOFR',    pass: 'QSECOFR',    tier: 'ibm', role: 'Security Officer (*ALLOBJ)', action: 'Change to unique strong password, restrict interactive signon' },
+  { user: 'QSYS',       pass: 'QSYS',       tier: 'ibm', role: 'System Owner Profile', action: 'PASSWORD(*NONE), STATUS(*DISABLED)' },
+  { user: 'QPGMR',      pass: 'QPGMR',       tier: 'ibm', role: 'Programmer Profile', action: 'PASSWORD(*NONE) or change, revoke unnecessary special authorities' },
+  { user: 'QSYSOPR',    pass: 'QSYSOPR',    tier: 'ibm', role: 'System Operator', action: 'Change to unique strong password, limit authorities' },
+  { user: 'QSRV',       pass: 'QSRV',       tier: 'ibm', role: 'Hardware Service Representative', action: 'STATUS(*DISABLED) when not in active use' },
+  { user: 'QSRVDIR',    pass: 'QSRVDIR',    tier: 'ibm', role: 'Electronic Customer Support / Service Director', action: 'PASSWORD(*NONE), STATUS(*DISABLED)' },
+  { user: 'QUSER',      pass: 'QUSER',      tier: 'ibm', role: 'Batch / Background Job Runner', action: 'PASSWORD(*NONE) (must remain active for OS batch)' },
+  { user: 'QDBSHR',     pass: 'QDBSHR',     tier: 'ibm', role: 'Database File Share Management', action: 'PASSWORD(*NONE)' },
+  { user: 'QDFTOWN',    pass: 'QDFTOWN',    tier: 'ibm', role: 'Default Object Ownership Fallback', action: 'PASSWORD(*NONE)' },
+  { user: 'QDIRSRV',    pass: 'QDIRSRV',    tier: 'ibm', role: 'LDAP / Directory Services', action: 'PASSWORD(*NONE)' },
+  { user: 'QLPINSTALL', pass: 'QLPINSTALL', tier: 'ibm', role: 'Licensed Program Installation', action: 'PASSWORD(*NONE), STATUS(*DISABLED)' },
+  { user: 'QMSF',       pass: 'QMSF',       tier: 'ibm', role: 'Mail Server Framework', action: 'PASSWORD(*NONE)' },
+  { user: 'QNETSPLF',   pass: 'QNETSPLF',   tier: 'ibm', role: 'Network Spool Distribution', action: 'PASSWORD(*NONE)' },
+  { user: 'QNTP',       pass: 'QNTP',       tier: 'ibm', role: 'Network Time Protocol Daemon', action: 'PASSWORD(*NONE)' },
+  { user: 'QTCP',       pass: 'QTCP',       tier: 'ibm', role: 'TCP/IP Subsystem Daemon', action: 'PASSWORD(*NONE)' },
+  { user: 'QTMHHTTP',   pass: 'QTMHHTTP',   tier: 'ibm', role: 'HTTP Server Runtime Engine', action: 'PASSWORD(*NONE)' },
+  { user: 'QTMHHTP1',   pass: 'QTMHHTP1',   tier: 'ibm', role: 'HTTP Server Core Worker', action: 'PASSWORD(*NONE)' },
+  { user: 'QWEBADMIN',  pass: 'QWEBADMIN',  tier: 'ibm', role: 'Web Administration / HTTP Console', action: 'Change password, restrict access' },
+  { user: 'QTMSNMP',    pass: 'QTMSNMP',    tier: 'ibm', role: 'Simple Network Management Protocol', action: 'PASSWORD(*NONE)' },
+  { user: 'QTMHOVR',    pass: 'QTMHOVR',    tier: 'ibm', role: 'TCP/IP Server Support', action: 'PASSWORD(*NONE)' },
+  { user: 'QCLUSTER',   pass: 'QCLUSTER',   tier: 'ibm', role: 'Cluster Resource Services', action: 'PASSWORD(*NONE)' },
+  { user: 'QSNADS',     pass: 'QSNADS',     tier: 'ibm', role: 'Systems Network Architecture Distribution', action: 'PASSWORD(*NONE)' },
+  { user: 'QAUTOMON',   pass: 'QAUTOMON',   tier: 'ibm', role: 'Automated Monitoring Subsystem', action: 'PASSWORD(*NONE)' },
+  { user: 'QBRMS',      pass: 'QBRMS',      tier: 'ibm', role: 'Backup Recovery and Media Services', action: 'PASSWORD(*NONE), disable interactive signon' },
+  { user: 'QSRVBAS',    pass: 'QSRVBAS',    tier: 'ibm' },
+  { user: 'QSECADM',    pass: 'QSECADM',    tier: 'ibm' },
   { user: 'QSECOFR', pass: 'PASSWORD', tier: 'common' },
   { user: 'ADMIN',   pass: 'ADMIN',    tier: 'common' },
   { user: 'ADMIN',   pass: 'PASSWORD', tier: 'common' },
@@ -34,6 +63,16 @@ export const STANDARD_DEFAULTS = [
   { user: 'USER',    pass: 'USER',     tier: 'common' },
   { user: 'OPERATOR', pass: 'OPERATOR', tier: 'common' },
 ];
+
+// user -> { role, action } for the first STANDARD_DEFAULTS entry that has
+// them. Used to put role/remediation context into a finding's detail text.
+const _STANDARD_META = new Map();
+for (const d of STANDARD_DEFAULTS) {
+  if (d.role && !_STANDARD_META.has(d.user)) _STANDARD_META.set(d.user, { role: d.role, action: d.action });
+}
+export function describeStandard(user) {
+  return _STANDARD_META.get(String(user || '').toUpperCase()) || null;
+}
 
 export const DEFAULT_MAX_PER_PROFILE = 2;
 

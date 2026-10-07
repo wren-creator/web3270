@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { saveAs, exportFindingsJson } from './utils.js';
-import { STANDARD_DEFAULTS, buildPlan } from './as400-defaults.js';
+import { STANDARD_DEFAULTS, buildPlan, describeStandard } from './as400-defaults.js';
 
 const _PROBE_PROFILES = {
   TSO: {
@@ -552,12 +552,19 @@ export function credAuditFindings() {
     if (rank[r.result] && (!best.has(r.userid) || rank[r.result] > rank[best.get(r.userid).result])) best.set(r.userid, r);
   }
   return [...best.values()].map(r => {
-    if (r.result === 'SUCCESS') return { name: r.userid, value: 'valid credential', risk: 'CRITICAL',
-      detail: `Signed on with password "${r.password}" (${r.source || 'list'}). Change it, and check what this profile can do.` };
+    const meta = describeStandard(r.userid);
+    const metaNote = meta ? ` ${meta.role} — IBM recommends ${meta.action}.` : '';
+    if (r.result === 'SUCCESS') {
+      const shouldBeNone = /\*NONE/.test(meta?.action || '');
+      return { name: r.userid, value: 'valid credential', risk: 'CRITICAL',
+        detail: `Signed on with password "${r.password}" (${r.source || 'list'}).`
+          + (shouldBeNone ? ` This profile should ship PASSWORD(*NONE) — someone set one matching the profile name.` : ' Change it, and check what this profile can do.')
+          + metaNote };
+    }
     if (r.result === 'LOCKOUT') return { name: r.userid, value: 'profile disabled', risk: 'HIGH',
-      detail: 'The audit itself disabled this profile (QMAXSIGN reached) and stopped. Re-enable it and lower the per-profile cap.' };
+      detail: `The audit itself disabled this profile (QMAXSIGN reached) and stopped. Re-enable it and lower the per-profile cap.${metaNote}` };
     return { name: r.userid, value: 'profile exists', risk: 'INFO',
-      detail: 'Sign On confirmed the profile is real while rejecting the credential (CPF code oracle).' };
+      detail: `Sign On confirmed the profile is real while rejecting the credential (CPF code oracle).${metaNote}` };
   });
 }
 

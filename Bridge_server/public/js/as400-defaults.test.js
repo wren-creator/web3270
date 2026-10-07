@@ -3,7 +3,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseIntel, buildPlan, STANDARD_DEFAULTS } from './as400-defaults.js';
+import { parseIntel, buildPlan, STANDARD_DEFAULTS, describeStandard } from './as400-defaults.js';
 
 test('parseIntel: pairs, bare ids, comments, separators', () => {
   const { entries, skippedInvalid } = parseIntel([
@@ -80,4 +80,12 @@ test('buildPlan: maxPerProfile 0 means no cap', () => {
   const { stats } = buildPlan({ maxPerProfile: 0 });
   assert.equal(stats.droppedByCap, 0);
   assert.equal(stats.attempts, new Set(STANDARD_DEFAULTS.map(d => `${d.user}\0${d.pass}`)).size);
+});
+
+test('describeStandard: role/action surface for the operator-supplied IBM profiles, case-insensitively', () => {
+  assert.deepEqual(describeStandard('qsrvdir'), { role: 'Electronic Customer Support / Service Director', action: 'PASSWORD(*NONE), STATUS(*DISABLED)' });
+  assert.equal(describeStandard('QTMHHTP1').action, 'PASSWORD(*NONE)');
+  assert.equal(describeStandard('NOSUCHPROFILE'), null);
+  // Entries with no role/action (not in the operator's source list) describe as null.
+  assert.equal(describeStandard('QSECADM'), null);
 });
