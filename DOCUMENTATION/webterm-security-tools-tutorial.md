@@ -2676,6 +2676,55 @@ The mock's column names for `GROUP_PTF_CURRENCY_LOCAL()` (`LVL_INST`, `LVL_AVAIL
 
 ---
 
+## Part 41 — IBM i (AS/400) Default Credential Audit
+
+Every other IBM i tool in this document runs after sign-on, from a menu's command line. This one is the exception: it runs at the Sign On screen itself, before anything is signed on, because that's the only point in the flow where a default-credential sweep makes sense.
+
+### Location
+
+Security panel → IBM i SECURITY (AS/400) → DEFAULT CREDENTIAL AUDIT (the first block in the section, since it is the one tool that has to run before sign-on)
+
+### Why this exists alongside RACF PROBE
+
+RACF PROBE ([Part 12](#) and the `racf-probe` walkthrough) already auto-detects an IBM i Sign On screen and can sweep a wordlist against it — it has done that since early on, as one of five subsystems it covers (TSO, z/VM, CICS, z/TPF, IBM i). What it didn't have was a way to take an engagement's actual pre-audit intel — userids gathered on a kickoff call, pulled from a directory export, carried over from a prior report — and turn that into a safe, prioritized attempt plan. Hand-formatting `USER,PASS` lines works for a handful of pairs; it doesn't scale, and it gives no guidance on how many guesses are safe to throw at a given profile before risking a lockout.
+
+The Default Credential Audit panel is built on the same sweep engine RACF PROBE uses (`probe.js`), so a fix or improvement to one benefits both, but it owns its own planning logic end to end:
+
+- `public/js/as400-defaults.js` — `STANDARD_DEFAULTS` (26 IBM-supplied profiles with their documented role and IBM's recommended hardening action, plus 8 common non-Q weak pairs), `parseIntel()` (reads an operator's pre-audit list), and `buildPlan()` (merges intel + the standard list + a userid=password pass, dedupes, caps per profile, and round-robins the result).
+- `public/js/probe.js` — `startAs400CredAudit()` drives the plan through the same sweep loop RACF PROBE uses, and `credAuditFindings()` classifies the results.
+
+### How it works
+
+1. Type or paste pre-audit intel into the box, one entry per line: `USERID:PASSWORD`, `USERID,PASSWORD`, or a bare `USERID` (tried as userid=password automatically). "Load file" reads a local file you pick, browser-side, nothing is uploaded anywhere. "Load from host" reads the same `default-accounts.txt` on the bridge host that RACF PROBE's "Load list" button reads.
+2. Leave "Standard list" and "Try userid=password" checked to add the built-in IBM-supplied defaults and extend userid=password coverage to every userid seen, not just the ones in the standard list.
+3. Set "Max attempts / profile" — default 2, one under the stock `QMAXSIGN` of 3. The planner tries the best-informed guess for each profile first (an explicit intel pair beats userid=userid, which beats a standard-list guess) and trims the rest once a profile hits the cap, so a long intel list can't accidentally disable an account.
+4. The status line previews the plan live as you type: how many attempts across how many profiles, anything trimmed by the cap, anything skipped because it wasn't a syntactically valid IBM i userid (up to 10 characters, `A-Z 0-9 # $ @ _`, can't start with a digit).
+5. Click ▶ START. Attempts round-robin across profiles — one profile's attempts never land back to back — and each one classifies the same way RACF PROBE's IBM i profile does: **SUCCESS** (the credential works), **EXISTS** (the profile is real but this password wasn't — IBM i's Sign On screen is a user-enumeration oracle: `CPF1107`/`CPF1118`/`CPF1392`/`CPF1394` all confirm a real profile independently of whether the password worked), **FAILURE** (`CPF1120`, no such profile), or **LOCKOUT** (the audit itself tripped `QMAXSIGN` — it stops immediately). "Keep going after a match" signs a SUCCESS off (`SIGNOFF`) and continues instead of stopping there, same as RACF PROBE's enumerate-all mode.
+
+### Why several "defaults" aren't crackable passwords at all
+
+A number of the 26 IBM-supplied entries — `QSRVDIR`, `QDBSHR`, `QDFTOWN`, `QDIRSRV`, `QLPINSTALL`, `QMSF`, `QNETSPLF`, `QNTP`, `QTCP`, `QTMHHTTP`, `QTMHHTP1`, `QTMSNMP`, `QTMHOVR`, `QCLUSTER`, `QSNADS`, `QAUTOMON`, `QBRMS` — ship `PASSWORD(*NONE)` by IBM's own design. Trying `userid=userid` against one of these isn't really a password guess, it's the CPF-code enumeration oracle, the same mechanism `EXISTS` always relies on. The result is still useful: it confirms the profile is real on the target.
+
+But if one of those *does* accept its own name as a password, that's not a routine "default credential found" — it's a configuration someone actively changed away from IBM's shipped state, which is itself worth flagging on its own. `credAuditFindings()` checks each hit against `describeStandard()`'s role/action metadata and calls this case out by name: "This profile should ship `PASSWORD(*NONE)` — someone set one matching the profile name."
+
+### Risk levels
+
+| Rating | Condition |
+|---|---|
+| CRITICAL | a valid credential was found |
+| HIGH | the audit itself disabled a profile (`QMAXSIGN` reached) |
+| INFO | enumeration only — the profile is confirmed real, no valid password found |
+
+### Teaching scenario
+
+On the mock, running with just the standard list and defaults checked confirms `QSECOFR/QSECOFR` and `QYSPJ/QYSPJ` (the planted blend-in backdoor from the Shipped Profile Audit scenario) as SUCCESS, while the rest of the IBM-supplied `Q*` set comes back EXISTS — real profiles, no working password, confirmed purely through the CPF-code oracle without ever getting in. Add a pre-audit intel line like `QPGMR:Summer24` and the planner tries that pair first for `QPGMR`, ahead of the standard list's own `QPGMR:QPGMR` guess, which only gets tried if the cap allows a second attempt.
+
+### Export
+
+Click ↓ Export CSV or ↓ JSON directly below this tool's results for a standalone export (`ibmi-default-creds-<timestamp>.csv`/`.json`), or use the combined ↓ Export IBM i Audit CSV further down the panel to bundle these findings with every other IBM i tool's output from the same session, under `default-credential-audit`.
+
+---
+
 ## Appendix — Structured JSON findings export
 
 Every security tool's "Export CSV" button now has a "JSON" button right next to it. The CSV export was always meant for opening in a spreadsheet; the JSON export is for feeding a finding straight into a report or another tool without re-parsing a CSV. Same data, different shape, nothing about the CSV export changed.
@@ -2695,7 +2744,7 @@ The file looks like this:
 }
 ```
 
-The top-level `tool` field names the scanner that produced the file (matches the CSV filename's prefix — `as400-audit`, `racf-probe`, `recon`, `syscheck`, `cics-txn-scanner`, `db2-scan`, `fuzz`, `negotiation-analyzer`, `sdsf-job-scanner`, `stc-profile-scanner`, `buffer-bleed`, `field-length-disclosure`, `vm-minidisk-exposure`, `in-transit-encryption-monitor`). Each entry under `findings` carries whatever columns that tool's CSV export already has — the column names become the JSON keys, so the shape differs slightly tool to tool (an `as400-audit` entry has `risk`/`detail`, a `negotiation-analyzer` entry has `cipher`/`certExpiry`, and so on), but every tool's export always carries a `timestamp`.
+The top-level `tool` field names the scanner that produced the file (matches the CSV filename's prefix — `as400-audit`, `racf-probe`, `ibmi-default-creds`, `recon`, `syscheck`, `cics-txn-scanner`, `db2-scan`, `fuzz`, `negotiation-analyzer`, `sdsf-job-scanner`, `stc-profile-scanner`, `buffer-bleed`, `field-length-disclosure`, `vm-minidisk-exposure`, `in-transit-encryption-monitor`). Each entry under `findings` carries whatever columns that tool's CSV export already has — the column names become the JSON keys, so the shape differs slightly tool to tool (an `as400-audit` entry has `risk`/`detail`, a `negotiation-analyzer` entry has `cipher`/`certExpiry`, and so on), but every tool's export always carries a `timestamp`.
 
 This is built on `exportFindingsJson()` in `public/js/utils.js` — a single shared function every tool's export button calls, reusing the exact same row-building logic the CSV export already had (refactored into a small `_buildXRows()` per module so CSV and JSON can't drift from each other).
 

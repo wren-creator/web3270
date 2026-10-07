@@ -2462,6 +2462,85 @@ const _WALKTHROUGHS = [
     ],
   },
 
+  // ── IBM i (AS/400) Default Credential Audit (runs pre sign-on) ────
+  {
+    id:       'as400-default-credential-audit',
+    category: 'security',
+    title:    'IBM i: Default Credential Audit',
+    desc:     'Tries the standard IBM-supplied default pairs plus your own pre-audit intel against the Sign On screen, before anything is signed on. Capped and interleaved per profile so it does not trip QMAXSIGN.',
+    steps: [
+      {
+        title: 'Why this is separate from RACF PROBE',
+        body:  'RACF PROBE can already sweep an IBM i Sign On screen, but its built-in list is short and there is no good way to feed it a pre-audit intel list (userids from a kickoff call, a directory export, a prior report) beyond hand-formatting USER,PASS lines yourself. This tool does one job: build and run a lockout-aware plan from the standard IBM i list plus whatever intel you paste or load, specifically for the IBM i Sign On screen.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Prerequisites',
+        body:  'Connect to a TN5250 (IBM i / AS/400) target and stop at the Sign On screen (User / Password fields, Subsystem / Current library labels). Do not sign on. This is the only tool in the IBM i Security section that runs before sign-on, which is why it sits first in the panel.',
+        highlight: null,
+        autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click the 🔒 button in the OIA status bar and enter the security password (default: 2970) to reveal the Security tab.',
+        highlight: 'secBtn',
+        autoFn: null,
+      },
+      {
+        title: 'Find the Default Credential Audit',
+        body:  'Scroll to the IBM i SECURITY (AS/400) section. It is the first block, above the System Value Security Analyzer, since it is the one tool that runs before sign-on.',
+        highlight: 'credAuditIntel',
+        autoFn: null,
+      },
+      {
+        title: 'Add your pre-audit intel (optional)',
+        body:  'Paste USERID:PASSWORD or USERID,PASSWORD pairs, or just bare userids, one per line. A bare userid is tried as userid=password automatically. "Load file" reads a local .txt/.csv you pick (nothing is uploaded). "Load from host" reads default-accounts.txt on the bridge host, the same file RACF PROBE\'s "Load list" uses.',
+        highlight: 'credAuditIntel',
+        autoFn: null,
+      },
+      {
+        title: 'Standard list and userid=password',
+        body:  'Both checkboxes are on by default. "Standard list" adds the built-in IBM-supplied profile defaults (QSECOFR, QSYS, QPGMR, QSYSOPR, QSRV, and more, each with its documented role) plus a short list of common non-Q weak pairs. "Try userid=password" extends that to every userid seen, from either source, not just the standard list.',
+        highlight: 'credAuditStd',
+        autoFn: null,
+      },
+      {
+        title: 'Set the per-profile cap',
+        body:  'Max attempts / profile defaults to 2, one under the stock QMAXSIGN of 3. This is what keeps a long intel list from accidentally disabling an account: the planner tries the most informed guess for each profile first (an explicit intel pair, then userid=userid, then the standard list) and trims the rest once a profile hits the cap. 0 means no cap — only use that on a system you know does not enforce QMAXSIGN, or where you have explicit sign-off to risk a lockout.',
+        highlight: 'credAuditCap',
+        autoFn: null,
+      },
+      {
+        title: 'Preview the plan',
+        body:  'The status line below updates live as you type or toggle options, showing how many attempts across how many profiles the current settings will run, plus anything trimmed by the cap or skipped as not a valid IBM i userid.',
+        highlight: 'credAuditStatus',
+        autoFn: 'credAuditPreview',
+        autoLabel: 'Preview the plan',
+      },
+      {
+        title: 'Run it',
+        body:  'Click ▶ START. Attempts round-robin across profiles so one profile is never hit twice in a row. Each result classifies the same way RACF PROBE does: SUCCESS (credential works), EXISTS (the profile is real, this password was not — the CPF1107/1118/1392/1394 oracle), FAILURE (no such profile, CPF1120), or LOCKOUT (the audit itself tripped QMAXSIGN — it stops immediately). "Keep going after a match" signs a SUCCESS off and continues instead of stopping there.',
+        highlight: 'credAuditStartBtn',
+        autoFn: 'startAs400CredAudit',
+        autoLabel: 'Run it for me',
+      },
+      {
+        title: 'Read the findings',
+        body:  'CRITICAL — a valid credential. HIGH — the audit disabled a profile itself (lower the cap and re-run once it is re-enabled). A profile whose documented IBM-supplied role says PASSWORD(*NONE) should never accept a password at all — if userid=userid succeeds against one of those, the finding calls that out specifically as a misconfiguration, not just a weak password. These findings fold into the same combined CSV/JSON export as every other IBM i tool, under default-credential-audit.',
+        highlight: 'credAuditResults',
+        autoFn: null,
+      },
+      {
+        title: 'Export the results',
+        body:  'Click ↓ Export CSV (or JSON) right below the results table for this tool\'s own standalone export, or use the combined ↓ Export IBM i Audit CSV further down the panel to bundle it with every other IBM i tool\'s findings from this session.',
+        highlight: 'credAuditResults',
+        autoFn: 'credAuditExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
   // ── IBM i (AS/400) Shipped Profile Audit ─────────────────────────
   {
     id:       'as400-shipped-profile-audit',

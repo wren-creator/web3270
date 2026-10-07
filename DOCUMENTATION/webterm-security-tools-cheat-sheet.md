@@ -58,6 +58,7 @@ Platform key: **z/OS** (TSO/RACF/SDSF/DB2/CICS) · **IBM i** (AS/400) · **z/VM*
 
 | Tool | What It Does | Direct Use | Benefit |
 |---|---|---|---|
+| Default Credential Audit | Tries the standard IBM-supplied default pairs plus your own pre-audit intel (paste, load a file, or load from the bridge host) against the Sign On screen, capped and interleaved per profile to stay under QMAXSIGN. | Before signing on, paste or load intel, run. | Turns an engagement's pre-audit intel into a safe, prioritized credential sweep, the one IBM i tool that runs before anything is signed on. |
 | System Value Security Analyzer | Reads system security values (QSECURITY, password rules, etc.). | Sign on, stop at a menu, run. | The IBM i equivalent of a RACF settings check, one read, full picture of system-wide posture. |
 | User Profile & Special-Authority Enumerator | Lists user profiles and their special authorities (*ALLOBJ, *SECADM, etc.). | Run from a menu. | Finds who actually has the keys to the system, not just who's supposed to. |
 | Shipped Profile Audit | Drills every IBM-supplied `Q*` profile against the real ~50-profile reference list and flags anything non-standard or still carrying a default password. | Run from a menu. | Catches both a forgotten default password on a real IBM profile and a blend-in decoy profile planted to look like one. |
