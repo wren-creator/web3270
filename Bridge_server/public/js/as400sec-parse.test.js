@@ -143,3 +143,24 @@ test('parseSqlResultTable + evaluatePtfGroupRow: the exact IBM column names this
   assert.equal(row.LVL_INST, '9');
   assert.equal(row.LVL_AVAIL, '14');
 });
+
+// as400sec.js's PTFCVE state machine runs two STRSQL queries in one
+// session, reusing the same 'RESULT' stage for both. The screen's result
+// area doesn't repaint on fillField's own echo (only the command-line field
+// changes), so after the CVE query's result lands and the PTF query gets
+// typed next, the echo that follows still shows the CVE query's own "N rows
+// selected" message and result grid. as400sec.js distinguishes "stale
+// previous result" from "my real result" by checking that the CURRENT
+// query's own nameCol is actually present in the parsed columns -- this
+// guards the one fact that check depends on: the two tables' column sets
+// never overlap, so a stale CVE screen can never satisfy the PTF query's
+// name-column check (or vice versa). If a future schema change ever made
+// these overlap, that distinguishing check would stop working and this
+// test would catch it.
+test("CVE_INFO and GROUP_PTF_CURRENCY_LOCAL column sets don't overlap (PTFCVE's stale-echo guard depends on this)", () => {
+  const cveCols = ['CVE_ID', 'DESCRIPTION', 'CVSS_SCORE', 'PRODUCT', 'PTF_STATUS'];
+  const ptfCols = ['PTF_GROUP', 'TITLE', 'LVL_INST', 'LVL_AVAIL', 'STALE_DAYS'];
+  assert.equal(cveCols.filter(c => ptfCols.includes(c)).length, 0);
+  assert.ok(!cveCols.includes('PTF_GROUP'));
+  assert.ok(!ptfCols.includes('CVE_ID'));
+});

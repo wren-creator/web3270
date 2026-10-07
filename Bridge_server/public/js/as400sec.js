@@ -521,6 +521,16 @@ function _ptfcveOnScreen(msg) {
     const rowsSelected = /(\d+) rows selected\./.exec(text);
     if (!sqlError && !rowsSelected) return; // fillField echo of the typed statement, keep waiting
 
+    // On the second+ query, the screen's result area doesn't repaint until
+    // the real Enter-driven redraw -- fillField's own echo after typing the
+    // NEXT statement still shows the PREVIOUS query's "N rows selected."
+    // message and result grid untouched, which also satisfies rowsSelected
+    // above. Checking that this query's own name column is actually present
+    // is what distinguishes "my real result" from "stale previous result",
+    // not just the presence of rows-selected text. (The very first query has
+    // no previous result to be stale, so this never blocks it.)
+    if (!sqlError && !parseSqlResultTable(lines).cols.includes(q.nameCol)) return;
+
     if (sqlError) {
       RESULTS.PTFCVE.push({ name: q.key, value: '—', risk: 'INFO', detail: `query failed: ${sqlError[0]} — skipped` });
     } else {
