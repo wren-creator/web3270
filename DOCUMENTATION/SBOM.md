@@ -15,7 +15,7 @@ WebTerm/3270 is a browser-based IBM mainframe terminal emulator providing plugin
 
 **Repository:** `wren-creator/webterm-3270` (GitHub)  
 **Runtime Environment:** Node.js ≥ 18.0.0  
-**Platform:** Linux (WSL2 / Docker / Ubuntu 24), macOS
+**Platform:** Linux (Docker / Ubuntu 24), macOS
 
 ---
 
@@ -135,7 +135,7 @@ The `ws` package lists the following as optional peer dependencies. They are not
 |-----------|---------|---------|-------------|
 | Docker Engine | ≥ 20.x | Apache 2.0 | Container runtime |
 | Docker Compose | v2 | Apache 2.0 | Multi-container orchestration |
-| Ubuntu | 24.04 (LTS) | Various (GPL, etc.) | Base OS for Docker images and WSL2 environment |
+| Ubuntu | 24.04 (LTS) | Various (GPL, etc.) | Base OS for Docker images |
 | Node.js | ≥ 20.x | MIT | JavaScript runtime |
 
 ---

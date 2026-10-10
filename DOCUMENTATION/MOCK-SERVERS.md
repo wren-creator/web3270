@@ -44,7 +44,7 @@ The three TN3270 daemons implement the **full TN3270(E) protocol stack**: real T
 
 ## Quick Start
 
-### Node / WSL2
+### Node (contributors, no Docker)
 
 ```bash
 # Terminal 1 — z/OS mock (port 3270)
@@ -717,7 +717,7 @@ Startup output:
 
 ## Running All Servers
 
-### WSL2 / Node (five terminals)
+### Node (contributors, five terminals)
 
 ```bash
 # Terminal 1 — z/OS mock (port 3270)
@@ -804,7 +804,7 @@ mock-claims, MOCK-CLAIMS, mock-claims, 3273,  false,  CLAIMS, 3278-2,  true
 
 The AS/400 row carries a 9th column, `protocol`, set to `5250`; omitted, it defaults to `3270`. Its model is a 5250 display model (`3179-2`) rather than a 3278.
 
-> To point the client at a Node/WSL2 fleet instead of the Docker one, override the host in your own gitignored `lpars.txt` using the same ids:
+> To point the client at a Node fleet instead of the Docker one, override the host in your own gitignored `lpars.txt` using the same ids:
 > ```
 > mock-as400,  MOCK-AS400,  127.0.0.1,  3272,  false,  AS400,  3179-2,  true,  5250
 > mock-tpf,    MOCK-TPF,    127.0.0.1,  3274,  false,  TPF,    3278-2,  true

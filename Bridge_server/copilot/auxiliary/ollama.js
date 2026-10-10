@@ -7,9 +7,9 @@
  * API calls, no data leaves the corporate network. Ideal when no
  * external API approval is forthcoming.
  *
- * ── Setup (WSL2) ──────────────────────────────────────────────────
+ * ── Setup (Docker host) ──────────────────────────────────────────
  *
- *   # Install Ollama inside WSL2
+ *   # Install Ollama on the machine running Docker
  *   curl -fsSL https://ollama.com/install.sh | sh
  *
  *   # Pull a model (one-time download)

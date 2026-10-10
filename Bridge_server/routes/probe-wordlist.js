@@ -8,7 +8,7 @@
 //   DEFAULT_ACCOUNTS_FILE env var, if set (this is what docker-compose.yml
 //   uses: it bind-mounts ./default-accounts.txt to /app/default-accounts.txt
 //   and points this var there, so the container reads a host file live).
-//   Otherwise ~/mainframe/default-accounts.txt for a plain Node/WSL run.
+//   Otherwise ~/mainframe/default-accounts.txt for a plain Node run.
 //
 // The path comes only from env/default, never from the request, so there is
 // no traversal surface. On a multi-tenant / hosted deployment the bridge's

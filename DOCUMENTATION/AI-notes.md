@@ -190,7 +190,7 @@ calls — everything stays on the corporate network.
 **Pros:**
 - Zero external network calls — data never leaves the building
 - No API key, no usage costs, no external service approval
-- Can run on the same machine as the bridge (WSL2 or Docker)
+- Can run on the same machine as the bridge (Docker or native)
 - Fully air-gapped deployments supported
 
 **Cons:**
@@ -199,7 +199,7 @@ calls — everything stays on the corporate network.
 - Requires a machine with reasonable RAM (8GB minimum, 16GB+ preferred)
 - IT still needs to approve installation of Ollama itself
 
-**Setup (WSL2):**
+**Setup (install Ollama on the Docker host):**
 
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh

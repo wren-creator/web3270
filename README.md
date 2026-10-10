@@ -46,53 +46,66 @@ server.js  (HTTP + WebSocket on the same port)
 
 ---
 
-## Quick Start (Docker or Podman — recommended)
+## Quick Start (Docker)
 
-> **Prerequisites:** Docker Desktop **or** Podman installed and running. Network access to your LPAR on port 23 or 992.
+WebTerm/3270 ships as a container. You don't need Node, npm, or WSL on your machine, just Docker Desktop (or Podman) and network access to your LPAR on port 23 or 992.
+
+### Option 1: Prebuilt images (fastest, no clone, no build)
+
+Prebuilt multi-arch images (Intel/AMD and Apple Silicon/ARM) are published to GitHub Container Registry on every release.
 
 ```bash
-cd Bridge_server
+# Download one file, then start everything
+curl -LO https://raw.githubusercontent.com/wren-creator/web3270/main/Bridge_server/docker-compose.prebuilt.yml
+docker compose -f docker-compose.prebuilt.yml up -d
 
-# 1 · First run — configure port and start
-./start.sh          # Mac / Linux / WSL
-# start.ps1         # Windows PowerShell
-
-# 2 · Open in browser
+# Open in browser
 #   http://localhost:8081
 ```
 
-`start.sh` handles everything on first run: prompts for the port (default 8081), seeds `lpars.txt` if it doesn't exist, migrates any existing macros, then builds and starts the containers.
+On Windows PowerShell, use `curl.exe -LO ...` (plain `curl` is an alias for something else).
 
-The scripts auto-detect the container runtime — Docker is used if running, Podman is the fallback. Compose detection covers `docker compose` (plugin), `podman compose`, `podman-compose`, and `docker-compose` (legacy standalone).
+That pulls the bridge plus the five mock mainframes (z/OS, z/VM, z/TPF, AS/400, claims) so you can click around before you point it at a real LPAR.
 
-```bash
-# Subsequent runs — starts immediately, no prompts
-./start.sh
-
-# Reconfigure port
-./start.sh --setup
-
-# Stop
-./stop.sh
-```
-
-Click **⊕ Connect to LPAR**, select or add an LPAR, and connect.
-
----
-
-## Quick Start (WSL2 / Node directly)
-
-> Use this if your mainframe is only reachable over VPN — Docker Desktop's VM often can't route VPN traffic.
+**No internet on the Docker machine?** Download `web3270-images-<version>-<amd64|arm64>.tar.gz` and `docker-compose.prebuilt.yml` from the [Releases page](https://github.com/wren-creator/web3270/releases), then:
 
 ```bash
-# Inside Ubuntu / WSL2
-cd ~/Bridge_server
-npm install
-node server.js
-# or: bash start.sh
+docker load < web3270-images-<version>-amd64.tar.gz     # PowerShell: docker load -i <file>
+docker compose -f docker-compose.prebuilt.yml up -d
 ```
 
-Open `http://localhost:8081` in your browser.
+**Just the bridge, from the Docker Desktop UI:** search for `ghcr.io/wren-creator/web3270-bridge`, pull it, click Run, and set the host port to 8081. You lose the mock mainframes (they need the shared network the compose file creates), but it's enough to reach a real LPAR.
+
+Pin a version instead of tracking `latest`, or change the port:
+
+```bash
+WEB3270_TAG=1.0.0 BRIDGE_HOST_PORT=9000 docker compose -f docker-compose.prebuilt.yml up -d
+```
+
+Upgrade: `docker compose -f docker-compose.prebuilt.yml pull && docker compose -f docker-compose.prebuilt.yml up -d`
+
+### Option 2: Build from source (contributors)
+
+```bash
+git clone https://github.com/wren-creator/web3270.git
+cd web3270/Bridge_server
+
+./start.sh          # Mac / Linux
+# start.ps1         # Windows PowerShell
+
+# Open in browser
+#   http://localhost:8081
+```
+
+`start.sh` handles everything on first run: prompts for the port (default 8081), seeds `lpars.txt` if it doesn't exist, migrates any existing macros, then builds and starts the containers. The scripts auto-detect the container runtime (Docker first, Podman as the fallback), and compose detection covers `docker compose`, `podman compose`, `podman-compose`, and legacy `docker-compose`.
+
+```bash
+./start.sh          # subsequent runs start immediately
+./start.sh --setup  # reconfigure port
+./stop.sh           # stop
+```
+
+Click **⊕ Connect to LPAR**, select or add an LPAR, and connect. Step-by-step with screenshots-in-text and troubleshooting: [DOCUMENTATION/INSTALL.md](DOCUMENTATION/INSTALL.md).
 
 ---
 
@@ -159,7 +172,7 @@ Bridge_server/
 ├── start.sh / start.ps1       ← Start bridge (prompts for port on first run)
 ├── stop.sh                    ← Graceful shutdown + stale container cleanup
 ├── setup.sh                   ← Port configuration only (re-run anytime)
-├── collect-logs.sh            ← Mac/Linux/WSL: collect and sanitize diagnostic logs
+├── collect-logs.sh            ← Mac/Linux: collect and sanitize diagnostic logs
 ├── collect-logs.ps1           ← Windows: collect and sanitize diagnostic logs
 ├── .env                       ← Port config written by setup.sh (gitignored)
 ├── .env.example               ← Template showing available variables
@@ -225,7 +238,7 @@ Bridge_server/
 
 ## Environment Variables
 
-Set in `docker-compose.yml` (Docker) or `.env` (Node/WSL2):
+Set in `docker-compose.yml` (or `docker-compose.prebuilt.yml`) under the bridge service:
 
 | Variable | Default | Description |
 |---|---|---|
@@ -279,7 +292,7 @@ of engagement, and the security note are in `DOCUMENTATION/webterm-mcp.md`.
 
 ## Connecting to GIBSON
 
-If you are using [GIBSON](https://github.com/wren-creator/GIBSON) as your TN3270 target, both repos share a Docker network (`gibson-net`) so the bridge reaches GIBSON directly by container name — no IP address needed. This works on Linux, WSL2, and macOS.
+If you are using [GIBSON](https://github.com/wren-creator/GIBSON) as your TN3270 target, both repos share a Docker network (`gibson-net`) so the bridge reaches GIBSON directly by container name — no IP address needed. This works on Linux, Windows, and macOS.
 
 **Startup order — GIBSON must start first (it creates the shared network):**
 
@@ -359,7 +372,7 @@ docker compose exec tn3270-bridge sh
 ```bash
 docker compose exec tn3270-bridge sh -c "nc -zv 10.x.x.x 23"
 ```
-If that fails but works from WSL2 or PowerShell, switch to the WSL2/Node option.
+If that fails but the same test works from your host, see **VPN users** below.
 
 **TLS certificate errors**
 → Two different errors, two different fixes:
@@ -383,8 +396,8 @@ If that fails the same way outside the build context too, switch to a Debian-bas
 
 This is a local workaround for restrictive networks, not the project default (Alpine keeps the image small for everyone else), so keep it as an uncommitted change on affected machines rather than editing the Dockerfile in a PR.
 
-**VPN users — WSL2 vs Docker**
-→ WSL2 shares the Windows network stack, so VPN routing works natively. Use `node server.js` inside WSL2 if Docker can't reach your mainframe.
+**VPN users**
+→ Docker Desktop runs inside a VM, and some VPN clients (AnyConnect, GlobalProtect, Pulse) don't route that VM's traffic through the tunnel. Things to try, in order: confirm the host itself reaches the LPAR (`Test-NetConnection host -Port 23` on Windows, `nc -zv host 23` on Mac), then ask your network team to allow the Docker subnet in the VPN's split-tunnel rules (often `172.17.0.0/16`), or run the container on a machine or server that has a direct route to the LPAR and browse to it from your desktop.
 
 **Login screen goes blank on the first keystroke**
 → Confirm GIBSON's dedicated TN3270 listener (port 3270) is actually running — check its logs for `IST001I TN3270 LISTENER ACTIVE ON PORT 3270`. Older GIBSON builds disabled this listener by default; update to a GIBSON build where it's on by default, or start it with `--with-tn3270`.
@@ -399,7 +412,7 @@ This is a local workaround for restrictive networks, not the project default (Al
 If something goes wrong and you need help diagnosing it, run the log collector from the `Bridge_server/` directory:
 
 ```bash
-# Mac / Linux / WSL
+# Mac / Linux
 ./collect-logs.sh
 
 # Windows (PowerShell)
@@ -421,15 +434,7 @@ Send the zip via Slack DM at **britleydev.slack.com** or email **britleyhoff@gma
 
 ## Auto-start
 
-**Docker Desktop:** Settings → General → enable *"Start Docker Desktop when you log in"*. The `docker-compose.yml` already sets `restart: unless-stopped`.
-
-**WSL2/Node:**
-```powershell
-$action  = New-ScheduledTaskAction -Execute "wsl.exe" `
-             -Argument "-d Ubuntu -- bash -c 'cd ~/Bridge_server && node server.js >> ~/Bridge_server/bridge.log 2>&1'"
-$trigger = New-ScheduledTaskTrigger -AtLogOn
-Register-ScheduledTask -TaskName "WebTerm3270 Bridge" -Action $action -Trigger $trigger -RunLevel Highest
-```
+**Docker Desktop:** Settings → General → enable *"Start Docker Desktop when you log in"*. Both compose files already set `restart: unless-stopped`, so the containers come back on their own after a reboot.
 
 ---
 

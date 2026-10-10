@@ -20,8 +20,7 @@ Bridge_server/
 │  ── Documentation ─────────────────────────────────────────────────
 │
 ├── README.md                             Overview, quick start, architecture
-├── INSTALL.md                            WSL2 and Docker Desktop setup (step-by-step)
-├── SETUP-WINDOWS.md                      Windows-specific notes
+├── INSTALL.md                            Docker Desktop setup: prebuilt images or build from source
 ├── AI-notes.md                           AI provider options and approval guidance
 ├── FILE-STRUCTURE.md                     This file
 ├── MOCK-SERVERS.md                       Mock LPAR daemon reference

@@ -63,7 +63,7 @@ AZURE_OPENAI_DEPLOYMENT=gpt-4o
 ## ollama.js  ←  Fully on-premises, no external calls
 
 ```bash
-# WSL2 — install and pull a model
+# On the Docker host — install and pull a model
 curl -fsSL https://ollama.com/install.sh | sh
 ollama pull llama3.1
 
@@ -115,7 +115,7 @@ currently loaded. Minimum 8 GB RAM; GPU optional but significantly faster.
 | GitHub 429 | Rate limited — wait 60s or switch to `gpt-4o-mini` |
 | Azure 404 | Deployment name wrong — check Azure AI Studio exactly |
 | Azure 401 | API key wrong — check Azure Portal → Keys and Endpoint |
-| Ollama refused | Run `ollama serve` in WSL2 or `docker compose up ollama -d` |
+| Ollama refused | Run `ollama serve` on the host or `docker compose up ollama -d` |
 | Ollama model missing | Run `ollama pull llama3.1` first |
 | Ollama "not reachable" while connected to an LPAR | The bridge (not your browser) is making the request from inside the container — confirm Ollama is reachable from *inside* the container: `docker compose exec tn3270-bridge curl http://host.docker.internal:11434/api/tags` |
 | LM Studio refused | Open LM Studio → Developer tab → Start Server |

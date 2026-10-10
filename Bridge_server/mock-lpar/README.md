@@ -145,7 +145,7 @@ services:
 
 ---
 
-## Running both in WSL2 (two terminals)
+## Running both with Node directly (two terminals, contributors)
 
 ```bash
 # Terminal 1
