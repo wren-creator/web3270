@@ -1,0 +1,108 @@
+# Builds the bridge and the five mock LPAR images, pushes them to GitHub
+# Container Registry (multi-arch: amd64 + arm64), and on a version tag also
+# attaches offline `docker load` bundles to the GitHub Release.
+#
+# Images land at ghcr.io/wren-creator/web3270-<name>. First publish creates
+# each package as private; flip each one to Public under
+# github.com/wren-creator?tab=packages -> package -> Package settings.
+name: Publish Docker images
+
+on:
+  push:
+    branches: [main]
+    paths: ["Bridge_server/**", ".github/workflows/docker-publish.yml"]
+    tags: ["v*"]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  OWNER: wren-creator
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: web3270-bridge,      dockerfile: Dockerfile,                     target: runtime }
+          - { name: web3270-mock-lpar,   dockerfile: mock-lpar/Dockerfile }
+          - { name: web3270-mock-zvm,    dockerfile: mock-lpar/Dockerfile.mock-zvm }
+          - { name: web3270-mock-tpf,    dockerfile: mock-lpar/Dockerfile.mock-tpf }
+          - { name: web3270-mock-as400,  dockerfile: mock-lpar/Dockerfile.mock-as400 }
+          - { name: web3270-mock-claims, dockerfile: mock-lpar/Dockerfile.mock-claims }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ matrix.name }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: Bridge_server
+          file: Bridge_server/${{ matrix.dockerfile }}
+          target: ${{ matrix.target }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+  # Offline bundles: one tarball per CPU architecture containing all six
+  # images, for people who can't pull from ghcr.io. Tag builds only.
+  bundle:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: read
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull and save images
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          IMAGES=""
+          for n in bridge mock-lpar mock-zvm mock-tpf mock-as400 mock-claims; do
+            img="${REGISTRY}/${OWNER}/web3270-${n}:${VERSION}"
+            docker pull --platform "linux/${{ matrix.arch }}" "$img"
+            IMAGES="$IMAGES $img"
+          done
+          docker save $IMAGES | gzip > "web3270-images-${GITHUB_REF_NAME}-${{ matrix.arch }}.tar.gz"
+
+      - name: Attach to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            web3270-images-*.tar.gz
+            Bridge_server/docker-compose.prebuilt.yml
