@@ -10,7 +10,6 @@ name: Publish Docker images
 on:
   push:
     branches: [main]
-    paths: ["Bridge_server/**", ".github/workflows/docker-publish.yml"]
     tags: ["v*"]
   workflow_dispatch:
 
