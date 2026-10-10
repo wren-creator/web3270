@@ -132,10 +132,10 @@ docker load < web3270-images-<version>-amd64.tar.gz
 docker load -i web3270-images-<version>-amd64.tar.gz
 ```
 
-Then start it, telling compose which version you loaded:
+Then start it, telling compose which version you loaded. The tarball name has a leading `v` (`v1.0.1`) but the image tag does not (`1.0.1`):
 
 ```bash
-WEB3270_TAG=<version> docker compose -f docker-compose.prebuilt.yml up -d
+WEB3270_TAG=1.0.1 docker compose -f docker-compose.prebuilt.yml up -d
 ```
 
 Compose uses the loaded images and only tries to pull what's missing, so nothing goes out to the internet. The loaded images also show up in Docker Desktop under **Images**.
