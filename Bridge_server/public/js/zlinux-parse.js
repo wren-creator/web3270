@@ -143,6 +143,104 @@ export function smapiFindings(host, results) {
   return out;
 }
 
+// ── Virtual switch and guest LAN audit ─────────────────────────────────
+// Header lines look like:
+//   VSWITCH SYSTEM VSW1  Type: QDIO    Connected: 2    Maxconn: INFINITE
+//     PERSISTENT  RESTRICTED    NONROUTER   Accounting: OFF
+//     VLAN Unaware
+//     Isolation Status: OFF
+// Matched by wording, not column position, so a different release's spacing
+// does not matter. A switch we cannot find a header for is simply not listed.
+export function parseVswitches(text) {
+  const out = [];
+  let cur = null;
+  for (const raw of String(text || '').split('\n')) {
+    const line = raw.trim();
+    const h = /^VSWITCH\s+\S+\s+(\S+)\s+Type:\s*(\S+)(?:\s+Connected:\s*(\d+))?/i.exec(line);
+    if (h) { cur = { name: h[1].toUpperCase(), type: h[2].toUpperCase(), connected: h[3] ? Number(h[3]) : null, restricted: null, vlan: null, isolation: null }; out.push(cur); continue; }
+    if (!cur) continue;
+    if (/\bUNRESTRICTED\b/i.test(line)) cur.restricted = false;
+    else if (/\bRESTRICTED\b/i.test(line)) cur.restricted = true;
+    const v = /^VLAN\s+(Unaware|Aware)/i.exec(line); if (v) cur.vlan = v[1].toLowerCase();
+    const i = /Isolation Status:\s*(ON|OFF)/i.exec(line); if (i) cur.isolation = i[1].toUpperCase();
+  }
+  return out;
+}
+
+//   LAN SYSTEM HIPER1  Type: HIPERS  Connected: 3  Maxconn: INFINITE
+//     PERSISTENT  UNRESTRICTED  IP  MFS: 8K  Accounting: OFF
+export function parseVmlans(text) {
+  const out = [];
+  let cur = null;
+  for (const raw of String(text || '').split('\n')) {
+    const line = raw.trim();
+    const h = /^LAN\s+\S+\s+(\S+)\s+Type:\s*(\S+)(?:\s+Connected:\s*(\d+))?/i.exec(line);
+    if (h) { cur = { name: h[1].toUpperCase(), type: h[2].toUpperCase(), connected: h[3] ? Number(h[3]) : null, restricted: null }; out.push(cur); continue; }
+    if (!cur) continue;
+    if (/\bUNRESTRICTED\b/i.test(line)) cur.restricted = false;
+    else if (/\bRESTRICTED\b/i.test(line)) cur.restricted = true;
+  }
+  return out;
+}
+
+// Userids from an access list reply. The layout is unconfirmed, so take any
+// 1 to 8 character uppercase token after the heading line.
+export function parseAccessList(text) {
+  const lines = String(text || '').split('\n').map(l => l.trim()).filter(Boolean);
+  const start = lines.findIndex(l => /authori[sz]ed|access\s*list|grant/i.test(l));
+  if (start < 0) return [];
+  const users = new Set();
+  for (const l of lines.slice(start + 1)) {
+    if (/^(Ready|RUNNING|\S+\s+CP\s*$|[-\u2500=]{5,})/i.test(l)) break;
+    for (const t of l.split(/\s+/)) if (/^[A-Z0-9$#@]{1,8}$/.test(t)) users.add(t);
+  }
+  return [...users];
+}
+
+// vswitches/vmlans: parsed arrays. accessLists: { VSWITCHNAME: { status, users } }
+// where status is 'read' | 'denied' | 'unreadable'.
+export function networkFindings(target, vswitches, vmlans, accessLists = {}) {
+  const out = [];
+  for (const v of vswitches || []) {
+    const t = `${target} VSWITCH ${v.name}`;
+    if (v.restricted === false) {
+      out.push(row('cp-network', t, 'HIGH', 'Virtual switch is UNRESTRICTED: any guest may couple to it, no GRANT needed.', `${v.name} Type ${v.type}`));
+    }
+    if (v.isolation === 'OFF') {
+      out.push(row('cp-network', t, 'MEDIUM', 'Port isolation is OFF: guests on this switch can reach each other\'s ports directly, so one compromised guest can talk to its neighbors with no firewall between them.', 'Isolation Status: OFF'));
+    } else if (v.isolation === null) {
+      out.push(row('cp-network', t, 'INFO', 'Isolation status not reported (older release, or not parsed). Confirm port isolation with the customer.', ''));
+    }
+    if (v.vlan === 'unaware') {
+      out.push(row('cp-network', t, 'INFO', 'Switch is VLAN unaware, so there is no VLAN separation between its guests. Port isolation is the only guest-to-guest control.', 'VLAN Unaware'));
+    }
+    const al = accessLists[v.name];
+    if (al?.status === 'read') {
+      out.push(row('cp-network', t, 'INFO', `${al.users.length} user${al.users.length === 1 ? '' : 's'} authorized to couple: ${al.users.join(', ') || 'none parsed'}. Every one of them shares this network.`, al.users.join(' ')));
+    } else if (al?.status === 'denied') {
+      out.push(row('cp-network', t, 'INFO', 'Could not read the access list with this guest\'s privilege class. That is the expected result for a class G guest.', ''));
+    }
+  }
+  for (const l of vmlans || []) {
+    const t = `${target} VMLAN ${l.name}`;
+    const hiper = /HIPER/.test(l.type);
+    if (l.restricted === false && hiper) {
+      out.push(row('cp-network', t, 'HIGH', 'HiperSockets-type guest LAN is UNRESTRICTED. Any guest can join it, and traffic on it never crosses the corporate network, so firewalls and segmentation do not see it.', `${l.name} Type ${l.type}`));
+    } else if (l.restricted === false) {
+      out.push(row('cp-network', t, 'MEDIUM', 'Guest LAN is UNRESTRICTED: any guest may couple to it.', `${l.name} Type ${l.type}`));
+    } else if (hiper) {
+      out.push(row('cp-network', t, 'INFO', 'HiperSockets-type guest LAN, restricted. Confirm which guests are granted, since it bypasses network segmentation.', `${l.name} Type ${l.type}`));
+    }
+  }
+  if (!out.length) {
+    const none = !(vswitches || []).length && !(vmlans || []).length;
+    out.push(row('cp-network', target, none ? 'INFO' : 'OK',
+      none ? 'No virtual switch or guest LAN was parsed from the replies. Review the raw output before calling this a pass.'
+           : 'Virtual switches and guest LANs are restricted, isolated, and gave nothing to flag.', ''));
+  }
+  return out;
+}
+
 // First line of a host reply worth quoting as evidence: skips the screen
 // chrome (header, rules, prompt line, status bar) that surrounds every reply.
 const CHROME = /^(z\/VM CP\b|CP QUERY RESPONSE|[-\u2500=]{5,}|RUNNING\b|\S+\s+CP\s*$|Ubuntu\b|\S+ login:\s*$)/i;

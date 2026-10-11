@@ -53,7 +53,14 @@ const VSWITCH_TABLE = [
   '  MAC address: 02-00-00-00-00-01     MAC Protection: Unspecified',
   '  IPTimeout: 5         QueueStorage: 8',
   '  Isolation Status: OFF',
-  'Authorized userids: LNXGST01 LNXGST02 TCPIP',
+].join('\n');
+
+// Stand-in layout and class. Not captured from a live system, and the real
+// privilege class for the access list is unconfirmed. The audit treats a
+// refusal here as "could not read", never as a finding.
+const VSWITCH_ACCESSLIST = [
+  'Authorized users for VSWITCH SYSTEM VSW1:',
+  '  LNXGST01  LNXGST02  TCPIP',
 ].join('\n');
 
 const VMLAN_TABLE = 'LAN SYSTEM HIPER1  Type: HIPERS  Connected: 3  Maxconn: INFINITE\n  PERSISTENT  UNRESTRICTED  IP  MFS: 8K  Accounting: OFF';
@@ -84,6 +91,12 @@ function handleGuestCommand(raw, userid, classes, gs, roster = []) {
     }
   }
 
+  if (/^(Q|QUERY)\s+VSWITCH\s+\S+\s+ACCESSLIST\b/i.test(cmd)) {
+    if (!hasAnyClass(classes, 'B')) {
+      return `HCPQVS040E QUERY VSWITCH ACCESSLIST not available -- privilege class B required\nReady(00040); T=0.01/0.01`;
+    }
+    return VSWITCH_ACCESSLIST + done;
+  }
   if (/^(Q|QUERY)\s+VSWITCH\b/i.test(cmd)) return VSWITCH_TABLE + done;
   if (/^(Q|QUERY)\s+(VMLAN|LAN)\b/i.test(cmd)) return VMLAN_TABLE + done;
 

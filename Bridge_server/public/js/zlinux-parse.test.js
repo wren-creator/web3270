@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   parsePrivClasses, classifyCpResult, classifyConsole, consoleHostname,
   privFindings, consoleFindings, smapiFindings, PRIV_PROBES,
+  parseVswitches, parseVmlans, parseAccessList, networkFindings,
 } from './zlinux-parse.js';
 
 test('parsePrivClasses reads single and multi-class replies, case-insensitively', () => {
@@ -76,4 +77,48 @@ test('privFindings evidence quotes the reply, not the screen header', () => {
   const screen = 'z/VM CP  ZVMPROD      LNXGST02 Logged On\nAVGPROC-012% 02\nLNXGST02 CP\nRUNNING   ZVMPROD';
   const f = privFindings('LNXGST02', 'G', [{ name: 'INDICATE LOAD', need: 'E', result: screen }]);
   assert.equal(f[0].evidence, 'AVGPROC-012% 02');
+});
+
+const VSW = `VSWITCH SYSTEM VSW1  Type: QDIO    Connected: 2    Maxconn: INFINITE
+  PERSISTENT  RESTRICTED    NONROUTER                 Accounting: OFF
+  VLAN Unaware
+  MAC address: 02-00-00-00-00-01     MAC Protection: Unspecified
+  Isolation Status: OFF
+Ready; T=0.01/0.01`;
+const LAN = `LAN SYSTEM HIPER1  Type: HIPERS  Connected: 3  Maxconn: INFINITE
+  PERSISTENT  UNRESTRICTED  IP  MFS: 8K  Accounting: OFF`;
+
+test('parseVswitches / parseVmlans read the header and its detail lines', () => {
+  const [v] = parseVswitches(VSW);
+  assert.deepEqual([v.name, v.type, v.connected, v.restricted, v.vlan, v.isolation], ['VSW1', 'QDIO', 2, true, 'unaware', 'OFF']);
+  const [l] = parseVmlans(LAN);
+  assert.deepEqual([l.name, l.type, l.restricted], ['HIPER1', 'HIPERS', false]);
+});
+
+test('UNRESTRICTED must not be read as RESTRICTED', () => {
+  assert.equal(parseVmlans('LAN SYSTEM X  Type: QDIO\n  PERSISTENT  UNRESTRICTED')[0].restricted, false);
+});
+
+test('networkFindings: isolation off is MEDIUM, open HiperSockets LAN is HIGH', () => {
+  const f = networkFindings('ZVMPROD', parseVswitches(VSW), parseVmlans(LAN));
+  assert.ok(f.some(x => x.severity === 'MEDIUM' && /isolation is OFF/i.test(x.finding)));
+  assert.ok(f.some(x => x.severity === 'HIGH' && /HiperSockets/.test(x.finding)));
+});
+
+test('networkFindings: a refused access list is INFO, a read one names the users', () => {
+  const denied = networkFindings('Z', parseVswitches(VSW), [], { VSW1: { status: 'denied', users: [] } });
+  assert.ok(denied.some(x => /expected result for a class G/.test(x.finding)));
+  const users = parseAccessList('Authorized users for VSWITCH SYSTEM VSW1:\n  LNXGST01  LNXGST02  TCPIP\nReady; T=0.01/0.01');
+  assert.deepEqual(users, ['LNXGST01', 'LNXGST02', 'TCPIP']);
+  const read = networkFindings('Z', parseVswitches(VSW), [], { VSW1: { status: 'read', users } });
+  assert.ok(read.some(x => /3 users authorized/.test(x.finding)));
+});
+
+test('networkFindings: nothing parsed is INFO, never OK', () => {
+  assert.equal(networkFindings('Z', [], [])[0].severity, 'INFO');
+});
+
+test('networkFindings: a locked-down switch is OK', () => {
+  const v = parseVswitches('VSWITCH SYSTEM V2  Type: QDIO  Connected: 1\n  PERSISTENT  RESTRICTED  NONROUTER\n  VLAN Aware\n  Isolation Status: ON');
+  assert.equal(networkFindings('Z', v, [])[0].severity, 'OK');
 });

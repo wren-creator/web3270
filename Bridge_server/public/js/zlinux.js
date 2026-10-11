@@ -5,7 +5,8 @@
 //
 //   1. CP Privilege Class Check   at a CP session (a guest's own CP prompt)
 //   2. Guest Console + #CP Escape at a Linux guest's 3270 console
-//   3. SMAPI Check                standalone network probe, no session needed
+//   3. Virtual Network Audit     QUERY VSWITCH / VMLAN, at CP or a Linux console
+//   4. SMAPI Check                standalone network probe, no session needed
 //
 // Every check asks the RoE scope guard first (POST /api/scope/check). With no
 // scope.json the guard is off and the check goes ahead; with one, a denial
@@ -15,6 +16,7 @@ import { esc, saveAs, exportFindingsJson } from './utils.js';
 import {
   PRIV_PROBES, FINDING_COLUMNS, parsePrivClasses, classifyConsole, consoleHostname,
   privFindings, consoleFindings, smapiFindings,
+  classifyCpResult, parseVswitches, parseVmlans, parseAccessList, networkFindings,
 } from './zlinux-parse.js';
 
 let _findings = [];
@@ -166,6 +168,36 @@ export function zlinuxConsoleAudit() {
   });
 }
 
+export function zlinuxNetworkAudit() {
+  return _run('Network audit', async () => {
+    const screen = state.liveScreenText || '';
+    const atLinux = classifyConsole(screen) === 'linux-login';
+    if (!atLinux && !/z\/VM CP|Ready;/i.test(screen)) {
+      _status('Log on to a guest first, so the screen shows its CP prompt or its Linux console.'); return;
+    }
+    const prefix = atLinux ? '#CP ' : '';
+    const guest = _guestFromScreen();
+    if (!guest) { _status('Could not read the userid from the screen. Type it in the Guest field.'); return; }
+    if (!(await _gate(guest, 'cp-network'))) return;
+
+    _status('Reading virtual switches...');
+    const vsText = await _command(`${prefix}QUERY VSWITCH`);
+    _status('Reading guest LANs...');
+    const lanText = await _command(`${prefix}QUERY VMLAN`);
+    const vswitches = parseVswitches(vsText);
+    const accessLists = {};
+    for (const v of vswitches) {
+      _status(`Trying the access list for ${v.name}...`);
+      const t = await _command(`${prefix}QUERY VSWITCH ${v.name} ACCESSLIST`);
+      const users = parseAccessList(t);
+      accessLists[v.name] = classifyCpResult(t) === 'denied' ? { status: 'denied', users: [] }
+        : users.length ? { status: 'read', users } : { status: 'unreadable', users: [] };
+    }
+    _add(networkFindings(guest, vswitches, parseVmlans(lanText), accessLists));
+    _status(`Network audit done for ${guest}: ${vswitches.length} switch(es), ${parseVmlans(lanText).length} guest LAN(s).`);
+  });
+}
+
 export function zlinuxSmapiCheck() {
   return _run('SMAPI check', async () => {
     const host = document.getElementById('zlSmapiHost')?.value.trim();
@@ -214,6 +246,6 @@ export function zlinuxExportJson() {
 export function zlinuxClear() { _findings = []; _render(); _status(''); }
 
 Object.assign(window, {
-  zlinuxOnScreen, zlinuxPrivCheck, zlinuxConsoleAudit, zlinuxSmapiCheck,
+  zlinuxOnScreen, zlinuxPrivCheck, zlinuxConsoleAudit, zlinuxNetworkAudit, zlinuxSmapiCheck,
   zlinuxExportCsv, zlinuxExportJson, zlinuxClear,
 });

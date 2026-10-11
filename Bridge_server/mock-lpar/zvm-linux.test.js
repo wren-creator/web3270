@@ -41,6 +41,12 @@ test('SEND CP is gated, SET SECUSER only redirects the caller', () => {
   assert.equal(gs.secuser, 'LNXGST02');
 });
 
+test('vswitch access list is class-gated; the plain query is not', () => {
+  assert.doesNotMatch(run('QUERY VSWITCH', 'LNXGST01'), /Authorized/);
+  assert.match(run('QUERY VSWITCH VSW1 ACCESSLIST', 'LNXGST01'), /HCPQVS040E/);
+  assert.match(run('QUERY VSWITCH VSW1 ACCESSLIST', 'LNXGST02'), /Authorized users/);
+});
+
 test('vswitch and vmlan queries answer; console banner and login failure', () => {
   assert.match(run('QUERY VSWITCH', 'LNXGST01'), /Isolation Status/);
   assert.match(run('QUERY VMLAN', 'LNXGST01'), /HIPERS/);
