@@ -6,7 +6,8 @@
 //   1. CP Privilege Class Check   at a CP session (a guest's own CP prompt)
 //   2. Guest Console + #CP Escape at a Linux guest's 3270 console
 //   3. Virtual Network Audit     QUERY VSWITCH / VMLAN, at CP or a Linux console
-//   4. SMAPI Check                standalone network probe, no session needed
+//   4. Directory Review           IUCV and password rules from a pasted export
+//   5. SMAPI Check                standalone network probe, no session needed
 //
 // Every check asks the RoE scope guard first (POST /api/scope/check). With no
 // scope.json the guard is off and the check goes ahead; with one, a denial
@@ -18,6 +19,7 @@ import {
   privFindings, consoleFindings, smapiFindings,
   classifyCpResult, parseVswitches, parseVmlans, parseAccessList, networkFindings,
 } from './zlinux-parse.js';
+import { parseDirectory, directoryFindings } from './zlinux-directory.js';
 
 let _findings = [];
 let _running = false;
@@ -198,6 +200,25 @@ export function zlinuxNetworkAudit() {
   });
 }
 
+// Offline review of a directory export pasted into the panel. Nothing is sent
+// to any system, so there is no target for the scope guard to check.
+export function zlinuxDirectoryReview() {
+  const text = document.getElementById('zlDirText')?.value || '';
+  if (!text.trim()) { _status('Paste a directory export first, or load the training sample.'); return; }
+  const parsed = parseDirectory(text);
+  _add(directoryFindings(parsed));
+  _status(`Directory reviewed: ${parsed.users.length} USER entr${parsed.users.length === 1 ? 'y' : 'ies'}.`);
+}
+
+export async function zlinuxLoadSample() {
+  try {
+    const r = await fetch('/samples/zvm-directory-sample.txt');
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    document.getElementById('zlDirText').value = await r.text();
+    _status('Training sample loaded. It is invented, not a real directory.');
+  } catch (e) { _status(`Could not load the sample: ${e.message}`); }
+}
+
 export function zlinuxSmapiCheck() {
   return _run('SMAPI check', async () => {
     const host = document.getElementById('zlSmapiHost')?.value.trim();
@@ -246,6 +267,6 @@ export function zlinuxExportJson() {
 export function zlinuxClear() { _findings = []; _render(); _status(''); }
 
 Object.assign(window, {
-  zlinuxOnScreen, zlinuxPrivCheck, zlinuxConsoleAudit, zlinuxNetworkAudit, zlinuxSmapiCheck,
+  zlinuxOnScreen, zlinuxPrivCheck, zlinuxConsoleAudit, zlinuxNetworkAudit, zlinuxDirectoryReview, zlinuxLoadSample, zlinuxSmapiCheck,
   zlinuxExportCsv, zlinuxExportJson, zlinuxClear,
 });
