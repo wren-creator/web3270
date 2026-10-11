@@ -5,6 +5,7 @@ import {
   parsePrivClasses, classifyCpResult, classifyConsole, consoleHostname,
   privFindings, consoleFindings, smapiFindings, PRIV_PROBES,
   parseVswitches, parseVmlans, parseAccessList, networkFindings,
+  classifyXautolog, xautologFindings, sendCpFindings,
 } from './zlinux-parse.js';
 
 test('parsePrivClasses reads single and multi-class replies, case-insensitively', () => {
@@ -121,4 +122,27 @@ test('networkFindings: nothing parsed is INFO, never OK', () => {
 test('networkFindings: a locked-down switch is OK', () => {
   const v = parseVswitches('VSWITCH SYSTEM V2  Type: QDIO  Connected: 1\n  PERSISTENT  RESTRICTED  NONROUTER\n  VLAN Aware\n  Isolation Status: ON');
   assert.equal(networkFindings('Z', v, [])[0].severity, 'OK');
+});
+
+test('classifyXautolog: authorized (already up or newly started), denied, unknown target', () => {
+  assert.equal(classifyXautolog('HCPXAU003I User OPERATOR already logged on\nReady; T=0.01/0.01'), 'authorized');
+  assert.equal(classifyXautolog('HCPXAU001I User OPERATOR has been started\nReady; T=0.01/0.01'), 'authorized');
+  assert.equal(classifyXautolog('HCPXAU040E Not authorized to XAUTOLOG OPERATOR\nReady(00040); T=0.01/0.01'), 'denied');
+  assert.equal(classifyXautolog('HCPXAU054E GHOST not in CP directory\nReady(00054); T=0.01/0.01'), 'unknown-target');
+});
+
+test('xautologFindings: authorized on a privileged target is HIGH, denied is OK', () => {
+  const auth = xautologFindings('LNXGST02', 'OPERATOR', 'HCPXAU003I User OPERATOR already logged on\nReady; T=0.01/0.01');
+  assert.equal(auth[0].severity, 'HIGH'); assert.match(auth[0].finding, /authorized to start OPERATOR/);
+  const denied = xautologFindings('LNXGST01', 'OPERATOR', 'HCPXAU040E Not authorized to XAUTOLOG OPERATOR\nReady(00040); T=0.01/0.01');
+  assert.equal(denied[0].severity, 'OK');
+  const bad = xautologFindings('LNXGST01', 'GHOST', 'HCPXAU054E GHOST not in CP directory\nReady(00054); T=0.01/0.01');
+  assert.equal(bad[0].severity, 'INFO');
+});
+
+test('sendCpFindings: executed is HIGH, refused is OK, reports no specific class', () => {
+  const ok = sendCpFindings('LNXGST02', 'MAINT', 'Ready; T=0.01/0.01 (command sent to MAINT)');
+  assert.equal(ok[0].severity, 'HIGH'); assert.doesNotMatch(ok[0].finding, /class [A-Z]/);
+  const denied = sendCpFindings('LNXGST01', 'MAINT', 'HCPSEN040E SEND CP not available -- privilege class A, B or C required\nReady(00040); T=0.01/0.01');
+  assert.equal(denied[0].severity, 'OK');
 });

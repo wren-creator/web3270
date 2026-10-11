@@ -44,6 +44,8 @@ export const INTRUSIVE_ACTIVITIES = new Set([
   'hipersockets-sweep',
   'spool-injection',
   'minidisk-link',
+  'xautolog-start',
+  'send-cp',
 ]);
 
 // Returns { active, scope?, error? }. active=false means no guard.

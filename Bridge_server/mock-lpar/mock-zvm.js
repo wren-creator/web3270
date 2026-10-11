@@ -110,6 +110,33 @@ function forceUser(target) {
   return `HCPFOR001I User ${t} has been forced off\nReady; T=0.01/0.01`;
 }
 
+// XAUTOLOG directory statement is confirmed real (unlike the pasted notes'
+// QUERY ALL); who it authorizes is NOT confirmed against IBM's own manual,
+// so this is a stand-in, not a captured message. Model: a directory XAUTOLOG
+// statement names callers allowed to autolog a target, independent of CP
+// privilege class — the training finding is a Linux guest that was handed
+// an XAUTOLOG grant to an administrative service machine. OPERATOR is the
+// seeded case: LNXGST02 may autolog it, LNXGST01 may not.
+//
+// Authorization is checked before the already-logged-on check, matching
+// real CP (a denied caller gets denied even if the target happens to be
+// up already) — this also means probing against an already-running target
+// shows the real authorization verdict with no state change.
+const XAUTOLOG_AUTH = { OPERATOR: ['LNXGST02'] };
+
+function xautologUser(caller, target) {
+  const t = (target || '').toUpperCase();
+  if (!t) return `HCPXAU002E Missing operand for XAUTOLOG\nReady(00002); T=0.01/0.01`;
+  if (!ZVM_DIRECTORY[t]) return `HCPXAU054E ${t} not in CP directory\nReady(00054); T=0.01/0.01`;
+  const allowed = (XAUTOLOG_AUTH[t] || []).includes((caller || '').toUpperCase());
+  if (!allowed) return `HCPXAU040E Not authorized to XAUTOLOG ${t}\nReady(00040); T=0.01/0.01`;
+  const up = LOGGED_ON_USERS.some(u => u.id === t) && !FORCED_USERS.has(t);
+  if (up) return `HCPXAU003I User ${t} already logged on\nReady; T=0.01/0.01`;
+  FORCED_USERS.delete(t);
+  if (!LOGGED_ON_USERS.some(u => u.id === t)) LOGGED_ON_USERS.push({ id: t, time: '00:00:00', note: 'XAUTOLOG' });
+  return `HCPXAU001I User ${t} has been started\nReady; T=0.01/0.01`;
+}
+
 // ── Telnet / TN3270(E) constants ─────────────────────────────────
 const IAC  = 0xFF, DONT = 0xFE, DO   = 0xFD;
 const WONT = 0xFC, WILL = 0xFB, SB   = 0xFA, SE = 0xF0;
@@ -1026,6 +1053,10 @@ function handleConnection(socket) {
             lastCPMsg = !zl.hasAnyClass(classOf(userid), 'AB')
               ? `HCPCQF040E FORCE not available -- privilege class B or higher required\nReady(00040); T=0.01/0.01`
               : forceUser(target);
+            sendCurrentScreen();
+          } else if (cmd.startsWith('XAUTOLOG ')) {
+            const target = cpText.slice(9).trim().split(/\s+/)[0];
+            lastCPMsg = xautologUser(userid, target);
             sendCurrentScreen();
           } else if (cmd.startsWith('Q ') || cmd.startsWith('QUERY ') || cmd === 'QUERY' || cmd === 'Q') {
             cpQueryResult = simulateCPQuery(cpText, userid);

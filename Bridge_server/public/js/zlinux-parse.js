@@ -241,6 +241,49 @@ export function networkFindings(target, vswitches, vmlans, accessLists = {}) {
   return out;
 }
 
+// ── XAUTOLOG guest-start authorization probe ────────────────────────────
+// 'authorized' | 'denied' | 'unknown-target' | 'unknown'. XAUTOLOG is a
+// confirmed directory statement; the exact message wording below is a mock
+// stand-in, not captured from a live system.
+export function classifyXautolog(text) {
+  const t = String(text || '');
+  if (/HCP\w*054E|not in CP directory/i.test(t)) return 'unknown-target';
+  if (/HCP\w*\d{3}E[^\n]*(not authoriz|not available)/i.test(t) || /\bnot authoriz/i.test(t)) return 'denied';
+  if (/has been started|already logged on/i.test(t)) return 'authorized';
+  return t.trim() ? 'unknown' : 'unknown';
+}
+
+export function xautologFindings(caller, target, result) {
+  const verdict = classifyXautolog(result);
+  const t = `${caller} -> XAUTOLOG ${target}`;
+  if (verdict === 'authorized') {
+    return [row('cp-xautolog', t, 'HIGH', `${caller} is authorized to start ${target}. If ${target} is a privileged service machine, this guest can bring it up (or confirm it is already up) on its own authority.`, firstLine(result))];
+  }
+  if (verdict === 'denied') {
+    return [row('cp-xautolog', t, 'OK', `${caller} is not authorized to XAUTOLOG ${target}.`, firstLine(result))];
+  }
+  if (verdict === 'unknown-target') {
+    return [row('cp-xautolog', t, 'INFO', `${target} is not a known userid on this system, so authorization was never tested. Pick a real target.`, firstLine(result))];
+  }
+  return [row('cp-xautolog', t, 'INFO', 'Could not classify the reply. Review the raw output before drawing a conclusion.', firstLine(result))];
+}
+
+// ── SEND CP probe ────────────────────────────────────────────────────────
+// Reuses classifyCpResult's executed/denied/linux-input/unknown vocabulary.
+// The class SEND CP actually needs is unconfirmed, so this reports only
+// whether CP executed or refused it, never a specific class.
+export function sendCpFindings(caller, target, result) {
+  const verdict = classifyCpResult(result);
+  const t = `${caller} -> SEND CP ${target}`;
+  if (verdict === 'executed') {
+    return [row('cp-sendcp', t, 'HIGH', `${caller} can issue CP commands as ${target} via SEND CP. Anything ${target} is authorized to do, this guest can now trigger.`, firstLine(result))];
+  }
+  if (verdict === 'denied') {
+    return [row('cp-sendcp', t, 'OK', `${caller} cannot SEND CP commands to ${target}.`, firstLine(result))];
+  }
+  return [row('cp-sendcp', t, 'INFO', 'Could not classify the reply. Review the raw output before drawing a conclusion.', firstLine(result))];
+}
+
 // First line of a host reply worth quoting as evidence: skips the screen
 // chrome (header, rules, prompt line, status bar) that surrounds every reply.
 const CHROME = /^(z\/VM CP\b|CP QUERY RESPONSE|[-\u2500=]{5,}|RUNNING\b|\S+\s+CP\s*$|Ubuntu\b|\S+ login:\s*$)/i;

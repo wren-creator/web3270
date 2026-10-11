@@ -3490,6 +3490,266 @@ const _WALKTHROUGHS = [
     ],
   },
 
+  // ── Z/LINUX ON Z/VM: CP Privilege Class Check ────────────────────────
+  {
+    id:       'zlinux-priv-check',
+    category: 'security',
+    title:    'Z/Linux: CP Privilege Class Check',
+    desc:     'A Linux guest should hold CP privilege class G, nothing more. This checks what the guest\'s own directory entry actually grants, and whether CP will run commands class G shouldn\'t.',
+    steps: [
+      {
+        title: 'Why this matters',
+        body:  'Every z/VM guest, Linux or otherwise, gets a CP privilege class from its directory entry. Class G is the unprivileged default. If a Linux guest was ever provisioned with anything above G, often because "the monitoring agent needed it", a compromise of that one Linux box becomes a compromise of whatever that class can reach on the whole z/VM system.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click 🔒 in the OIA bar and enter the security password.',
+        highlight: 'secBtn', autoFn: null,
+      },
+      {
+        title: 'Log on as the guest',
+        body:  'Connect to a z/VM target (the bundled mock-zvm/3271 ships two training guests: LNXGST01, correctly provisioned at class G, and LNXGST02, a deliberately over-privileged ABEG). Log on as either. You can run this from the CP prompt, or from the guest\'s Linux console — the tool prefixes #CP automatically when it sees one.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Run the check',
+        body:  'Scroll to Z/LINUX ON Z/VM → ▶ CP PRIVILEGE CHECK. It runs QUERY PRIVCLASS, then two commands real class G is not supposed to be able to run (INDICATE LOAD, QUERY SRM).',
+        highlight: 'zlStatus', autoFn: 'zlinuxPrivCheck', autoLabel: 'Run it for me',
+      },
+      {
+        title: 'Read the findings',
+        body:  'CRITICAL if the guest holds any class beyond G, or if CP actually executed a gated command — either one proves the point. OK means class G, and every gated command was refused. INFO, inconclusive, means a command never got a clear refusal (it may not have reached CP at all) — that is never scored as a pass, on purpose: an earlier version of this tool did score a swallowed command as clean, which is the worst thing an audit tool can do.',
+        highlight: 'zlResults', autoFn: null,
+      },
+      {
+        title: 'Export',
+        body:  'Click ↓ Export CSV or JSON to document the class and each command\'s result for your report.',
+        highlight: 'zlResults', autoFn: 'zlinuxExportCsv', autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
+  // ── Z/LINUX ON Z/VM: Guest Console + #CP Escape ─────────────────────
+  {
+    id:       'zlinux-console-escape',
+    category: 'security',
+    title:    'Z/Linux: Console and #CP Escape',
+    desc:     'Whoever has the CP logon password for a Linux guest has its 3270 console. This checks whether that console is reachable, and whether #CP reaches the hypervisor from it.',
+    steps: [
+      {
+        title: 'Why this matters',
+        body:  'A Linux guest\'s 3270 session isn\'t just a terminal into Linux, it\'s also the guest\'s CP console. Logon credentials are the only gate. From a reachable console, #CP escapes straight into the hypervisor, letting the holder disconnect, interrupt, or IPL the guest without ever touching Linux itself.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Log on to a Linux guest',
+        body:  'Connect to mock-zvm/3271 and log on as LNXGST01 (password: LINUX). You\'ll land on a Linux login prompt, not the usual CP banner — that\'s the console, reachable from the 3270 session, right there.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Run the audit',
+        body:  'Scroll to Z/LINUX ON Z/VM → ▶ CONSOLE + #CP ESCAPE. It types one read-only #CP QUERY PRIVCLASS and reads what comes back.',
+        highlight: 'zlStatus', autoFn: 'zlinuxConsoleAudit', autoLabel: 'Run it for me',
+      },
+      {
+        title: 'Read the findings',
+        body:  'HIGH, console reachable — the logon password was the only thing standing between a tester and this guest\'s console. HIGH, #CP reaches CP — commands typed here are issued to the hypervisor as this guest. CRITICAL would mean the logon landed straight in a Linux shell with no authentication at all. Weak guest logon passwords themselves are found separately, by RACF PROBE\'s existing z/VM sweep — put the customer\'s real guest userids in its wordlist.',
+        highlight: 'zlResults', autoFn: null,
+      },
+      {
+        title: 'Export',
+        body:  'Click ↓ Export CSV or JSON.',
+        highlight: 'zlResults', autoFn: 'zlinuxExportCsv', autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
+  // ── Z/LINUX ON Z/VM: VSWITCH / VMLAN Isolation ───────────────────────
+  {
+    id:       'zlinux-network-audit',
+    category: 'security',
+    title:    'Z/Linux: VSWITCH / VMLAN Isolation',
+    desc:     'Reads QUERY VSWITCH and QUERY VMLAN to find what lets one compromised guest reach its neighbors — an unrestricted switch, port isolation off, or an open HiperSockets-type LAN that bypasses network segmentation entirely.',
+    steps: [
+      {
+        title: 'Why this matters',
+        body:  'Linux guests usually share a virtual switch or an internal guest LAN with other guests on the same z/VM system. If port isolation is off, a compromised guest can talk directly to its neighbors, no firewall in the path. HiperSockets-type LANs are worse: that traffic never touches the corporate network at all, so segmentation controls never see it.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Log on as a guest',
+        body:  'Connect to mock-zvm/3271 and log on as LNXGST01 or LNXGST02, at the CP prompt or the Linux console either way.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Run the audit',
+        body:  'Scroll to Z/LINUX ON Z/VM → ▶ VSWITCH / VMLAN ISOLATION. It reads both queries, then tries each switch\'s access list.',
+        highlight: 'zlStatus', autoFn: 'zlinuxNetworkAudit', autoLabel: 'Run it for me',
+      },
+      {
+        title: 'Read the findings',
+        body:  'HIGH — an unrestricted switch, or worse, an unrestricted HiperSockets-type LAN. MEDIUM — port isolation is off. INFO — VLAN-unaware (no VLAN separation, isolation is the only control left), or an access list the guest\'s class couldn\'t read (expected for class G, not a finding). Log back on as LNXGST02 and rerun it: that guest can read the access list, and the finding names every user sharing the network.',
+        highlight: 'zlResults', autoFn: null,
+      },
+      {
+        title: 'Export',
+        body:  'Click ↓ Export CSV or JSON.',
+        highlight: 'zlResults', autoFn: 'zlinuxExportCsv', autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
+  // ── Z/LINUX ON Z/VM: Directory Review (IUCV) ─────────────────────────
+  {
+    id:       'zlinux-directory-review',
+    category: 'security',
+    title:    'Z/Linux: Directory Review (IUCV)',
+    desc:     'A class G guest can\'t read the z/VM directory, so this works on a pasted export. Flags IUCV ALLOW on sensitive service machines, IUCV ANY on application guests, weak passwords, and LOGONBY entries that hand one guest\'s console to another.',
+    steps: [
+      {
+        title: 'Why this matters',
+        body:  'IUCV lets z/VM guests message each other. ALLOW lets anyone open a path in with no further check; ANY lets a guest open a path to anyone. Put together, a guest with ANY can reach any guest that has ALLOW, no credentials required. LOGONBY is a different exposure: it lets a named userid log on to a guest, console included, using its OWN password — the guest is only as safe as its weakest by-user. None of this needs a live connection to review, which is the point: it works from an export the customer hands you.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click 🔒 and enter the security password.',
+        highlight: 'secBtn', autoFn: null,
+      },
+      {
+        title: 'Load the training sample',
+        body:  'Scroll to Z/LINUX ON Z/VM → Load sample. This drops an invented directory export into the box — not a real one, built to exercise every rule this tool checks.',
+        highlight: 'zlDirText', autoFn: 'zlinuxLoadSample', autoLabel: 'Load it for me',
+      },
+      {
+        title: 'Run the review',
+        body:  'Click ▶ REVIEW DIRECTORY (IUCV). Nothing is sent anywhere — this reads only the text in the box.',
+        highlight: 'zlStatus', autoFn: 'zlinuxDirectoryReview', autoLabel: 'Review it for me',
+      },
+      {
+        title: 'Read the findings',
+        body:  'HIGH — IUCV ALLOW on MAINT/DIRMAINT/VSMSERVE (names every guest holding ANY that can reach them), IUCV ANY on an ordinary Linux guest, a password equal to its own userid (the value is never printed), or a LOGONBY by-user that is itself weak or an ordinary class G guest. INFO — ALLOW on a less sensitive machine, ANY on a service machine, or a LOGONBY naming administrators (confirm each one actually is one). Anything the tool didn\'t review, a missing INCLUDE\'d profile, IDENTITY/SUBCONFIG entries, is reported as skipped rather than silently passed.',
+        highlight: 'zlResults', autoFn: null,
+      },
+      {
+        title: 'Export',
+        body:  'Click ↓ Export CSV or JSON. When you run this against a real customer export, paste it into the box in place of the sample first.',
+        highlight: 'zlResults', autoFn: 'zlinuxExportCsv', autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
+  // ── Z/LINUX ON Z/VM: SMAPI Exposure Check ────────────────────────────
+  {
+    id:       'zlinux-smapi-check',
+    category: 'security',
+    title:    'Z/Linux: SMAPI Exposure Check',
+    desc:     'Checks whether the z/VM Systems Management API is reachable and whether it protects its traffic with TLS. SMAPI can provision guests and rewrite the directory, and its requests carry a userid and password.',
+    steps: [
+      {
+        title: 'Why this matters',
+        body:  'SMAPI is the automation interface behind directory changes and guest provisioning on z/VM. Its requests carry credentials. A plaintext listener means those credentials cross the network readable to anything watching.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'This one needs no session',
+        body:  'Unlike the other checks here, this is a standalone network probe — no 3270 connection required. It opens a TCP connection to the SMAPI ports and, if one answers, tries a TLS handshake. It sends no SMAPI request and tries no credentials, so it can\'t lock an account or change anything.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Run the check',
+        body:  'Unlock 🔒, scroll to Z/LINUX ON Z/VM, type the z/VM host in the SMAPI field, click ▶ SMAPI.',
+        highlight: 'zlSmapiHost', autoFn: null,
+      },
+      {
+        title: 'Read the findings',
+        body:  'HIGH — the port is open and answered with no TLS; the traffic is plaintext. MEDIUM — the port is open and did a TLS handshake; confirm who can reach it and who is in the authorization list, since reachability over TLS is not the same as locked down. OK — closed or filtered. This check only proves the door exists, not what\'s behind it: whether SMSG DIRMAINT actually accepts commands from a class G guest still needs the customer\'s confirmation.',
+        highlight: 'zlResults', autoFn: null,
+      },
+      {
+        title: 'Export',
+        body:  'Click ↓ Export CSV or JSON.',
+        highlight: 'zlResults', autoFn: 'zlinuxExportCsv', autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
+  // ── Z/LINUX ON Z/VM: XAUTOLOG Start Probe (INTRUSIVE) ────────────────
+  {
+    id:       'zlinux-xautolog-probe',
+    category: 'security',
+    title:    '⚠ Z/Linux: XAUTOLOG Start Probe (INTRUSIVE)',
+    desc:     'Tries to start another virtual machine as the logged-on guest. This can change state on a system you do not own — read every step before clicking anything.',
+    steps: [
+      {
+        title: 'Stop and read this first',
+        body:  'XAUTOLOG is a real z/VM directory statement that authorizes a guest to start another virtual machine. This probe actually issues the command. If the target is down and the guest is authorized, CP starts it, for real, on whatever system you point this at. Do not run this against a target you don\'t control unless the Rules of Engagement explicitly name it. The authorizing statement\'s exact rules are not confirmed against IBM\'s own manual, so the mock\'s responses are a stand-in, not a captured message.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'How to run it with zero state change',
+        body:  'Pick a target you already know is logged on. CP still checks authorization first and reports it honestly, but if the target is already up, nothing starts, you only learn whether this guest was authorized to do it.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'The two gates',
+        body:  'First, the RoE scope guard: this check runs only when scope.json explicitly names xautolog-start in its activities list — leaving the activities list out does NOT authorize it, unlike the other checks in this panel. Second, a confirm dialog pops up in the browser every single time, spelling out exactly what is about to run, with no setting anywhere to skip it. Cancel stops it cold, before anything reaches the host.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Try it on the mock',
+        body:  'Log on to mock-zvm/3271 as LNXGST02 (password LNXPRIV, the deliberately over-privileged training guest). In the Z/LINUX ON Z/VM section, type OPERATOR in the XAUTOLOG target field, click ▶ XAUTOLOG PROBE, and read the confirm dialog before accepting. OPERATOR is already logged on in this mock, so nothing actually starts.',
+        highlight: 'zlXautologTarget', autoFn: null,
+      },
+      {
+        title: 'Read the finding, then try the denied case',
+        body:  'HIGH means this guest is authorized, which on a real system with OPERATOR as the target would be the headline finding of the engagement. Now log off, log back on as LNXGST01 (class G, password LINUX) and run the same probe against OPERATOR — OK means CP refused it, the expected result for an ordinary guest.',
+        highlight: 'zlResults', autoFn: null,
+      },
+      {
+        title: 'Export',
+        body:  'Click ↓ Export CSV or JSON.',
+        highlight: 'zlResults', autoFn: 'zlinuxExportCsv', autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
+  // ── Z/LINUX ON Z/VM: SEND CP Probe (INTRUSIVE) ───────────────────────
+  {
+    id:       'zlinux-sendcp-probe',
+    category: 'security',
+    title:    '⚠ Z/Linux: SEND CP Probe (INTRUSIVE)',
+    desc:     'Tries to issue a CP command as another virtual machine. Read every step before clicking anything.',
+    steps: [
+      {
+        title: 'Stop and read this first',
+        body:  'SEND CP lets one guest route a CP command through another guest, running under the target\'s own authority. This probe actually sends QUERY TIME, a harmless read-only command, but it is a real command issued as the target, not a simulation. The privilege class SEND CP actually needs is not confirmed against IBM\'s own manual — treat whatever class the mock gates on as illustrative, not authoritative.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'The two gates',
+        body:  'The RoE scope guard refuses this unless send-cp is explicitly named in scope.json\'s activities — leaving the list out does not cover it. A confirm dialog also appears in the browser every time, with no way to turn it off. Cancel stops it before anything reaches the host.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Try it on the mock',
+        body:  'Log on to mock-zvm/3271 as LNXGST02 (password LNXPRIV). Type MAINT in the SEND CP target field, click ▶ SEND CP PROBE, and accept the confirm dialog.',
+        highlight: 'zlSendCpTarget', autoFn: null,
+      },
+      {
+        title: 'Read the finding, then try the denied case',
+        body:  'HIGH means CP executed the command as MAINT, this guest\'s commands now run under another guest\'s authority. Log on as LNXGST01 instead and rerun it: OK means CP refused it.',
+        highlight: 'zlResults', autoFn: null,
+      },
+      {
+        title: 'Export',
+        body:  'Click ↓ Export CSV or JSON.',
+        highlight: 'zlResults', autoFn: 'zlinuxExportCsv', autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
 ];
 
 // ── Engine state ───────────────────────────────────────────────────

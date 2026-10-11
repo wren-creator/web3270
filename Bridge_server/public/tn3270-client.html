@@ -804,6 +804,15 @@
             <input id="zlSmapiHost" placeholder="z/VM host for SMAPI check" style="flex:1;box-sizing:border-box;background:#0d0d0d;border:1px solid #222;color:#aaa;font-family:'IBM Plex Mono',monospace;font-size:10px;padding:4px 6px;border-radius:2px">
             <button class="zlBtn sec-inject-btn" onclick="zlinuxSmapiCheck()" style="background:#1a2a1a">▶ SMAPI</button>
           </div>
+          <div class="sec-panel-hint" style="margin-top:8px;color:#e0a060">⚠ INTRUSIVE — the next two change state on another guest. Both need the activity named in the RoE scope file, and both put up a confirm dialog before running, every time.</div>
+          <div style="display:flex;gap:6px;margin-top:4px">
+            <input id="zlXautologTarget" placeholder="Target userid to XAUTOLOG" style="flex:1;box-sizing:border-box;background:#0d0d0d;border:1px solid #222;color:#aaa;font-family:'IBM Plex Mono',monospace;font-size:10px;padding:4px 6px;border-radius:2px">
+            <button class="zlBtn sec-inject-btn" onclick="zlinuxXautologProbe()" style="background:#2a1a1a">▶ XAUTOLOG PROBE</button>
+          </div>
+          <div style="display:flex;gap:6px;margin-top:4px">
+            <input id="zlSendCpTarget" placeholder="Target userid for SEND CP" style="flex:1;box-sizing:border-box;background:#0d0d0d;border:1px solid #222;color:#aaa;font-family:'IBM Plex Mono',monospace;font-size:10px;padding:4px 6px;border-radius:2px">
+            <button class="zlBtn sec-inject-btn" onclick="zlinuxSendCpProbe()" style="background:#2a1a1a">▶ SEND CP PROBE</button>
+          </div>
           <div id="zlStatus" style="font-size:10px;color:var(--text-muted);margin-top:4px;min-height:14px"></div>
           <div id="zlResults"></div>
           <div style="margin-top:6px;display:flex;gap:6px">

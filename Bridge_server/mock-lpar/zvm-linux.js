@@ -139,6 +139,12 @@ function handleGuestCommand(raw, userid, classes, gs, roster = []) {
     return `${sec[1].toUpperCase()} set to ${gs.secuser}${done}`;
   }
 
+  // The class SEND CP actually needs is unconfirmed against IBM's own
+  // manual: one third-party source lists it as a plain general-user (class
+  // G) command, which would make this gate wrong. Kept as a stand-in so the
+  // probe has something to distinguish; the client-side finding treats the
+  // mock's exact class as illustrative, not authoritative, and reports
+  // only "CP executed it" vs "CP refused it".
   const sendcp = cmd.match(/^SEND\s+CP\s+(\S+)\s+(.+)$/i);
   if (sendcp) {
     if (!hasAnyClass(classes, 'ABC')) {

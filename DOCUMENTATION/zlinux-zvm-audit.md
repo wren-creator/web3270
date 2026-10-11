@@ -78,12 +78,39 @@ Needs no session. Enter the z/VM host. It opens a TCP connection to the SMAPI po
 
 This check only says the door exists. It does not say what is behind it. Whether `SMSG DIRMAINT` accepts commands from a class G guest still needs the customer to confirm.
 
+### ⚠ XAUTOLOG Start Probe — INTRUSIVE
+
+Issues `XAUTOLOG <target>` as the logged-on guest, from its CP prompt or its Linux console. `XAUTOLOG` is a confirmed real directory statement; who it authorizes is **not** confirmed against IBM's own manual, so treat the exact wording of the mock's replies as a stand-in, not a captured message.
+
+**This can start another virtual machine.** If the target is not already running and the caller is authorized, CP starts it. To run it with no state change, pick a target you already know is up; the probe then reports the real authorization verdict without starting anything.
+
+Two gates stand between this check and running:
+1. The RoE scope guard, which refuses it unless `xautolog-start` is explicitly named in `scope.json`'s `activities`.
+2. A confirm dialog in the browser, every time, spelling out exactly what is about to run. Cancel stops it completely, before any command reaches the host. Nothing skips this dialog, scope file or not.
+
+| Finding | Meaning |
+|---|---|
+| HIGH, authorized | The guest can start (or confirm the state of) the target. If the target is a privileged service machine, this is the finding: a Linux guest holding a grant to autolog an administrative userid. |
+| OK, not authorized | CP refused it. |
+| INFO, unknown target | The target isn't a real userid on this system; pick a different one. |
+
+### ⚠ SEND CP Probe — INTRUSIVE
+
+Tries `SEND CP <target> QUERY TIME`, a harmless read-only query, as the logged-on guest. The privilege class `SEND CP` actually needs is **not confirmed**; one third-party source suggests it may be a plain general-user (class G) command, which would mean this is far less restricted than the mock models. The finding reports only whether CP executed or refused it, never a specific class, because the class is a guess.
+
+Same two gates as the XAUTOLOG probe: the `send-cp` activity must be named in `scope.json`, and the confirm dialog runs every time regardless.
+
+| Finding | Meaning |
+|---|---|
+| HIGH, executed | The guest can issue CP commands as the target. Whatever the target is authorized to do, this guest can now trigger. |
+| OK, refused | CP denied it. |
+
 ## RoE entries
 
 In `scope.json`:
 
 - `guests`: the userids you may run checks as.
-- `activities`: `cp-privclass`, `cp-console-escape`, `cp-network`, `smapi-probe`. None is intrusive, so leave `activities` out to allow all of them, or list the ones the RoE names.
+- `activities`: `cp-privclass`, `cp-console-escape`, `cp-network`, `smapi-probe` (none intrusive, so leave `activities` out to allow all four, or list the ones the RoE names), plus `xautolog-start` and `send-cp` (intrusive — must be named explicitly, never covered by leaving the list out).
 - `hosts` or `cidrs`: the z/VM host for the SMAPI check.
 
 ## Training

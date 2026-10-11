@@ -8,16 +8,23 @@
 //   3. Virtual Network Audit     QUERY VSWITCH / VMLAN, at CP or a Linux console
 //   4. Directory Review           IUCV and password rules from a pasted export
 //   5. SMAPI Check                standalone network probe, no session needed
+//   6. XAUTOLOG Start Probe       INTRUSIVE — can start another guest
+//   7. SEND CP Probe              INTRUSIVE — can run a command as another guest
 //
 // Every check asks the RoE scope guard first (POST /api/scope/check). With no
 // scope.json the guard is off and the check goes ahead; with one, a denial
-// stops the check and says why.
+// stops the check and says why. Checks 6 and 7 can change state on another
+// guest (XAUTOLOG can start one), so beyond the scope guard they also put up
+// a native confirm() dialog spelling out exactly what is about to run, and a
+// Cancel stops it cold — no scope file, no RoE entry, and no silent default
+// bypasses that prompt.
 import { state } from './state.js';
 import { esc, saveAs, exportFindingsJson } from './utils.js';
 import {
   PRIV_PROBES, FINDING_COLUMNS, parsePrivClasses, classifyConsole, consoleHostname,
   privFindings, consoleFindings, smapiFindings,
   classifyCpResult, parseVswitches, parseVmlans, parseAccessList, networkFindings,
+  xautologFindings, sendCpFindings,
 } from './zlinux-parse.js';
 import { parseDirectory, directoryFindings } from './zlinux-directory.js';
 
@@ -235,6 +242,68 @@ export function zlinuxSmapiCheck() {
   });
 }
 
+// Native confirm() in front of an intrusive probe. Separate from the scope
+// guard on purpose: the guard can be off entirely (no scope.json), and even
+// when it is on and allows the activity, a human still has to read what is
+// about to run and say yes. There is no setting that skips this.
+function _confirmIntrusive(summary) {
+  return window.confirm(
+    `⚠ INTRUSIVE — this changes state on another z/VM guest.\n\n${summary}\n\n` +
+    `Only proceed if this is explicitly authorized in the Rules of Engagement.\n\nRun it?`
+  );
+}
+
+export function zlinuxXautologProbe() {
+  return _run('XAUTOLOG probe', async () => {
+    const screen = state.liveScreenText || '';
+    const atLinux = classifyConsole(screen) === 'linux-login';
+    if (!atLinux && !/z\/VM CP|Ready;/i.test(screen)) {
+      _status('Log on to a guest first, so the screen shows its CP prompt or its Linux console.'); return;
+    }
+    const caller = _guestFromScreen();
+    const target = document.getElementById('zlXautologTarget')?.value.trim().toUpperCase();
+    if (!caller) { _status('Could not read the userid from the screen. Type it in the Guest field.'); return; }
+    if (!target) { _status('Enter the target userid to XAUTOLOG.'); return; }
+    if (!(await _gate(caller, 'xautolog-start'))) return;
+    if (!_confirmIntrusive(
+      `${caller} will issue XAUTOLOG against ${target}.\n` +
+      `If ${target} is authorized and not already running, CP will start it.\n` +
+      `If it is already up, nothing changes — only the authorization verdict is new information.`
+    )) { _status('XAUTOLOG probe canceled.'); return; }
+
+    const prefix = atLinux ? '#CP ' : '';
+    _status(`Trying XAUTOLOG ${target} as ${caller}...`);
+    const result = await _command(`${prefix}XAUTOLOG ${target}`);
+    _add(xautologFindings(caller, target, result));
+    _status(`XAUTOLOG probe done: ${caller} -> ${target}.`);
+  });
+}
+
+export function zlinuxSendCpProbe() {
+  return _run('SEND CP probe', async () => {
+    const screen = state.liveScreenText || '';
+    const atLinux = classifyConsole(screen) === 'linux-login';
+    if (!atLinux && !/z\/VM CP|Ready;/i.test(screen)) {
+      _status('Log on to a guest first, so the screen shows its CP prompt or its Linux console.'); return;
+    }
+    const caller = _guestFromScreen();
+    const target = document.getElementById('zlSendCpTarget')?.value.trim().toUpperCase();
+    if (!caller) { _status('Could not read the userid from the screen. Type it in the Guest field.'); return; }
+    if (!target) { _status('Enter the target userid for SEND CP.'); return; }
+    if (!(await _gate(caller, 'send-cp'))) return;
+    if (!_confirmIntrusive(
+      `${caller} will try to SEND CP a harmless query (QUERY TIME) to run as ${target}.\n` +
+      `If CP allows it, this guest can trigger CP commands under ${target}'s authority.`
+    )) { _status('SEND CP probe canceled.'); return; }
+
+    const prefix = atLinux ? '#CP ' : '';
+    _status(`Trying SEND CP ${target} as ${caller}...`);
+    const result = await _command(`${prefix}SEND CP ${target} QUERY TIME`);
+    _add(sendCpFindings(caller, target, result));
+    _status(`SEND CP probe done: ${caller} -> ${target}.`);
+  });
+}
+
 const SEV_COLOR = { CRITICAL: '#e06060', HIGH: '#e08060', MEDIUM: '#e0a060', INFO: '#6a8ab0', OK: '#3a9a6a' };
 
 function _render() {
@@ -268,5 +337,6 @@ export function zlinuxClear() { _findings = []; _render(); _status(''); }
 
 Object.assign(window, {
   zlinuxOnScreen, zlinuxPrivCheck, zlinuxConsoleAudit, zlinuxNetworkAudit, zlinuxDirectoryReview, zlinuxLoadSample, zlinuxSmapiCheck,
+  zlinuxXautologProbe, zlinuxSendCpProbe,
   zlinuxExportCsv, zlinuxExportJson, zlinuxClear,
 });
