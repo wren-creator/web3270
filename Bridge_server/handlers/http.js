@@ -17,6 +17,7 @@ import * as probeWl    from '../routes/probe-wordlist.js';
 import * as sessionsRt from '../routes/sessions.js';
 import * as poolLimits from '../routes/pool-limits.js';
 import * as sshAudit   from '../routes/ssh-audit.js';
+import * as scopeRt    from '../routes/scope.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -32,7 +33,7 @@ const MIME = {
   '.woff2':'font/woff2',
 };
 
-const ROUTES = [traffic, logs, profiles, sshHosts, macros, macroRun, recording, security, negotiate, wire, esm, probeWl, sessionsRt, poolLimits, sshAudit];
+const ROUTES = [traffic, logs, profiles, sshHosts, macros, macroRun, recording, security, negotiate, wire, esm, probeWl, sessionsRt, poolLimits, sshAudit, scopeRt];
 
 export function createRequestHandler({ config, logger, sessions }) {
   const ctx = { config, logger, sessions };

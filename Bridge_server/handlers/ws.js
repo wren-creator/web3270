@@ -14,6 +14,7 @@ import { recordings } from '../features/recording.js';
 import { esmFingerprints } from '../features/esm-store.js';
 import { EsmFingerprint } from '../features/esm-fingerprint.js';
 import { handleSshConnect } from '../features/ssh.js';
+import { checkScope, auditAction } from '../features/scope.js';
 import { handleFuzz } from '../features/fuzz.js';
 import * as mitm from '../features/mitm.js';
 import { createHandlers as createXferHandlers, screenToLinesMasked } from '../features/transfer.js';
@@ -68,6 +69,12 @@ export function createWsHandler({ config, logger, sessions, Ebcdic }) {
 
       // ── SSH connect ──────────────────────────────────────────────
       if (params.type === 'ssh.connect') {
+        const scopeOk = await checkScope('host', params.host, { source: origin });
+        if (!scopeOk.allowed) {
+          logger.warn(`[ws:${wsId}] SSH connect refused by scope guard: ${params.host} (${scopeOk.reason})`);
+          send(ws, { type: 'ssh.error', message: `Blocked by RoE scope guard: ${scopeOk.reason}` });
+          ws.close(); return;
+        }
         handleSshConnect(ws, wsId, params, send, logger);
         return;
       }
@@ -93,6 +100,17 @@ export function createWsHandler({ config, logger, sessions, Ebcdic }) {
       if (MOCK_LPAR_HOSTS.has(`${host}:${port}`) && !caps.mockLpar) {
         send(ws, { type: 'error', message: 'Mock LPARs require the Learning or Full plan — upgrade at /billing' });
         ws.close(); return;
+      }
+
+      // RoE scope guard. Built-in mock LPARs are training targets and are
+      // never gated; anything else must be in scope.json when one exists.
+      if (!MOCK_LPAR_HOSTS.has(`${host}:${port}`)) {
+        const scopeOk = await checkScope('host', host, { source: origin });
+        if (!scopeOk.allowed) {
+          logger.warn(`[ws:${wsId}] connect refused by scope guard: ${host} (${scopeOk.reason})`);
+          send(ws, { type: 'error', message: `Blocked by RoE scope guard: ${scopeOk.reason}` });
+          ws.close(); return;
+        }
       }
 
       send(ws, { type: 'status', state: 'connecting', host, port });
@@ -268,6 +286,10 @@ export function createWsHandler({ config, logger, sessions, Ebcdic }) {
         if (typeof msg.type === 'string' && msg.type.startsWith('sec.') && !caps.securityTools) {
           send(ws, { type: 'error', message: 'Security tools require the Full plan — upgrade at /billing' });
           return;
+        }
+
+        if (typeof msg.type === 'string' && msg.type.startsWith('sec.')) {
+          auditAction(msg.type, { wsId, host, port, source: origin });
         }
 
         macroHandler.interceptIfRecording(msg);

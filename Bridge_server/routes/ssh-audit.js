@@ -5,6 +5,7 @@
 // tool doesn't need an open terminal session at all, it's a standalone
 // network check against a target the operator names directly.
 import { auditSshAuth } from '../features/ssh-audit.js';
+import { checkScope } from '../features/scope.js';
 
 function readJsonBody(req) {
   return new Promise((resolve, reject) => {
@@ -28,6 +29,13 @@ export function handle(req, res, ctx) {
     if (!host || !username) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'host and username are required' }));
+      return;
+    }
+
+    const scopeOk = await checkScope('host', host, { source: req.socket.remoteAddress });
+    if (!scopeOk.allowed) {
+      res.writeHead(403, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ error: `Blocked by RoE scope guard: ${scopeOk.reason}` }));
       return;
     }
 

@@ -22,3 +22,7 @@ macros/macros.json
 
 # Working doc, not for the repo
 NDA.md
+
+# RoE scope guard — engagement-specific (customer hosts, guest IDs) and its audit trail, never commit
+scope.json
+scope-audit.log

@@ -1,0 +1,9 @@
+{
+  "engagement": "EXAMPLE-2026-Q4",
+  "windowStart": "2026-10-12T00:00:00Z",
+  "windowEnd": "2026-10-30T23:59:59Z",
+  "hosts": ["zvm1.example.com", "*.lab.example.com"],
+  "cidrs": ["10.20.0.0/16"],
+  "guests": ["LNXGST01", "LNXGST02"],
+  "activities": ["cp-privclass", "spool-injection"]
+}
