@@ -446,6 +446,13 @@ class Tn3270Session extends EventEmitter {
   // single screen emit so recalled commands appear in place instead of being
   // animated one character at a time.
   fillField(row, col, text) {
+   // A bad address (the browser sends NaN as null) used to erase and type
+   // along row 0, over the screen header, and send nothing on ENTER. Refuse
+   // it instead of scribbling.
+   if (!Number.isInteger(row) || !Number.isInteger(col) || row < 0 || col < 0) {
+     logger.warn(`[ws:${this.wsId}] fillField ignored: bad address row=${row} col=${col}`);
+     return;
+   }
    const cols = this.cols || 80;
    for (let c = col; c <= cols - 1; c++) this.eraseAt(row, c, false);
    for (let i = 0; i < text.length; i++) this.typeAt(row, col + i, text[i], false);

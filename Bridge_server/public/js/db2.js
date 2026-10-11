@@ -45,7 +45,7 @@ function _fillInput(text) {
   const cols = scr.cols || 80;
   for (const f of scr.fields) {
     if (!(f.fa & 0x20)) {
-      const dataAddr = (f.addr + 1) % (scr.rows.length * cols);
+      const dataAddr = (f.startAddr + 1) % (scr.rows.length * cols);
       const row = Math.floor(dataAddr / cols);
       const col = dataAddr % cols;
       _send({ type: 'fillField', row, col, text });

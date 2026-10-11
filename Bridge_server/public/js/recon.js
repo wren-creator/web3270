@@ -34,7 +34,7 @@ function _fillInput(text) {
   if (scr?.fields?.length) {
     for (const f of scr.fields) {
       if (!(f.fa & 0x20)) {
-        const da  = (f.addr + 1) % (scr.rows.length * cols);
+        const da  = (f.startAddr + 1) % (scr.rows.length * cols);
         _send({ type: 'fillField', row: Math.floor(da / cols), col: da % cols, text });
         return;
       }

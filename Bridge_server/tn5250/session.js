@@ -305,6 +305,13 @@ class Tn5250Session extends EventEmitter {
   // Erase to end of line and type text starting at (row,col) with a single
   // screen emit, so recalled commands land in place instead of animating.
   fillField(row, col, text) {
+    // A bad address (the browser sends NaN as null) used to erase and type
+    // along row 0, over the screen header, and send nothing on ENTER. Refuse
+    // it instead of scribbling.
+    if (!Number.isInteger(row) || !Number.isInteger(col) || row < 0 || col < 0) {
+      logger.warn(`[ws:${this.wsId}] fillField ignored: bad address row=${row} col=${col}`);
+      return;
+    }
     const cols = this.cols || 80;
     for (let c = col; c <= cols - 1; c++) this.eraseAt(row, c, false);
     for (let i = 0; i < text.length; i++) this.typeAt(row, col + i, text[i], false);
