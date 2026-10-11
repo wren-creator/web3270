@@ -330,6 +330,7 @@ export function handleBridgeMsg(sid, msg) {
         window.fieldDiscOnScreen?.(msg);
         window.bufferBleedOnScreen?.(msg);
         window.vmMinidiskOnScreen?.(msg);
+        window.zlinuxOnScreen?.(msg);
         window.esmFingerprintOnScreen?.(msg);
         window.gddmClear?.();
       } else if (state.splitMode && sid === state.splitSid) {

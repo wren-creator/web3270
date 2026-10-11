@@ -780,6 +780,32 @@
         </div>
       </div>
 
+      <!-- Z/LINUX ON Z/VM section -->
+      <div class="sec-section">
+        <div class="sec-section-hdr">Z/LINUX ON Z/VM</div>
+        <div class="sec-section-body">
+          <div class="sec-panel-hint" style="margin-bottom:8px">How far can a Linux guest reach into z/VM? Each check is read-only and asks the RoE scope guard first. Privilege check: at a guest's CP prompt. Console audit: at a Linux guest's console login. SMAPI check: needs no session. FOR AUTHORIZED USE ONLY.</div>
+          <input id="zlGuestId" placeholder="Guest userid (read from screen if blank)" style="width:100%;box-sizing:border-box;background:#0d0d0d;border:1px solid #222;color:#aaa;font-family:'IBM Plex Mono',monospace;font-size:10px;padding:4px 6px;border-radius:2px;margin-bottom:6px">
+          <div class="sec-row">
+            <button class="zlBtn sec-inject-btn" onclick="zlinuxPrivCheck()" style="background:#1a2a1a;flex:1">▶ CP PRIVILEGE CHECK</button>
+          </div>
+          <div class="sec-row" style="margin-top:4px">
+            <button class="zlBtn sec-inject-btn" onclick="zlinuxConsoleAudit()" style="background:#1a2a1a;flex:1">▶ CONSOLE + #CP ESCAPE</button>
+          </div>
+          <div style="display:flex;gap:6px;margin-top:6px">
+            <input id="zlSmapiHost" placeholder="z/VM host for SMAPI check" style="flex:1;box-sizing:border-box;background:#0d0d0d;border:1px solid #222;color:#aaa;font-family:'IBM Plex Mono',monospace;font-size:10px;padding:4px 6px;border-radius:2px">
+            <button class="zlBtn sec-inject-btn" onclick="zlinuxSmapiCheck()" style="background:#1a2a1a">▶ SMAPI</button>
+          </div>
+          <div id="zlStatus" style="font-size:10px;color:var(--text-muted);margin-top:4px;min-height:14px"></div>
+          <div id="zlResults"></div>
+          <div style="margin-top:6px;display:flex;gap:6px">
+            <button onclick="zlinuxExportCsv()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ Export CSV</button>
+            <button onclick="zlinuxExportJson()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ JSON</button>
+            <button onclick="zlinuxClear()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">Clear</button>
+          </div>
+        </div>
+      </div>
+
       <!-- FUZZ section -->
       <div class="sec-section">
         <div class="sec-section-hdr">PROTOCOL FUZZER</div>
