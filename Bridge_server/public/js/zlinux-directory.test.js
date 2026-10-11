@@ -8,7 +8,7 @@ const by = (f, user) => f.filter(x => x.target === user);
 
 test('parses USER and PROFILE entries and folds profile IUCV into INCLUDEs', () => {
   const p = parseDirectory(SAMPLE);
-  assert.equal(p.users.length, 8);
+  assert.equal(p.users.length, 9);
   const g1 = p.users.find(u => u.user === 'LNXGST01');
   assert.deepEqual(g1.effectiveIucv, ['ANY']);
   assert.equal(p.users.find(u => u.user === 'VSMSERVE').maxconn, 128);
@@ -55,4 +55,26 @@ test('IUCV ANY on a service machine is INFO; with no ALLOW targets an app guest 
 test('text with no USER entries is INFO, a clean directory is OK', () => {
   assert.equal(directoryFindings(parseDirectory('hello'))[0].severity, 'INFO');
   assert.equal(directoryFindings(parseDirectory('USER A XXXX 1G 1G G\nUSER B XXXX 1G 1G G'))[0].severity, 'OK');
+});
+
+test('LOGONBY: a weak by-user and an ordinary-guest by-user are both HIGH, and name the console', () => {
+  const f = directoryFindings(parseDirectory(SAMPLE));
+  const maint = by(f, 'MAINT').filter(r => /LOGONBY/.test(r.evidence));
+  assert.ok(maint.some(r => r.severity === 'HIGH' && /SYSADM1 can log on to this guest.*password is the userid/.test(r.finding)));
+  const g2 = by(f, 'LNXGST02').filter(r => /LOGONBY/.test(r.evidence));
+  assert.ok(g2.some(r => r.severity === 'HIGH' && /LNXGST01 is an ordinary class G guest/.test(r.finding)));
+  // the weak password is never printed
+  assert.ok(!JSON.stringify(f).includes('SYSADM1 SYSADM1'));
+});
+
+test('LOGONBY: a strong administrator by-user is only an INFO question, and LOGONBY inherits through INCLUDE', () => {
+  const dir = 'PROFILE P\n  LOGONBY ADM\nUSER ADM XXXXXXXX 1G 1G ABG\nUSER T XXXXXXXX 1G 1G G\n  INCLUDE P';
+  const f = by(directoryFindings(parseDirectory(dir)), 'T');
+  assert.equal(f.length, 1); assert.equal(f[0].severity, 'INFO');
+  assert.match(f[0].finding, /system administrator/);
+});
+
+test('LOGONBY: a by-user missing from the paste is reported, not passed', () => {
+  const f = by(directoryFindings(parseDirectory('USER T XXXX 1G 1G G\n  LOGONBY GHOST')), 'T');
+  assert.ok(f.some(r => /GHOST is not in the pasted text/.test(r.finding)));
 });

@@ -59,10 +59,12 @@ It reads `USER` and `PROFILE` entries and follows `INCLUDE`, because real direct
 | HIGH, IUCV ALLOW on a sensitive service machine | MAINT, DIRMAINT, RACFVM, VSMSERVE and similar. Any guest holding `IUCV ANY` can open a path to it with no further authorization. Allow only the named userids that need it. |
 | MEDIUM, IUCV ANY on an application guest | If the guest is compromised it can open paths to every guest that allows it. Replace `ANY` with named userids. |
 | HIGH, password equals the userid | The value is never printed. |
+| HIGH, LOGONBY names a weak or ordinary-guest userid | `LOGONBY` lets each listed userid log on to this guest, console included, with the by-user's own password. A by-user whose password is its userid, or that is itself an ordinary class G guest, makes this guest only as safe as that account. |
+| INFO, LOGONBY names administrators | Each can log on to this guest with their own password. IBM's STIG guidance is that only system administrators belong there, so confirm each one. |
 | INFO, ALLOW on another machine, ANY on a service machine, MAXCONN above 64 | Questions to ask, not defects. |
 | INFO, not reviewed | An `INCLUDE` of a profile that is not in the paste, or `IDENTITY`/`SUBCONFIG` entries. They are counted so their absence is visible. |
 
-`XAUTOLOG` is deliberately not reviewed. A search could not confirm it is a directory statement, and a check built on a guess would be worse than no check.
+Not reviewed, on purpose: `XAUTOLOG` (a search could not confirm what directory statement authorizes it) and the `CONSOLE` statement's secondary-user field (its syntax is unconfirmed). `SECUSER` and `OBSERVER` turned out to be DirMaint command operands tied to that `CONSOLE` statement, not directory statements of their own. A check built on a guess would be worse than no check.
 
 ### SMAPI Check
 
