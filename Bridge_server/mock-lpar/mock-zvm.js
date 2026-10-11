@@ -30,6 +30,7 @@
 const net = require('net');
 const { runRexx } = require('./rexx/interpreter');
 const { buildExecs } = require('./rexx/execs');
+const zl = require('./zvm-linux');
 
 const PORT    = parseInt(process.env.MOCK_ZVM_PORT || '3271', 10);
 const LOG     = (process.env.LOG_LEVEL || 'info') === 'debug';
@@ -58,6 +59,9 @@ const ZVM_DIRECTORY = {
   PMAINT:   'PRIVM123',
   AUTOLOG1: 'ALOG1XY',
   DEMO:     'DEMO',       // walkthrough id; blank password also walks in
+  // Linux guests (zvm-linux.js): console logon lands at a Linux login prompt
+  LNXGST01: zl.LINUX_GUESTS.LNXGST01.pass,
+  LNXGST02: zl.LINUX_GUESTS.LNXGST02.pass,
 };
 
 // CMS "EXEC" content — single source of truth shared between the XEDIT
@@ -72,7 +76,10 @@ const CMS_EXECS = buildExecs(SYSNAME);
 // user check their own class; FORCE (case 'cp' dispatch below) is the
 // first command this mock actually gates on it.
 const PRIV_CLASS = { OPERATOR: 'B' };
-function classOf(u) { return PRIV_CLASS[(u || '').toUpperCase()] || 'G'; }
+function classOf(u) {
+  const k = (u || '').toUpperCase();
+  return PRIV_CLASS[k] || (zl.isLinuxGuest(k) ? zl.LINUX_GUESTS[k].classes : 'G');
+}
 
 // Users FORCE has logged off — module-level/shared, same convention as
 // z/OS's REVOKED_USERS. Q NAMES (simulateCPQuery below) reflects this.
@@ -307,17 +314,21 @@ function screenLogon(lastMsg = '') {
   return buildScreen(true, fields);
 }
 
-function screenCPReady(userid, lastMsg = '') {
+function screenCPReady(userid, lastMsg = '', linux = false) {
   const timeStr = new Date().toLocaleTimeString('en-US', { hour12: false });
 
   // Build the scrollback area (rows 2–17) with some simulated CP output
-  const outputLines = [
-    `LOGON AT ${timeStr} ${new Date().toLocaleDateString('en-US')}`,
-    `z/VM Version 7 Release 3.0`,
-    `Your IPL directory entry will be used to IPL your machine.`,
-    `Ready; T=0.01/0.01 ${timeStr}`,
-    lastMsg,
-  ].filter(Boolean);
+  // A Linux guest's 3270 console shows the guest's own output, not the CP
+  // banner. lastMsg carries it (zvm-linux.js linuxConsoleBanner).
+  const outputLines = linux
+    ? lastMsg.split('\n')
+    : [
+      `LOGON AT ${timeStr} ${new Date().toLocaleDateString('en-US')}`,
+      `z/VM Version 7 Release 3.0`,
+      `Your IPL directory entry will be used to IPL your machine.`,
+      `Ready; T=0.01/0.01 ${timeStr}`,
+      lastMsg,
+    ].filter(Boolean);
 
   const fields = [
     // Header
@@ -652,6 +663,10 @@ function handleConnection(socket) {
   let lastCPMsg     = '';
   let lastCMSMsg    = '';
   let cpQueryResult = '';
+  // Linux guest console state (zvm-linux.js). linuxMode: this logon landed at a
+  // Linux console, so plain input is a login attempt and CP needs #CP.
+  let linuxMode  = false;
+  const guestState = zl.newGuestState();
   // Mainframe 404 (400 series): XEDIT session state, kept per connection
   // rather than reusing lastCMSMsg as the filename hack did before this.
   // xeditBuffer is the in-progress copy of whatever file is open; nothing
@@ -755,7 +770,7 @@ function handleConnection(socket) {
    let ds;
    switch (currentScreen) {
     case 'logon': ds = screenLogon(lastLogonMsg); break;
-    case 'cp': ds = screenCPReady(userid, lastCPMsg); break;
+    case 'cp': ds = screenCPReady(userid, lastCPMsg, linuxMode); break;
     case 'cms': ds = screenCMSReady(userid, lastCMSMsg); break;
     case 'filelist': ds = screenFilelist(userid); break;
     case 'rdrlist': ds = screenRdrlist(userid); break;
@@ -948,7 +963,8 @@ function handleConnection(socket) {
             lastLogonMsg  = '';
             log(`[${id}] Logon: userid='${userid}'`);
             currentScreen = 'cp';
-            lastCPMsg     = '';
+            linuxMode     = zl.isLinuxGuest(userid);
+            lastCPMsg     = linuxMode ? zl.linuxConsoleBanner(userid) : '';
             sendCurrentScreen();
           }
         } else if (aid === AID_PF3) {
@@ -957,10 +973,26 @@ function handleConnection(socket) {
         break;
 
       case 'cp': {
-        const cmd = inputText.toUpperCase().trim();
+        // On a Linux guest's console, plain input goes to the guest (a login
+        // attempt); only #CP reaches CP. cpText is what CP actually sees.
+        let cpText = inputText.trim();
+        let escapedToCp = false;
+        if (linuxMode && aid === AID_ENTER && cpText) {
+          const esc = /^#CP\s+(.*)$/i.exec(cpText);
+          if (esc) { cpText = esc[1].trim(); escapedToCp = true; }
+          else {
+            _cpConsoleLog.push({ ts: new Date().toISOString(), userid, raw: cpText, linux: true });
+            lastCPMsg = zl.linuxLoginResponse(userid, cpText);
+            sendCurrentScreen();
+            break;
+          }
+        }
+        const cmd = cpText.toUpperCase();
         if (aid === AID_ENTER) {
           if (!cmd) { sendCurrentScreen(); break; }
-          _cpConsoleLog.push({ ts: new Date().toISOString(), userid, raw: inputText.trim() });
+          _cpConsoleLog.push({ ts: new Date().toISOString(), userid, raw: cpText, escapedToCp });
+          const guestOut = zl.handleGuestCommand(cpText, userid, classOf(userid), guestState,
+            LOGGED_ON_USERS.filter(u => !FORCED_USERS.has(u.id)).map(u => u.id));
 
           if (cmd === 'IPL CMS' || cmd === 'CMS' || cmd === 'IPL 190') {
             currentScreen = 'cms';
@@ -977,8 +1009,11 @@ function handleConnection(socket) {
               : '';
             lastCMSMsg = `IPL CMS\n${profileOutput}z/VM CMS is loaded.\nReady; T=0.01/0.01`;
             sendCurrentScreen();
+          } else if (guestOut !== null) {
+            lastCPMsg = guestOut;
+            sendCurrentScreen();
           } else if (cmd.startsWith('LINK ')) {
-            const result = simulateLink(userid, inputText.trim());
+            const result = simulateLink(userid, cpText);
             lastCPMsg = result || `HCPLNM119E Invalid LINK operand\nReady(00119); T=0.01/0.01`;
             sendCurrentScreen();
           } else if (cmd.startsWith('FORCE ')) {
@@ -987,13 +1022,13 @@ function handleConnection(socket) {
             // for everyone except OPERATOR (see PRIV_CLASS above), so a
             // normal logon is correctly denied here — OPUTIL (case 'cms'
             // below) is where the exploit actually lives.
-            const target = inputText.trim().slice(6).trim().split(/\s+/)[0];
-            lastCPMsg = classOf(userid) === 'G'
+            const target = cpText.slice(6).trim().split(/\s+/)[0];
+            lastCPMsg = !zl.hasAnyClass(classOf(userid), 'AB')
               ? `HCPCQF040E FORCE not available -- privilege class B or higher required\nReady(00040); T=0.01/0.01`
               : forceUser(target);
             sendCurrentScreen();
           } else if (cmd.startsWith('Q ') || cmd.startsWith('QUERY ') || cmd === 'QUERY' || cmd === 'Q') {
-            cpQueryResult = simulateCPQuery(inputText, userid);
+            cpQueryResult = simulateCPQuery(cpText, userid);
             currentScreen = 'cpquery';
             sendCurrentScreen();
           } else if (cmd === 'LOGOFF' || cmd === 'LOG' || cmd === '#CP LOGOFF') {
@@ -1003,6 +1038,7 @@ function handleConnection(socket) {
             // "keep going after a match" sweep carry on to the next credential.
             log(`[${id}] LOGOFF — returning to CP logon screen`);
             userid       = 'DEMO';
+            linuxMode    = false;
             lastLogonMsg = '';
             lastCPMsg    = '';
             lastCMSMsg   = '';
@@ -1016,7 +1052,7 @@ function handleConnection(socket) {
             currentScreen = 'cpquery';
             sendCurrentScreen();
           } else {
-            lastCPMsg = `HCPCMD003E Unknown CP command: ${inputText}\nReady(00003); T=0.01/0.01`;
+            lastCPMsg = `HCPCMD003E Unknown CP command: ${cpText}\nReady(00003); T=0.01/0.01`;
             sendCurrentScreen();
           }
         } else if (aid === AID_PF3) {
@@ -1147,7 +1183,7 @@ function handleConnection(socket) {
     let ds;
     switch (currentScreen) {
       case 'logon':    ds = screenLogon(lastLogonMsg);              break;
-      case 'cp':       ds = screenCPReady(userid, lastCPMsg);       break;
+      case 'cp':       ds = screenCPReady(userid, lastCPMsg, linuxMode); break;
       case 'cpquery':  ds = screenCPQuery(userid, cpQueryResult);   break;
       case 'cms':      ds = screenCMSReady(userid, lastCMSMsg);     break;
       case 'filelist': ds = screenFilelist(userid);                 break;
