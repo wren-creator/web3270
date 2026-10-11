@@ -293,6 +293,29 @@ Type commands into the input field (row 21) and press **Enter**.
 | `Q VIRTUAL` or `Q V` | Virtual storage detail | Storage and expanded storage breakdown |
 | `Q DASD` or `Q DISK` | DASD (disk) summary | Two simulated 3390 volumes |
 
+<a id="zvm-linux-guests"></a>
+**Linux guests** (`mock-lpar/zvm-linux.js`)
+
+Two seeded guests for the z/Linux on z/VM audit ([zlinux-zvm-audit.md](zlinux-zvm-audit.md)). Logging on as either lands at a Linux console, not the CP banner. Plain input there is a Linux login attempt and fails; only `#CP <command>` reaches CP.
+
+| Userid | Password | CP classes | Purpose |
+|--------|----------|-----------|---------|
+| `LNXGST01` | `LINUX` | `G` | Correctly provisioned. The audit should come back clean on privilege. |
+| `LNXGST02` | `LNXPRIV` | `ABEG` | Handed too much privilege. The audit should come back CRITICAL. |
+
+Commands these guests can run (the message IDs are mock stand-ins, not captured from a live system):
+
+| Command | Result |
+|---------|--------|
+| `INDICATE LOAD`, `QUERY SRM` | Refused for class G, answered for a class E holder |
+| `QUERY PRIVCLASS` | The caller's own classes |
+| `QUERY VSWITCH`, `QUERY VMLAN` | Static tables |
+| `QUERY RDR ALL` | The caller's own reader only; another user's needs class D |
+| `SPOOL PUNCH TO <user>` then `PUNCH <name>` | Delivers a one-record file to that reader |
+| `SET SECUSER <user>` | Redirects the caller's own console output |
+| `SEND CP <user> <cmd>` | Needs class A, B or C |
+| `SMSG <user> <text>` | Succeeds for a logged-on user |
+
 **Other commands**
 
 | Command | Description | Result |
