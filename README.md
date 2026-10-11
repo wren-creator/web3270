@@ -41,6 +41,8 @@ server.js  (HTTP + WebSocket on the same port)
 - **RACF Auto-Probe** — iterates a credential wordlist against TSO, z/VM, or CICS logon screens; auto-detects the active subsystem; classifies each response as SUCCESS, FAILURE, or LOCKOUT; stops immediately on lockout or success; configurable delay between attempts; live results table + CSV export
 - **Macro Recorder** — click ● REC in the sidebar to record real terminal interactions as reusable JSON macros; floating step counter while recording; STOP prompts for name + description and saves to the macro library immediately; recorded steps use the same schema as hand-authored macros
 - **Protocol Fuzzer** — sends mutated 3270 AID records and classifies host responses; four modes: AID Sweep (iterate every AID byte 0x00–0xFF), Field Overflow (oversized field payload), Order Injection (inject 3270 order bytes — SF/SBA/IC/RA/IAC — into field data), SBA Mutation (crafted invalid screen-buffer addresses); configurable timeout + delay; live colour-coded result table; CSV export
+- **RoE Scope Guard** — with a `scope.json` present, the bridge refuses connections and active probes outside the engagement's hosts, guests, authorized activities and dates, and logs every decision to `scope-audit.log`; no file means off. See `DOCUMENTATION/scope-guard.md`
+- **Z/LINUX ON Z/VM** — how far a compromised Linux guest can reach into z/VM: CP privilege class check, guest console and `#CP` escape, VSWITCH/VMLAN isolation, a pasted-directory review (IUCV, `LOGONBY`, weak passwords), and a SMAPI exposure check. Mock guests included for practice. See `DOCUMENTATION/zlinux-zvm-audit.md`
 - **Security Macros** — pre-built macro store for common security workflows (RACF auth probing, LISTAPF, TSO READY checks)
 - All tools live behind the 🔒 button in the OIA bar — the Security tab is hidden until a password is entered; clicking 🔒 again re-locks and hides the Security tab (the right panel stays open, switching to Settings); every access attempt is logged server-side with LU name, IP, and timestamp
 
@@ -248,6 +250,8 @@ Set in `docker-compose.yml` (or `docker-compose.prebuilt.yml`) under the bridge 
 | `NODE_EXTRA_CA_CERTS` | unset | Path to a PEM file (or bundle) trusting a self-signed/internal CA. Node ignores the OS trust store, this is the only way it picks up a cert that isn't in its bundled list. See Troubleshooting → TLS certificate errors |
 | `BRIDGE_SOCKET_TIMEOUT_MS` | `300000` | Idle session timeout (ms) |
 | `BRIDGE_MAX_SESSIONS` | `100` | Max concurrent sessions |
+| `BRIDGE_SCOPE_FILE` | `scope.json` next to `server.js` | Path to the RoE scope file. If the file is absent the scope guard is off |
+| `BRIDGE_SCOPE_AUDIT` | `scope-audit.log` next to `server.js` | Where the scope guard writes its decisions |
 | `DEFAULT_MODEL` | `3278-2` | Default 3270 terminal model |
 | `DEFAULT_CODEPAGE` | `37` | Default EBCDIC codepage (37 = US English) |
 | `COPILOT_PROVIDER` | `anthropic` | `anthropic` / `azure` / `github` / `openai` / `gemini` / `ollama` |

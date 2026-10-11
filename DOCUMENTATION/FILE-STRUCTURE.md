@@ -46,6 +46,8 @@ Bridge_server/
 │   ├── macros.js                         GET/POST/DELETE /api/macros — macros.json CRUD + library guard (403)
 │   ├── recording.js                      GET/POST /api/recordings — session recording files
 │   ├── security.js                       POST /api/security — security tool server-side helpers
+│   ├── scope.js                          GET /api/scope, POST /api/scope/check — RoE scope guard status and gate
+│   ├── smapi-audit.js                    POST /api/smapi-audit — z/VM SMAPI exposure probe (scope-gated)
 │   ├── negotiate.js                      GET /api/negotiate — TLS cipher, cert chain, LU fixation, TN3270E log per session
 │   └── sessions.js                       GET /api/sessions, POST /api/session-kill — Session Manager: list/terminate running sessions
 ├── config.js                             Profile loaders: lpars.txt (loadLparFile) + ssh-hosts.txt (loadSshHostsFile)
@@ -160,6 +162,10 @@ Bridge_server/
 │       │                                   · sshSaveHost() — saves new entry via POST /api/ssh-hosts
 │       │                                   · Resize (FitAddon) on window resize
 │       │                                   · Split-screen helpers: sshRenderSplitPane / sshClearSplitPane
+│       ├── zlinux.js                     Z/LINUX ON Z/VM panel driver: CP privilege check, console + #CP escape,
+│       │                                   virtual network audit, directory review, SMAPI check
+│       ├── zlinux-parse.js               Pure classifiers + findings for the z/Linux checks (unit-tested)
+│       ├── zlinux-directory.js           Pure z/VM directory export review: IUCV, LOGONBY, passwords (unit-tested)
 │       ├── probe.js                      RACF Auto-Probe: wordlist credential enumeration against TSO/z/VM/CICS logon screens
 │       ├── fuzz.js                       Protocol Fuzzer: AID Sweep, Field Overflow, Order Injection, SBA Mutation
 │       ├── db2.js                        DB2 Security Tools (Wave 10):
@@ -202,6 +208,8 @@ Bridge_server/
     │                                       · Screens: Logon → ISPF → Edit / SDSF
     ├── mock-zvm.js                       TN3270 mock z/VM server (port 3271)
     │                                       · Screens: CP Logon → CP → CMS → FILELIST / RDRLIST / XEDIT
+    ├── zvm-linux.js                      Mock z/VM Linux guests (LNXGST01 class G, LNXGST02 class ABEG), #CP escape,
+    │                                       gated CP queries, VSWITCH/VMLAN (called from mock-zvm.js, unit-tested)
     ├── Dockerfile                        Container for mock z/OS LPAR
     ├── Dockerfile.mock-zvm               Container for mock z/VM LPAR
     └── README.md                         Mock daemon setup + demo script
