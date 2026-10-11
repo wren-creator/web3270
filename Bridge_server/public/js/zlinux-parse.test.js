@@ -45,6 +45,18 @@ test('privFindings: an unreadable reply is not scored as a clean pass', () => {
   assert.equal(f[0].severity, 'INFO');
 });
 
+test('privFindings: probes swallowed by a Linux login prompt are inconclusive, never a pass', () => {
+  const probes = PRIV_PROBES.map(p => ({ ...p, result: 'Password:\nLogin incorrect\n\nlnxgst01 login:' }));
+  const f = privFindings('LNXGST01', null, probes);
+  assert.equal(f[0].severity, 'INFO');
+  assert.ok(!f.some(x => x.severity === 'OK'));
+});
+
+test('privFindings: class G read but classes unparsed still is not a pass', () => {
+  const probes = PRIV_PROBES.map(p => ({ ...p, result: `HCPCQF040E ${p.name} not available -- privilege class ${p.need} required` }));
+  assert.equal(privFindings('X', null, probes)[0].severity, 'INFO');
+});
+
 test('consoleFindings: reachable Linux console plus working #CP escape', () => {
   const f = consoleFindings('LNXGST01', 'lnxgst01 login:', 'PRIVILEGE CLASSES FOR LNXGST01: G\nReady; T=0.01/0.01');
   assert.deepEqual(f.map(x => [x.check, x.severity]), [['guest-console', 'HIGH'], ['cp-escape', 'HIGH']]);
@@ -58,4 +70,10 @@ test('consoleFindings: an escape the console swallowed is OK', () => {
 test('smapiFindings: plaintext open port is HIGH, closed is OK', () => {
   const f = smapiFindings('h', [{ port: 44444, state: 'open', tls: false }, { port: 44445, state: 'closed' }]);
   assert.equal(f[0].severity, 'HIGH'); assert.equal(f[1].severity, 'OK');
+});
+
+test('privFindings evidence quotes the reply, not the screen header', () => {
+  const screen = 'z/VM CP  ZVMPROD      LNXGST02 Logged On\nAVGPROC-012% 02\nLNXGST02 CP\nRUNNING   ZVMPROD';
+  const f = privFindings('LNXGST02', 'G', [{ name: 'INDICATE LOAD', need: 'E', result: screen }]);
+  assert.equal(f[0].evidence, 'AVGPROC-012% 02');
 });

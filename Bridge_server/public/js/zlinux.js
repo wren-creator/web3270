@@ -44,7 +44,8 @@ function _fillInput(text) {
   const cols = scr?.cols || 80;
   for (const f of scr?.fields || []) {
     if (!(f.fa & 0x20)) {
-      const da = (f.addr + 1) % (scr.rows.length * cols);
+      // Fields carry startAddr (the FA byte); input begins one cell after it.
+      const da = (f.startAddr + 1) % (scr.rows.length * cols);
       _send({ type: 'fillField', row: Math.floor(da / cols), col: da % cols, text });
       return;
     }
@@ -54,7 +55,12 @@ function _fillInput(text) {
 
 // Type one line at the current prompt, return what the host showed next.
 async function _command(line) {
+  // The bridge echoes a screen after every fill. Wait that one out first, or
+  // it gets mistaken for the reply to ENTER and we read the screen from
+  // before the command ran.
+  const echo = _waitScreen();
   _fillInput(line);
+  await echo;
   const next = _waitScreen();
   _send({ type: 'key', aid: 'ENTER', fields: [] });
   const text = _text(await next);
@@ -119,20 +125,24 @@ function _add(rows) {
 export function zlinuxPrivCheck() {
   return _run('Privilege check', async () => {
     const screen = state.liveScreenText || '';
-    if (!/z\/VM CP|Ready;/i.test(screen) || classifyConsole(screen) === 'linux-login') {
-      _status('Open a CP prompt first (a guest logged on, not sitting at its Linux login).'); return;
+    // At a Linux guest's console, CP is reached with a #CP prefix. At a plain
+    // CP prompt, commands go straight in.
+    const atLinux = classifyConsole(screen) === 'linux-login';
+    if (!atLinux && !/z\/VM CP|Ready;/i.test(screen)) {
+      _status('Log on to a guest first, so the screen shows its CP prompt or its Linux console.'); return;
     }
+    const prefix = atLinux ? '#CP ' : '';
     const guest = _guestFromScreen();
     if (!guest) { _status('Could not read the userid from the screen. Type it in the Guest field.'); return; }
     if (!(await _gate(guest, 'cp-privclass'))) return;
 
     _status(`Querying ${guest}'s privilege classes...`);
-    const q = await _command('QUERY PRIVCLASS');
+    const q = await _command(`${prefix}QUERY PRIVCLASS`);
     const classes = parsePrivClasses(q);
     const probes = [];
     for (const p of PRIV_PROBES) {
       _status(`Asking CP to run ${p.name} (read-only)...`);
-      probes.push({ ...p, result: await _command(p.cmd) });
+      probes.push({ ...p, result: await _command(`${prefix}${p.cmd}`) });
     }
     _add(privFindings(guest, classes, probes));
     _status(`Privilege check done for ${guest}: ${classes || 'class not parsed'}.`);

@@ -33,9 +33,13 @@ export function parsePrivClasses(text) {
 export function classifyCpResult(text) {
   const t = String(text || '');
   if (!t.trim()) return 'unknown';
-  if (/Login incorrect|\blogin:|^\s*Password:/mi.test(t)) return 'linux-input';
+  // CP's own refusal wins even on a console that also shows Linux text:
+  // a Linux guest cannot produce an HCP message, so it is conclusive.
   if (/HCP\w*\d{3}E[^\n]*(not available|not authorized|privilege class|authoriz)/i.test(t) || /\bnot authorized\b/i.test(t)) return 'denied';
   if (/HCP\w*(002|003)E|Unknown CP command|Invalid (option|operand)/i.test(t)) return 'invalid';
+  // A bare "login:" is just the console banner and says nothing. A failed
+  // login or a password prompt means the guest, not CP, took our input.
+  if (/Login incorrect|^\s*Password:/mi.test(t)) return 'linux-input';
   return 'executed';
 }
 
@@ -79,10 +83,13 @@ export function privFindings(target, classes, probes) {
       `CP executed ${p.name}, which needs class ${p.need}. Class G cannot run it.`, firstLine(p.result)));
   }
   if (!admin.length && !executed.length) {
-    const inconclusive = ran.some(p => p.verdict === 'unknown' || p.verdict === 'invalid');
+    // A probe that never reached CP (swallowed by a Linux login prompt) or
+    // that we could not read proves nothing. Only a real refusal counts, and
+    // an unparsed class list is never enough to call this clean.
+    const inconclusive = !classes || ran.some(p => p.verdict !== 'denied');
     out.push(row('cp-privclass', target, inconclusive ? 'INFO' : 'OK',
       inconclusive
-        ? 'Class G reported, but at least one gated command gave an unclassifiable reply. Review the raw output before calling this a pass.'
+        ? 'Inconclusive. Either the class list could not be read or at least one gated command was not refused by CP (it may never have reached CP). Review the raw output before calling this a pass.'
         : 'Class G only, and every gated command was refused by CP.',
       `QUERY PRIVCLASS: ${cls || 'not parsed'}`));
   }
@@ -136,6 +143,12 @@ export function smapiFindings(host, results) {
   return out;
 }
 
-function firstLine(s) { return String(s || '').split('\n').map(x => x.trim()).find(Boolean) || ''; }
+// First line of a host reply worth quoting as evidence: skips the screen
+// chrome (header, rules, prompt line, status bar) that surrounds every reply.
+const CHROME = /^(z\/VM CP\b|CP QUERY RESPONSE|[-\u2500=]{5,}|RUNNING\b|\S+\s+CP\s*$|Ubuntu\b|\S+ login:\s*$)/i;
+function firstLine(s) {
+  const lines = String(s || '').split('\n').map(x => x.trim()).filter(Boolean);
+  return lines.find(l => !CHROME.test(l)) || lines[0] || '';
+}
 
 export const FINDING_COLUMNS = ['check', 'target', 'severity', 'finding', 'evidence'];

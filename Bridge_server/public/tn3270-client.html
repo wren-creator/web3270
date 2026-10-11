@@ -784,7 +784,7 @@
       <div class="sec-section">
         <div class="sec-section-hdr">Z/LINUX ON Z/VM</div>
         <div class="sec-section-body">
-          <div class="sec-panel-hint" style="margin-bottom:8px">How far can a Linux guest reach into z/VM? Each check is read-only and asks the RoE scope guard first. Privilege check: at a guest's CP prompt. Console audit: at a Linux guest's console login. SMAPI check: needs no session. FOR AUTHORIZED USE ONLY.</div>
+          <div class="sec-panel-hint" style="margin-bottom:8px">How far can a Linux guest reach into z/VM? Each check is read-only and asks the RoE scope guard first. Privilege check: at a guest's CP prompt or Linux console. Console audit: at a Linux guest's console login. SMAPI check: needs no session. FOR AUTHORIZED USE ONLY.</div>
           <input id="zlGuestId" placeholder="Guest userid (read from screen if blank)" style="width:100%;box-sizing:border-box;background:#0d0d0d;border:1px solid #222;color:#aaa;font-family:'IBM Plex Mono',monospace;font-size:10px;padding:4px 6px;border-radius:2px;margin-bottom:6px">
           <div class="sec-row">
             <button class="zlBtn sec-inject-btn" onclick="zlinuxPrivCheck()" style="background:#1a2a1a;flex:1">▶ CP PRIVILEGE CHECK</button>

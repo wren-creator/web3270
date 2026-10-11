@@ -321,7 +321,7 @@ function screenCPReady(userid, lastMsg = '', linux = false) {
   // A Linux guest's 3270 console shows the guest's own output, not the CP
   // banner. lastMsg carries it (zvm-linux.js linuxConsoleBanner).
   const outputLines = linux
-    ? lastMsg.split('\n')
+    ? [...zl.linuxConsoleBanner(userid).split('\n'), ...lastMsg.split('\n')].filter((l, i) => l !== '' || i > 0)
     : [
       `LOGON AT ${timeStr} ${new Date().toLocaleDateString('en-US')}`,
       `z/VM Version 7 Release 3.0`,
@@ -964,7 +964,7 @@ function handleConnection(socket) {
             log(`[${id}] Logon: userid='${userid}'`);
             currentScreen = 'cp';
             linuxMode     = zl.isLinuxGuest(userid);
-            lastCPMsg     = linuxMode ? zl.linuxConsoleBanner(userid) : '';
+            lastCPMsg     = '';
             sendCurrentScreen();
           }
         } else if (aid === AID_PF3) {

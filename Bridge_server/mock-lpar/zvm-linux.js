@@ -158,7 +158,7 @@ function linuxConsoleBanner(userid) {
 function linuxLoginResponse(userid, typed) {
   const g = LINUX_GUESTS[(userid || '').toUpperCase()];
   const h = g ? g.host : 'linux';
-  return `${h} login: ${typed}\nPassword:\nLogin incorrect\n\n${h} login:`;
+  return `${typed}\nPassword:\nLogin incorrect\n\n${h} login:`;
 }
 
 module.exports = {
