@@ -6,7 +6,7 @@ Every check is read-only and asks the [RoE scope guard](scope-guard.md) before i
 
 The panel is in the Security panel, section **Z/LINUX ON Z/VM**.
 
-## The three checks
+## The checks
 
 ### CP Privilege Check
 
@@ -33,6 +33,37 @@ Run it with a Linux guest's userid logged on, so the 3270 shows its Linux login 
 
 Weak guest logon passwords are found by RACF PROBE's existing z/VM sweep. Put the customer's guest userids in the wordlist.
 
+### Virtual Network Audit (VSWITCH / VMLAN)
+
+Run it logged on as the guest, at its CP prompt or Linux console. It reads `QUERY VSWITCH` and `QUERY VMLAN`, then tries each switch's access list.
+
+| Finding | Meaning |
+|---|---|
+| HIGH, HiperSockets-type guest LAN is UNRESTRICTED | Any guest can join, and the traffic never crosses the corporate network, so firewalls and segmentation do not see it. |
+| HIGH, VSWITCH is UNRESTRICTED | Any guest may couple to it with no GRANT. |
+| MEDIUM, port isolation is OFF | Guests on the switch can reach each other's ports directly. One compromised guest can talk to its neighbors with nothing between them. |
+| INFO, VLAN unaware | No VLAN separation, so port isolation is the only guest-to-guest control. |
+| INFO, access list read | Names every user that shares the network. |
+| INFO, access list refused | Expected for a class G guest. It is "could not read", never a finding. |
+
+The access list layout and the privilege class it needs are not confirmed against a live system, and a search turned up no documentation of either. The parser takes any userid-shaped token after the heading. `Isolation Status` and the VLAN wording are documented fields.
+
+### Directory Review (IUCV and passwords)
+
+A class G guest cannot read the directory, so this works on an export the customer gives you. Paste it into the box in the panel (or press **Load sample** for the invented training directory) and press **Review directory**. Nothing is sent to any system, so there is no scope guard check.
+
+It reads `USER` and `PROFILE` entries and follows `INCLUDE`, because real directories keep their `IUCV` lines in profiles. It correlates the two halves of the risk: `IUCV ANY` lets a guest open a path to another guest, and `IUCV ALLOW` lets any guest open a path to this one, so each finding says who can reach whom.
+
+| Finding | Meaning |
+|---|---|
+| HIGH, IUCV ALLOW on a sensitive service machine | MAINT, DIRMAINT, RACFVM, VSMSERVE and similar. Any guest holding `IUCV ANY` can open a path to it with no further authorization. Allow only the named userids that need it. |
+| MEDIUM, IUCV ANY on an application guest | If the guest is compromised it can open paths to every guest that allows it. Replace `ANY` with named userids. |
+| HIGH, password equals the userid | The value is never printed. |
+| INFO, ALLOW on another machine, ANY on a service machine, MAXCONN above 64 | Questions to ask, not defects. |
+| INFO, not reviewed | An `INCLUDE` of a profile that is not in the paste, or `IDENTITY`/`SUBCONFIG` entries. They are counted so their absence is visible. |
+
+`XAUTOLOG` is deliberately not reviewed. A search could not confirm it is a directory statement, and a check built on a guess would be worse than no check.
+
 ### SMAPI Check
 
 Needs no session. Enter the z/VM host. It opens a TCP connection to the SMAPI ports (44444 and 44445 by default) and, if one answers, tries a TLS handshake. It sends no SMAPI request and tries no credentials, so it cannot lock an account or change anything.
@@ -50,7 +81,7 @@ This check only says the door exists. It does not say what is behind it. Whether
 In `scope.json`:
 
 - `guests`: the userids you may run checks as.
-- `activities`: `cp-privclass`, `cp-console-escape`, `smapi-probe`. None is intrusive, so leave `activities` out to allow all three, or list the ones the RoE names.
+- `activities`: `cp-privclass`, `cp-console-escape`, `cp-network`, `smapi-probe`. None is intrusive, so leave `activities` out to allow all of them, or list the ones the RoE names.
 - `hosts` or `cidrs`: the z/VM host for the SMAPI check.
 
 ## Training

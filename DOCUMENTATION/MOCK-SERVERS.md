@@ -309,7 +309,8 @@ Commands these guests can run (the message IDs are mock stand-ins, not captured 
 |---------|--------|
 | `INDICATE LOAD`, `QUERY SRM` | Refused for class G, answered for a class E holder |
 | `QUERY PRIVCLASS` | The caller's own classes |
-| `QUERY VSWITCH`, `QUERY VMLAN` | Static tables |
+| `QUERY VSWITCH`, `QUERY VMLAN` | Static tables: one restricted, VLAN-unaware switch with isolation off, one unrestricted HiperSockets-type LAN |
+| `QUERY VSWITCH VSW1 ACCESSLIST` | Refused for class G, answered for a class B holder (layout and class are stand-ins) |
 | `QUERY RDR ALL` | The caller's own reader only; another user's needs class D |
 | `SPOOL PUNCH TO <user>` then `PUNCH <name>` | Delivers a one-record file to that reader |
 | `SET SECUSER <user>` | Redirects the caller's own console output |
