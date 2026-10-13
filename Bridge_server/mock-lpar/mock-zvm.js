@@ -398,12 +398,17 @@ function screenCMSReady(userid, lastMsg = '') {
   // multi-line QUERY responses), rather than baking embedded newline
   // bytes into a single field, and cap the row count so a longer exec's
   // output can't run past the row-20 separator into the input line.
-  const outputLines = [
-    `IPL CMS`,
-    `z/VM CMS Level ${SYSNAME}`,
-    `Ready; T=0.01/0.01 ${timeStr}`,
-    ...(lastMsg ? lastMsg.split('\n') : []),
-  ].filter(Boolean).slice(-16);
+  // The IPL handler hands over its own complete banner (IPL CMS, any PROFILE
+  // EXEC output, "z/VM CMS is loaded.", Ready), so use it as-is instead of
+  // stacking the default banner above it, which printed IPL CMS twice.
+  const outputLines = (lastMsg.startsWith('IPL CMS\n')
+    ? lastMsg.split('\n')
+    : [
+        `IPL CMS`,
+        `z/VM CMS Level ${SYSNAME}`,
+        `Ready; T=0.01/0.01 ${timeStr}`,
+        ...(lastMsg ? lastMsg.split('\n') : []),
+      ]).filter(Boolean).slice(-16);
 
   const fields = [
     { row:0,  col:0,  fa: FA_PROTECTED_HIGH },
