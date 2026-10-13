@@ -380,8 +380,7 @@ function screenCPReady(userid, lastMsg = '', linux = false) {
     { row:21, col:10, fa: FA_PROTECTED },
     { row:21, col:10, text: 'CP' },
     { row:21, col:13, fa: FA_UNPROTECTED },
-    { row:21, col:13, text: '                                                   ' },
-    { row:21, col:13, ic: true },
+    { row:21, col:13, text: '                                                   ', ic: true },
     { row:23, col:0,  fa: FA_PROTECTED_HIGH },
     { row:23, col:0,  text: `RUNNING   ${SYSNAME}` },
     { row:23, col:30, fa: FA_PROTECTED },
@@ -426,8 +425,7 @@ function screenCMSReady(userid, lastMsg = '') {
     { row:21, col:10, fa: FA_PROTECTED },
     { row:21, col:10, text: 'CMS' },
     { row:21, col:14, fa: FA_UNPROTECTED },
-    { row:21, col:14, text: '                                                  ' },
-    { row:21, col:14, ic: true },
+    { row:21, col:14, text: '                                                  ', ic: true },
     { row:23, col:0,  fa: FA_PROTECTED_HIGH },
     { row:23, col:0,  text: `RUNNING   ${SYSNAME}` },
     { row:23, col:30, fa: FA_PROTECTED },
@@ -465,8 +463,7 @@ function screenFilelist(userid) {
     { row:21, col:10, fa: FA_PROTECTED },
     { row:21, col:10, text: 'FILELIST' },
     { row:21, col:19, fa: FA_UNPROTECTED },
-    { row:21, col:19, text: '                                               ' },
-    { row:21, col:19, ic: true },
+    { row:21, col:19, text: '                                               ', ic: true },
     { row:23, col:0,  fa: FA_PROTECTED_HIGH },
     { row:23, col:0,  text: `RUNNING   ${SYSNAME}` },
     { row:23, col:30, fa: FA_PROTECTED },
@@ -495,8 +492,7 @@ function screenRdrlist(userid) {
     { row:21, col:10, fa: FA_PROTECTED },
     { row:21, col:10, text: 'RDRLIST' },
     { row:21, col:19, fa: FA_UNPROTECTED },
-    { row:21, col:19, text: '                                               ' },
-    { row:21, col:19, ic: true },
+    { row:21, col:19, text: '                                               ', ic: true },
     { row:23, col:0,  fa: FA_PROTECTED_HIGH },
     { row:23, col:0,  text: `RUNNING   ${SYSNAME}` },
     { row:23, col:30, fa: FA_PROTECTED },
@@ -521,8 +517,7 @@ function screenXedit(userid, filename = 'DEMO REXX A', lines = []) {
     { row:1,  col:0,  fa: FA_PROTECTED },
     { row:1,  col:1,  text: '====>                                                          ' },
     { row:1,  col:6,  fa: FA_UNPROTECTED },
-    { row:1,  col:6,  text: '                                                         ' },
-    { row:1,  col:6,  ic: true },
+    { row:1,  col:6,  text: '                                                         ', ic: true },
 
     // Rulers and content
     { row:2,  col:0,  fa: FA_PROTECTED },
@@ -566,8 +561,7 @@ function screenCPQuery(userid, queryResult = '') {
     { row:21, col:10, fa: FA_PROTECTED },
     { row:21, col:10, text: 'CP' },
     { row:21, col:13, fa: FA_UNPROTECTED },
-    { row:21, col:13, text: '                                                   ' },
-    { row:21, col:13, ic: true },
+    { row:21, col:13, text: '                                                   ', ic: true },
     { row:23, col:0,  fa: FA_PROTECTED_HIGH },
     { row:23, col:0,  text: `RUNNING   ${SYSNAME}` },
     { row:23, col:30, fa: FA_PROTECTED },
@@ -661,7 +655,11 @@ function simulateCPQuery(cmd, userid = 'DEMO') {
   if (upper.includes('DASD') || upper.includes('DISK')) {
     return `DASD 191 3390 MFT191  R/W  CYL 3339  BLK 555  EXT 1  LABEL SPOOL\nDASD 192 3390 MFT192  R/O  CYL 1669  BLK 0    EXT 1  LABEL WORK\nDASD 193 3390 MFT193  R/W  CYL 2210  BLK 0    EXT 1  LINKED TO OPERATOR\nDASD 294 3390 PRDWK294 R/W CYL 1000 BLK 0    EXT 1  LABEL PRODWK`;
   }
-  return `HCPCQV003E Invalid option - ${cmd.split(' ').slice(2).join(' ')}\nReady(00003); T=0.01/0.01`;
+  const operand = cmd.trim().split(/\s+/).slice(1).join(' ');
+  if (!operand) {
+    return `HCPCQU001E QUERY needs an operand. Try one of:\n  QUERY TIME | NAMES | DASD | PRIVCLASS | STORAGE\nReady(00001); T=0.01/0.01`;
+  }
+  return `HCPCQV003E Invalid option - ${operand}\nReady(00003); T=0.01/0.01`;
 }
 
 // ── Connection handler ────────────────────────────────────────────
@@ -1014,6 +1012,8 @@ function handleConnection(socket) {
             break;
           }
         }
+        // Already in CP mode, so a CMS-style "CP Q NAMES" means "Q NAMES".
+        cpText = cpText.replace(/^CP\s+/i, '');
         const cmd = cpText.toUpperCase();
         if (aid === AID_ENTER) {
           if (!cmd) { sendCurrentScreen(); break; }
