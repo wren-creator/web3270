@@ -50,6 +50,12 @@ failed-attempt lockout — that needs an external security manager — so the
 probe's LOCKOUT case never fires here. `LOGOFF` / `#CP LOGOFF` returns to the
 CP logon screen on the same connection; `DISC` is the genuine disconnect.
 
+CP and CMS command forms the mock accepts: `IPL`, `IPL CMS`, `IPL 190`, `I CMS`
+(each with an optional `CLEAR`) and bare `CMS` all load CMS. A CMS-style `CP Q
+NAMES` typed at the CP prompt works like `Q NAMES`, and `#CP Q ...` / `CP Q ...`
+typed in CMS runs the query and returns to CMS. A bare `Q` lists the valid
+operands (`TIME`, `NAMES`, `DASD`, `PRIVCLASS`, `STORAGE`).
+
 ---
 
 ## Quick start
