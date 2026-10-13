@@ -686,6 +686,8 @@ function handleConnection(socket) {
   let userid        = 'DEMO';
   let lastLogonMsg  = '';
   let lastCPMsg     = '';
+  let queryReturn   = 'cp';   // screen the CP query result returns to
+
   let lastCMSMsg    = '';
   let cpQueryResult = '';
   // Linux guest console state (zvm-linux.js). linuxMode: this logon landed at a
@@ -1021,7 +1023,7 @@ function handleConnection(socket) {
           const guestOut = zl.handleGuestCommand(cpText, userid, classOf(userid), guestState,
             LOGGED_ON_USERS.filter(u => !FORCED_USERS.has(u.id)).map(u => u.id));
 
-          if (cmd === 'IPL CMS' || cmd === 'CMS' || cmd === 'IPL 190') {
+          if (/^(IPL|I)(\s+(CMS|190))?(\s+CLEAR)?$/.test(cmd) || cmd === 'CMS') {
             currentScreen = 'cms';
             // Mainframe 404 (400 series): real CMS auto-runs a PROFILE
             // EXEC, if one exists, on every logon, before the Ready
@@ -1095,7 +1097,8 @@ function handleConnection(socket) {
 
       case 'cpquery':
         if (aid === AID_ENTER || aid === AID_PF3) {
-          currentScreen = 'cp';
+          currentScreen = queryReturn;
+          queryReturn   = 'cp';
           lastCPMsg     = cpQueryResult.split('\n').pop() || '';
           sendCurrentScreen();
         }
@@ -1126,6 +1129,13 @@ function handleConnection(socket) {
             // Drop back to CP mode
             currentScreen = 'cp';
             lastCPMsg     = 'CP entered.';
+            sendCurrentScreen();
+          } else if (/^(#CP|CP)\s+(Q|QUERY)(\s|$)/.test(cmd)) {
+            // "#CP Q NAMES" / "CP Q NAMES" from CMS runs the CP command and
+            // comes back to CMS, same as the real escape.
+            cpQueryResult = simulateCPQuery(cmd.replace(/^(#CP|CP)\s+/, ''), userid);
+            queryReturn   = 'cms';
+            currentScreen = 'cpquery';
             sendCurrentScreen();
           } else if (cmd === '#CP LOGOFF' || cmd === 'LOGOFF') {
             // Same as LOGOFF from CP — back to the logon screen, TCP stays up.
