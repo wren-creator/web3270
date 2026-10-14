@@ -833,6 +833,11 @@ const SQL_TABLES = {
       ['CVE-MOCK-0002', 'Host Server authentication bypass via client identity', '8.8', 'IBM i Base', 'NOT INSTALLED'],
       ['CVE-MOCK-0003', 'Debug Server unauthenticated remote manipulation',      '9.1', 'IBM i Base', 'INSTALLED'],
       ['CVE-MOCK-0004', 'DDM interface out-of-bounds write',                     '7.2', 'IBM i Base', 'INSTALLED'],
+      // Models the weakness class of the real HTTP Server Administration
+      // GUI advisory (CWE-94), not the advisory itself. Follows the same
+      // switch as mock-as400-httpadmin.js, so the two stay consistent.
+      ['CVE-MOCK-0005', 'HTTP Server Administration GUI code injection',         '9.9', 'IBM i Base',
+        process.env.MOCK_AS400_HTTPADMIN_PATCHED === '1' ? 'INSTALLED' : 'NOT INSTALLED'],
     ],
   },
   // Short column aliases, not the real service's actual (much longer)
