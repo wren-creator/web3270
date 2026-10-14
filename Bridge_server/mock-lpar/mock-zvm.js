@@ -408,68 +408,69 @@ function screenCMSReady(userid, lastMsg = '') {
   return consoleScreen(outputLines);
 }
 
+// FILELIST, RDRLIST and XEDIT all run inside XEDIT, so they share its status
+// area in the bottom right corner instead of RUNNING / the system name.
+function xeditStatusFields() {
+  const text = 'X E D I T   1 File';
+  return [
+    { row:23, col:79 - text.length, fa: FA_PROTECTED_HIGH },
+    { row:23, col:79 - text.length, text },
+  ];
+}
+
+// Bare ====> command line with the cursor in it, no label in front.
+function xeditCommandLine(row) {
+  return [
+    { row, col:0, fa: FA_PROTECTED },
+    { row, col:0, text: '====>' },
+    { row, col:6, fa: FA_UNPROTECTED },
+    { row, col:6, ic: true },
+  ];
+}
+
 function screenFilelist(userid) {
   return buildScreen(true, [
     { row:0,  col:0,  fa: FA_PROTECTED_HIGH },
-    { row:0,  col:1,  text: `FILELIST  A0  V 169  Trunc=169 Size=8  Line=1 Col=1 Alt=0` },
+    { row:0,  col:1,  text: `${userid.padEnd(8)} FILELIST  A0  V 169  Trunc=169 Size=8  Line=1 Col=1 Alt=0` },
     { row:1,  col:0,  fa: FA_PROTECTED },
     { row:1,  col:1,  text: 'Cmd   Filename  Filetype  Fm  Format  Lrecl  Records  Blocks  Date      Time' },
-    { row:2,  col:0,  fa: FA_PROTECTED },
-    { row:2,  col:1,  text: '─'.repeat(78) },
 
     // Sample files
-    { row:3,  col:0,  fa: FA_PROTECTED },
-    { row:3,  col:1,  text: '      PROFILE   EXEC      A1  V        80       42       1  2024-01-15 09:12:44' },
-    { row:4,  col:1,  text: '      DEMO      REXX      A1  V        80      123       2  2024-03-10 14:22:01' },
-    { row:5,  col:1,  text: '      MYJOB     JCL       A1  V        80       18       1  2024-04-01 11:05:33' },
-    { row:6,  col:1,  text: '      NOTES     MEMO      A1  V        80       55       1  2024-04-20 08:44:17' },
-    { row:7,  col:1,  text: '      CMSLIB    MACLIB    A1  F       400      200      50  2023-12-01 00:00:00' },
-    { row:8,  col:1,  text: '      USER      DIRECT    A2  V        80       10       1  2024-02-14 16:30:00' },
-    { row:9,  col:1,  text: '      BACKUP    EXEC      A1  V        80       30       1  2024-03-28 10:10:10' },
-    { row:10, col:1,  text: '      AUTOEXEC  EXEC      A1  V        80       15       1  2024-01-01 00:00:00' },
+    { row:2,  col:0,  fa: FA_PROTECTED },
+    { row:2,  col:1,  text: '      PROFILE   EXEC      A1  V        80       42       1  2024-01-15 09:12:44' },
+    { row:3,  col:1,  text: '      DEMO      REXX      A1  V        80      123       2  2024-03-10 14:22:01' },
+    { row:4,  col:1,  text: '      MYJOB     JCL       A1  V        80       18       1  2024-04-01 11:05:33' },
+    { row:5,  col:1,  text: '      NOTES     MEMO      A1  V        80       55       1  2024-04-20 08:44:17' },
+    { row:6,  col:1,  text: '      CMSLIB    MACLIB    A1  F       400      200      50  2023-12-01 00:00:00' },
+    { row:7,  col:1,  text: '      USER      DIRECT    A2  V        80       10       1  2024-02-14 16:30:00' },
+    { row:8,  col:1,  text: '      BACKUP    EXEC      A1  V        80       30       1  2024-03-28 10:10:10' },
+    { row:9,  col:1,  text: '      AUTOEXEC  EXEC      A1  V        80       15       1  2024-01-01 00:00:00' },
 
-    // Command line at the bottom (XEDIT-style)
     { row:20, col:0,  fa: FA_PROTECTED },
     { row:20, col:0,  text: '1= Help  2= Refresh  3= Quit  4= Sort(type)  5= Sort(date)  6= Sort(size)' },
-    { row:21, col:0,  fa: FA_PROTECTED_HIGH },
-    { row:21, col:1,  text: `${userid}` },
-    { row:21, col:10, fa: FA_PROTECTED },
-    { row:21, col:10, text: 'FILELIST' },
-    { row:21, col:19, fa: FA_UNPROTECTED },
-    { row:21, col:19, text: '                                               ', ic: true },
-    { row:23, col:0,  fa: FA_PROTECTED_HIGH },
-    { row:23, col:0,  text: `RUNNING   ${SYSNAME}` },
-    { row:23, col:30, fa: FA_PROTECTED },
-    { row:23, col:30, text: 'PF3=Quit  PF7=Bkwd  PF8=Fwd  PF12=Cursor' },
+    { row:21, col:0,  text: '7= Backward  8= Forward  12= Cursor' },
+    ...xeditCommandLine(22),
+    ...xeditStatusFields(),
   ]);
 }
 
 function screenRdrlist(userid) {
   return buildScreen(true, [
     { row:0,  col:0,  fa: FA_PROTECTED_HIGH },
-    { row:0,  col:1,  text: `RDRLIST   A0  V 108  Trunc=108 Size=3  Line=1 Col=1 Alt=0` },
+    { row:0,  col:1,  text: `${userid.padEnd(8)} RDRLIST   A0  V 108  Trunc=108 Size=3  Line=1 Col=1 Alt=0` },
     { row:1,  col:0,  fa: FA_PROTECTED },
     { row:1,  col:1,  text: 'Cmd   Filename  Filetype  Fm  Origid   Date      Time     Recs  Class Pri Hold' },
-    { row:2,  col:0,  fa: FA_PROTECTED },
-    { row:2,  col:1,  text: '─'.repeat(78) },
 
-    { row:3,  col:0,  fa: FA_PROTECTED },
-    { row:3,  col:1,  text: `      MYJOB     JOB       RDR  ${userid.padEnd(8)} 04/27/24 09:14:02  250  A    1` },
-    { row:4,  col:1,  text: `      REPORT    DATA      RDR  SYSTEM   04/26/24 22:00:11  512  A    2` },
-    { row:5,  col:1,  text: `      SYSLOG    OUTPUT    RDR  SYSTEM   04/26/24 23:59:59 1024  A    5` },
+    { row:2,  col:0,  fa: FA_PROTECTED },
+    { row:2,  col:1,  text: `      MYJOB     JOB       RDR  ${userid.padEnd(8)} 04/27/24 09:14:02  250  A    1` },
+    { row:3,  col:1,  text: `      REPORT    DATA      RDR  SYSTEM   04/26/24 22:00:11  512  A    2` },
+    { row:4,  col:1,  text: `      SYSLOG    OUTPUT    RDR  SYSTEM   04/26/24 23:59:59 1024  A    5` },
 
     { row:20, col:0,  fa: FA_PROTECTED },
     { row:20, col:0,  text: '1= Help  2= Refresh  3= Quit  4= View  5= Print  6= Receive  9= Purge' },
-    { row:21, col:0,  fa: FA_PROTECTED_HIGH },
-    { row:21, col:1,  text: `${userid}` },
-    { row:21, col:10, fa: FA_PROTECTED },
-    { row:21, col:10, text: 'RDRLIST' },
-    { row:21, col:19, fa: FA_UNPROTECTED },
-    { row:21, col:19, text: '                                               ', ic: true },
-    { row:23, col:0,  fa: FA_PROTECTED_HIGH },
-    { row:23, col:0,  text: `RUNNING   ${SYSNAME}` },
-    { row:23, col:30, fa: FA_PROTECTED },
-    { row:23, col:30, text: 'PF3=Quit  PF7=Bkwd  PF8=Fwd' },
+    { row:21, col:0,  text: '7= Backward  8= Forward  12= Cursor' },
+    ...xeditCommandLine(22),
+    ...xeditStatusFields(),
   ]);
 }
 
@@ -484,31 +485,27 @@ function screenXedit(userid, filename = 'DEMO REXX A', lines = []) {
         '00001 * * * Empty file -- INPUT <text> at the command line to add a line * * *',
       ];
 
+  // Real XEDIT shows the full file id, filemode with its number: DEMO REXX A1.
+  const fileId = filename.replace(/\s+([A-Za-z])\s*$/, (m, fm) => ` ${fm}1`);
+
   const fields = [
     { row:0,  col:0,  fa: FA_PROTECTED_HIGH },
-    { row:0,  col:1,  text: `${filename.padEnd(24)} V 80  Trunc=80 Size=${bodyLines.length}  Line=0 Col=1 Alt=0` },
-    { row:1,  col:0,  fa: FA_PROTECTED },
-    { row:1,  col:1,  text: '====>                                                          ' },
-    { row:1,  col:6,  fa: FA_UNPROTECTED },
-    { row:1,  col:6,  text: '                                                         ', ic: true },
+    { row:0,  col:1,  text: `${fileId}  F 80  Trunc=80 Size=${lines.length}  Line=1 Col=1 Alt=0` },
+    ...xeditCommandLine(1),
 
-    // Rulers and content
+    // The ruler is off by default in real XEDIT, so content starts right away.
     { row:2,  col:0,  fa: FA_PROTECTED },
-    { row:2,  col:1,  text: '       |...+....1....+....2....+....3....+....4....+....5....+....6....+....7...|' },
-    { row:3,  col:1,  text: '00000 * * * Top of File * * *' },
+    { row:2,  col:1,  text: '00000 * * * Top of File * * *' },
   ];
 
-  bodyLines.forEach((line, i) => fields.push({ row: 4 + i, col: 1, text: line.slice(0, 78) }));
-  fields.push({ row: 4 + bodyLines.length, col: 1, text: '00000 * * * End of File * * *' });
+  bodyLines.forEach((line, i) => fields.push({ row: 3 + i, col: 1, text: line.slice(0, 78) }));
+  fields.push({ row: 3 + bodyLines.length, col: 1, text: '00000 * * * End of File * * *' });
 
   fields.push(
     { row:21, col:0,  fa: FA_PROTECTED },
-    { row:21, col:0,  text: '1= Help  2= Add  3= Quit  4= Tab  5= Cchar  6= ?  7= Bkwd  8= Fwd  9= Repeat' },
-    { row:22, col:0,  text: '10= Rgtleft  11= Spltjoin  12= Power input' },
-    { row:23, col:0,  fa: FA_PROTECTED_HIGH },
-    { row:23, col:0,  text: `XEDIT     ${SYSNAME}` },
-    { row:23, col:30, fa: FA_PROTECTED },
-    { row:23, col:30, text: 'PF3=Quit  PF7=Bkwd  PF8=Fwd' },
+    { row:21, col:0,  text: '1= Help  2= Add  3= Quit  4= Tab  5= Clocate  6= ?  7= Bkwd  8= Fwd  9= =' },
+    { row:22, col:0,  text: '10= Rgtleft  11= Spltjoin  12= Cursor' },
+    ...xeditStatusFields(),
   );
 
   return buildScreen(true, fields);
