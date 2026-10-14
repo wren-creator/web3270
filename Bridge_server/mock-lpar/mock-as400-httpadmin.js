@@ -266,4 +266,4 @@ function start({ sysname, usrprfs, credentials, log, env = process.env }) {
   return ctx;
 }
 
-module.exports = { handle, start, makeContext, simulateCommand, osInfo };
+module.exports = { handle, start, makeContext, listener, simulateCommand, osInfo };
