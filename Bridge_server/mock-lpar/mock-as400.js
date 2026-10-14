@@ -2617,3 +2617,8 @@ server.listen(PORT, '0.0.0.0', () => {
   log(`Mock AS/400 (TN5250) listening on 0.0.0.0:${PORT}`);
 });
 
+// The ADMIN HTTP instance (ports 2001/2010), sharing this box's profiles.
+require('./mock-as400-httpadmin').start({
+  sysname: SYSNAME, usrprfs: USRPRFS, credentials: CREDENTIALS, log,
+});
+

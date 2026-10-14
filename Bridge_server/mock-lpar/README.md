@@ -350,6 +350,40 @@ It's wired into `docker-compose.yml` as the `mock-as400` service (port
 Config env vars: `MOCK_AS400_PORT` (default `3272`), `MOCK_AS400_SYSID`
 (default `AS400MOCK`), `LOG_LEVEL`.
 
+### HTTP Server Administration GUI (ports 2001 and 2010)
+
+`mock-as400-httpadmin.js` is the IBM Web Administration for i GUI, the ADMIN
+HTTP instance a real IBM i serves on 2001 (HTTP) and 2010 (HTTPS). It starts
+with `mock-as400.js`, reuses its user profiles and `CREDENTIALS`, and is
+reachable inside the Docker network at `mock-as400:2001` and `:2010`. Like the
+5250 port it is not published to the host. The 2010 listener uses a throwaway
+self-signed cert generated at image build time, and is skipped if no cert is
+present (running `node mock-lpar/mock-as400.js` directly gives you 2001 only).
+
+What it models: Basic-auth sign-in with any enabled profile that has a
+password (so `JSMITH` works, `QSYS` and a disabled `QSRV` do not), a 401 with
+`Server: IBM HTTP Server for i` and the `IBM i HTTP Server Administration`
+realm, `/HTTPAdmin` home, `/HTTPAdmin/servers` (list), `/HTTPAdmin/create`
+(form), and `/HTTPAdmin/about` (OS release and fix status, the version
+fingerprint a real box leaks).
+
+**The deliberate flaw.** It models the weakness class of CVE-2026-96119
+(CWE-94, code injection in the HTTP Server Administration GUI), NOT the real
+bug. IBM has not published the vulnerable parameter. Here, the `description`
+field on Create HTTP Server is built into a page template that evaluates
+`<!--#exec cmd="..." -->` directives with no neutralizing. Execution is
+simulated: only `RTVJOBA`, `WRKUSRPRF`, and `DSPUSRPRF <name>` return anything,
+read from the mock's own tables, and they run as `QTMHHTTP` (the server
+profile, not the signed-in user). Anything else gets `CPD0030`. No shell, no
+`eval`, no filesystem access.
+
+Config env vars: `MOCK_AS400_HTTPADMIN_PATCHED` (`1` models the PTF: the field
+is HTML-escaped and never evaluated, and `/about` shows the fix),
+`MOCK_AS400_OSLEVEL` (default `V7R4M0`, which picks the PTF named on `/about`),
+`MOCK_AS400_HTTPADMIN_PORT` (default `2001`), `MOCK_AS400_HTTPADMIN_TLS_PORT`
+(default `2010`), `MOCK_AS400_HTTPADMIN_KEY` / `_CERT` (default `/app/certs/`).
+Tests: `node --test mock-lpar/mock-as400-httpadmin.test.js`.
+
 Implements: RFC 4777 negotiation (NEW-ENVIRON + TERMINAL-TYPE), the
 10-byte GDS record header wrapping every record, Clear Unit / Clear
 Unit Alternate for default-vs-wide screen geometry, Write-to-Display

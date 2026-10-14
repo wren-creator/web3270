@@ -172,6 +172,10 @@ services:
     environment:
       MOCK_AS400_PORT:  "3272"
       MOCK_AS400_SYSID: "AS400MOCK"
+      # HTTP Server Administration GUI (2001 HTTP, 2010 HTTPS), unpatched by default.
+      # Set MOCK_AS400_HTTPADMIN_PATCHED to "1" to model the CVE-2026-96119 PTF.
+      MOCK_AS400_HTTPADMIN_PATCHED: "0"
+      MOCK_AS400_OSLEVEL: "V7R4M0"
       LOG_LEVEL:        "debug"
 
     networks:
