@@ -191,7 +191,7 @@ export function parseAccessList(text) {
   if (start < 0) return [];
   const users = new Set();
   for (const l of lines.slice(start + 1)) {
-    if (/^(Ready|RUNNING|\S+\s+CP\s*$|[-\u2500=]{5,})/i.test(l)) break;
+    if (/^(Ready|RUNNING|MORE\.\.\.|\S+\s+CP\s*$|[-\u2500=]{5,})/i.test(l)) break;
     for (const t of l.split(/\s+/)) if (/^[A-Z0-9$#@]{1,8}$/.test(t)) users.add(t);
   }
   return [...users];
@@ -286,7 +286,7 @@ export function sendCpFindings(caller, target, result) {
 
 // First line of a host reply worth quoting as evidence: skips the screen
 // chrome (header, rules, prompt line, status bar) that surrounds every reply.
-const CHROME = /^(z\/VM CP\b|CP QUERY RESPONSE|[-\u2500=]{5,}|RUNNING\b|\S+\s+CP\s*$|Ubuntu\b|\S+ login:\s*$)/i;
+const CHROME = /^(z\/VM CP\b|CP QUERY RESPONSE|[-\u2500=]{5,}|RUNNING\b|MORE\.\.\.|\S+\s+CP\s*$|Ubuntu\b|\S+ login:\s*$)/i;
 function firstLine(s) {
   const lines = String(s || '').split('\n').map(x => x.trim()).filter(Boolean);
   return lines.find(l => !CHROME.test(l)) || lines[0] || '';

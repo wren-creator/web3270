@@ -341,10 +341,35 @@ function screenLogon(lastMsg = '') {
   return buildScreen(true, fields);
 }
 
+// A real z/VM 3270 session is one scrolling console: output from the top,
+// the input line directly under the last line of output (no prompt label,
+// no header, no separators), and a status area in the bottom right corner
+// (RUNNING / MORE... / HOLDING / CP READ / VM READ plus the system name).
+function consoleScreen(outputLines, status = 'RUNNING') {
+  const lines = outputLines.slice(-22);
+  const fields = [];
+  lines.forEach((line, i) => {
+    fields.push({ row: i, col: 0, fa: FA_PROTECTED });
+    fields.push({ row: i, col: 0, text: line.slice(0, 78) });
+  });
+  // Unprotected input field starts on the row after the output and runs down
+  // to the status area; the cursor sits in its first cell.
+  fields.push(
+    { row: lines.length, col: 0, fa: FA_UNPROTECTED },
+    { row: lines.length, col: 0, ic: true },
+  );
+  const statusText = `${status}   ${SYSNAME}`;
+  fields.push(
+    { row: 23, col: 79 - statusText.length, fa: FA_PROTECTED_HIGH },
+    { row: 23, col: 79 - statusText.length, text: statusText },
+  );
+  return buildScreen(true, fields);
+}
+
 function screenCPReady(userid, lastMsg = '', linux = false) {
   const timeStr = new Date().toLocaleTimeString('en-US', { hour12: false });
 
-  // Build the scrollback area (rows 2–17) with some simulated CP output
+  // Scrollback with some simulated CP output
   // A Linux guest's 3270 console shows the guest's own output, not the CP
   // banner. lastMsg carries it (zvm-linux.js linuxConsoleBanner).
   const outputLines = linux
@@ -357,37 +382,7 @@ function screenCPReady(userid, lastMsg = '', linux = false) {
       lastMsg,
     ].filter(Boolean);
 
-  const fields = [
-    // Header
-    { row:0,  col:0,  fa: FA_PROTECTED_HIGH },
-    { row:0,  col:1,  text: `z/VM CP  ${SYSNAME}      ${userid.padEnd(8)} Logged On` },
-    { row:1,  col:0,  fa: FA_PROTECTED },
-    { row:1,  col:1,  text: '─'.repeat(78) },
-  ];
-
-  // Output area — protected scrollback text
-  outputLines.forEach((line, i) => {
-    fields.push({ row: 3 + i, col: 1, fa: FA_PROTECTED });
-    fields.push({ row: 3 + i, col: 1, text: line.slice(0, 78) });
-  });
-
-  // Input line at bottom
-  fields.push(
-    { row:20, col:0,  fa: FA_PROTECTED },
-    { row:20, col:0,  text: '─'.repeat(80) },
-    { row:21, col:1,  fa: FA_PROTECTED_HIGH },
-    { row:21, col:1,  text: `${userid}` },
-    { row:21, col:10, fa: FA_PROTECTED },
-    { row:21, col:10, text: 'CP' },
-    { row:21, col:13, fa: FA_UNPROTECTED },
-    { row:21, col:13, text: '                                                   ', ic: true },
-    { row:23, col:0,  fa: FA_PROTECTED_HIGH },
-    { row:23, col:0,  text: `RUNNING   ${SYSNAME}` },
-    { row:23, col:30, fa: FA_PROTECTED },
-    { row:23, col:30, text: 'PF3=Logoff  PF12=Retrieve  Enter=Submit' },
-  );
-
-  return buildScreen(true, fields);
+  return consoleScreen(outputLines);
 }
 
 function screenCMSReady(userid, lastMsg = '') {
@@ -396,8 +391,8 @@ function screenCMSReady(userid, lastMsg = '') {
   // lastMsg can now be a multi-line REXX transcript -- split on \n into
   // one row each (same pattern screenCPQuery already uses for its own
   // multi-line QUERY responses), rather than baking embedded newline
-  // bytes into a single field, and cap the row count so a longer exec's
-  // output can't run past the row-20 separator into the input line.
+  // bytes into a single field. consoleScreen() caps the row count so a
+  // longer exec's output can't run into the status area.
   // The IPL handler hands over its own complete banner (IPL CMS, any PROFILE
   // EXEC output, "z/VM CMS is loaded.", Ready), so use it as-is instead of
   // stacking the default banner above it, which printed IPL CMS twice.
@@ -408,36 +403,9 @@ function screenCMSReady(userid, lastMsg = '') {
         `z/VM CMS Level ${SYSNAME}`,
         `Ready; T=0.01/0.01 ${timeStr}`,
         ...(lastMsg ? lastMsg.split('\n') : []),
-      ]).filter(Boolean).slice(-16);
+      ]).filter(Boolean);
 
-  const fields = [
-    { row:0,  col:0,  fa: FA_PROTECTED_HIGH },
-    { row:0,  col:1,  text: `z/VM CMS  ${SYSNAME}      ${userid.padEnd(8)}` },
-    { row:1,  col:0,  fa: FA_PROTECTED },
-    { row:1,  col:1,  text: '─'.repeat(78) },
-  ];
-
-  outputLines.forEach((line, i) => {
-    fields.push({ row: 3 + i, col: 1, fa: FA_PROTECTED });
-    fields.push({ row: 3 + i, col: 1, text: line.slice(0, 78) });
-  });
-
-  fields.push(
-    { row:20, col:0,  fa: FA_PROTECTED },
-    { row:20, col:0,  text: '─'.repeat(80) },
-    { row:21, col:1,  fa: FA_PROTECTED_HIGH },
-    { row:21, col:1,  text: `${userid}` },
-    { row:21, col:10, fa: FA_PROTECTED },
-    { row:21, col:10, text: 'CMS' },
-    { row:21, col:14, fa: FA_UNPROTECTED },
-    { row:21, col:14, text: '                                                  ', ic: true },
-    { row:23, col:0,  fa: FA_PROTECTED_HIGH },
-    { row:23, col:0,  text: `RUNNING   ${SYSNAME}` },
-    { row:23, col:30, fa: FA_PROTECTED },
-    { row:23, col:30, text: 'PF3=CP Mode  PF12=Retrieve  Enter=Submit' },
-  );
-
-  return buildScreen(true, fields);
+  return consoleScreen(outputLines);
 }
 
 function screenFilelist(userid) {
@@ -547,33 +515,8 @@ function screenXedit(userid, filename = 'DEMO REXX A', lines = []) {
 }
 
 function screenCPQuery(userid, queryResult = '') {
-  const lines = queryResult.split('\n');
-  const fields = [
-    { row:0, col:0, fa: FA_PROTECTED_HIGH },
-    { row:0, col:1, text: `CP QUERY RESPONSE  ${SYSNAME}` },
-    { row:1, col:0, fa: FA_PROTECTED },
-    { row:1, col:1, text: '─'.repeat(78) },
-  ];
-
-  lines.forEach((line, i) => {
-    fields.push({ row: 3 + i, col: 1, fa: FA_PROTECTED });
-    fields.push({ row: 3 + i, col: 1, text: line.slice(0, 78) });
-  });
-
-  fields.push(
-    { row:21, col:1,  fa: FA_PROTECTED_HIGH },
-    { row:21, col:1,  text: `${userid}` },
-    { row:21, col:10, fa: FA_PROTECTED },
-    { row:21, col:10, text: 'CP' },
-    { row:21, col:13, fa: FA_UNPROTECTED },
-    { row:21, col:13, text: '                                                   ', ic: true },
-    { row:23, col:0,  fa: FA_PROTECTED_HIGH },
-    { row:23, col:0,  text: `RUNNING   ${SYSNAME}` },
-    { row:23, col:30, fa: FA_PROTECTED },
-    { row:23, col:30, text: 'Enter=Continue  PF3=CP Ready' },
-  );
-
-  return buildScreen(true, fields);
+  // Output fills the console and CP holds it with MORE... until Enter.
+  return consoleScreen(queryResult.split('\n'), 'MORE...');
 }
 
 // ── Console log ────────────────────────────────────────────────────
@@ -581,7 +524,7 @@ function screenCPQuery(userid, queryResult = '') {
 // CP has no way to know a command argument is a secret — it just reads
 // tokens off the command line — so anything typed at the CP READ prompt,
 // including a minidisk LINK password, lands here in cleartext. The field
-// it was typed into (see screenCPReady's row:21 input line) is an ordinary
+// it was typed into (see consoleScreen's input line) is an ordinary
 // FA_UNPROTECTED field, not FA_UNPROTECTED_NONDISPLAY like the LOGON
 // PASSWORD field above — CP has no masked-input primitive for command
 // arguments, only for its own dedicated password prompt.
