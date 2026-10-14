@@ -307,7 +307,11 @@ body.color-reveal .field-nondisplay { color: var(--t-green) !important; opacity:
 .panel-tab:hover:not(.active) { color:var(--text-dim); }
 .panel-tab.copilot-tab.active  { color:#7eb8ff;border-color:#7eb8ff; }
 .panel-tab.aiconfig-tab.active { color:var(--accent-amber);border-color:var(--accent-amber); }
-.panel-content { flex:1;overflow-y:auto;padding:12px;display:none; }
+.panel-content { flex:1;overflow-y:auto;overflow-x:hidden;padding:12px;display:none; }
+/* Inputs in a flex row won't shrink below their default width, which pushed the
+   SSH Access Audit username box 77px past the edge and put a sideways scrollbar on the
+   Security panel. min-width:0 lets them shrink; overflow-x:hidden is the backstop. */
+#panelSecurity input, #panelSecurity select { min-width:0; }
 .panel-content::-webkit-scrollbar { width:4px; }
 .panel-content::-webkit-scrollbar-thumb { background:var(--border-bright);border-radius:2px; }
 
