@@ -299,7 +299,7 @@ body.color-reveal .field-nondisplay { color: var(--t-green) !important; opacity:
 .oia-spacer { flex:1; }
 
 /* ── RIGHT PANEL ───────────────────────────────────────────────── */
-.right-panel { width:300px;min-width:300px;background:var(--bg-panel);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden; }
+.right-panel { width:360px;min-width:360px;background:var(--bg-panel);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden; }
 .right-panel.hidden { display:none; }
 .panel-tabs { display:flex;border-bottom:1px solid var(--border);flex-shrink:0; }
 .panel-tab { flex:1;text-align:center;padding:8px 2px;font-size:10px;cursor:pointer;color:var(--text-muted);border-bottom:2px solid transparent;transition:all 0.15s;user-select:none; }
