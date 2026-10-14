@@ -1182,6 +1182,33 @@
         </div>
       </div>
 
+      <!-- HTTP ADMIN GUI AUDIT (IBM i) section -->
+      <div class="sec-section">
+        <div class="sec-section-hdr">IBM i HTTP ADMIN GUI AUDIT</div>
+        <div class="sec-section-body">
+          <div class="sec-panel-hint" style="margin-bottom:8px">Read-only exposure check for the IBM i HTTP Server Administration GUI (ports 2001 and 2010). Reports reachability, cleartext sign-in, TLS protocol and certificate state, and the server fingerprint. Optionally give one profile to read the OS release and whether the CVE-2026-96119 fix is installed. GETs only, one attempt, nothing submitted. FOR AUTHORIZED USE ONLY.</div>
+
+          <input id="httpAdminAuditHost" placeholder="host or IP" style="width:100%;box-sizing:border-box;background:#0d0d0d;border:1px solid #222;color:#aaa;font-family:'IBM Plex Mono',monospace;font-size:10px;padding:4px 6px;border-radius:2px;margin-bottom:6px">
+          <div style="display:flex;gap:6px;margin-bottom:6px">
+            <input id="httpAdminAuditHttpPort" placeholder="2001" value="2001" title="Plain HTTP admin port" style="flex:1;min-width:0;box-sizing:border-box;background:#0d0d0d;border:1px solid #222;color:#aaa;font-family:'IBM Plex Mono',monospace;font-size:10px;padding:4px 6px;border-radius:2px">
+            <input id="httpAdminAuditTlsPort" placeholder="2010" value="2010" title="TLS admin port" style="flex:1;min-width:0;box-sizing:border-box;background:#0d0d0d;border:1px solid #222;color:#aaa;font-family:'IBM Plex Mono',monospace;font-size:10px;padding:4px 6px;border-radius:2px">
+          </div>
+          <div style="display:flex;gap:6px;margin-bottom:6px">
+            <input id="httpAdminAuditUser" placeholder="profile (optional)" autocomplete="off" style="flex:1;min-width:0;box-sizing:border-box;background:#0d0d0d;border:1px solid #222;color:#aaa;font-family:'IBM Plex Mono',monospace;font-size:10px;padding:4px 6px;border-radius:2px">
+            <input id="httpAdminAuditPass" type="password" placeholder="password (optional)" autocomplete="off" style="flex:1;min-width:0;box-sizing:border-box;background:#0d0d0d;border:1px solid #222;color:#aaa;font-family:'IBM Plex Mono',monospace;font-size:10px;padding:4px 6px;border-radius:2px">
+          </div>
+
+          <button id="httpAdminAuditBtn" class="sec-inject-btn" onclick="startHttpAdminAudit()" style="background:#1a2a1a">▶ RUN AUDIT</button>
+          <div id="httpAdminAuditStatus" style="font-size:10px;color:var(--text-muted);margin-top:4px;min-height:14px"></div>
+          <div id="httpAdminAuditOut" style="margin-top:4px"></div>
+
+          <div style="margin-top:8px;padding-top:6px;border-top:1px solid #111">
+            <button onclick="httpAdminAuditExportCsv()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ Export CSV</button>
+            <button onclick="httpAdminAuditExportJson()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ JSON</button>
+          </div>
+        </div>
+      </div>
+
       <!-- CICS TRANSACTION SCANNER section -->
       <div class="sec-section">
         <div class="sec-section-hdr">CICS TRANSACTION SCANNER</div>
