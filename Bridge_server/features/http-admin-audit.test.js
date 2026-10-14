@@ -1,6 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import https from 'node:https';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import ha from '../mock-lpar/mock-as400-httpadmin.js';
 import { auditHttpAdmin } from './http-admin-audit.js';
 
@@ -66,4 +71,52 @@ test('a wrong password is reported, not retried', async () => {
 test('nothing listening gives INCONCLUSIVE', async () => {
   const r = await auditHttpAdmin({ host: '127.0.0.1', httpPort: 1, tlsPort: 1 });
   assert.equal(r.verdict, 'INCONCLUSIVE');
+});
+
+// The TLS path is the one that crashed the bridge in its first real run
+// (res.socket is null once the response ends), so it gets a real
+// self-signed cert and a real HTTPS listener. Skipped only where openssl
+// isn't installed.
+function selfSignedCert() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'haa-'));
+  const key = path.join(dir, 'key.pem');
+  const crt = path.join(dir, 'cert.pem');
+  execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '30',
+    '-subj', '/CN=AS400MOCK', '-keyout', key, '-out', crt], { stdio: 'ignore' });
+  return { key: fs.readFileSync(key), cert: fs.readFileSync(crt) };
+}
+let tlsMaterial = null;
+try { tlsMaterial = selfSignedCert(); } catch { /* no openssl */ }
+
+test('TLS port: reads protocol and certificate without crashing, flags self-signed', { skip: !tlsMaterial }, async () => {
+  const ctx = ha.makeContext({ sysname: 'T', usrprfs: USRPRFS, credentials: CREDS, log: () => {}, env: {} });
+  const srv = await new Promise(resolve => {
+    const s = https.createServer(tlsMaterial, ha.listener(ctx)).listen(0, '127.0.0.1', () => resolve(s));
+  });
+  try {
+    const r = await auditHttpAdmin({
+      host: '127.0.0.1', httpPort: 1, tlsPort: srv.address().port,
+      auth: { user: 'JSMITH', pass: 'Summer2026' },
+    });
+    assert.match(r.facts.tlsProtocol, /^TLSv1\.[23]$/);
+    assert.match(texts(r), /self-signed/);
+    assert.match(texts(r), /reachable on TLS port/);
+    assert.match(texts(r), /About page reports OS release/);
+  } finally { await closed(srv); }
+});
+
+test('an expired certificate is flagged', () => {
+  // Same real cert, judged by a clock a year ahead of its 30 day validity.
+  return (async () => {
+    if (!tlsMaterial) return;
+    const ctx = ha.makeContext({ sysname: 'T', usrprfs: USRPRFS, credentials: CREDS, log: () => {}, env: {} });
+    const srv = await new Promise(resolve => {
+      const s = https.createServer(tlsMaterial, ha.listener(ctx)).listen(0, '127.0.0.1', () => resolve(s));
+    });
+    try {
+      const farFuture = Date.now() + 365 * 24 * 3600 * 1000;
+      const r = await auditHttpAdmin({ host: '127.0.0.1', httpPort: 1, tlsPort: srv.address().port, now: farFuture });
+      assert.match(texts(r), /Certificate expired/);
+    } finally { await closed(srv); }
+  })();
 });

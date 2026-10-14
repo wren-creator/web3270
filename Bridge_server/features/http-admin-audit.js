@@ -32,20 +32,32 @@ function request({ host, port, tls, path = '/HTTPAdmin', auth }) {
       // presented, so validation is off here and judged below instead.
       ...(tls ? { rejectUnauthorized: false } : {}),
     }, res => {
+      // Read the TLS details now. Once the response ends, Node detaches
+      // the socket from it and res.socket is null. Wrapped so nothing in
+      // here can throw out of an event handler, where the route's catch
+      // would never see it and the whole bridge would go down with it.
+      let tlsProtocol = null;
+      let cert = null;
+      try {
+        const sock = res.socket;
+        if (tls && sock) {
+          tlsProtocol = sock.getProtocol ? sock.getProtocol() : null;
+          const c = sock.getPeerCertificate ? sock.getPeerCertificate() : null;
+          cert = c && c.subject ? c : null;
+        }
+      } catch { /* leave the TLS details empty */ }
+
       let body = '';
       res.on('data', c => { if (body.length < MAX_BODY) body += c; });
-      res.on('end', () => {
-        const sock = res.socket;
-        const cert = tls && sock.getPeerCertificate ? sock.getPeerCertificate() : null;
-        resolve({
-          ok: true,
-          status: res.statusCode,
-          headers: res.headers,
-          body,
-          tlsProtocol: tls && sock.getProtocol ? sock.getProtocol() : null,
-          cert: cert && cert.subject ? cert : null,
-        });
-      });
+      res.on('end', () => resolve({
+        ok: true,
+        status: res.statusCode,
+        headers: res.headers,
+        body,
+        tlsProtocol,
+        cert,
+      }));
+      res.on('error', err => resolve({ ok: false, message: err.message }));
     });
     req.on('timeout', () => { req.destroy(new Error('timed out')); });
     req.on('error', err => resolve({ ok: false, message: err.message }));
