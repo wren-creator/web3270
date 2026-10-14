@@ -2400,7 +2400,7 @@ const _WALKTHROUGHS = [
       },
       {
         title: 'Read the findings',
-        body:  'Each system value is rated. HIGH — QSECURITY below 40, QMAXSIGN(*NOMAX), QLMTSECOFR(0), QALWOBJRST(*ALL), QCRTAUT(*CHANGE/*ALL), QAUDCTL(*NONE). MEDIUM — weak QPWD* password rules, QINACTITV(*NONE). OK — hardened settings such as QDSPSGNINF(1). The DETAIL column gives the recommended value.',
+        body:  'Each system value is rated. HIGH — QSECURITY below 40, QMAXSIGN(*NOMAX), QLMTSECOFR(0), QALWOBJRST(*ALL), QCRTAUT(*CHANGE/*ALL), QAUDCTL(*NONE). MEDIUM — weak QPWD* password rules, QINACTITV(*NONE), QAUDCTL set but missing *AUDLVL or *OBJAUD (object auditing silently logs nothing). OK — hardened settings such as QDSPSGNINF(1). The DETAIL column gives the recommended value.',
         highlight: 'as400SysvalOut',
         autoFn: null,
       },
@@ -2593,7 +2593,7 @@ const _WALKTHROUGHS = [
       },
       {
         title: 'Remediate and re-run',
-        body:  'On the mock you can harden a profile and watch the finding clear. Type CHGUSRPRF USRPRF(QUSER) PASSWORD(*NONE) STATUS(*DISABLED) on the command line, then run the audit again — QUSER moves to OK. On a real system, do this for every Q* profile except your one break-glass admin account, set that one to a complex vaulted password, and change the SST/DST service-tool IDs via STRSST → 8 → 2.',
+        body:  'On the mock you can harden a profile and watch the finding clear. Type CHGUSRPRF USRPRF(QUSER) PASSWORD(*NONE) on the command line (leave QUSER enabled, TCP server prestart jobs run under it, and *NONE is what blocks sign-on), then run the audit again — QUSER moves to OK. On a real system, do this for every Q* profile except your one break-glass admin account, set that one to a complex vaulted password, and change the SST/DST service-tool IDs via STRSST → 8 → 2.',
         highlight: 'as400ShipprfBtn',
         autoFn: null,
       },

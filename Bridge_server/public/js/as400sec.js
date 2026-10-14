@@ -75,7 +75,7 @@ const TOOLS = {
   SYSVAL: {
     cmd: 'WRKSYSVAL', title: 'Work with System Values', ids: 'Sysval',
     single: lines => parseSysvals(lines).map(sv => {
-      const { risk, rec } = evaluateSysval(sv.name, sv.value);
+      const { risk, rec } = evaluateSysval(sv.name, sv.value, sv.full);
       return { name: sv.name, value: sv.value, risk, detail: rec };
     }),
   },

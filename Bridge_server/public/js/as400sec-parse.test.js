@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  evaluateShippedProfile, evaluateSysval,
+  evaluateShippedProfile, evaluateSysval, parseSysvals,
   parseSqlResultTable, parseCveInfo, evaluateCveRow, parsePtfCurrency, evaluatePtfGroupRow,
 } from './as400sec-parse.js';
 
@@ -58,8 +58,15 @@ test('evaluateShippedProfile: QSECOFR is the break-glass exception', () => {
   assert.equal(evaluateShippedProfile({ name: 'QSECOFR', status: '*DISABLED', pwdNone: '*NO', defaultPwd: false, auths: ['*ALLOBJ'] }).risk, 'MEDIUM');
 });
 
-test('evaluateShippedProfile: fix hint omits STATUS(*DISABLED) for QSECOFR only', () => {
-  assert.ok(evaluateShippedProfile({ name: 'QUSER', status: '*ENABLED', pwdNone: '*NO', defaultPwd: false, auths: [] }).finding.includes('STATUS(*DISABLED)'));
+test('evaluateShippedProfile: fix hint omits STATUS(*DISABLED) for QSECOFR and QUSER, keeps it for the rest', () => {
+  assert.ok(evaluateShippedProfile({ name: 'QSRV', status: '*ENABLED', pwdNone: '*NO', defaultPwd: false, auths: [] }).finding.includes('STATUS(*DISABLED)'));
+  const q = evaluateShippedProfile({ name: 'QUSER', status: '*ENABLED', pwdNone: '*NO', defaultPwd: false, auths: [] }).finding;
+  assert.ok(q.includes('PASSWORD(*NONE)') && !q.includes('STATUS(*DISABLED)') && q.includes('Do not disable QUSER'));
+  const qd = evaluateShippedProfile({ name: 'QUSER', status: '*ENABLED', pwdNone: '*NO', defaultPwd: true, auths: [] }).finding;
+  assert.ok(!qd.includes('STATUS(*DISABLED)'));
+  // disabled-with-a-password still passes, but nudges toward *NONE
+  const dis = evaluateShippedProfile({ name: 'QUSER', status: '*DISABLED', pwdNone: '*NO', defaultPwd: false, auths: [] });
+  assert.equal(dis.risk, 'OK'); assert.ok(dis.finding.includes('Safer: PASSWORD(*NONE)'));
   assert.ok(!evaluateShippedProfile({ name: 'QSECOFR', status: '*ENABLED', pwdNone: '*NO', defaultPwd: true, auths: [] }).finding.includes('STATUS(*DISABLED)'));
 });
 
@@ -163,4 +170,20 @@ test("CVE_INFO and GROUP_PTF_CURRENCY_LOCAL column sets don't overlap (PTFCVE's 
   assert.equal(cveCols.filter(c => ptfCols.includes(c)).length, 0);
   assert.ok(!cveCols.includes('PTF_GROUP'));
   assert.ok(!ptfCols.includes('CVE_ID'));
+});
+
+test('evaluateSysval: QAUDCTL needs *AUDLVL and *OBJAUD, not just "not *NONE"', () => {
+  assert.equal(evaluateSysval('QAUDCTL', '*NONE').risk, 'HIGH');
+  assert.equal(evaluateSysval('QAUDCTL', '*AUDLVL', '*AUDLVL').risk, 'MEDIUM');
+  assert.ok(evaluateSysval('QAUDCTL', '*AUDLVL', '*AUDLVL').rec.includes('*OBJAUD'));
+  assert.equal(evaluateSysval('QAUDCTL', '*OBJAUD', '*OBJAUD').risk, 'MEDIUM');
+  assert.equal(evaluateSysval('QAUDCTL', '*AUDLVL', '*AUDLVL *OBJAUD').risk, 'OK');
+  assert.equal(evaluateSysval('QAUDCTL', '*OBJAUD', '*AUDLVL *OBJAUD *NOQTEMP').risk, 'OK');
+});
+
+test('parseSysvals: keeps the whole value cell in .full, first token in .value', () => {
+  const lines = []; lines[6] = '      ' + 'QAUDCTL'.padEnd(14) + '*AUDLVL *OBJAUD';
+  const out = parseSysvals(lines.map(l => l || ''));
+  const row = out.find(o => o.name === 'QAUDCTL');
+  assert.equal(row.value, '*AUDLVL'); assert.equal(row.full, '*AUDLVL *OBJAUD');
 });

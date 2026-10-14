@@ -49,9 +49,12 @@ export function parseSysvals(lines) {
     const line = lines[r] || '';
     const name = line.slice(6, 20).trim();
     if (!/^Q[A-Z0-9]+$/.test(name)) continue;
-    const value = (line.slice(20).trim().split(/\s+/)[0]) || '';
+    const full  = line.slice(20).trim();
+    const value = (full.split(/\s+/)[0]) || '';
     if (!value) continue;
-    out.push({ name, value });
+    // value is the first token (what every single-value rule tests); full is the
+    // whole cell, for the multi-value ones like QAUDCTL (*AUDLVL *OBJAUD).
+    out.push({ name, value, full });
   }
   return out;
 }
@@ -75,10 +78,20 @@ const SYSVAL_RULES = {
   QAUDCTL:    { risk: 'HIGH',   test: v => v === '*NONE',                   rec: 'Enable security auditing' },
   QDSPSGNINF: { risk: 'OK',     test: () => false,                          rec: '' },
 };
-export function evaluateSysval(name, value) {
+export function evaluateSysval(name, value, full = value) {
   const R = SYSVAL_RULES[name];
   if (!R) return { risk: 'INFO', rec: '' };
-  return R.test(value) ? { risk: R.risk, rec: R.rec } : { risk: 'OK', rec: '' };
+  if (R.test(value)) return { risk: R.risk, rec: R.rec };
+  // QAUDCTL: *AUDLVL turns on event auditing (QAUDLVL), *OBJAUD turns on object
+  // auditing (CHGOBJAUD / CRTOBJAUD). Without *OBJAUD every object audit setting
+  // elsewhere logs nothing, silently, so "not *NONE" is not enough to pass.
+  if (name === 'QAUDCTL') {
+    const have = new Set(String(full).split(/\s+/));
+    const missing = ['*AUDLVL', '*OBJAUD'].filter(v => !have.has(v));
+    if (missing.length) return { risk: 'MEDIUM', rec:
+      `QAUDCTL is missing ${missing.join(' and ')}. Use *AUDLVL *OBJAUD *NOQTEMP: without *OBJAUD, object auditing set on other objects logs nothing.` };
+  }
+  return { risk: 'OK', rec: '' };
 }
 
 // ── Tool 3: Objects (WRKOBJ list) ──────────────────────────────────────────
@@ -201,7 +214,12 @@ export function evaluateShippedProfile({ name, status, pwdNone, defaultPwd, auth
   const disabled = status === '*DISABLED';
   const privList = auths.filter(a => _PRIV_AUTHS.includes(a));
   const privNote = privList.length ? ` — holds ${privList.join('/')}` : '';
-  const fix      = `CHGUSRPRF USRPRF(${name}) PASSWORD(*NONE)` + (name === 'QSECOFR' ? '' : ' STATUS(*DISABLED)');
+  // QSECOFR keeps a vaulted password. QUSER is the default user for TCP server
+  // prestart jobs, so disabling it can break them: the control is that nobody can
+  // sign on with it (PASSWORD(*NONE)), not that the profile is switched off.
+  const keepEnabled = name === 'QSECOFR' || name === 'QUSER';
+  const fix      = `CHGUSRPRF USRPRF(${name}) PASSWORD(*NONE)` + (keepEnabled ? '' : ' STATUS(*DISABLED)');
+  const quserNote = name === 'QUSER' ? ' Do not disable QUSER, TCP server prestart jobs run under it.' : '';
 
   // Strongest signal first: a Q-named profile IBM never ships. Do not try to
   // "harden" it — investigate who created it and when (DSPOBJD, audit journal),
@@ -218,7 +236,7 @@ export function evaluateShippedProfile({ name, status, pwdNone, defaultPwd, auth
       `Password still equals the profile name${privNote}. ` +
       (name === 'QSECOFR'
         ? 'Set a complex vaulted password on the break-glass account now.'
-        : `${fix} — or a vaulted password if this is a break-glass account.`) };
+        : `${fix} — or a vaulted password if this is a break-glass account.${quserNote}`) };
   }
 
   if (name === 'QSECOFR') {
@@ -232,12 +250,14 @@ export function evaluateShippedProfile({ name, status, pwdNone, defaultPwd, auth
 
   if (noPwd || disabled) {
     const how = [noPwd && 'PASSWORD(*NONE)', disabled && 'STATUS(*DISABLED)'].filter(Boolean).join(' + ');
-    return { risk: 'OK', finding: `Non-interactive (${how}) — background jobs still run under it. Compliant.` };
+    const caution = name === 'QUSER' && disabled && !noPwd
+      ? ' Safer: PASSWORD(*NONE) and leave it enabled, TCP server prestart jobs run under QUSER, so test that they still start.' : '';
+    return { risk: 'OK', finding: `Non-interactive (${how}) — background jobs still run under it. Compliant.${caution}` };
   }
 
   return { risk: privList.length ? 'HIGH' : 'MEDIUM', finding:
     `Interactive sign-on still possible: STATUS(*ENABLED) with a password${privNote}. ` +
-    `${fix} — subsystem jobs keep working, 5250/FTP/SSH sign-on is blocked.` };
+    `${fix} — subsystem jobs keep working, 5250/FTP/SSH sign-on is blocked.${quserNote}` };
 }
 
 // ── Wave 2: Network attributes (DSPNETA) ────────────────────────────────────
