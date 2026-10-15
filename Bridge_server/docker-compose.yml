@@ -176,6 +176,12 @@ services:
       # Set MOCK_AS400_HTTPADMIN_PATCHED to "1" to model the CVE-2026-96119 PTF.
       MOCK_AS400_HTTPADMIN_PATCHED: "0"
       MOCK_AS400_OSLEVEL: "V7R4M0"
+      # FTP server on 2121 (real box: 21). Loose by default: clear text accepted,
+      # explicit TLS offered, no anonymous. Set MOCK_AS400_FTP_IMPLICIT=1 for 2990,
+      # _REQUIRE_TLS=1 to refuse clear text, _ANON=1 to allow anonymous.
+      MOCK_AS400_FTP_ANON: "0"
+      MOCK_AS400_FTP_REQUIRE_TLS: "0"
+      MOCK_AS400_FTP_IMPLICIT: "0"
       LOG_LEVEL:        "debug"
 
     networks:

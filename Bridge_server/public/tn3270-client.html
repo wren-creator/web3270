@@ -1209,6 +1209,35 @@
         </div>
       </div>
 
+      <!-- FTP SERVICE AUDIT (IBM i) section -->
+      <div class="sec-section">
+        <div class="sec-section-hdr">IBM i FTP SERVICE AUDIT</div>
+        <div class="sec-section-body">
+          <div class="sec-panel-hint" style="margin-bottom:8px">Read-only exposure check for the IBM i FTP server (ports 21 and 990). Reports the banner and what SYST gives away before login, whether clear text sign-on is accepted, TLS protocol and certificate, and anonymous sign-on. Optionally give one profile to see what it can browse in the IFS and libraries (RCMD is detected, never run). Trying default profiles is opt-in and needs the ftp-login-probe activity in the RoE scope. Each failed sign-on counts toward QMAXSIGN. FOR AUTHORIZED USE ONLY.</div>
+
+          <input id="ftpAuditHost" placeholder="host or IP" style="width:100%;box-sizing:border-box;background:#0d0d0d;border:1px solid #222;color:#aaa;font-family:'IBM Plex Mono',monospace;font-size:10px;padding:4px 6px;border-radius:2px;margin-bottom:6px">
+          <div style="display:flex;gap:6px;margin-bottom:6px">
+            <input id="ftpAuditPort" placeholder="21" value="21" title="FTP port" style="flex:1;min-width:0;box-sizing:border-box;background:#0d0d0d;border:1px solid #222;color:#aaa;font-family:'IBM Plex Mono',monospace;font-size:10px;padding:4px 6px;border-radius:2px">
+            <input id="ftpAuditTlsPort" placeholder="990" value="990" title="Implicit TLS port" style="flex:1;min-width:0;box-sizing:border-box;background:#0d0d0d;border:1px solid #222;color:#aaa;font-family:'IBM Plex Mono',monospace;font-size:10px;padding:4px 6px;border-radius:2px">
+          </div>
+          <div style="display:flex;gap:6px;margin-bottom:6px">
+            <input id="ftpAuditUser" placeholder="profile (optional)" autocomplete="off" style="flex:1;min-width:0;box-sizing:border-box;background:#0d0d0d;border:1px solid #222;color:#aaa;font-family:'IBM Plex Mono',monospace;font-size:10px;padding:4px 6px;border-radius:2px">
+            <input id="ftpAuditPass" type="password" placeholder="password (optional)" autocomplete="off" style="flex:1;min-width:0;box-sizing:border-box;background:#0d0d0d;border:1px solid #222;color:#aaa;font-family:'IBM Plex Mono',monospace;font-size:10px;padding:4px 6px;border-radius:2px">
+          </div>
+          <label style="display:block;font-size:10px;color:var(--text-muted);margin-bottom:4px"><input id="ftpAuditClear" type="checkbox"> allow the profile password over clear text if TLS is not available</label>
+          <label style="display:block;font-size:10px;color:var(--text-muted);margin-bottom:6px"><input id="ftpAuditDefaults" type="checkbox"> also try default profiles (2 tries each, needs ftp-login-probe in scope)</label>
+
+          <button id="ftpAuditBtn" class="sec-inject-btn" onclick="startFtpAudit()" style="background:#1a2a1a">▶ RUN AUDIT</button>
+          <div id="ftpAuditStatus" style="font-size:10px;color:var(--text-muted);margin-top:4px;min-height:14px"></div>
+          <div id="ftpAuditOut" style="margin-top:4px"></div>
+
+          <div style="margin-top:8px;padding-top:6px;border-top:1px solid #111">
+            <button onclick="ftpAuditExportCsv()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ Export CSV</button>
+            <button onclick="ftpAuditExportJson()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ JSON</button>
+          </div>
+        </div>
+      </div>
+
       <!-- CICS TRANSACTION SCANNER section -->
       <div class="sec-section">
         <div class="sec-section-hdr">CICS TRANSACTION SCANNER</div>

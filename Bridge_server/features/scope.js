@@ -46,6 +46,7 @@ export const INTRUSIVE_ACTIVITIES = new Set([
   'minidisk-link',
   'xautolog-start',
   'send-cp',
+  'ftp-login-probe',
 ]);
 
 // Returns { active, scope?, error? }. active=false means no guard.

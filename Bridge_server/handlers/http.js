@@ -18,6 +18,7 @@ import * as sessionsRt from '../routes/sessions.js';
 import * as poolLimits from '../routes/pool-limits.js';
 import * as sshAudit   from '../routes/ssh-audit.js';
 import * as httpAdminAudit from '../routes/http-admin-audit.js';
+import * as ftpAudit from '../routes/ftp-audit.js';
 import * as scopeRt    from '../routes/scope.js';
 import * as smapiAudit from '../routes/smapi-audit.js';
 
@@ -35,7 +36,7 @@ const MIME = {
   '.woff2':'font/woff2',
 };
 
-const ROUTES = [traffic, logs, profiles, sshHosts, macros, macroRun, recording, security, negotiate, wire, esm, probeWl, sessionsRt, poolLimits, sshAudit, httpAdminAudit, scopeRt, smapiAudit];
+const ROUTES = [traffic, logs, profiles, sshHosts, macros, macroRun, recording, security, negotiate, wire, esm, probeWl, sessionsRt, poolLimits, sshAudit, httpAdminAudit, ftpAudit, scopeRt, smapiAudit];
 
 export function createRequestHandler({ config, logger, sessions }) {
   const ctx = { config, logger, sessions };

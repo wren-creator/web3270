@@ -3019,3 +3019,8 @@ require('./mock-as400-httpadmin').start({
   sysname: SYSNAME, usrprfs: USRPRFS, credentials: CREDENTIALS, log,
 });
 
+// The FTP server (21 and 990 on a real box, 2121 and 2990 here), same profiles.
+require('./mock-as400-ftp').start({
+  sysname: SYSNAME, usrprfs: USRPRFS, credentials: CREDENTIALS, log,
+});
+

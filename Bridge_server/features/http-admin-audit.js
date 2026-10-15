@@ -65,7 +65,7 @@ function request({ host, port, tls, path = '/HTTPAdmin', auth }) {
   });
 }
 
-function certFindings(cert, now) {
+export function certFindings(cert, now) {
   const out = [];
   if (!cert) return out;
   const from = Date.parse(cert.valid_from);
