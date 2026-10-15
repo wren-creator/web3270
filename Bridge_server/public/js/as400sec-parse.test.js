@@ -12,6 +12,7 @@ import {
   parseAdoptLibraries, adoptProgramStatement, adoptPublicStatement, parseAdoptPrograms, parsePublicAuth, evaluateAdopting,
   OUTQ_STATEMENTS, outqRows, evaluateOutq,
   JOURNAL_GROUPS, JOURNAL_CONFIG, parseJournalDays, journalStatement, parseJournalRows, evaluateJournal,
+  EXIT_STATEMENTS, EXIT_JOURNAL_DAYS, EXIT_JOURNAL_TYPES, parseExitPrograms, parseLibPublic, evaluateExitPrograms,
   SERVICE_GROUPS, svcStatement, splitSqlStatement, parseNetstatRows, evaluateServiceGroup,
   parseSqlResultTable, parseCveInfo, evaluateCveRow, parsePtfCurrency, evaluatePtfGroupRow,
 } from './as400sec-parse.js';
@@ -694,4 +695,69 @@ test('evaluateJournal: a group that failed, was cut short or an unread QAUDCTL i
   const t = _jev({ rows: { restores: [_j('OR', 'A', 'x')], creates: [], changes: [], spool: [], print: [] }, truncated: { restores: true } });
   assert.equal(_jrow(t, 'Restores read').risk, 'INFO');
   assert.equal(r[r.length - 1].name, '(audit journal)');
+});
+
+test('exit program statements: real views, non-Q* filters, an owners read built from the libraries, all within three 72 character lines', () => {
+  const stmts = [EXIT_STATEMENTS.programs, EXIT_STATEMENTS.libpub, EXIT_STATEMENTS.owners(['EXITLIB', 'AUDLIB', 'SECLIB', 'APPLIB', 'TOOLLIB', 'HRLIB', 'PAYROLL', 'MYLIB']),
+    journalStatement(EXIT_JOURNAL_TYPES, EXIT_JOURNAL_DAYS)];
+  for (const s of stmts) {
+    const parts = splitSqlStatement(s);
+    assert.ok(parts.length <= 3 && parts.every(p => p.length <= 72), `${s.slice(0, 40)}: ${parts.map(p => p.length)}`);
+  }
+  assert.ok(EXIT_STATEMENTS.programs.includes('QSYS2.EXIT_PROGRAM_INFO') && EXIT_STATEMENTS.programs.includes("NOT LIKE 'Q%'"));
+  assert.ok(EXIT_STATEMENTS.owners(['A', 'B']).includes("IN ('A', 'B')"));
+});
+
+test('parseExitPrograms / parseLibPublic: by column name, null when one is missing', () => {
+  assert.deepEqual(parseExitPrograms(_tbl(['EXIT_POINT_NAME', 'EXIT_PROGRAM_NAME', 'EXIT_PROGRAM_LIBRARY'], [['QIBM_QZDA_SQL1', 'SQLEXITPGM', 'EXITLIB'], ['X', '', 'L']])),
+    [{ point: 'QIBM_QZDA_SQL1', name: 'SQLEXITPGM', lib: 'EXITLIB' }]);
+  assert.equal(parseExitPrograms(_tbl(['FOO'], [])), null);
+  assert.deepEqual(parseLibPublic(_tbl(['SYSTEM_OBJECT_NAME', 'OBJECT_AUTHORITY'], [['EXITLIB', '*CHANGE']])), [{ lib: 'EXITLIB', auth: '*CHANGE' }]);
+  assert.equal(parseLibPublic(_tbl(['X'], [])), null);
+});
+
+const _ex = (o = {}) => evaluateExitPrograms({ exits: [], progPub: [], libPub: [], owners: [], journal: [], auditOn: true, incomplete: [], ...o });
+const _e = (point, name, lib) => ({ point, name, lib });
+const _erow = (r, n) => r.find(x => x.name === n);
+
+test('evaluateExitPrograms: program *PUBLIC *ALL is CRITICAL, *CHANGE HIGH, a writable library HIGH, both open CRITICAL, tidy OK', () => {
+  const r = _ex({ exits: [_e('P1', 'A', 'L1'), _e('P2', 'B', 'L2'), _e('P3', 'C', 'L3'), _e('P4', 'D', 'L4'), _e('P5', 'E', 'L5')],
+    progPub: [{ key: 'L1/A', auth: '*ALL' }, { key: 'L2/B', auth: '*CHANGE' }, { key: 'L3/C', auth: '*USE' }, { key: 'L4/D', auth: '*USE' }, { key: 'L5/E', auth: '*USE' }],
+    libPub: [{ lib: 'L1', auth: '*USE' }, { lib: 'L2', auth: '*USE' }, { lib: 'L3', auth: '*CHANGE' }, { lib: 'L4', auth: '*USE' }, { lib: 'L5', auth: '*EXCLUDE' }] });
+  assert.equal(_erow(r, 'L1/A').risk, 'CRITICAL'); assert.ok(_erow(r, 'L1/A').detail.includes('delete or replace'));
+  assert.equal(_erow(r, 'L2/B').risk, 'HIGH');
+  assert.equal(_erow(r, 'L3/C').risk, 'HIGH'); assert.ok(_erow(r, 'L3/C').detail.includes('add objects'));
+  assert.equal(_erow(r, 'L4/D').risk, 'OK');
+  const both = _ex({ exits: [_e('P', 'A', 'L')], progPub: [{ key: 'L/A', auth: '*CHANGE' }], libPub: [{ lib: 'L', auth: '*CHANGE' }] });
+  assert.equal(_erow(both, 'L/A').risk, 'CRITICAL');
+});
+
+test('evaluateExitPrograms: one program on two exit points is one row, the owner is shown but never rated', () => {
+  const r = _ex({ exits: [_e('QIBM_A', 'PGM', 'LIB'), _e('QIBM_B', 'PGM', 'LIB')], progPub: [{ key: 'LIB/PGM', auth: '*USE' }], libPub: [{ lib: 'LIB', auth: '*USE' }],
+    owners: [{ lib: 'LIB', name: 'PGM', owner: 'QSECOFR' }] });
+  const p = r.filter(x => x.name === 'LIB/PGM');
+  assert.equal(p.length, 1); assert.equal(p[0].risk, 'OK');
+  assert.ok(p[0].value.includes('2 exit point(s)') && p[0].value.includes('owner QSECOFR'));
+  assert.ok(p[0].detail.includes('QIBM_A, QIBM_B') && p[0].detail.includes('owner is shown, not rated'));
+});
+
+test('evaluateExitPrograms: a journal entry on the program is MEDIUM, no entries is only reassuring when auditing is on', () => {
+  const base = { exits: [_e('P', 'A', 'L')], progPub: [{ key: 'L/A', auth: '*USE' }], libPub: [{ lib: 'L', auth: '*USE' }] };
+  const hit = _ex({ ...base, journal: [{ ts: '2026-10-05-09.00.00', type: 'ZC', user: 'OPSADMIN', object: 'L/A' }, { ts: '2026-10-06-10.00.00', type: 'ZC', user: 'OPSADMIN', object: 'L/A' }, { ts: 'x', type: 'ZC', user: 'Z', object: 'L/OTHER' }] });
+  assert.equal(_erow(hit, 'L/A').risk, 'MEDIUM'); assert.ok(_erow(hit, 'L/A').detail.includes('2 change/restore/create entries') && _erow(hit, 'L/A').detail.includes('OPSADMIN') && _erow(hit, 'L/A').detail.includes('2026-10-06-10.00.00'));
+  const quiet = _ex({ ...base, journal: [], auditOn: true });
+  assert.equal(_erow(quiet, 'L/A').risk, 'OK'); assert.ok(_erow(quiet, 'L/A').detail.includes('No change, restore or create entries'));
+  const off = _ex({ ...base, journal: [], auditOn: false });
+  assert.ok(_erow(off, 'L/A').detail.includes('auditing is off so that proves nothing') && _erow(off, 'L/A').detail.includes('integrity is not confirmed'));
+  assert.equal(_erow(off, 'L/A').risk, 'LOW', 'authority is fine but integrity is unproven, so not OK');
+  assert.ok(_erow(hit, 'L/A').detail.includes('. The audit journal shows') || _erow(hit, 'L/A').detail.includes('The audit journal shows'), 'sentences start with a capital');
+});
+
+test('evaluateExitPrograms: *PUBLIC excluded is LOW, unread authority is INFO, an incomplete read keeps the summary from being OK', () => {
+  const r = _ex({ exits: [_e('P', 'A', 'L'), _e('P', 'B', 'L')], progPub: [{ key: 'L/A', auth: '*EXCLUDE' }], libPub: [{ lib: 'L', auth: '*USE' }] });
+  assert.equal(_erow(r, 'L/A').risk, 'LOW'); assert.equal(_erow(r, 'L/B').risk, 'INFO');
+  const inc = _ex({ exits: [_e('P', 'A', 'L')], progPub: [{ key: 'L/A', auth: '*USE' }], libPub: [{ lib: 'L', auth: '*USE' }], incomplete: ['program owners'] });
+  assert.equal(_erow(inc, '(exit programs)').risk, 'INFO'); assert.equal(_erow(inc, 'program owners').risk, 'INFO');
+  assert.equal(_erow(_ex({ exits: [_e('P', 'A', 'L')], progPub: [{ key: 'L/A', auth: '*USE' }], libPub: [{ lib: 'L', auth: '*USE' }] }), '(exit programs)').risk, 'INFO', 'the summary row never reads OK next to findings');
+  assert.ok(_erow(_ex(), '(exit programs)').detail.includes('CHKOBJITG') && _erow(_ex(), '(exit programs)').detail.includes('No exit program outside a Q* library'));
 });

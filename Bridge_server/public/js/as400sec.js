@@ -39,6 +39,7 @@ import {
   parseAdoptLibraries, adoptProgramStatement, adoptPublicStatement, parseAdoptPrograms, parsePublicAuth, evaluateAdopting,
   OUTQ_STATEMENTS, outqRows, evaluateOutq,
   JOURNAL_GROUPS, JOURNAL_CONFIG, parseJournalDays, journalStatement, parseJournalRows, evaluateJournal,
+  EXIT_STATEMENTS, EXIT_JOURNAL_DAYS, EXIT_JOURNAL_TYPES, EXIT_MAX_LIBS, parseExitPrograms, parseLibPublic, evaluateExitPrograms,
 } from './as400sec-parse.js';
 
 // ── Screen / transport helpers ─────────────────────────────────────────────
@@ -268,12 +269,13 @@ const TOOLS = {
   ADOPT:  { ids: 'Adopt' },
   OUTQ:   { ids: 'Outq' },
   JRN:    { ids: 'Jrn' },
+  EXITPGM: { ids: 'Exitpgm' },
 };
 
 // Persisted results per tool (so all tables/CSV survive across scans).
 const RESULTS = {
   USRPRF: [], SHIPPRF: [], SYSVAL: [], OBJ: [], NETATTR: [], JOBD: [], AUTL: [], ACTJOB: [],
-  REGINF: [], NETSVR: [], DFTPWD: [], CRTAUT: [], IFS: [], PGMSTK: [], BYPASS: [], PTFCVE: [], SVCINV: [], GRPREV: [], OWNSEC: [], ADOPT: [], OUTQ: [], JRN: [],
+  REGINF: [], NETSVR: [], DFTPWD: [], CRTAUT: [], IFS: [], PGMSTK: [], BYPASS: [], PTFCVE: [], SVCINV: [], GRPREV: [], OWNSEC: [], ADOPT: [], OUTQ: [], JRN: [], EXITPGM: [],
 };
 
 // ── State machine ───────────────────────────────────────────────────────────
@@ -410,6 +412,7 @@ const COLS = {
   ADOPT:   ['PROGRAM', 'OWNER / *PUBLIC'],
   OUTQ:    ['QUEUE / CHECK', 'SETTINGS'],
   JRN:     ['ENTRY GROUP: USER', 'ENTRIES'],
+  EXITPGM: ['EXIT PROGRAM', 'EXIT POINTS / OWNER / *PUBLIC'],
 };
 
 function _render(tool) {
@@ -672,6 +675,39 @@ function _buildOutqQueries() {
   return { queries: qs, note: capped ? 'Only the first 8 libraries are read.' : '' };
 }
 
+// Exit Program Integrity and Authority: find the registered programs outside Q* libraries, then read
+// *PUBLIC on those programs and their libraries, the owner of each (a statement built from the
+// libraries the first read found), and the audit journal for the programs being changed or restored.
+function _exitQuery(key, stmt, label, onTable) {
+  return { key, stmt, fresh: _sqlInputBlank, onError: ctx => ctx.incomplete.push(label),
+    collect: (table, info, ctx) => {
+      const ok = onTable(table, info, ctx);
+      if (!ok || info.truncated) ctx.incomplete.push(label);
+      return [];
+    } };
+}
+const EXITPGM_QUERIES = [
+  _exitQuery('programs', EXIT_STATEMENTS.programs, 'registered exit programs', (table, info, ctx) => {
+    const p = parseExitPrograms(table); if (!p) return false;
+    ctx.exits = p;
+    const libs = [...new Set(p.map(e => e.lib))];
+    ctx.exitLibs = libs.slice(0, EXIT_MAX_LIBS); ctx.libsCapped = libs.length > EXIT_MAX_LIBS;
+    return true;
+  }),
+  _exitQuery('program authority', adoptPublicStatement(null), '*PUBLIC authority on programs', (table, info, ctx) => {
+    const p = parsePublicAuth(table); if (!p) return false; ctx.progPub = p; return true; }),
+  _exitQuery('library authority', EXIT_STATEMENTS.libpub, '*PUBLIC authority on libraries', (table, info, ctx) => {
+    const p = parseLibPublic(table); if (!p) return false; ctx.libPub = p; return true; }),
+  // Built from what the first read found, skipped when it found no libraries.
+  { ..._exitQuery('owners', null, 'program owners', (table, info, ctx) => {
+      const p = parseAdoptPrograms(table); if (!p) return false; ctx.owners = p; return true; }),
+    stmt: ctx => (ctx.exitLibs && ctx.exitLibs.length ? EXIT_STATEMENTS.owners(ctx.exitLibs) : null) },
+  _exitQuery('audit config', JOURNAL_CONFIG.audlvl, 'audit setting', (table, info, ctx) => { ctx.auditOn = table.rows.length > 0; return true; }),
+  _exitQuery('journal', journalStatement(EXIT_JOURNAL_TYPES, EXIT_JOURNAL_DAYS), 'audit journal read', (table, info, ctx) => {
+    const r = parseJournalRows(table); if (!r) return false;
+    ctx.journal = r; ctx.journalTruncated = !!info.truncated; return true; }),
+];
+
 // Audit Journal Review: six tiny config checks (is auditing on, and are the levels these entry
 // types need set), then one journal read per group of entry types, over the days the operator
 // chose. Reads only store their rows, finalize() judges them together.
@@ -728,6 +764,15 @@ const SQL_TOOLS = {
     done: () => {
       const bad = RESULTS.SVCINV.filter(r => ['CRITICAL', 'HIGH', 'MEDIUM'].includes(r.risk)).length;
       return { text: `Done — ${bad}/${RESULTS.SVCINV.length} service(s) need attention.`, bad };
+    },
+  },
+  EXITPGM: {
+    queries: EXITPGM_QUERIES, btn: 'as400ExitpgmBtn',
+    finalize: ctx => evaluateExitPrograms({ exits: ctx.exits, progPub: ctx.progPub, libPub: ctx.libPub, owners: ctx.owners,
+      journal: ctx.journal, auditOn: ctx.auditOn, journalTruncated: ctx.journalTruncated, libsCapped: ctx.libsCapped, incomplete: ctx.incomplete }),
+    done: () => {
+      const bad = RESULTS.EXITPGM.filter(r => r.risk === 'CRITICAL' || r.risk === 'HIGH').length;
+      return { text: `Done — ${bad} exit program(s) rated HIGH or worse.`, bad };
     },
   },
   JRN: {
@@ -794,10 +839,13 @@ function _sqlStep() {
   const T = SQL_TOOLS[sqlrun.tool];
   const q = T.queries[sqlrun.idx];
   if (!q) { _sqlEnd(); return; }
-  _status(sqlrun.tool, `[${sqlrun.idx + 1}/${T.queries.length}] Running ${q.stmt}…`);
+  // A statement may be built from what earlier reads found, and null means skip it.
+  const stmt = typeof q.stmt === 'function' ? q.stmt(sqlrun.ctx) : q.stmt;
+  if (stmt == null) { _sqlAdvance(); return; }
+  _status(sqlrun.tool, `[${sqlrun.idx + 1}/${T.queries.length}] Running ${stmt}…`);
   sqlrun.stage = 'RESULT';
   sqlrun.tables = [];
-  _fillSqlStatement(q.stmt);
+  _fillSqlStatement(stmt);
   _pressEnter();
 }
 
@@ -926,6 +974,7 @@ export function startAs400OwnSecScan() { _startSqlTool('OWNSEC'); }
 export function startAs400AdoptScan()  { _startSqlTool('ADOPT'); }
 export function startAs400OutqScan()   { _startSqlTool('OUTQ'); }
 export function startAs400JrnScan()    { _startSqlTool('JRN'); }
+export function startAs400ExitPgmScan() { _startSqlTool('EXITPGM'); }
 
 export function startAs400BypassProbe() {
   if (bypass.running) return;
@@ -982,6 +1031,7 @@ function _buildAs400Rows() {
   add('ADOPT',   'static-adopted-authority-scan');
   add('OUTQ',    'output-queue-spool-audit');
   add('JRN',     'audit-journal-review');
+  add('EXITPGM', 'exit-program-integrity-authority');
   // Pre sign-on tool: its results live in probe.js, not RESULTS.
   credAuditFindings().forEach(r => rows.push(['default-credential-audit', r.name, r.value, r.risk, r.detail, ts]));
   return { rows, ts };
@@ -1004,5 +1054,5 @@ Object.assign(window, {
   startAs400UserScan, startAs400ShippedAudit, startAs400SysvalScan, startAs400ObjScan,
   startAs400NetattrScan, startAs400JobdScan, startAs400AutlScan, startAs400ActjobScan,
   startAs400ReginfScan, startAs400NetsvrScan, startAs400DftpwdScan, startAs400CrtautScan, startAs400IfsScan,
-  startAs400PgmstkScan, startAs400BypassProbe, startAs400PtfCveScan, startAs400SvcInvScan, startAs400GrpRevScan, startAs400OwnSecScan, startAs400AdoptScan, startAs400OutqScan, startAs400JrnScan,
+  startAs400PgmstkScan, startAs400BypassProbe, startAs400PtfCveScan, startAs400SvcInvScan, startAs400GrpRevScan, startAs400OwnSecScan, startAs400AdoptScan, startAs400OutqScan, startAs400JrnScan, startAs400ExitPgmScan,
 });

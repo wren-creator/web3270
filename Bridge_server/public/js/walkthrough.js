@@ -3097,6 +3097,55 @@ const _WALKTHROUGHS = [
     ],
   },
 
+  // ── IBM i (AS/400) Exit Program Integrity and Authority ─────────────
+  {
+    id:       'as400-exit-program-integrity-authority',
+    category: 'security',
+    title:    'IBM i: Exit Program Integrity and Authority',
+    desc:     'Lists registered exit programs outside Q* libraries and checks who can change them: *PUBLIC on the program and its library, the owner, and the audit journal for the program being changed or restored.',
+    steps: [
+      {
+        title: 'Why an exit program is worth its own check',
+        body:  'The Exit Point audit asks whether a program is registered. This asks whether it can be trusted. A registered exit program runs on every request through its exit point: FTP logon, remote SQL, sign-on, password change. One that anyone can replace is a backdoor on every channel it guards, and it runs for everyone, so it is a very good place to hide something.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Prerequisites',
+        body:  'Connect to a TN5250 target, sign on, and stop at a menu with a "Selection or command" line. Interactive SQL (STRSQL) has to be available and you need authority to read QSYS2.EXIT_PROGRAM_INFO, OBJECT_PRIVILEGES and PROGRAM_INFO, and *USE to the audit journal. Column names and the *LIB rows of OBJECT_PRIVILEGES were not run on a live IBM i, confirm them.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click 🔒 in the OIA status bar and enter the security password (default: 2970).',
+        highlight: 'secBtn', autoFn: null,
+      },
+      {
+        title: 'Run the review',
+        body:  'Click ▶ REVIEW EXIT PROGRAMS. The tool reads the registered exit programs outside Q* libraries, then *PUBLIC\'s authority on those programs and on every library, the owner of each (a statement it builds from the libraries it just found), whether auditing is on, and the audit journal for the last 90 days of creates, changes and restores. Every read goes across all its pages.',
+        highlight: 'as400ExitpgmBtn',
+        autoFn: 'startAs400ExitPgmScan',
+        autoLabel: 'Run it for me',
+      },
+      {
+        title: 'Read the findings',
+        body:  'CRITICAL — *PUBLIC holds *ALL on the program (anyone can delete or replace it), or the program is open to *PUBLIC change and so is its library. HIGH — *PUBLIC holds *CHANGE on the program, or *PUBLIC can add objects to the library that holds it. MEDIUM — the journal shows the program changed, restored or created in the window: match each entry to a change ticket. LOW — *PUBLIC is excluded from the program, check the exit really runs for everyone it should. OK — *PUBLIC no more than *USE on the program and the library locked down. The owner is shown, not rated, because ownership alone does not make an exit program safe. A row says when no entries mean nothing because auditing is off.',
+        highlight: 'as400ExitpgmOut', autoFn: null,
+      },
+      {
+        title: 'The part you still do by hand',
+        body:  'CHKOBJITG verifies exit programs but needs a scope you choose on the box, so prompt it with F4 and run it yourself, do not guess its syntax. The tool also does not read exit programs in QGPL or QUSRSYS, and it cannot tell you whether a program does the right thing, that is a code review.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Export the audit',
+        body:  'Click ↓ Export IBM i Audit CSV to save the findings.',
+        highlight: 'as400ExitpgmOut',
+        autoFn: 'as400ExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
   // ── IBM i (AS/400) Audit Journal Review ────────────────────────────
   {
     id:       'as400-audit-journal-review',

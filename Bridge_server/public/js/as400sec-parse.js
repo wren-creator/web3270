@@ -1298,3 +1298,93 @@ export function evaluateJournal(d) {
     detail: `${newest ? `Newest entry ${newest}. ` : ''}Reading the journal needs *USE authority to it. A journal that was cleared, detached or never audited looks the same as a quiet one, so check the receiver chain and when QAUDCTL last changed.` });
   return out;
 }
+
+
+// ── Exit Program Integrity and Authority (EXIT_PROGRAM_INFO + OBJECT_PRIVILEGES) ──
+// A registered exit program runs on every request through its exit point, FTP logon, remote
+// SQL, sign-on, password change. One anyone can replace is a backdoor on every channel it
+// guards, so what matters is who can change the program and the library that holds it:
+//   *PUBLIC on the program   *ALL or *CHANGE is more than running it needs
+//   *PUBLIC on the library   *CHANGE or *ALL lets anyone add objects to it
+// Ownership alone does not make an exit program safe, authority on the program and library
+// does, so the owner is reported but not rated. Integrity (has it been changed?) is the part
+// CHKOBJITG answers, and that command needs a scope chosen on the box, so this tool does not
+// run it: it reads the audit journal for the program being changed, restored or created
+// instead, which is evidence but only if auditing was on. Only programs outside Q* libraries
+// are read, IBM's own are IBM's. A program a customer put in QGPL or QUSRSYS is missed.
+// EXIT_PROGRAM_INFO columns, the *LIB rows of OBJECT_PRIVILEGES and the DISPLAY_JOURNAL parameters
+// were not run on a live IBM i, confirm them.
+export const EXIT_STATEMENTS = {
+  programs: "SELECT EXIT_POINT_NAME, EXIT_PROGRAM_NAME, EXIT_PROGRAM_LIBRARY FROM QSYS2.EXIT_PROGRAM_INFO WHERE EXIT_PROGRAM_LIBRARY NOT LIKE 'Q%'",
+  libpub:   "SELECT SYSTEM_OBJECT_NAME, OBJECT_AUTHORITY FROM QSYS2.OBJECT_PRIVILEGES WHERE USER_NAME='*PUBLIC' AND OBJECT_TYPE='*LIB' AND SYSTEM_OBJECT_NAME NOT LIKE 'Q%'",
+  owners:   libs => `SELECT PROGRAM_LIBRARY, PROGRAM_NAME, PROGRAM_OWNER FROM QSYS2.PROGRAM_INFO WHERE PROGRAM_LIBRARY IN (${libs.map(l => `'${l}'`).join(', ')})`,
+};
+export const EXIT_JOURNAL_DAYS = 90;
+export const EXIT_JOURNAL_TYPES = 'CO,ZC,OR,RP';
+export const EXIT_MAX_LIBS = 8;
+
+export function parseExitPrograms(table) {
+  const ix = ['EXIT_POINT_NAME', 'EXIT_PROGRAM_NAME', 'EXIT_PROGRAM_LIBRARY'].map(c => table.cols.indexOf(c));
+  if (ix.includes(-1)) return null;
+  return table.rows.map(r => ({ point: r[ix[0]], name: r[ix[1]], lib: r[ix[2]] })).filter(e => e.name && e.lib);
+}
+export function parseLibPublic(table) {
+  const ix = ['SYSTEM_OBJECT_NAME', 'OBJECT_AUTHORITY'].map(c => table.cols.indexOf(c));
+  if (ix.includes(-1)) return null;
+  return table.rows.map(r => ({ lib: r[ix[0]], auth: r[ix[1]] })).filter(x => x.lib && x.auth);
+}
+
+const _eRank = { '*EXCLUDE': 0, '*USE': 1, '*CHANGE': 2, '*ALL': 3 };
+const _eRisk = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3, INFO: 4, OK: 5 };
+
+// d: { exits, progPub, libPub, owners, journal, auditOn, journalTruncated, libsCapped, incomplete }
+export function evaluateExitPrograms(d) {
+  const out = [];
+  const progs = new Map();
+  for (const e of d.exits || []) {
+    const k = `${e.lib}/${e.name}`;
+    if (!progs.has(k)) progs.set(k, { lib: e.lib, name: e.name, points: [] });
+    progs.get(k).points.push(e.point);
+  }
+  const pubP = new Map((d.progPub || []).map(p => [p.key, p.auth]));
+  const pubL = new Map((d.libPub || []).map(p => [p.lib, p.auth]));
+  const owner = new Map((d.owners || []).map(o => [`${o.lib}/${o.name}`, o.owner]));
+  const jr = d.journal || [];
+
+  for (const [k, p] of progs) {
+    const pa = pubP.get(k), la = pubL.get(p.lib);
+    const reasons = [];
+    let risk = 'OK';
+    const bump = r => { if (_eRisk[r] < _eRisk[risk]) risk = r; };
+    const pOpen = pa && _eRank[pa] >= 2, lOpen = la && _eRank[la] >= 2;
+    if (pa === '*ALL')      { reasons.push('*PUBLIC holds *ALL on the program, so anyone can delete or replace it'); bump('CRITICAL'); }
+    else if (pa === '*CHANGE') { reasons.push('*PUBLIC holds *CHANGE on the program, more than running it needs'); bump('HIGH'); }
+    if (lOpen) { reasons.push(`*PUBLIC holds ${la} on library ${p.lib}, so anyone can add objects to the library that holds the exit program`); bump('HIGH'); }
+    if (pOpen && lOpen) bump('CRITICAL');
+    if (pa === '*EXCLUDE') { reasons.push('*PUBLIC is excluded from the program, check the exit actually runs for every user it should, a fail-open or fail-closed surprise'); bump('LOW'); }
+    if (!pa) { reasons.push('*PUBLIC authority on the program was not read'); bump('INFO'); }
+    if (!la) { reasons.push(`*PUBLIC authority on library ${p.lib} was not read`); bump('INFO'); }
+
+    const hits = jr.filter(r => r.object === k);
+    if (hits.length) {
+      const byUser = [...new Set(hits.map(h => h.user))].join(', ');
+      reasons.push(`the audit journal shows ${hits.length} change/restore/create entr${hits.length === 1 ? 'y' : 'ies'} on it in ${EXIT_JOURNAL_DAYS} days by ${byUser}, newest ${hits.map(h => h.ts).sort().pop()}, check each against a change ticket`);
+      bump('MEDIUM');
+    } else if (d.journal && d.auditOn === false) {
+      reasons.push('no journal entries, but auditing is off so that proves nothing about whether it was changed. The authority is fine, the integrity is not confirmed');
+      bump('LOW');
+    } else if (d.journal && d.auditOn) {
+      reasons.push(`no change, restore or create entries in ${EXIT_JOURNAL_DAYS} days`);
+    }
+    out.push({ name: k, value: `${p.points.length} exit point(s) · owner ${owner.get(k) || '?'} · *PUBLIC ${pa ?? '?'} / lib ${la ?? '?'}`, risk,
+      detail: `Registered on ${p.points.join(', ')}. ${reasons.length ? reasons.map(r => r[0].toUpperCase() + r.slice(1)).join('. ') + '.' : 'Set up the recommended way: *PUBLIC no more than *USE on the program, the library locked down.'} Ownership alone does not make an exit program safe, the owner is shown, not rated.` });
+  }
+  for (const w of d.incomplete || []) out.push({ name: w, value: 'incomplete', risk: 'INFO', detail: `The ${w} read failed or was cut short, so findings may be missing or underrated.` });
+  if (d.libsCapped) out.push({ name: 'owners', value: `first ${EXIT_MAX_LIBS} libraries`, risk: 'INFO', detail: `Exit programs sit in more than ${EXIT_MAX_LIBS} libraries, only the first ${EXIT_MAX_LIBS} were read for owners.` });
+  if (d.journalTruncated) out.push({ name: 'journal read', value: 'incomplete', risk: 'INFO', detail: 'More journal entries exist than were read, so a change to an exit program may not show above.' });
+  out.sort((a, b) => _eRisk[a.risk] - _eRisk[b.risk]);
+  out.push({ name: '(exit programs)', value: `${progs.size} program(s) outside Q* libraries`, risk: 'INFO',
+    detail: (progs.size ? '' : 'No exit program outside a Q* library was found. ') +
+      'Integrity: CHKOBJITG verifies exit programs but needs a scope chosen on the box (prompt it with F4, do not guess its syntax), so run it by hand. Exit programs in QGPL or QUSRSYS are not read here. Whether each program does the right thing is a code review, not a scan.' });
+  return out;
+}

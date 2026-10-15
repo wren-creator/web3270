@@ -1326,6 +1326,15 @@
             <div id="as400GrprevOut" style="max-height:220px;overflow-y:auto;margin-top:4px"></div>
           </div>
 
+          <!-- Exit Program Integrity and Authority -->
+          <div style="margin-top:10px;padding-top:8px;border-top:1px solid #1a1a1a">
+            <div style="font-size:10px;color:var(--text-muted);font-weight:600;letter-spacing:.06em;margin-bottom:4px">EXIT PROGRAM INTEGRITY AND AUTHORITY</div>
+            <div class="sec-panel-hint" style="margin-bottom:6px">A registered exit program runs on every request through its exit point, so one anyone can replace is a backdoor on every channel it guards. Lists the registered programs outside Q* libraries (QSYS2.EXIT_PROGRAM_INFO), then reads *PUBLIC on each program and its library, the owner, and the audit journal for the program being changed, restored or created in the last 90 days. *PUBLIC *ALL on a program is CRITICAL, *CHANGE high, and a writable library is high on its own. Ownership alone does not make an exit program safe, so the owner is shown, not rated. CHKOBJITG is not run: it needs a scope you choose on the box, run it by hand. Confirm view and column names on your release.</div>
+            <button id="as400ExitpgmBtn" class="sec-inject-btn" onclick="startAs400ExitPgmScan()" style="background:#1a2a1a">▶ REVIEW EXIT PROGRAMS</button>
+            <div id="as400ExitpgmStatus" style="font-size:10px;color:var(--text-muted);margin-top:4px;min-height:14px"></div>
+            <div id="as400ExitpgmOut" style="max-height:220px;overflow-y:auto;margin-top:4px"></div>
+          </div>
+
           <!-- Audit Journal Review -->
           <div style="margin-top:10px;padding-top:8px;border-top:1px solid #1a1a1a">
             <div style="font-size:10px;color:var(--text-muted);font-weight:600;letter-spacing:.06em;margin-bottom:4px">AUDIT JOURNAL REVIEW</div>

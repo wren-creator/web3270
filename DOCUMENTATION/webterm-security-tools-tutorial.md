@@ -60,6 +60,7 @@ The app ships **74 built-in narrated walkthroughs** (`public/js/walkthrough.js`)
 | — | | 47 | IBM i Static Adopted-Authority Scan |
 | — | | 48 | IBM i Output Queue and Spool Audit |
 | — | | 49 | IBM i Audit Journal Review |
+| — | | 50 | IBM i Exit Program Integrity and Authority |
 
 Appendices — Structured JSON findings export, the `.rec.json` format.
 
@@ -3056,7 +3057,57 @@ On the mock, auditing was on and was switched off about nine days ago (`QAUDCTL`
 
 ### Where the mock stops
 
-`DISPLAY_JOURNAL`'s parameters and its columns (`ENTRY_TIMESTAMP`, `JOURNAL_ENTRY_TYPE`, `JOB_USER`, `OBJECT`) follow IBM's published examples, and were not run on a live IBM i here, confirm them. Reading the journal needs `*USE` authority to it. A journal that was cleared, detached or never audited looks the same as a quiet one, so check the receiver chain and when `QAUDCTL` last changed. Per-type functions such as `SYSTOOLS.AUDIT_JOURNAL_xx` exist for some entry types and were not used. Exit program integrity (`CHKOBJITG`) and exit program authority are not part of this review.
+`DISPLAY_JOURNAL`'s parameters and its columns (`ENTRY_TIMESTAMP`, `JOURNAL_ENTRY_TYPE`, `JOB_USER`, `OBJECT`) follow IBM's published examples, and were not run on a live IBM i here, confirm them. Reading the journal needs `*USE` authority to it. A journal that was cleared, detached or never audited looks the same as a quiet one, so check the receiver chain and when `QAUDCTL` last changed. Per-type functions such as `SYSTOOLS.AUDIT_JOURNAL_xx` exist for some entry types and were not used. Exit program integrity and authority are their own review, [Part 50](#).
+
+---
+
+## Part 50 — IBM i (AS/400) Exit Program Integrity and Authority
+
+The Exit Point audit ([Part 37A](#)) asks whether a program is registered. This asks whether it can be trusted. A registered exit program runs on every request through its exit point (FTP logon, remote SQL, sign-on, password change), so one that anyone can replace is a backdoor on every channel it guards, and it runs for everyone.
+
+### Location
+
+Security panel → IBM i SECURITY (AS/400) → EXIT PROGRAM INTEGRITY AND AUTHORITY
+
+### How it works
+
+Six STRSQL reads, each across all its pages:
+
+| Read | Gives |
+|---|---|
+| `QSYS2.EXIT_PROGRAM_INFO` where the library is not `Q*` | the registered programs and their exit points. IBM's own are IBM's |
+| `OBJECT_PRIVILEGES`, `*PUBLIC`, `*PGM`, not `Q*` libraries | what `*PUBLIC` may do to each program |
+| `OBJECT_PRIVILEGES`, `*PUBLIC`, `*LIB` | what `*PUBLIC` may do to each library |
+| `QSYS2.PROGRAM_INFO` for the libraries just found | the owner. This statement is built from the first read, skipped if it found nothing, capped at eight libraries |
+| the `QAUDCTL` check | whether auditing is on, so an empty journal is read correctly |
+| `QSYS2.DISPLAY_JOURNAL` for `CO,ZC,OR,RP`, 90 days | whether the program was created, changed or restored |
+
+A program registered on several exit points is one row, listing all of them.
+
+### Risk levels
+
+| Rating | Meaning |
+|---|---|
+| CRITICAL | `*PUBLIC` holds `*ALL` on the program (anyone can delete or replace it), or the program is open to `*PUBLIC` change and so is its library |
+| HIGH | `*PUBLIC` holds `*CHANGE` on the program, or `*PUBLIC` can add objects to the library that holds it |
+| MEDIUM | the journal shows the program created, changed or restored in the window. Match each entry to a change ticket |
+| LOW | `*PUBLIC` is excluded from the program (check the exit really runs for everyone it should), or the authority is fine but there are no journal entries because auditing is off, so integrity is not confirmed |
+| INFO | something could not be read. The summary row is always INFO, never OK next to findings |
+| OK | `*PUBLIC` no more than `*USE` on the program, the library locked down, and no journal entries with auditing on |
+
+Ownership alone does not make an exit program safe, authority on the program and library does, so the owner is shown but not rated.
+
+### What it does not do
+
+`CHKOBJITG` verifies exit programs, but it needs a scope you choose on the box, and its syntax should be prompted with F4, not guessed, so the tool does not run it. Run it by hand. The audit journal is evidence of a change, not proof of integrity, and it only counts if auditing was on. Exit programs in `QGPL` or `QUSRSYS` are not read. Whether a program does the right thing is a code review, not a scan.
+
+### Teaching scenario
+
+On the mock, `EXITLIB/SQLEXITPGM` (the remote SQL exit) is CRITICAL: `*PUBLIC` holds `*CHANGE` on it and on `EXITLIB`, and `OPSADMIN` changed it twice shortly before auditing went off. `EXITLIB/SIGNONEXIT` is HIGH because the library is writable, with a restore by the same account. `AUDLIB/SQLAUDIT`, in a library locked down, is LOW rather than OK: the authority is right, but auditing is off, so nobody can show it has not been touched. IBM's `QSYS` exit program is not read.
+
+### Where the mock stops
+
+`EXIT_PROGRAM_INFO` columns, the `*LIB` rows of `OBJECT_PRIVILEGES` and the `DISPLAY_JOURNAL` parameters were not run on a live IBM i, confirm them.
 
 ---
 

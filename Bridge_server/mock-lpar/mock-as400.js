@@ -993,6 +993,8 @@ const SQL_TABLES = {
       ['TOOLLIB', 'UTILITY',  'QSECOFR',  '*OWNER'], ['TOOLLIB', 'CLEANUP',  'QSECOFR',  '*USER'],
       ['TOOLLIB', 'SAVALL',   'QSECOFR',  '*OWNER'],
       ['MYLIB',   'TESTPGM',  'JSMITH',   '*OWNER'],
+      ['EXITLIB', 'SQLEXITPGM', 'QSECOFR', '*USER'], ['EXITLIB', 'SIGNONEXIT', 'APPADMIN', '*USER'],
+      ['AUDLIB',  'SQLAUDIT', 'AUDOWNER', '*USER'],
       ['QSYS',    'QCMDEXC',  'QSYS',     '*OWNER'], ['QSYS',    'QSYSMAIN', 'QSYS',     '*OWNER'],
     ],
   },
@@ -1011,6 +1013,10 @@ const SQL_TABLES = {
       ['TOOLLIB', 'SAVALL',   '*PGM',  '*PUBLIC', '*EXCLUDE'],
       ['MYLIB',   'TESTPGM',  '*PGM',  '*PUBLIC', '*CHANGE'],
       ['QSYS',    'QCMDEXC',  '*PGM',  '*PUBLIC', '*USE'],
+      ['EXITLIB', 'SQLEXITPGM', '*PGM', '*PUBLIC', '*CHANGE'], ['EXITLIB', 'SIGNONEXIT', '*PGM', '*PUBLIC', '*USE'],
+      ['AUDLIB',  'SQLAUDIT',   '*PGM', '*PUBLIC', '*USE'],
+      ['QSYS', 'EXITLIB', '*LIB', '*PUBLIC', '*CHANGE'], ['QSYS', 'AUDLIB', '*LIB', '*PUBLIC', '*USE'],
+      ['QSYS', 'APPLIB',  '*LIB', '*PUBLIC', '*USE'],    ['QSYS', 'PAYROLL', '*LIB', '*PUBLIC', '*CHANGE'],
       ['PAYROLL', 'PAYRPTQ',  '*OUTQ', '*PUBLIC', '*CHANGE'],  ['PAYROLL', 'PAYRPTQ',  '*OUTQ', 'GRPACCT', '*CHANGE'],
       ['HRLIB',   'HRRPTQ',   '*OUTQ', '*PUBLIC', '*EXCLUDE'],
       ['APPLIB',  'APPOUTQ',  '*OUTQ', '*PUBLIC', '*USE'],     ['APPLIB',  'REMPRT',   '*OUTQ', '*PUBLIC', '*USE'],
@@ -1040,6 +1046,20 @@ const SQL_TABLES = {
     get rows() {
       return Object.entries(SYSVALS).map(([n, s]) => /^\d+$/.test(s.value) ? [n, s.value, ''] : [n, '', s.value]);
     },
+  },
+  // QSYS2.EXIT_PROGRAM_INFO, narrowed to the columns the Exit Program Integrity and
+  // Authority review reads. It lists the same registered programs the exit point audit
+  // shows (SQLEXITPGM on QZDA_SQL1, SIGNONEXIT on QZSO_SIGNON), plus a second program
+  // on QZDA_SQL1 and an IBM one in QSYS that a NOT LIKE 'Q%' read leaves out. EXITLIB
+  // is the untidy library: *PUBLIC can change it, and one of its programs too.
+  'QSYS2/EXIT_PROGRAM_INFO': {
+    columns: ['EXIT_POINT_NAME', 'EXIT_POINT_FORMAT', 'EXIT_PROGRAM_NAME', 'EXIT_PROGRAM_LIBRARY'],
+    rows: [
+      ['QIBM_QZDA_SQL1',      'ZDAQ0200', 'SQLEXITPGM', 'EXITLIB'],
+      ['QIBM_QZDA_SQL1',      'ZDAQ0200', 'SQLAUDIT',   'AUDLIB'],
+      ['QIBM_QZSO_SIGNON',    'ZSOY0100', 'SIGNONEXIT', 'EXITLIB'],
+      ['QIBM_QJO_DLT_JRNRCV', 'DRCV0100', 'QJOEXIT',    'QSYS'],
+    ],
   },
   'QSYS2/GROUP_PROFILE_ENTRIES': {
     columns: ['GROUP_PROFILE_NAME', 'USER_PROFILE_NAME'],
@@ -2306,6 +2326,10 @@ const JOURNAL_ROWS = [
   [10, 'CO', 'JSMITH',   'MYLIB/TESTPGM'],   [10, 'CO', 'JSMITH',   'MYLIB/TESTDTA'],
   ...['PAYUPD', 'PAYUPD', 'PAYUPD', 'PAYUPD', 'PAYUPD', 'PAYUPD', 'PAYUPD', 'LEAVCALC', 'LEAVCALC', 'LEAVCALC', 'LEAVCALC'].map((n, i) => [16 - Math.floor(i / 2), 'ZC', 'APPADMIN', `APPLIB/${n}`]),
   [10, 'ZC', 'JSMITH', 'MYLIB/TESTPGM'], [10, 'ZC', 'JSMITH', 'MYLIB/TESTPGM'],
+  // somebody changed the SQL exit program shortly before auditing went off, and a
+  // restore of the signon exit before that, both as an account nobody else uses
+  [10, 'ZC', 'OPSADMIN', 'EXITLIB/SQLEXITPGM'], [10, 'ZC', 'OPSADMIN', 'EXITLIB/SQLEXITPGM'],
+  [20, 'OR', 'OPSADMIN', 'EXITLIB/SIGNONEXIT'],
 ];
 function journalRows({ types, days }) {
   const want = new Set(types.split(',').map(s => s.trim().toUpperCase()).filter(Boolean));
