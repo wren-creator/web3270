@@ -372,8 +372,30 @@ const USRPRFS = [
     specialAuth: ['*ALLOBJ','*JOBCTL'],
     lmtcpb: '*NO',  pwdExpiry: '*NOMAX',  pwdDefault: false, pwdNone: false, pwdChg: '07/01/26', lastSignon: '07/07/26 02:00:05' },
   { name: 'JSMITH',   text: 'John Smith - Accounting',       status: '*ENABLED',  group: 'GRPACCT',
+    // Supplemental groups never show in the primary group field, which is the
+    // point: GRPADMIN holds *ALLOBJ and JSMITH reaches it only this way.
+    supGroups: ['GRPADMIN'],
     specialAuth: [],
     lmtcpb: '*YES', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: false, pwdChg: '07/02/26', lastSignon: '07/06/26 09:30:44' },
+  // Group profiles (added for the Group Profile Review). GRPACCT is the tidy
+  // one, non-interactive. GRPADMIN holds *ALLOBJ and has a password, a group
+  // someone can sign on as. GRPDEV is a plain group with one member.
+  { name: 'GRPACCT',  text: 'Accounting group',              status: '*ENABLED',  group: '*NONE',
+    specialAuth: [],
+    lmtcpb: '*YES', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true,  pwdChg: '*NA',      lastSignon: '*NONE' },
+  { name: 'GRPADMIN', text: 'Application admins group',      status: '*ENABLED',  group: '*NONE',
+    specialAuth: ['*ALLOBJ'],
+    lmtcpb: '*NO',  pwdExpiry: '*NOMAX',  pwdDefault: false, pwdNone: false, pwdChg: '02/11/25', lastSignon: '*NONE' },
+  { name: 'GRPDEV',   text: 'Developers group',              status: '*ENABLED',  group: '*NONE',
+    specialAuth: ['*SAVSYS'],
+    lmtcpb: '*YES', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true,  pwdChg: '*NA',      lastSignon: '*NONE' },
+  { name: 'KLEE',     text: 'Kim Lee - Application support', status: '*ENABLED',  group: 'GRPADMIN',
+    specialAuth: [],
+    lmtcpb: '*YES', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: false, pwdChg: '06/30/26', lastSignon: '07/07/26 07:45:10' },
+  { name: 'RTAYLOR',  text: 'R Taylor - Developer',          status: '*ENABLED',  group: 'GRPDEV',
+    supGroups: ['GRPACCT'],
+    specialAuth: [],
+    lmtcpb: '*YES', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: false, pwdChg: '05/19/26', lastSignon: '07/06/26 10:12:03' },
   { name: 'QSYSOPR',  text: 'System operator',               status: '*ENABLED',  group: '*NONE',
     specialAuth: ['*JOBCTL','*SAVSYS'],
     lmtcpb: '*NO',  pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: false, pwdChg: '03/22/25', lastSignon: '07/06/26 06:00:00' },
@@ -913,6 +935,23 @@ const SQL_TABLES = {
       ['0.0.0.0', '137', ''], ['0.0.0.0', '138', ''], ['0.0.0.0', '139', 'LISTEN'], ['0.0.0.0', '445', 'LISTEN'],
       ['0.0.0.0', '2001', 'LISTEN'], ['0.0.0.0', '2010', 'LISTEN'],
     ],
+  },
+  // QSYS2.USER_INFO and QSYS2.GROUP_PROFILE_ENTRIES, narrowed to the columns
+  // the Group Profile Review reads, built live from USRPRFS so a CHGUSRPRF
+  // shows up in the next query. A blank cell stands in for NULL (a profile
+  // with no group). The real views have many more columns, and need the
+  // caller to be allowed to read them.
+  'QSYS2/USER_INFO': {
+    columns: ['AUTHORIZATION_NAME', 'STATUS', 'GROUP_PROFILE_NAME', 'SPECIAL_AUTHORITIES'],
+    get rows() {
+      return USRPRFS.map(p => [p.name, p.status, p.group === '*NONE' ? '' : p.group, p.specialAuth.join(' ')]);
+    },
+  },
+  'QSYS2/GROUP_PROFILE_ENTRIES': {
+    columns: ['GROUP_PROFILE_NAME', 'USER_PROFILE_NAME'],
+    get rows() {
+      return USRPRFS.flatMap(p => (p.supGroups || []).map(g => [g, p.name]));
+    },
   },
   // Short column aliases, not the real service's actual (much longer)
   // column names -- PTF_GROUP_LEVEL_INSTALLED and PTF_GROUP_LEVEL_AVAILABLE
@@ -2146,6 +2185,9 @@ const SQL_CMD_ROW = 5;
 // PTF_STATUS ("NOT INSTALLED") both run to 13 chars -- the client's
 // parseSqlResultTable() (as400sec-parse.js) must use the same width.
 const SQL_COL_WIDTH = 15;
+// Rows a STRSQL result screen shows before Roll Up. A knob so a short page can prove the
+// client really pages, MOCK_AS400_SQL_PAGE=3 turns every query into several pages.
+const SQL_PAGE = Math.max(1, parseInt(process.env.MOCK_AS400_SQL_PAGE || '10', 10));
 function runSql(stmt) {
   // SELECT <* | col, col> FROM lib.table [()] [WHERE col = n | IN (n, n) |
   // BETWEEN n AND m]. Trailing (...)? covers table FUNCTIONS like
@@ -2171,14 +2213,18 @@ function runSql(stmt) {
 
   let rows = table.rows;
   if (m[5]) {
-    const w = /^([A-Z0-9_]+)\s*(?:=\s*(\d+)|IN\s*\(([^)]*)\)|BETWEEN\s+(\d+)\s+AND\s+(\d+))$/i.exec(m[5].trim());
-    if (!w) return { error: 'SQL0104 - WHERE not understood by this mock (one of: col = n, col IN (n, n), col BETWEEN n AND m).' };
+    const w = /^([A-Z0-9_]+)\s*(?:=\s*(\d+)|IN\s*\(([^)]*)\)|BETWEEN\s+(\d+)\s+AND\s+(\d+)|LIKE\s+'([^']*)'|IS\s+(NOT\s+)?NULL)$/i.exec(m[5].trim());
+    if (!w) return { error: "SQL0104 - WHERE not understood by this mock (one of: col = n, col IN (n, n), col BETWEEN n AND m, col LIKE '%x%', col IS [NOT] NULL)." };
     const ci = table.columns.indexOf(w[1].toUpperCase());
     if (ci === -1) return { error: `SQL0206 - Column ${w[1].toUpperCase()} not in table ${key.replace('/', '.')}.` };
     let keep;
     if (w[2] !== undefined)      keep = v => Number(v) === Number(w[2]);
     else if (w[3] !== undefined) { const set = new Set(w[3].split(',').map(s => Number(s.trim()))); keep = v => set.has(Number(v)); }
-    else                         keep = v => Number(v) >= Number(w[4]) && Number(v) <= Number(w[5]);
+    else if (w[4] !== undefined) keep = v => Number(v) >= Number(w[4]) && Number(v) <= Number(w[5]);
+    else if (w[6] !== undefined) {
+      const re = new RegExp('^' + w[6].replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*') + '$', 'i');
+      keep = v => re.test(String(v));
+    } else                       keep = v => (String(v) === '') === !w[7];   // IS NULL keeps blanks, IS NOT NULL keeps the rest
     rows = rows.filter(r => keep(r[ci]));
   }
   return { cols: idxs.map(i => table.columns[i]), rows: rows.map(r => idxs.map(i => r[i])) };
@@ -2203,13 +2249,22 @@ function screenSql(ctx) {
     // which silently shifted every later column out of alignment -- the
     // .slice(0, SQL_COL_WIDTH) after padEnd is what actually enforces the
     // fixed width per field, not just the join()'s overall .slice(0, 76).
-    const cell = v => String(v).padEnd(SQL_COL_WIDTH, ' ').slice(0, SQL_COL_WIDTH);
+    // Each column is as wide as its name needs (a real STRSQL grid shows full
+    // names, GROUP_PROFILE_NAME is 18 characters), never below SQL_COL_WIDTH. If
+    // that overflows the 76-column grid, fall back to the fixed width, as before.
+    const widths = ctx.resultCols.map(c => Math.max(SQL_COL_WIDTH, c.length + 2));
+    const fit = widths.reduce((a, b) => a + b, 0) <= 76 ? widths : ctx.resultCols.map(() => SQL_COL_WIDTH);
+    const cell = (v, i) => String(v).padEnd(fit[i], ' ').slice(0, fit[i]);
     const header = ctx.resultCols.map(cell).join('').slice(0, 76);
     fields.push({ row: 9, col: 2, text: header, input: false });
-    ctx.resultRows.slice(0, 10).forEach((rvals, idx) => {
+    // Ten rows a screen, Roll Up/Down for the rest, and the same More... /
+    // Bottom marker the other lists use (the client scanner keys on it).
+    const page = ctx.resultPage || 0;
+    ctx.resultRows.slice(page * SQL_PAGE, (page + 1) * SQL_PAGE).forEach((rvals, idx) => {
       const line = rvals.map(cell).join('').slice(0, 76);
       fields.push({ row: 10 + idx, col: 2, text: line, input: false });
     });
+    fields.push({ row: 20, col: 60, text: (page + 1) * SQL_PAGE < ctx.resultRows.length ? 'More...' : 'Bottom', input: false });
   }
   fields.push({ row: 22, col: 2, text: 'F3=Exit', input: false });
   return wrapPanel(fields, { row: SQL_CMD_ROW, col: 7 });
@@ -2239,6 +2294,7 @@ function handleConnection(socket) {
   let dsplibPage = 0;      // DSPJOB → library list → Display Library object paging
   let navStack = [];       // back-navigation stack for the WRK/DSP security panels
   let sqlResult = null;    // last STRSQL result: { cols, rows } or null
+  let sqlPage = 0;         // which ten-row page of it is showing
   let rpgGen = null;       // running RPG program's generator (screen === 'RPG_RUN')
   let rpgYield = null;     // its last-yielded { fields, cursor, inputMap }
   let rpgPgmName = '';     // for the completion message once it ends
@@ -2466,7 +2522,7 @@ function handleConnection(socket) {
     } else if (screen === 'SNDMSG_COMPOSE') {
       ds = screenSndmsgCompose({ message: menuMessage });
     } else if (screen === 'SQL') {
-      ds = screenSql({ message: menuMessage, resultCols: sqlResult && sqlResult.cols, resultRows: sqlResult && sqlResult.rows });
+      ds = screenSql({ message: menuMessage, resultCols: sqlResult && sqlResult.cols, resultRows: sqlResult && sqlResult.rows, resultPage: sqlPage });
     } else if (screen === 'RPG_RUN') {
       ds = wrapPanel(rpgYield.fields, rpgYield.cursor);
     } else if (MENUS[screen]) {
@@ -2582,12 +2638,17 @@ function handleConnection(socket) {
       if (aid === AID_F3 || aid === AID_F12) {
         sqlResult = null;
         goBack();
+      } else if (aid === AID_PGDN || aid === AID_PGUP) {
+        if (sqlResult) {
+          const last = Math.max(0, Math.ceil(sqlResult.rows.length / SQL_PAGE) - 1);
+          sqlPage = aid === AID_PGDN ? Math.min(sqlPage + 1, last) : Math.max(sqlPage - 1, 0);
+        }
       } else {
         const stmt = [fieldAt(runs, SQL_CMD_ROW), fieldAt(runs, SQL_CMD_ROW + 1)].filter(Boolean).join(' ');
         if (stmt) {
           const res = runSql(stmt);
           if (res.error) { sqlResult = null; menuMessage = res.error; }
-          else { sqlResult = { cols: res.cols, rows: res.rows }; menuMessage = `${res.rows.length} rows selected.`; }
+          else { sqlResult = { cols: res.cols, rows: res.rows }; sqlPage = 0; menuMessage = `${res.rows.length} rows selected.`; }
         }
         // blank Enter just redraws the panel with whatever's already there
       }

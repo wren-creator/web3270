@@ -75,6 +75,7 @@ Platform key: **z/OS** (TSO/RACF/SDSF/DB2/CICS) · **IBM i** (AS/400) · **z/VM*
 | PTF/CVE Currency Checker | Runs `SYSTOOLS.CVE_INFO()` and `SYSTOOLS.GROUP_PTF_CURRENCY_LOCAL()` via STRSQL and classifies whatever rows come back against published CVSS bands and PTF-group level gaps. | Run from a menu. | Answers "is this box patched" from the partition's own live data, no hardcoded CVE list to go stale. |
 | Listening Services Inventory | Runs one narrow `QSYS2.NETSTAT_INFO` query per service group via STRSQL and rates what is listening: clear text Telnet, FTP, host servers, TFTP, SNMP, NFS, NetServer and the admin GUI against their TLS twins. Not listening is the pass for a clear service. Ratings are judgment, confirm columns and UDP rows on your release. |
 | Default Password Report | Runs `ANZDFTPWD ACTION(*NONE)` and rates every profile whose password equals its name: CRITICAL if it holds `*ALLOBJ` or `*SECADM`, else HIGH. Report only, nothing guessed, no lockout risk. For a client-assisted audit, the Default Credential Audit is the pentest version. |
+| Group Profile Review | Reads `QSYS2.GROUP_PROFILE_ENTRIES` and `QSYS2.USER_INFO` via STRSQL (all pages) and flags group profiles holding `*ALLOBJ` or `*SECADM`, and users who reach one only through a supplemental group, which the primary group field never shows. Stale empty groups are not found. |
 
 ## z/VM
 

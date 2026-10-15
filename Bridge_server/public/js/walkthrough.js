@@ -3097,6 +3097,50 @@ const _WALKTHROUGHS = [
     ],
   },
 
+  // ── IBM i (AS/400) Group Profile Review ───────────────────────────
+  {
+    id:       'as400-group-profile-review',
+    category: 'security',
+    title:    'IBM i: Group Profile Review',
+    desc:     'Reads QSYS2.GROUP_PROFILE_ENTRIES and QSYS2.USER_INFO via STRSQL to find privileged group profiles and users who reach one only through a supplemental group.',
+    steps: [
+      {
+        title: 'Why groups need their own review',
+        body:  'A user\'s primary group is one field on the profile, so every profile review sees it. Supplemental groups are not. A user can be in up to fifteen more groups, and the only place that list lives is QSYS2.GROUP_PROFILE_ENTRIES. So a person can look clean on a profile-by-profile review while belonging to a group that holds *ALLOBJ. This review reads both.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Prerequisites',
+        body:  'Connect to a TN5250 target, sign on, and stop at a menu with a "Selection or command" line. Interactive SQL (STRSQL) has to be available, it is a separately licensed feature on a real system, and you need authority to read the views. Column names were not run on a live IBM i, confirm them.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click 🔒 in the OIA status bar and enter the security password (default: 2970).',
+        highlight: 'secBtn', autoFn: null,
+      },
+      {
+        title: 'Run the review',
+        body:  'Click ▶ REVIEW GROUP PROFILES. The tool opens Interactive SQL and runs four reads: supplemental group entries, primary groups, and the holders of *ALLOBJ and *SECADM. Each result is read across every page, so a big shop is not cut off at ten rows. Then it compares them.',
+        highlight: 'as400GrprevBtn',
+        autoFn: 'startAs400GrpRevScan',
+        autoLabel: 'Run it for me',
+      },
+      {
+        title: 'Read the findings',
+        body:  'A group row: the group profile itself holds *ALLOBJ or *SECADM, HIGH, CRITICAL if it holds both, with its primary and supplemental members listed. A user row, "via supplemental": that user reaches a privileged group only through a supplemental membership, HIGH, and the row says which primary group they appear to have instead. An INFO "incomplete" row means a read failed or was cut short, so the absence of a finding is not proof. Whether a member picks up a group\'s special authority depends on your release, so confirm before reporting it as inherited. Stale empty groups are not found, a group with no members never shows in either read.',
+        highlight: 'as400GrprevOut', autoFn: null,
+      },
+      {
+        title: 'Export the audit',
+        body:  'Click ↓ Export IBM i Audit CSV to save the findings.',
+        highlight: 'as400GrprevOut',
+        autoFn: 'as400ExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
   // ── IBM i (AS/400) Default Password Report (ANZDFTPWD) ────────────
   {
     id:       'as400-default-password-report',

@@ -547,21 +547,30 @@ function _rowsToObjects(cols, rows) {
 // loose, since an off-by-one here shifts every chunk boundary.
 // Must match mock-as400.js's SQL_COL_WIDTH (15) -- that's the only place
 // the actual width lives; this default just mirrors it for the client side.
-export function parseSqlResultTable(lines, { headerRow = 9, colStart = 3, colWidth = 15 } = {}) {
+export function parseSqlResultTable(lines, { headerRow = 9, colStart = 3, colWidth } = {}) {
   const hLine = (lines[headerRow] || '').slice(colStart);
-  const cols = [];
-  for (let i = 0; i < hLine.length; i += colWidth) {
-    const c = hLine.slice(i, i + colWidth).trim();
-    if (!c) break; // first blank header chunk marks the end of real columns
-    cols.push(c);
+  // Column boundaries come from where each header name starts, not a fixed width:
+  // the mock sizes each column to its name (GROUP_PROFILE_NAME is 18 characters),
+  // and a real STRSQL grid lays names out the same way. Column names never contain
+  // a space, values can ("NOT INSTALLED"), so slicing by header start is safe.
+  // An explicit colWidth falls back to the old fixed-width reading.
+  let starts = [];
+  if (colWidth) {
+    for (let i = 0; i < hLine.length; i += colWidth) { if (!hLine.slice(i, i + colWidth).trim()) break; starts.push(i); }
+  } else {
+    const re = /\S+/g; let m;
+    while ((m = re.exec(hLine)) !== null) starts.push(m.index);
   }
+  const bound = i => (i + 1 < starts.length ? starts[i + 1] : undefined);
+  const cols = starts.map((s, i) => hLine.slice(s, bound(i)).trim());
   const rows = [];
   for (let r = headerRow + 1; r < lines.length; r++) {
     const line = lines[r] || '';
     if (line.includes('F3=Exit')) break;
     const raw = line.slice(colStart);
     if (!raw.trim()) continue;
-    rows.push(cols.map((_, i) => raw.slice(i * colWidth, i * colWidth + colWidth).trim()));
+    if (/^(More\.\.\.|Bottom)\s*$/.test(raw.trim()) || /^\s{40,}(More\.\.\.|Bottom)\s*$/.test(raw)) continue;
+    rows.push(starts.map((s, i) => raw.slice(s, bound(i)).trim()));
   }
   return { cols, rows };
 }
@@ -796,4 +805,75 @@ export function evaluateDftPwd({ name, status, special }) {
     `Password is the same as the profile name${priv ? `, and ${name} holds ${special}` : ''}.` +
     (disabled ? ' The profile is disabled, but anyone who can enable it gets in with a password everyone can guess.' : '') +
     ` Change it, or set PASSWORD(*NONE) on a service profile. Review this report before running ANZDFTPWD with an action that changes profiles.` };
+}
+
+
+// ── Group Profile Review (QSYS2.GROUP_PROFILE_ENTRIES + QSYS2.USER_INFO) ─────
+// Three things an auditor asks that a profile-by-profile scan cannot answer:
+// which group profiles are privileged, who is in them, and who reaches a
+// privileged group ONLY through a supplemental group (the primary group field,
+// the one everyone looks at, never shows it). Supplemental membership lives
+// only in GROUP_PROFILE_ENTRIES. Four reads, paged so none is capped at a
+// screen: supplemental entries, primary groups, and the holders of *ALLOBJ and
+// of *SECADM. Column names were not run on a live IBM i, confirm them.
+// Not covered: a group with no members never appears in either membership
+// read, so stale empty groups are not found here.
+export const GROUP_QUERIES = {
+  SUPP:    'SELECT GROUP_PROFILE_NAME, USER_PROFILE_NAME FROM QSYS2.GROUP_PROFILE_ENTRIES',
+  PRIMARY: 'SELECT AUTHORIZATION_NAME, GROUP_PROFILE_NAME FROM QSYS2.USER_INFO WHERE GROUP_PROFILE_NAME IS NOT NULL',
+  ALLOBJ:  "SELECT AUTHORIZATION_NAME, STATUS FROM QSYS2.USER_INFO WHERE SPECIAL_AUTHORITIES LIKE '%ALLOBJ%'",
+  SECADM:  "SELECT AUTHORIZATION_NAME, STATUS FROM QSYS2.USER_INFO WHERE SPECIAL_AUTHORITIES LIKE '%SECADM%'",
+};
+
+// table = { cols, rows } from the paged STRSQL read. Returns null when a needed column is
+// missing, the caller reports a failed query and never "no groups".
+function _pick(table, a, b) {
+  const ia = table.cols.indexOf(a), ib = table.cols.indexOf(b);
+  if (ia === -1 || ib === -1) return null;
+  return table.rows.map(r => [r[ia], r[ib]]).filter(([x, y]) => x && y && y !== '*NONE');
+}
+export const parseSuppGroups   = table => (_pick(table, 'GROUP_PROFILE_NAME', 'USER_PROFILE_NAME') || []).map(([g, u]) => ({ group: g, user: u }));
+export const parsePrimaryGroups = table => (_pick(table, 'AUTHORIZATION_NAME', 'GROUP_PROFILE_NAME') || []).map(([u, g]) => ({ user: u, group: g }));
+export const parseHolders      = table => (_pick(table, 'AUTHORIZATION_NAME', 'STATUS') || []).map(([n]) => n);
+export const groupTableOk = (table, a, b) => _pick(table, a, b) !== null;
+
+// supp/primary/allobj/secadm: the parsed lists. incomplete: names of reads that failed or were cut
+// short, so a "no privileged group" answer is never given on partial data.
+export function evaluateGroups({ supp, primary, allobj, secadm, incomplete = [] }) {
+  const out = [];
+  const holdsAll = new Set(allobj), holdsSec = new Set(secadm);
+  const priv = g => holdsAll.has(g) || holdsSec.has(g);
+  const groups = [...new Set([...supp.map(s => s.group), ...primary.map(p => p.group)])].sort();
+  const inGroup = g => ({
+    primary: primary.filter(p => p.group === g).map(p => p.user),
+    supp:    supp.filter(s => s.group === g).map(s => s.user),
+  });
+  const authsOf = g => [holdsAll.has(g) && '*ALLOBJ', holdsSec.has(g) && '*SECADM'].filter(Boolean).join(' ');
+
+  for (const g of groups.filter(priv)) {
+    const m = inGroup(g);
+    const both = holdsAll.has(g) && holdsSec.has(g);
+    out.push({ name: g, value: `${authsOf(g)} · ${m.primary.length + m.supp.length} member(s)`, risk: both ? 'CRITICAL' : 'HIGH',
+      detail: `Group profile holds ${authsOf(g)}. Primary members: ${m.primary.join(', ') || 'none'}. Supplemental members: ${m.supp.join(', ') || 'none'}. ` +
+        'A privileged group is a hub, every member is one membership away from it. It needs a business reason on file. How a member picks up a group\'s special authority depends on your release, confirm before reporting it as inherited.' });
+  }
+  // The finding a primary-group review misses: privileged only via a supplemental group.
+  const primaryOf = new Map(primary.map(p => [p.user, p.group]));
+  for (const s of supp.filter(x => priv(x.group))) {
+    const pg = primaryOf.get(s.user);
+    out.push({ name: s.user, value: `via supplemental ${s.group}`, risk: 'HIGH',
+      detail: `${s.user} reaches privileged group ${s.group} (${authsOf(s.group)}) as a supplemental group` +
+        (pg && !priv(pg) ? `, while the primary group shown is ${pg}, which is not privileged.` : '.') +
+        ' USER_INFO.GROUP_PROFILE_NAME does not show this, only GROUP_PROFILE_ENTRIES does, so a review of primary groups alone misses it.' });
+  }
+  for (const w of incomplete) {
+    out.push({ name: w, value: 'incomplete', risk: 'INFO', detail: `The ${w} read failed or was cut short, so the privileged-group findings above may be missing some. Re-run, or read it by hand.` });
+  }
+  const privCount = groups.filter(priv).length;
+  out.push({ name: '(group inventory)', value: `${groups.length} group(s), ${supp.length} supplemental`,
+    risk: privCount || incomplete.length ? 'INFO' : 'OK',
+    detail: privCount ? `${privCount} privileged group(s) above.`
+      : incomplete.length ? 'No privileged group found in what was read, but a read was incomplete.'
+      : 'No group profile holds *ALLOBJ or *SECADM.' });
+  return out;
 }

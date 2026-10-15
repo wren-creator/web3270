@@ -1317,6 +1317,15 @@
             <div id="as400DftpwdOut" style="max-height:220px;overflow-y:auto;margin-top:4px"></div>
           </div>
 
+          <!-- Group Profile Review -->
+          <div style="margin-top:10px;padding-top:8px;border-top:1px solid #1a1a1a">
+            <div style="font-size:10px;color:var(--text-muted);font-weight:600;letter-spacing:.06em;margin-bottom:4px">GROUP PROFILE REVIEW</div>
+            <div class="sec-panel-hint" style="margin-bottom:6px">Reads QSYS2.GROUP_PROFILE_ENTRIES (supplemental groups) and QSYS2.USER_INFO (primary groups, and who holds *ALLOBJ and *SECADM) via STRSQL. Flags group profiles that are themselves privileged, and users who reach one only through a supplemental group, which the primary group field never shows. Results are paged, nothing is capped at a screen. A group with no members does not appear in either read. Confirm column names on your release.</div>
+            <button id="as400GrprevBtn" class="sec-inject-btn" onclick="startAs400GrpRevScan()" style="background:#1a2a1a">▶ REVIEW GROUP PROFILES</button>
+            <div id="as400GrprevStatus" style="font-size:10px;color:var(--text-muted);margin-top:4px;min-height:14px"></div>
+            <div id="as400GrprevOut" style="max-height:220px;overflow-y:auto;margin-top:4px"></div>
+          </div>
+
           <!-- Object / *PUBLIC Authority Scanner -->
           <div style="margin-top:10px;padding-top:8px;border-top:1px solid #1a1a1a">
             <div style="font-size:10px;color:var(--text-muted);font-weight:600;letter-spacing:.06em;margin-bottom:4px">OBJECT / *PUBLIC AUTHORITY SCANNER</div>

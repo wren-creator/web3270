@@ -34,6 +34,7 @@ import {
   parseCallStack, evaluateAdoptedAuthority, parseDftPwd, evaluateDftPwd,
   parseSqlResultTable, parseCveInfo, evaluateCveRow, parsePtfCurrency, evaluatePtfGroupRow,
   SERVICE_GROUPS, svcStatement, splitSqlStatement, parseNetstatRows, evaluateServiceGroup,
+  GROUP_QUERIES, parseSuppGroups, parsePrimaryGroups, parseHolders, groupTableOk, evaluateGroups,
 } from './as400sec-parse.js';
 
 // ── Screen / transport helpers ─────────────────────────────────────────────
@@ -235,12 +236,13 @@ const TOOLS = {
   BYPASS: { ids: 'Bypass' },
   PTFCVE: { ids: 'Ptfcve' },
   SVCINV: { ids: 'Svcinv' },
+  GRPREV: { ids: 'Grprev' },
 };
 
 // Persisted results per tool (so all tables/CSV survive across scans).
 const RESULTS = {
   USRPRF: [], SHIPPRF: [], SYSVAL: [], OBJ: [], NETATTR: [], JOBD: [], AUTL: [], ACTJOB: [],
-  REGINF: [], NETSVR: [], DFTPWD: [], IFS: [], PGMSTK: [], BYPASS: [], PTFCVE: [], SVCINV: [],
+  REGINF: [], NETSVR: [], DFTPWD: [], IFS: [], PGMSTK: [], BYPASS: [], PTFCVE: [], SVCINV: [], GRPREV: [],
 };
 
 // ── State machine ───────────────────────────────────────────────────────────
@@ -370,6 +372,7 @@ const COLS = {
   BYPASS:  ['SCREEN', 'COMMAND TESTED'],
   PTFCVE:  ['CVE / PTF GROUP', 'CVSS / LEVEL'],
   SVCINV:  ['PORT / SERVICE', 'STATE / BIND'],
+  GRPREV:  ['GROUP / USER', 'AUTHORITY / VIA'],
 };
 
 function _render(tool) {
@@ -519,30 +522,29 @@ function _bypassFinish() {
 // machine guards against, see this file's header), and checking content rather
 // than reacting to "a screen arrived" at all is the more robust way to skip it.
 //
-// Each query is { key, stmt, fresh(lines, isError), collect(lines, info) }:
+// Each query is { key, stmt, fresh(lines, isError), collect(table, info, ctx), onError(ctx) }:
 //   fresh   → true once the screen is this query's real result, not an echo or
 //             the previous query's leftover grid
-//   collect → result rows [{ name, value, risk, detail }]; info = { selected }
-//             is the host's "N rows selected." count, so a truncated grid shows
+//   collect → result rows [{ name, value, risk, detail }]. table = { cols, rows }
+//             is the WHOLE result, merged across every page (the runner Rolls Up
+//             while the grid says "More..."), info = { selected, truncated } where
+//             selected is the host's "N rows selected." count and truncated means
+//             fewer rows were read than selected. ctx is shared across the run.
+// A tool can also give finalize(ctx), run once after the last query, for findings
+// that need more than one query's rows (the Group Profile Review).
 const PTFCVE_QUERIES = [
   { key: 'CVE', stmt: 'SELECT * FROM SYSTOOLS.CVE_INFO()',
     fresh: (lines, isError) => isError || parseSqlResultTable(lines).cols.includes('CVE_ID'),
-    collect: lines => {
-      const { cols, rows } = parseSqlResultTable(lines);
-      return parseCveInfo(cols, rows).map(row => {
-        const { risk, detail } = evaluateCveRow(row);
-        return { name: row.CVE_ID, value: `CVSS ${row.CVSS_SCORE ?? '?'}`, risk, detail };
-      });
-    } },
+    collect: table => parseCveInfo(table.cols, table.rows).map(row => {
+      const { risk, detail } = evaluateCveRow(row);
+      return { name: row.CVE_ID, value: `CVSS ${row.CVSS_SCORE ?? '?'}`, risk, detail };
+    }) },
   { key: 'PTF', stmt: 'SELECT * FROM SYSTOOLS.GROUP_PTF_CURRENCY_LOCAL()',
     fresh: (lines, isError) => isError || parseSqlResultTable(lines).cols.includes('PTF_GROUP'),
-    collect: lines => {
-      const { cols, rows } = parseSqlResultTable(lines);
-      return parsePtfCurrency(cols, rows).map(row => {
-        const { risk, detail } = evaluatePtfGroupRow(row);
-        return { name: row.PTF_GROUP, value: `level ${row.LVL_INST ?? '?'}`, risk, detail };
-      });
-    } },
+    collect: table => parsePtfCurrency(table.cols, table.rows).map(row => {
+      const { risk, detail } = evaluatePtfGroupRow(row);
+      return { name: row.PTF_GROUP, value: `level ${row.LVL_INST ?? '?'}`, risk, detail };
+    }) },
 ];
 
 // Every group's grid has the same three columns, so the column check the PTF
@@ -554,13 +556,29 @@ const _sqlInputBlank = lines => !((lines[5] || '').slice(7).trim()) && !((lines[
 const SVCINV_QUERIES = SERVICE_GROUPS.map(g => ({
   key: g.key, stmt: svcStatement(g),
   fresh: _sqlInputBlank,
-  collect: (lines, info) => {
-    const { cols, rows } = parseSqlResultTable(lines);
-    const parsed = parseNetstatRows(cols, rows);
+  collect: (table, info) => {
+    const parsed = parseNetstatRows(table.cols, table.rows);
     if (!parsed) return [{ name: g.key, value: '—', risk: 'INFO', detail: 'query returned no LOCAL_PORT column, skipped' }];
-    return evaluateServiceGroup(g, parsed, { truncated: info.selected > rows.length });
+    return evaluateServiceGroup(g, parsed, { truncated: info.truncated });
   },
 }));
+
+// Group Profile Review: four reads that only store their rows, finalize() judges them together.
+const _grpQuery = (key, label, cols, store) => ({
+  key, stmt: GROUP_QUERIES[key], fresh: _sqlInputBlank,
+  onError: ctx => ctx.incomplete.push(label),
+  collect: (table, info, ctx) => {
+    if (!groupTableOk(table, cols[0], cols[1]) || info.truncated) ctx.incomplete.push(label);
+    ctx[store] = store === 'supp' ? parseSuppGroups(table) : store === 'primary' ? parsePrimaryGroups(table) : parseHolders(table);
+    return [];
+  },
+});
+const GRPREV_QUERIES = [
+  _grpQuery('SUPP',    'supplemental groups',   ['GROUP_PROFILE_NAME', 'USER_PROFILE_NAME'], 'supp'),
+  _grpQuery('PRIMARY', 'primary groups',        ['AUTHORIZATION_NAME', 'GROUP_PROFILE_NAME'], 'primary'),
+  _grpQuery('ALLOBJ',  '*ALLOBJ holders',       ['AUTHORIZATION_NAME', 'STATUS'], 'allobj'),
+  _grpQuery('SECADM',  '*SECADM holders',       ['AUTHORIZATION_NAME', 'STATUS'], 'secadm'),
+];
 
 const SQL_TOOLS = {
   PTFCVE: {
@@ -577,9 +595,18 @@ const SQL_TOOLS = {
       return { text: `Done — ${bad}/${RESULTS.SVCINV.length} service(s) need attention.`, bad };
     },
   },
+  GRPREV: {
+    queries: GRPREV_QUERIES, btn: 'as400GrprevBtn',
+    finalize: ctx => evaluateGroups({ supp: ctx.supp || [], primary: ctx.primary || [], allobj: ctx.allobj || [],
+      secadm: ctx.secadm || [], incomplete: ctx.incomplete }),
+    done: () => {
+      const bad = RESULTS.GRPREV.filter(r => r.risk === 'CRITICAL' || r.risk === 'HIGH').length;
+      return { text: `Done — ${bad} privileged group finding(s).`, bad };
+    },
+  },
 };
 
-let sqlrun = { running: false, tool: null, idx: 0, stage: null };
+let sqlrun = { running: false, tool: null, idx: 0, stage: null, tables: [], selected: 0, lastText: '', ctx: null };
 
 // Type a statement into STRSQL, wrapping onto the continuation line when it is
 // longer than one input line (as a real STRSQL statement area does).
@@ -598,11 +625,38 @@ function _fillSqlStatement(stmt) {
 function _sqlStep() {
   const T = SQL_TOOLS[sqlrun.tool];
   const q = T.queries[sqlrun.idx];
-  if (!q) { _sqlFinish(); return; }
+  if (!q) { _sqlEnd(); return; }
   _status(sqlrun.tool, `[${sqlrun.idx + 1}/${T.queries.length}] Running ${q.stmt}…`);
   sqlrun.stage = 'RESULT';
+  sqlrun.tables = [];
   _fillSqlStatement(q.stmt);
   _pressEnter();
+}
+
+// One query is finished: hand the merged table to its collector, then move on.
+function _sqlQueryDone() {
+  const tool = sqlrun.tool;
+  const T = SQL_TOOLS[tool];
+  const q = T.queries[sqlrun.idx];
+  const rows = sqlrun.tables.flatMap(t => t.rows);
+  const table = { cols: sqlrun.tables[0].cols, rows };
+  const info = { selected: sqlrun.selected, truncated: sqlrun.selected > rows.length };
+  RESULTS[tool].push(...q.collect(table, info, sqlrun.ctx));
+  _render(tool);
+  _sqlAdvance();
+}
+
+function _sqlAdvance() {
+  sqlrun.idx++;
+  if (sqlrun.idx < SQL_TOOLS[sqlrun.tool].queries.length) _sqlStep();
+  else _sqlEnd();
+}
+
+function _sqlEnd() {
+  const T = SQL_TOOLS[sqlrun.tool];
+  if (T.finalize) { RESULTS[sqlrun.tool].push(...T.finalize(sqlrun.ctx)); _render(sqlrun.tool); }
+  sqlrun.stage = 'BACK';
+  _pressF3();
 }
 
 function _sqlOnScreen(msg) {
@@ -615,9 +669,7 @@ function _sqlOnScreen(msg) {
 
   if (sqlrun.stage === 'NAV') {
     if (!text.includes('Interactive SQL')) return; // still the menu echo, keep waiting
-    sqlrun.stage = 'RESULT';
-    _fillSqlStatement(q.stmt);
-    _pressEnter();
+    _sqlStep();
     return;
   }
 
@@ -637,17 +689,27 @@ function _sqlOnScreen(msg) {
 
     if (sqlError) {
       RESULTS[tool].push({ name: q.key, value: '—', risk: 'INFO', detail: `query failed: ${sqlError[0]} — skipped` });
-    } else {
-      RESULTS[tool].push(...q.collect(lines, { selected: parseInt(rowsSelected[1], 10) }));
+      if (q.onError) q.onError(sqlrun.ctx);
+      _render(tool);
+      _sqlAdvance();
+      return;
     }
-    _render(tool);
-    sqlrun.idx++;
-    if (sqlrun.idx < T.queries.length) {
-      _sqlStep();
-    } else {
-      sqlrun.stage = 'BACK';
-      _pressF3();
-    }
+    sqlrun.selected = parseInt(rowsSelected[1], 10);
+    sqlrun.tables.push(parseSqlResultTable(lines));
+    sqlrun.lastText = text;
+    // A result longer than a screen says "More...": Roll Up for the rest, so no
+    // query is capped at ten rows. Bounded, and a short read shows as truncated.
+    if (text.includes('More...') && sqlrun.tables.length < 60) { sqlrun.stage = 'PAGE'; _pressPgDn(); return; }
+    _sqlQueryDone();
+    return;
+  }
+
+  if (sqlrun.stage === 'PAGE') {
+    if (text === sqlrun.lastText) return; // the key has not repainted the grid yet
+    sqlrun.tables.push(parseSqlResultTable(lines));
+    sqlrun.lastText = text;
+    if (text.includes('More...') && sqlrun.tables.length < 60) { _pressPgDn(); return; }
+    _sqlQueryDone();
     return;
   }
 
@@ -674,7 +736,7 @@ function _startSqlTool(tool) {
   }
   RESULTS[tool] = [];
   _render(tool);
-  sqlrun = { running: true, tool, idx: 0, stage: 'NAV' };
+  sqlrun = { running: true, tool, idx: 0, stage: 'NAV', tables: [], selected: 0, lastText: '', ctx: { incomplete: [] } };
   const btn = document.getElementById(SQL_TOOLS[tool].btn);
   if (btn) btn.disabled = true;
   _status(tool, 'Issuing STRSQL…');
@@ -684,6 +746,7 @@ function _startSqlTool(tool) {
 
 export function startAs400PtfCveScan() { _startSqlTool('PTFCVE'); }
 export function startAs400SvcInvScan() { _startSqlTool('SVCINV'); }
+export function startAs400GrpRevScan() { _startSqlTool('GRPREV'); }
 
 export function startAs400BypassProbe() {
   if (bypass.running) return;
@@ -733,6 +796,7 @@ function _buildAs400Rows() {
   add('BYPASS',  'menu-bypass-probe');
   add('PTFCVE',  'ptf-cve-currency-checker');
   add('SVCINV',  'listening-services-inventory');
+  add('GRPREV',  'group-profile-review');
   // Pre sign-on tool: its results live in probe.js, not RESULTS.
   credAuditFindings().forEach(r => rows.push(['default-credential-audit', r.name, r.value, r.risk, r.detail, ts]));
   return { rows, ts };
@@ -755,5 +819,5 @@ Object.assign(window, {
   startAs400UserScan, startAs400ShippedAudit, startAs400SysvalScan, startAs400ObjScan,
   startAs400NetattrScan, startAs400JobdScan, startAs400AutlScan, startAs400ActjobScan,
   startAs400ReginfScan, startAs400NetsvrScan, startAs400DftpwdScan, startAs400IfsScan,
-  startAs400PgmstkScan, startAs400BypassProbe, startAs400PtfCveScan, startAs400SvcInvScan,
+  startAs400PgmstkScan, startAs400BypassProbe, startAs400PtfCveScan, startAs400SvcInvScan, startAs400GrpRevScan,
 });

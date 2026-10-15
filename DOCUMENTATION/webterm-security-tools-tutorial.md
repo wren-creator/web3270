@@ -54,6 +54,7 @@ The app ships **74 built-in narrated walkthroughs** (`public/js/walkthrough.js`)
 | — | | 41 | IBM i Default Credential Audit |
 | — | | 42 | IBM i Listening Services Inventory |
 | — | | 43 | IBM i Default Password Report (ANZDFTPWD) |
+| — | | 44 | IBM i Group Profile Review |
 
 Appendices — Structured JSON findings export, the `.rec.json` format.
 
@@ -2803,6 +2804,49 @@ A disabled profile still counts: anyone who can enable it gets in with a passwor
 ### Teaching scenario
 
 On the mock, four profiles have a default password (`QSECOFR`, `QSRV`, `QSRVBAS` and the planted `QYSPJ`), all privileged, so all CRITICAL. Run `CHGUSRPRF USRPRF(name) PASSWORD(*NONE)` on each, re-run, and the report comes back clean.
+
+---
+
+## Part 44 — IBM i (AS/400) Group Profile Review
+
+A profile-by-profile review sees each user's primary group, one field on the profile. It cannot see supplemental groups, and a user can belong to up to fifteen more. So a person can look clean while belonging to a group that holds `*ALLOBJ`. This review reads both.
+
+### Location
+
+Security panel → IBM i SECURITY (AS/400) → GROUP PROFILE REVIEW
+
+### How it works
+
+Four reads through STRSQL, then one comparison:
+
+| Read | Statement | Gives |
+|---|---|---|
+| supplemental | `SELECT GROUP_PROFILE_NAME, USER_PROFILE_NAME FROM QSYS2.GROUP_PROFILE_ENTRIES` | the only place supplemental membership lives |
+| primary | `SELECT AUTHORIZATION_NAME, GROUP_PROFILE_NAME FROM QSYS2.USER_INFO WHERE GROUP_PROFILE_NAME IS NOT NULL` | each user's primary group |
+| `*ALLOBJ` | `SELECT AUTHORIZATION_NAME, STATUS FROM QSYS2.USER_INFO WHERE SPECIAL_AUTHORITIES LIKE '%ALLOBJ%'` | who holds it |
+| `*SECADM` | same, for `%SECADM%` | who holds it |
+
+Every result is read across all its pages (the reader Rolls Up while the grid says `More...`), so nothing is capped at one screen. A group is privileged if it holds `*ALLOBJ` or `*SECADM`. The groups come from the two membership reads, so a group with no members never appears and stale empty groups are not found.
+
+### Risk levels
+
+| Rating | Meaning |
+|---|---|
+| CRITICAL | a group profile holding both `*ALLOBJ` and `*SECADM` |
+| HIGH | a group profile holding `*ALLOBJ` or `*SECADM`, with its primary and supplemental members named |
+| HIGH | a user who reaches a privileged group **only** through a supplemental group. The row says which, and which primary group they appear to have instead |
+| INFO | a read failed or was cut short. The review never reports a clean OK on partial data |
+| OK | no group profile holds `*ALLOBJ` or `*SECADM`, and every read completed |
+
+Whether a member actually picks up a group's special authority depends on your release, so the findings say to confirm before calling it inherited privilege.
+
+### Teaching scenario
+
+On the mock, `GRPADMIN` holds `*ALLOBJ` and has a password, with `KLEE` as a primary member. `JSMITH`'s primary group is `GRPACCT`, which is harmless, and a profile review stops there. The supplemental read shows `JSMITH` is also in `GRPADMIN`. Two HIGH findings, and the second is the one a primary-group review misses.
+
+### Where the mock stops
+
+Column names and view names were not run on a live IBM i, confirm them. `STRSQL` is a separately licensed feature on a real system, and reading `QSYS2.USER_INFO` needs authority. Real `STRSQL` result paging may differ from the mock's, which uses the same More/Bottom marker as the other lists. A column header wider than 15 characters is handled by reading column positions from the header line, not a fixed width.
 
 ---
 

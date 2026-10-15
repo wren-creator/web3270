@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import {
   evaluateShippedProfile, evaluateSysval, parseSysvals, evaluateExitPoint,
   parseDftPwd, evaluateDftPwd,
+  GROUP_QUERIES, parseSuppGroups, parsePrimaryGroups, parseHolders, groupTableOk, evaluateGroups,
   SERVICE_GROUPS, svcStatement, splitSqlStatement, parseNetstatRows, evaluateServiceGroup,
   parseSqlResultTable, parseCveInfo, evaluateCveRow, parsePtfCurrency, evaluatePtfGroupRow,
 } from './as400sec-parse.js';
@@ -352,4 +353,65 @@ test('evaluateDftPwd: privileged is CRITICAL, anyone else HIGH, disabled still c
   const d = evaluateDftPwd({ name: 'QSRV', status: '*DISABLED', special: '*ALLOBJ / *SECADM' });
   assert.equal(d.risk, 'CRITICAL'); assert.ok(d.finding.includes('disabled'));
   assert.ok(!evaluateDftPwd({ name: 'X', status: '*ENABLED', special: '' }).finding.includes('holds'));
+});
+
+const _tbl = (cols, rows) => ({ cols, rows });
+
+test('GROUP_QUERIES: real views, and every statement fits two 70 character lines', () => {
+  for (const [k, s] of Object.entries(GROUP_QUERIES)) {
+    const parts = splitSqlStatement(s);
+    assert.ok(parts.length <= 2 && parts.every(p => p.length <= 70), `${k}: ${parts.map(p => p.length)}`);
+  }
+  assert.ok(GROUP_QUERIES.SUPP.includes('QSYS2.GROUP_PROFILE_ENTRIES'));
+});
+
+test('group parsers: read by column name, drop blanks and *NONE, null-safe when a column is missing', () => {
+  assert.deepEqual(parseSuppGroups(_tbl(['GROUP_PROFILE_NAME', 'USER_PROFILE_NAME'], [['GRPADMIN', 'JSMITH'], ['', 'X'], ['G', '']])),
+    [{ group: 'GRPADMIN', user: 'JSMITH' }]);
+  assert.deepEqual(parsePrimaryGroups(_tbl(['AUTHORIZATION_NAME', 'GROUP_PROFILE_NAME'], [['KLEE', 'GRPADMIN'], ['A', '*NONE']])),
+    [{ user: 'KLEE', group: 'GRPADMIN' }]);
+  assert.deepEqual(parseHolders(_tbl(['AUTHORIZATION_NAME', 'STATUS'], [['QSECOFR', '*ENABLED']])), ['QSECOFR']);
+  assert.equal(groupTableOk(_tbl(['FOO'], []), 'AUTHORIZATION_NAME', 'STATUS'), false);
+  assert.deepEqual(parseSuppGroups(_tbl(['FOO'], [['1']])), []);
+});
+
+const _evg = (o = {}) => evaluateGroups({ supp: [], primary: [], allobj: [], secadm: [], incomplete: [], ...o });
+
+test('evaluateGroups: a privileged group is HIGH, both *ALLOBJ and *SECADM is CRITICAL, members are named', () => {
+  const r = _evg({ primary: [{ user: 'KLEE', group: 'GRPADMIN' }], supp: [{ group: 'GRPADMIN', user: 'JSMITH' }], allobj: ['GRPADMIN'] });
+  const g = r.find(x => x.name === 'GRPADMIN');
+  assert.equal(g.risk, 'HIGH'); assert.ok(g.detail.includes('KLEE') && g.detail.includes('JSMITH'));
+  const c = _evg({ primary: [{ user: 'K', group: 'G' }], allobj: ['G'], secadm: ['G'] });
+  assert.equal(c.find(x => x.name === 'G').risk, 'CRITICAL');
+});
+
+test('evaluateGroups: reaching a privileged group only by supplemental membership is its own HIGH finding', () => {
+  const r = _evg({ primary: [{ user: 'JSMITH', group: 'GRPACCT' }], supp: [{ group: 'GRPADMIN', user: 'JSMITH' }], allobj: ['GRPADMIN'] });
+  const u = r.find(x => x.name === 'JSMITH');
+  assert.equal(u.risk, 'HIGH'); assert.equal(u.value, 'via supplemental GRPADMIN');
+  assert.ok(u.detail.includes('GRPACCT') && u.detail.includes('primary groups alone misses it'));
+});
+
+test('evaluateGroups: an unprivileged group is not a finding, and a clean review says so', () => {
+  const r = _evg({ primary: [{ user: 'A', group: 'GRPACCT' }], supp: [{ group: 'GRPACCT', user: 'B' }], allobj: ['QSECOFR'] });
+  assert.equal(r.length, 1);
+  assert.equal(r[0].risk, 'OK'); assert.ok(r[0].detail.includes('No group profile holds'));
+});
+
+test('evaluateGroups: an incomplete read never produces a clean OK', () => {
+  const r = _evg({ primary: [{ user: 'A', group: 'G' }], incomplete: ['*ALLOBJ holders'] });
+  assert.ok(r.some(x => x.name === '*ALLOBJ holders' && x.risk === 'INFO'));
+  assert.equal(r.find(x => x.name === '(group inventory)').risk, 'INFO');
+});
+
+test('parseSqlResultTable: columns wider than 15 are found from the header, and More.../Bottom is not a row', () => {
+  const lines = new Array(24).fill('');
+  lines[9]  = '   ' + 'GROUP_PROFILE_NAME'.padEnd(20) + 'USER_PROFILE_NAME'.padEnd(19);
+  lines[10] = '   ' + 'GRPADMIN'.padEnd(20) + 'JSMITH'.padEnd(19);
+  lines[11] = '   ' + 'GRPACCT'.padEnd(20) + 'RTAYLOR'.padEnd(19);
+  lines[20] = ' '.repeat(63) + 'More...';
+  const { cols, rows } = parseSqlResultTable(lines);
+  assert.deepEqual(cols, ['GROUP_PROFILE_NAME', 'USER_PROFILE_NAME']);
+  assert.deepEqual(rows, [['GRPADMIN', 'JSMITH'], ['GRPACCT', 'RTAYLOR']]);
+  assert.deepEqual(parseSqlResultTable(lines, { colWidth: 20 }).cols.length, 2);
 });
