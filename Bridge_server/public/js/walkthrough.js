@@ -1773,6 +1773,101 @@ const _WALKTHROUGHS = [
     ],
   },
 
+  // ── IBM i (AS/400) HTTP Admin GUI Audit ─────────────────────────────
+  {
+    id:       'as400-http-admin-audit',
+    category: 'security',
+    title:    'IBM i: HTTP Admin GUI Audit',
+    desc:     'A read-only check of the IBM i HTTP Server Administration GUI (ports 2001 and 2010): is it reachable, does it take sign-in in clear text, what TLS and certificate does it present, and, with one profile, is the CVE-2026-96119 fix installed.',
+    steps: [
+      {
+        title: 'Why the admin console gets its own check',
+        body:  'The HTTP Server Administration GUI (the ADMIN instance, behind IBM Navigator for i) can create web servers and change how the system serves them. It belongs on an admin workstation or a VPN, not on every network that can route to the box. This audit asks whether it is reachable from where you are standing, and what it tells a stranger.',
+        highlight: 'httpAdminAuditOut', autoFn: null,
+      },
+      {
+        title: 'Prerequisites and scope',
+        body:  'This is a network check against a host you name, not tied to an open terminal session. It is gated by the RoE Scope Guard, so with a scope.json in place the host must be listed. It sends GETs only, submits no form, and never touches the Create HTTP Server page. Nothing here exploits anything.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Pick a target',
+        body:  'Type the host or IP. The ports default to 2001 (clear text) and 2010 (TLS). Leave the profile and password empty for the no-credential checks. Give one profile and password only if you also want the OS release and fix status read from the About page. The password is sent once for that request and is never kept, shown or exported.',
+        highlight: 'httpAdminAuditHost', autoFn: null,
+      },
+      {
+        title: 'Run the audit',
+        body:  'Click ▶ RUN AUDIT. It asks both ports at once, then reads what an unauthenticated request reveals (the Server header). With a profile it makes one more GET for the About page.',
+        highlight: 'httpAdminAuditBtn', autoFn: null,
+      },
+      {
+        title: 'Read the verdict',
+        body:  'FINDING means something needs attention: the console answers on clear text port 2001 (so Basic auth would cross the wire in the clear), the TLS port negotiated TLS 1.0 or 1.1, the certificate is expired or too small, the console is reachable at all from this network, or the CVE-2026-96119 fix is not installed. A self-signed certificate is INFO, not a finding. INCONCLUSIVE means neither port answered, which is not the same as secure. SECURE means nothing was found.',
+        highlight: 'httpAdminAuditOut', autoFn: null,
+      },
+      {
+        title: 'The part to confirm on the box',
+        body:  'The mock models the CVE-2026-96119 weakness class and the PTF numbers in the finding text are the ones to check against IBM\'s bulletin for your release. The About page layout was modelled, not run on a live IBM i, so confirm what it reports. A console you cannot reach from here may still be reachable from somewhere else, so run it from each network that matters.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Export',
+        body:  'Click ↓ Export CSV (or JSON) for a record of the host, verdict, severity and finding text.',
+        highlight: 'httpAdminAuditOut', autoFn: null,
+      },
+    ],
+  },
+
+  // ── IBM i (AS/400) FTP Service Audit ────────────────────────────────
+  {
+    id:       'as400-ftp-service-audit',
+    category: 'security',
+    title:    'IBM i: FTP Service Audit',
+    desc:     'A read-only check of the IBM i FTP server (ports 21 and 990): banner and pre-login leaks, clear text sign-on, TLS and certificate, anonymous sign-on, optionally default profiles, and what one profile can browse.',
+    steps: [
+      {
+        title: 'Why FTP is worth its own check',
+        body:  'FTP is the old front door on IBM i, and it is a wide one. A signed-on session can browse the IFS and the libraries, and without an exit program on the FTP server exit points it can do far more. The Exit Point audit asks whether a program is registered, and the Listening Services Inventory asks whether the port is open. This asks what the server itself says and allows to someone who walks up to it.',
+        highlight: 'ftpAuditOut', autoFn: null,
+      },
+      {
+        title: 'Prerequisites and scope',
+        body:  'This is a network check against a host you name, not tied to an open terminal session, and it is gated by the RoE Scope Guard. It can only send read-only commands, from a fixed list, so STOR, DELE, MKD and RCMD cannot be sent. The default ports are 21 and 990. The mock listens on 2121 and 2990, because a container user cannot bind below 1024.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Pick a target',
+        body:  'Type the host or IP and check the two ports. Leave the profile and password empty for the no-credential checks. Give one profile and password to also see what that profile can reach. The password is sent once and never kept, shown or exported, and it is not sent in clear text unless you tick the clear text box.',
+        highlight: 'ftpAuditHost', autoFn: null,
+      },
+      {
+        title: 'The opt-in default profile check',
+        body:  'Ticking "also try default profiles" is the one intrusive part, so it is off by default and needs the activity ftp-login-probe named in scope.json. It makes at most 2 tries per profile, a second apart, and stops on the first success. Every failed FTP sign-on counts toward QMAXSIGN, and a profile that reaches it is disabled, so the cap exists to keep an audit from locking out a real person. Leave it unticked unless the engagement allows it.',
+        highlight: 'ftpAuditDefaults', autoFn: null,
+      },
+      {
+        title: 'Run the audit',
+        body:  'Click ▶ RUN AUDIT. It reads the banner, tries SYST and FEAT before any sign-on, sends USER only (never PASS) to see whether clear text sign-on is accepted, negotiates TLS on the plain port and on 990, and tries anonymous and ftp once each. With a profile it then reads SYST, HELP, and lists the IFS root and /QSYS.LIB.',
+        highlight: 'ftpAuditBtn', autoFn: null,
+      },
+      {
+        title: 'Read the findings',
+        body:  'CRITICAL means anonymous sign-on works or a default profile signed on. FINDING covers clear text sign-on accepted (unconfirmed, the server may still refuse at the password step), no TLS at all, SYST or the banner leaking the release before login, TLS 1.0 or 1.1, a bad certificate, RCMD advertised in HELP (it is noticed, never run), and a profile that can browse the IFS and libraries. INFO is a fact, or something that could not be read, which is never a pass. INCONCLUSIVE means nothing answered.',
+        highlight: 'ftpAuditOut', autoFn: null,
+      },
+      {
+        title: 'The part to confirm on the box',
+        body:  'The replies were modelled from IBM\'s documentation and were not run on a live IBM i. Confirm the real banner, whether SYST is refused before login, what USER answers for an unknown profile, the SYST text after login, whether HELP lists RCMD, and how NAMEFMT 1 lists /QSYS.LIB. Whether an exit program is registered is the Exit Point audit\'s question, this tool shows what an ordinary profile can reach without one.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Export',
+        body:  'Click ↓ Export CSV (or JSON) for a record of the host, verdict, severity and finding text.',
+        highlight: 'ftpAuditOut', autoFn: null,
+      },
+    ],
+  },
+
   // ── Wave 14: SDSF Job Scanner ─────────────────────────────────────
   {
     id:       'sdsf-job-scanner',
