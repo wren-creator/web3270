@@ -191,7 +191,7 @@ test('parseSysvals: keeps the whole value cell in .full, first token in .value',
   assert.equal(row.value, '*AUDLVL'); assert.equal(row.full, '*AUDLVL *OBJAUD');
 });
 
-test('evaluateSysval: the 18 workbook values flag their weak setting and pass the hardened one', () => {
+test('evaluateSysval: the 18 added values flag their weak setting and pass the hardened one', () => {
   const cases = [
     ['QPWDLMTREP', '0', 'MEDIUM', '2'],
     ['QPWDVLDPGM', '*NONE', 'LOW', 'MYPWDPGM'],
@@ -230,7 +230,7 @@ test('evaluateSysval: QAUDLVL lists exactly what is missing, reads the whole cel
   assert.equal(evaluateSysval('QAUDLVL', '*AUTFAIL', all).risk, 'OK');
 });
 
-test('evaluateExitPoint: the 8 workbook exit points rate by name, registered ones are OK', () => {
+test('evaluateExitPoint: the 8 added exit points rate by name, registered ones are OK', () => {
   const want = { QIBM_QZRC_RMT: 'CRITICAL', QIBM_QZDA_NDB1: 'HIGH', QIBM_QZDA_ROI1: 'MEDIUM', QIBM_QZSO_SIGNON: 'MEDIUM',
     QIBM_QTMF_SVR_LOGON: 'HIGH', QIBM_QSY_VLD_PASSWRD: 'LOW', QIBM_QTG_DEVINIT: 'MEDIUM', QIBM_QZHQ_DATA_QUEUE: 'MEDIUM' };
   for (const [n, risk] of Object.entries(want)) {

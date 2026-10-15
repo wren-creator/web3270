@@ -86,7 +86,7 @@ const SYSVAL_RULES = {
                     `QAUDCTL is missing ${missing.join(' and ')}. Use *AUDLVL *OBJAUD *NOQTEMP: without *OBJAUD, object auditing set on other objects logs nothing.` } : null;
                 } },
   QDSPSGNINF: { risk: 'OK',     test: () => false,                          rec: '' },
-  // ── From the corrected IBM i audit workbook, 2026-10-14. Verify each value on
+  // ── From a review of IBM i audit practice, 2026-10-14. Verify each value on
   // the prompt for your release before putting a finding in front of an auditor.
   // INFO rows have no single weak value, they are review items. ──
   QPWDLMTREP: { risk: 'MEDIUM', test: v => v === '0',                       rec: 'Set 2 (no consecutive repeated characters), 1 is stricter' },
@@ -95,7 +95,7 @@ const SYSVAL_RULES = {
   QINACTMSGQ: { risk: 'MEDIUM', test: v => v !== '*ENDJOB' && v !== '*DSCJOB', rec: 'A message queue only notifies and leaves the session open. Use *ENDJOB or *DSCJOB.' },
   QLMTDEVSSN: { risk: 'MEDIUM', test: v => v === '0',                       rec: 'Set 1 (0 is no limit on device sessions)' },
   QAUDLVL:    { check: (v, full) => {
-                  if (v === '*NONE') return { risk: 'HIGH', rec: 'Event auditing is off. Set QAUDLVL (see the audit level list in the workbook).' };
+                  if (v === '*NONE') return { risk: 'HIGH', rec: 'Event auditing is off. Set QAUDLVL to the recommended audit levels.' };
                   const have = new Set(String(full).split(/\s+/));
                   const missing = AUDLVL_RECOMMENDED.filter(x => !have.has(x));
                   return missing.length ? { risk: 'MEDIUM', rec:
@@ -114,7 +114,7 @@ const SYSVAL_RULES = {
   QRMTSRVATR: { risk: 'MEDIUM', test: v => v === '1',                       rec: 'Set 0 (1 enables remote service access)' },
   QSHRMEMCTL: { risk: 'MEDIUM', test: v => v === '0',                       rec: 'Set 1 (limits write-capable shared memory to users with *ALLOBJ)' },
 };
-// QAUDLVL values the workbook recommends. *AUDLVL2 is the switch that makes QAUDLVL2 count.
+// QAUDLVL values the review recommends. *AUDLVL2 is the switch that makes QAUDLVL2 count.
 const AUDLVL_RECOMMENDED = ['*AUTFAIL', '*CREATE', '*DELETE', '*JOBDTA', '*OBJMGT', '*PGMADP', '*PGMFAIL',
   '*PRTDTA', '*SAVRST', '*SECURITY', '*SPLFDTA', '*SYSMGT', '*AUDLVL2'];
 export function evaluateSysval(name, value, full = value) {
@@ -329,7 +329,7 @@ const REGINF_RULES = {
   QIBM_QTMF_CLIENT_REQ: { risk: 'LOW',      rec: 'Outbound FTP client requests — lower exposure than server-side, still worth gating.' },
   QIBM_QPWFS_FILE_SERV: { risk: 'CRITICAL', rec: 'Register a NetServer exit program — without one, any mapped SMB drive reaches the IFS unchecked.' },
   QIBM_QCA_RTV_COMMAND: { risk: 'CRITICAL', rec: 'Register a remote-command exit program — without one, Client Access RMTCMD bypasses LMTCPB(*YES) entirely.' },
-  // From the corrected IBM i audit workbook, 2026-10-14. Ratings are a judgment call, not IBM's.
+  // From a review of IBM i audit practice, 2026-10-14. Ratings are a judgment call, not IBM's.
   // Confirm each name on WRKREGINF before relying on it, release differences are real.
   QIBM_QZRC_RMT:        { risk: 'CRITICAL', rec: 'Register an exit program on the remote command and program call server — without one, anyone with a profile can run commands over the network. (Confirm against QIBM_QCA_RTV_COMMAND on WRKREGINF.)' },
   QIBM_QZDA_NDB1:       { risk: 'HIGH',     rec: 'Register a validation exit program — native database requests (ODBC, JDBC, Toolbox file access) reach the files unchecked.' },
@@ -621,7 +621,7 @@ export function evaluatePtfGroupRow(row) {
 // One narrow query per service group, not one big one: a group's result is a
 // handful of rows that fit a single STRSQL screen with no paging, an empty
 // result is hard evidence the port is not listening, and the statement stays
-// short. Ratings are a judgment call from a reviewed workbook, not IBM's, and
+// short. Ratings are a judgment call from review, not IBM's, and
 // were not run on a live IBM i. NETSTAT_INFO column names and whether UDP rows
 // appear at all differ by release: confirm both, and cross-check with
 // WRKTCPSVR, before an absent UDP port goes in front of an auditor as "off".

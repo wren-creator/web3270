@@ -302,7 +302,7 @@ const SYSVALS = {
                 note: 'Security auditing is OFF — no audit journal of privileged actions.' },
   QDSPSGNINF: { value: '1',       text: 'Sign-on information display',        weak: false,
                 note: 'Users are shown last sign-on info — a good setting.' },
-  // ── From the corrected IBM i audit workbook (added 2026-10-14). Values mirror
+  // ── From a review of IBM i audit practice (added 2026-10-14). Values mirror
   // common shipped or drifted settings, a few hardened for contrast. ──
   QPWDLMTREP: { value: '0',       text: 'Limit repeating characters',         weak: true,
                 note: '0 = no restriction on repeated characters. 2 stops consecutive repeats, 1 is stricter.' },
@@ -590,7 +590,7 @@ const EXIT_POINTS = {
   QIBM_QTMF_CLIENT_REQ: { value: '*NONE' },
   QIBM_QPWFS_FILE_SERV: { value: '*NONE' },
   QIBM_QCA_RTV_COMMAND: { value: '*NONE' },
-  // From the corrected IBM i audit workbook (added 2026-10-14). QZRC_RMT is the
+  // From a review of IBM i audit practice (added 2026-10-14). QZRC_RMT is the
   // remote command and program call server's own exit point; one is registered
   // here (QZSO_SIGNON) for contrast.
   QIBM_QZDA_NDB1:       { value: '*NONE' },

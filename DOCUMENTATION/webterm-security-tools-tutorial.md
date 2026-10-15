@@ -1981,7 +1981,7 @@ The tool types `WRKSYSVAL` on the menu command line and presses Enter. It parses
 | INFO | review items with no single weak value: `QPWDLMTCHR`, `QAUDLVL2`, `QCRTOBJAUD`, `QFRCCVNRST`, `QSCANFS`, `QSCANFSCTL`, and `QAUDFRCLVL` when not `*SYS` |
 | OK | hardened settings such as `QDSPSGNINF`(1), `QAUDFRCLVL`(*SYS), `QRMTSRVATR`(0), `QSHRMEMCTL`(1) |
 
-The 18 values from `QPWDLMTREP` down came from a corrected IBM i audit workbook (2026-10-14). They are from review, not a live IBM i, so confirm each value on the prompt for your release before putting a finding in front of an auditor.
+The 18 values from `QPWDLMTREP` down were added 2026-10-14 from a review of IBM i audit practice, not tested on a live IBM i, so confirm each value on the prompt for your release before putting a finding in front of an auditor.
 
 The DETAIL column carries the recommended value (e.g. "Use QSECURITY 40 or 50", "Enable security auditing").
 
@@ -2491,7 +2491,7 @@ An exit point is a named hook IBM i calls out to before servicing certain reques
 | Rating | Exit point |
 |---|---|
 | CRITICAL | `QIBM_QTMF_SERVER_REQ` (FTP server request validation), `QIBM_QPWFS_FILE_SERV` (NetServer file-serving validation), `QIBM_QCA_RTV_COMMAND` (remote command call) — each bypasses `LMTCPB(*YES)` entirely over its own channel when unregistered |
-| CRITICAL (added) | `QIBM_QZRC_RMT` (remote command and program call server). The workbook names this as the real remote-command exit point, so confirm on `WRKREGINF` whether your release also uses `QIBM_QCA_RTV_COMMAND` |
+| CRITICAL (added) | `QIBM_QZRC_RMT` (remote command and program call server). A review of IBM i audit practice names this as the real remote-command exit point, so confirm on `WRKREGINF` whether your release also uses `QIBM_QCA_RTV_COMMAND` |
 | HIGH | `QIBM_QZDA_INIT` (remote SQL/ODBC server init), `QIBM_QZDA_NDB1` (native database requests), `QIBM_QTMF_SVR_LOGON` (FTP logon) unregistered |
 | MEDIUM | `QIBM_QZDA_SQL1` (ad hoc remote SQL), `QIBM_QZDA_ROI1` (retrieve object information), `QIBM_QZSO_SIGNON` (signon server), `QIBM_QTG_DEVINIT` (Telnet device init), `QIBM_QZHQ_DATA_QUEUE` (data queue server) unregistered |
 | LOW | `QIBM_QTMF_CLIENT_REQ` (outbound FTP client requests) unregistered, lower exposure than server-side. `QIBM_QSY_VLD_PASSWRD` (password validation), pair with `QPWDVLDPGM` |
@@ -2764,7 +2764,7 @@ On the mock, Telnet 23 is up with no listener on 992, FTP is up, the host server
 
 ### Where the mock stops
 
-The ratings are a judgment call from a reviewed workbook, not IBM's, and the SQL was not run on a live IBM i. Confirm that your release's `NETSTAT_INFO` has these column names, and whether it lists UDP rows at all. A UDP port that shows as off carries a note to confirm with `WRKTCPSVR`. The mock's STRSQL is a simplified screen (one predicate, no AND or OR), so a real STRSQL layout may need the result-grid reader adjusted. `NETSTAT_INFO` cannot show whether FTP or a host server actually enforces TLS, only that the clear port is open, so the findings say so and point at the exit points.
+The ratings are a judgment call from review, not IBM's, and the SQL was not run on a live IBM i. Confirm that your release's `NETSTAT_INFO` has these column names, and whether it lists UDP rows at all. A UDP port that shows as off carries a note to confirm with `WRKTCPSVR`. The mock's STRSQL is a simplified screen (one predicate, no AND or OR), so a real STRSQL layout may need the result-grid reader adjusted. `NETSTAT_INFO` cannot show whether FTP or a host server actually enforces TLS, only that the clear port is open, so the findings say so and point at the exit points.
 
 ---
 

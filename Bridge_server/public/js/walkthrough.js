@@ -3194,7 +3194,7 @@ const _WALKTHROUGHS = [
     steps: [
       {
         title: 'Prerequisites',
-        body:  'Connect to a TN5250 (IBM i / AS/400) target, sign on, and stop at a menu with a "Selection or command" line. The tool types STRSQL there on its own. Ratings are a judgment call from a reviewed workbook, not IBM\'s, and the SQL was not run on a live IBM i, so confirm the column names on your release.',
+        body:  'Connect to a TN5250 (IBM i / AS/400) target, sign on, and stop at a menu with a "Selection or command" line. The tool types STRSQL there on its own. Ratings are a judgment call from review, not IBM\'s, and the SQL was not run on a live IBM i, so confirm the column names on your release.',
         highlight: null, autoFn: null,
       },
       {
