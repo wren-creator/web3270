@@ -33,6 +33,7 @@ import {
   evaluateExitPoint, evaluateNetsvr, parseIfsObjects, evaluateIfsObject,
   parseCallStack, evaluateAdoptedAuthority,
   parseSqlResultTable, parseCveInfo, evaluateCveRow, parsePtfCurrency, evaluatePtfGroupRow,
+  SERVICE_GROUPS, svcStatement, splitSqlStatement, parseNetstatRows, evaluateServiceGroup,
 } from './as400sec-parse.js';
 
 // ── Screen / transport helpers ─────────────────────────────────────────────
@@ -214,18 +215,19 @@ const TOOLS = {
       },
     },
   },
-  // Menu/Command-Line Bypass Probe and the PTF/CVE Currency Checker are each
-  // driven by their own bespoke state machine below (not the generic
+  // Menu/Command-Line Bypass Probe, the PTF/CVE Currency Checker and the Listening
+  // Services Inventory are driven by their own bespoke state machines below (not the generic
   // single/drill shape), these entries exist only so the shared
   // _render()/_status() helpers have somewhere to look up DOM ids.
   BYPASS: { ids: 'Bypass' },
   PTFCVE: { ids: 'Ptfcve' },
+  SVCINV: { ids: 'Svcinv' },
 };
 
 // Persisted results per tool (so all tables/CSV survive across scans).
 const RESULTS = {
   USRPRF: [], SHIPPRF: [], SYSVAL: [], OBJ: [], NETATTR: [], JOBD: [], AUTL: [], ACTJOB: [],
-  REGINF: [], NETSVR: [], IFS: [], PGMSTK: [], BYPASS: [], PTFCVE: [],
+  REGINF: [], NETSVR: [], IFS: [], PGMSTK: [], BYPASS: [], PTFCVE: [], SVCINV: [],
 };
 
 // ── State machine ───────────────────────────────────────────────────────────
@@ -233,7 +235,7 @@ let as400 = { running: false, tool: null, expecting: null, items: [], idx: 0, pa
 
 export function as400OnScreen(msg) {
   _bypassOnScreen(msg); // independent state machine, guards on its own .running
-  _ptfcveOnScreen(msg); // independent state machine, guards on its own .running
+  _sqlOnScreen(msg);    // independent state machine, guards on its own .running
   if (!as400.running) return;
   const lines = _screenLines(msg);
   const text  = lines.join('\n');
@@ -353,6 +355,7 @@ const COLS = {
   PGMSTK:  ['PROGRAM', 'OWNER'],
   BYPASS:  ['SCREEN', 'COMMAND TESTED'],
   PTFCVE:  ['CVE / PTF GROUP', 'CVSS / LEVEL'],
+  SVCINV:  ['PORT / SERVICE', 'STATE / BIND'],
 };
 
 function _render(tool) {
@@ -483,57 +486,128 @@ function _bypassFinish() {
   _status('BYPASS', `Done — ${crit}/${RESULTS.BYPASS.length} screen(s) had a live command line.`, crit ? 'error' : 'success');
 }
 
-// ── PTF/CVE Currency Checker ────────────────────────────────────────────────
-// Queries IBM i's two real built-in SQL services, SYSTOOLS.CVE_INFO() and
-// SYSTOOLS.GROUP_PTF_CURRENCY_LOCAL(), via STRSQL, then classifies whatever
-// rows come back (CVSS-band risk, PTF level-gap/staleness risk). No CVE list
-// lives in this file or as400sec-parse.js — see the comment on
+// ── SQL-driven tools: PTF/CVE Currency Checker, Listening Services Inventory ─
+// Both drive STRSQL and read the result grid, so they share one state machine.
+// The PTF/CVE checker queries IBM i's two real built-in SQL services,
+// SYSTOOLS.CVE_INFO() and SYSTOOLS.GROUP_PTF_CURRENCY_LOCAL(), and classifies
+// whatever rows come back (CVSS-band risk, PTF level-gap/staleness risk). No CVE
+// list lives in this file or as400sec-parse.js — see the comment on
 // evaluateCveRow() in as400sec-parse.js and ROADMAP.md's Security Tools
-// section for why that's deliberate.
+// section for why that's deliberate. The Listening Services Inventory runs one
+// narrow QSYS2.NETSTAT_INFO query per service group (as400sec-parse.js,
+// SERVICE_GROUPS).
 //
-// Bespoke state machine (not the generic single/drill TOOLS shape) because
-// it drives STRSQL through two different statements in one run rather than
-// a single WRK*/DSP* command. Unlike the Bypass Probe, every stage here
-// checks the arriving screen's actual content before acting — STRSQL's
-// fillField-then-Enter sequence emits an echo screen first (same risk the
-// generic TOOLS machine guards against, see this file's header), and
-// checking content rather than reacting to "a screen arrived" at all is the
-// more robust way to skip that echo.
+// Bespoke state machine (not the generic single/drill TOOLS shape) because it
+// drives STRSQL through several statements in one run rather than a single
+// WRK*/DSP* command. Unlike the Bypass Probe, every stage here checks the
+// arriving screen's actual content before acting — STRSQL's fillField-then-
+// Enter sequence emits an echo screen first (same risk the generic TOOLS
+// machine guards against, see this file's header), and checking content rather
+// than reacting to "a screen arrived" at all is the more robust way to skip it.
+//
+// Each query is { key, stmt, fresh(lines, isError), collect(lines, info) }:
+//   fresh   → true once the screen is this query's real result, not an echo or
+//             the previous query's leftover grid
+//   collect → result rows [{ name, value, risk, detail }]; info = { selected }
+//             is the host's "N rows selected." count, so a truncated grid shows
 const PTFCVE_QUERIES = [
   { key: 'CVE', stmt: 'SELECT * FROM SYSTOOLS.CVE_INFO()',
-    parse: lines => { const { cols, rows } = parseSqlResultTable(lines); return parseCveInfo(cols, rows); },
-    evaluate: evaluateCveRow, nameCol: 'CVE_ID', valueCol: 'CVSS_SCORE', valuePrefix: 'CVSS ' },
+    fresh: (lines, isError) => isError || parseSqlResultTable(lines).cols.includes('CVE_ID'),
+    collect: lines => {
+      const { cols, rows } = parseSqlResultTable(lines);
+      return parseCveInfo(cols, rows).map(row => {
+        const { risk, detail } = evaluateCveRow(row);
+        return { name: row.CVE_ID, value: `CVSS ${row.CVSS_SCORE ?? '?'}`, risk, detail };
+      });
+    } },
   { key: 'PTF', stmt: 'SELECT * FROM SYSTOOLS.GROUP_PTF_CURRENCY_LOCAL()',
-    parse: lines => { const { cols, rows } = parseSqlResultTable(lines); return parsePtfCurrency(cols, rows); },
-    evaluate: evaluatePtfGroupRow, nameCol: 'PTF_GROUP', valueCol: 'LVL_INST', valuePrefix: 'level ' },
+    fresh: (lines, isError) => isError || parseSqlResultTable(lines).cols.includes('PTF_GROUP'),
+    collect: lines => {
+      const { cols, rows } = parseSqlResultTable(lines);
+      return parsePtfCurrency(cols, rows).map(row => {
+        const { risk, detail } = evaluatePtfGroupRow(row);
+        return { name: row.PTF_GROUP, value: `level ${row.LVL_INST ?? '?'}`, risk, detail };
+      });
+    } },
 ];
 
-let ptfcve = { running: false, idx: 0, stage: null };
+// Every group's grid has the same three columns, so the column check the PTF
+// queries use cannot tell this query's result from the previous one's. The mock
+// clears both statement rows when it runs the statement, while an echo still
+// shows the typed text, so blank input rows mean "this is the real result".
+const _sqlInputBlank = lines => !((lines[5] || '').slice(7).trim()) && !((lines[6] || '').slice(7).trim());
 
-function _ptfcveStep() {
-  const q = PTFCVE_QUERIES[ptfcve.idx];
-  if (!q) { _ptfcveFinish(); return; }
-  _status('PTFCVE', `[${ptfcve.idx + 1}/${PTFCVE_QUERIES.length}] Running ${q.stmt}…`);
-  ptfcve.stage = 'RESULT';
-  _fillFirstInput(q.stmt);
+const SVCINV_QUERIES = SERVICE_GROUPS.map(g => ({
+  key: g.key, stmt: svcStatement(g),
+  fresh: _sqlInputBlank,
+  collect: (lines, info) => {
+    const { cols, rows } = parseSqlResultTable(lines);
+    const parsed = parseNetstatRows(cols, rows);
+    if (!parsed) return [{ name: g.key, value: '—', risk: 'INFO', detail: 'query returned no LOCAL_PORT column, skipped' }];
+    return evaluateServiceGroup(g, parsed, { truncated: info.selected > rows.length });
+  },
+}));
+
+const SQL_TOOLS = {
+  PTFCVE: {
+    queries: PTFCVE_QUERIES, btn: 'as400PtfcveBtn',
+    done: () => {
+      const bad = RESULTS.PTFCVE.filter(r => r.risk === 'CRITICAL' || r.risk === 'HIGH').length;
+      return { text: `Done — ${bad}/${RESULTS.PTFCVE.length} finding(s) need attention.`, bad };
+    },
+  },
+  SVCINV: {
+    queries: SVCINV_QUERIES, btn: 'as400SvcinvBtn',
+    done: () => {
+      const bad = RESULTS.SVCINV.filter(r => ['CRITICAL', 'HIGH', 'MEDIUM'].includes(r.risk)).length;
+      return { text: `Done — ${bad}/${RESULTS.SVCINV.length} service(s) need attention.`, bad };
+    },
+  },
+};
+
+let sqlrun = { running: false, tool: null, idx: 0, stage: null };
+
+// Type a statement into STRSQL, wrapping onto the continuation line when it is
+// longer than one input line (as a real STRSQL statement area does).
+function _fillSqlStatement(stmt) {
+  const scr  = state.liveScreen;
+  const cols = scr?.cols || 80;
+  const inputs = (scr?.fields || []).filter(f => !f.protected);
+  const parts = splitSqlStatement(stmt);
+  if (inputs.length < parts.length) { _fillFirstInput(stmt); return; }
+  parts.forEach((part, i) => {
+    const da = inputs[i].startAddr + 1;
+    _send({ type: 'fillField', row: Math.floor(da / cols), col: da % cols, text: part });
+  });
+}
+
+function _sqlStep() {
+  const T = SQL_TOOLS[sqlrun.tool];
+  const q = T.queries[sqlrun.idx];
+  if (!q) { _sqlFinish(); return; }
+  _status(sqlrun.tool, `[${sqlrun.idx + 1}/${T.queries.length}] Running ${q.stmt}…`);
+  sqlrun.stage = 'RESULT';
+  _fillSqlStatement(q.stmt);
   _pressEnter();
 }
 
-function _ptfcveOnScreen(msg) {
-  if (!ptfcve.running) return;
+function _sqlOnScreen(msg) {
+  if (!sqlrun.running) return;
   const lines = _screenLines(msg);
   const text  = lines.join('\n');
-  const q = PTFCVE_QUERIES[ptfcve.idx];
+  const tool  = sqlrun.tool;
+  const T = SQL_TOOLS[tool];
+  const q = T.queries[sqlrun.idx];
 
-  if (ptfcve.stage === 'NAV') {
+  if (sqlrun.stage === 'NAV') {
     if (!text.includes('Interactive SQL')) return; // still the menu echo, keep waiting
-    ptfcve.stage = 'RESULT';
-    _fillFirstInput(q.stmt);
+    sqlrun.stage = 'RESULT';
+    _fillSqlStatement(q.stmt);
     _pressEnter();
     return;
   }
 
-  if (ptfcve.stage === 'RESULT') {
+  if (sqlrun.stage === 'RESULT') {
     const sqlError = /SQL\d{4}/.exec(text);
     const rowsSelected = /(\d+) rows selected\./.exec(text);
     if (!sqlError && !rowsSelected) return; // fillField echo of the typed statement, keep waiting
@@ -542,60 +616,60 @@ function _ptfcveOnScreen(msg) {
     // the real Enter-driven redraw -- fillField's own echo after typing the
     // NEXT statement still shows the PREVIOUS query's "N rows selected."
     // message and result grid untouched, which also satisfies rowsSelected
-    // above. Checking that this query's own name column is actually present
-    // is what distinguishes "my real result" from "stale previous result",
-    // not just the presence of rows-selected text. (The very first query has
-    // no previous result to be stale, so this never blocks it.)
-    if (!sqlError && !parseSqlResultTable(lines).cols.includes(q.nameCol)) return;
+    // above. Each query's own fresh() is what distinguishes "my real result"
+    // from "stale previous result", not just the presence of rows-selected
+    // text. (The very first query has no previous result to be stale.)
+    if (!q.fresh(lines, !!sqlError)) return;
 
     if (sqlError) {
-      RESULTS.PTFCVE.push({ name: q.key, value: '—', risk: 'INFO', detail: `query failed: ${sqlError[0]} — skipped` });
+      RESULTS[tool].push({ name: q.key, value: '—', risk: 'INFO', detail: `query failed: ${sqlError[0]} — skipped` });
     } else {
-      q.parse(lines).forEach(row => {
-        const { risk, detail } = q.evaluate(row);
-        RESULTS.PTFCVE.push({ name: row[q.nameCol], value: `${q.valuePrefix}${row[q.valueCol] ?? '?'}`, risk, detail });
-      });
+      RESULTS[tool].push(...q.collect(lines, { selected: parseInt(rowsSelected[1], 10) }));
     }
-    _render('PTFCVE');
-    ptfcve.idx++;
-    if (ptfcve.idx < PTFCVE_QUERIES.length) {
-      _ptfcveStep();
+    _render(tool);
+    sqlrun.idx++;
+    if (sqlrun.idx < T.queries.length) {
+      _sqlStep();
     } else {
-      ptfcve.stage = 'BACK';
+      sqlrun.stage = 'BACK';
       _pressF3();
     }
     return;
   }
 
-  if (ptfcve.stage === 'BACK') {
+  if (sqlrun.stage === 'BACK') {
     if (!text.includes('Selection or command')) return; // still the SQL screen's own F3 echo
-    _ptfcveFinish();
+    _sqlFinish();
   }
 }
 
-function _ptfcveFinish() {
-  ptfcve.running = false;
-  const btn = document.getElementById('as400PtfcveBtn');
+function _sqlFinish() {
+  const tool = sqlrun.tool;
+  sqlrun.running = false;
+  const btn = document.getElementById(SQL_TOOLS[tool].btn);
   if (btn) btn.disabled = false;
-  const bad = RESULTS.PTFCVE.filter(r => r.risk === 'CRITICAL' || r.risk === 'HIGH').length;
-  _status('PTFCVE', `Done — ${bad}/${RESULTS.PTFCVE.length} finding(s) need attention.`, bad ? 'error' : 'success');
+  const { text, bad } = SQL_TOOLS[tool].done();
+  _status(tool, text, bad ? 'error' : 'success');
 }
 
-export function startAs400PtfCveScan() {
-  if (ptfcve.running) return;
+function _startSqlTool(tool) {
+  if (sqlrun.running) return;
   if (!state.liveScreen || !(state.liveScreenText || '').includes('Selection or command')) {
-    _status('PTFCVE', 'Sign on and navigate to an AS/400 menu (with a command line) first.', 'error');
+    _status(tool, 'Sign on and navigate to an AS/400 menu (with a command line) first.', 'error');
     return;
   }
-  RESULTS.PTFCVE = [];
-  _render('PTFCVE');
-  ptfcve = { running: true, idx: 0, stage: 'NAV' };
-  const btn = document.getElementById('as400PtfcveBtn');
+  RESULTS[tool] = [];
+  _render(tool);
+  sqlrun = { running: true, tool, idx: 0, stage: 'NAV' };
+  const btn = document.getElementById(SQL_TOOLS[tool].btn);
   if (btn) btn.disabled = true;
-  _status('PTFCVE', 'Issuing STRSQL…');
+  _status(tool, 'Issuing STRSQL…');
   _fillFirstInput('STRSQL');
   _pressEnter();
 }
+
+export function startAs400PtfCveScan() { _startSqlTool('PTFCVE'); }
+export function startAs400SvcInvScan() { _startSqlTool('SVCINV'); }
 
 export function startAs400BypassProbe() {
   if (bypass.running) return;
@@ -642,6 +716,7 @@ function _buildAs400Rows() {
   add('PGMSTK',  'adopted-authority-scanner');
   add('BYPASS',  'menu-bypass-probe');
   add('PTFCVE',  'ptf-cve-currency-checker');
+  add('SVCINV',  'listening-services-inventory');
   // Pre sign-on tool: its results live in probe.js, not RESULTS.
   credAuditFindings().forEach(r => rows.push(['default-credential-audit', r.name, r.value, r.risk, r.detail, ts]));
   return { rows, ts };
@@ -664,5 +739,5 @@ Object.assign(window, {
   startAs400UserScan, startAs400ShippedAudit, startAs400SysvalScan, startAs400ObjScan,
   startAs400NetattrScan, startAs400JobdScan, startAs400AutlScan, startAs400ActjobScan,
   startAs400ReginfScan, startAs400NetsvrScan, startAs400IfsScan,
-  startAs400PgmstkScan, startAs400BypassProbe, startAs400PtfCveScan,
+  startAs400PgmstkScan, startAs400BypassProbe, startAs400PtfCveScan, startAs400SvcInvScan,
 });

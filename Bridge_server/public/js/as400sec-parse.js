@@ -606,3 +606,161 @@ export function evaluatePtfGroupRow(row) {
   if (stale) parts.push(`not checked in ${staleDays}d`);
   return { risk, detail: parts.join(', ') };
 }
+
+
+// ── Listening Services Inventory (QSYS2.NETSTAT_INFO via STRSQL) ─────────────
+// One narrow query per service group, not one big one: a group's result is a
+// handful of rows that fit a single STRSQL screen with no paging, an empty
+// result is hard evidence the port is not listening, and the statement stays
+// short. Ratings are a judgment call from a reviewed workbook, not IBM's, and
+// were not run on a live IBM i. NETSTAT_INFO column names and whether UDP rows
+// appear at all differ by release: confirm both, and cross-check with
+// WRKTCPSVR, before an absent UDP port goes in front of an auditor as "off".
+//
+//   kind 'clear'   a service that should be off (or needs a TLS-only reason)
+//   kind 'tls'     the encrypted listener, listening is the good outcome
+//   proto 'TCP'    counts only TCP_STATE = LISTEN (ESTABLISHED is a session)
+//   proto 'UDP'    any row on the port counts, UDP has no TCP state
+const SVC_HOST = (port, what) => ({ port, proto: 'TCP', kind: 'clear', name: `Host server ${what}`,
+  risk: (port === 8473 || port === 8475) ? 'HIGH' : 'MEDIUM',
+  rec: `${what} host server on its clear text port. Use TLS only (${port + 1000}), with its exit points registered.` +
+       ((port === 8473 || port === 8475) ? ' This one is high risk, it reaches files or runs commands.' : '') });
+const SVC_HOST_TLS = (port, what) => ({ port, proto: 'TCP', kind: 'tls', name: `Host server ${what} (TLS)`,
+  rec: 'TLS host server listener. Confirm TLS 1.2 or higher (QSSLPCL, QSSLCSL) and that its exit points are registered.' });
+
+export const SERVICE_GROUPS = [
+  { key: 'TELNET', where: 'LOCAL_PORT IN (23, 992)', defs: [
+    { port: 23,  proto: 'TCP', kind: 'clear', name: 'Telnet (clear 5250)', risk: 'HIGH', pair: 992,
+      rec: 'Clear text 5250: sign-on passwords cross the wire readable. CHGTELNA AUTOSTART(*NO) and ENDTCPSVR SERVER(*TELNET), then use 5250 over TLS on 992 (not SSH, it does not carry a 5250 session).' },
+    { port: 992, proto: 'TCP', kind: 'tls', name: 'Telnet over TLS', rec: 'TLS 5250 listener. Confirm TLS 1.2 or higher and that nothing clear text remains on 23.' },
+  ] },
+  { key: 'FTP', where: 'LOCAL_PORT IN (21, 990)', defs: [
+    { port: 21,  proto: 'TCP', kind: 'clear', name: 'FTP', risk: 'MEDIUM',
+      rec: 'FTP is listening. The port alone cannot show whether TLS is enforced. Disable unless required, else TLS only, with exit points QIBM_QTMF_SVR_LOGON and QIBM_QTMF_SERVER_REQ registered.' },
+    { port: 990, proto: 'TCP', kind: 'tls', name: 'FTP over TLS (implicit)', rec: 'Implicit TLS FTP listener. Confirm exit points are registered.' },
+  ] },
+  { key: 'HOSTSVR', where: 'LOCAL_PORT BETWEEN 8470 AND 8476', collapseAbsent: 'Clear host servers 8470 to 8476', defs: [
+    SVC_HOST(8470, 'central'), SVC_HOST(8471, 'database'), SVC_HOST(8472, 'data queue'), SVC_HOST(8473, 'file'),
+    SVC_HOST(8474, 'network print'), SVC_HOST(8475, 'remote command'), SVC_HOST(8476, 'signon'),
+  ] },
+  { key: 'HOSTSVRTLS', where: 'LOCAL_PORT BETWEEN 9470 AND 9476', collapseAbsent: 'TLS host servers 9470 to 9476', defs: [
+    SVC_HOST_TLS(9470, 'central'), SVC_HOST_TLS(9471, 'database'), SVC_HOST_TLS(9472, 'data queue'), SVC_HOST_TLS(9473, 'file'),
+    SVC_HOST_TLS(9474, 'network print'), SVC_HOST_TLS(9475, 'remote command'), SVC_HOST_TLS(9476, 'signon'),
+  ] },
+  { key: 'DDM', where: 'LOCAL_PORT IN (446, 448)', defs: [
+    { port: 446, proto: 'TCP', kind: 'clear', name: 'DDM / DRDA (clear)', risk: 'MEDIUM', pair: 448,
+      rec: 'DDM and DRDA on the clear text port. Require 448 (TLS) or restrict by IP.' },
+    { port: 448, proto: 'TCP', kind: 'tls', name: 'DDM / DRDA over TLS', rec: 'TLS DDM listener.' },
+  ] },
+  { key: 'LEGACY', where: 'LOCAL_PORT IN (69, 512, 515)', defs: [
+    { port: 69,  proto: 'UDP', kind: 'clear', name: 'TFTP', risk: 'HIGH',
+      rec: 'TFTP has no authentication. ENDTCPSVR SERVER(*TFTP).' },
+    { port: 512, proto: 'TCP', kind: 'clear', name: 'REXEC', risk: 'HIGH',
+      rec: 'REXEC sends credentials in clear text. ENDTCPSVR SERVER(*REXEC).' },
+    { port: 515, proto: 'TCP', kind: 'clear', name: 'LPD (remote print)', risk: 'MEDIUM',
+      rec: 'LPR has no authentication, so remote print bypasses output queue controls. Disable unless needed, or restrict by IP.' },
+  ] },
+  { key: 'SNMP', where: 'LOCAL_PORT IN (161, 162)', defs: [
+    { port: 161, proto: 'UDP', kind: 'clear', name: 'SNMP', risk: 'MEDIUM',
+      rec: 'Disable, or SNMPv3 only. Default community names are guessable, review them with CHGSNMPA.' },
+    { port: 162, proto: 'UDP', kind: 'clear', name: 'SNMP traps', risk: 'LOW', rec: 'SNMP trap listener. Same review as SNMP.' },
+  ] },
+  { key: 'NFS', where: 'LOCAL_PORT IN (111, 2049)', defs: [
+    { port: 111,  proto: 'TCP', kind: 'clear', name: 'NFS portmapper', risk: 'MEDIUM', rec: 'Disable NFS unless required. If required, restrict exports to named hosts, read-only where possible.' },
+    { port: 2049, proto: 'TCP', kind: 'clear', name: 'NFS', risk: 'MEDIUM', rec: 'Disable NFS unless required. If required, restrict exports to named hosts, read-only where possible.' },
+  ] },
+  { key: 'NETSERVER', where: 'LOCAL_PORT IN (137, 138, 139, 445)', defs: [
+    { port: 137, proto: 'UDP', kind: 'clear', name: 'NetBIOS name service', risk: 'LOW', rec: 'NetServer name service. Part of NetServer, see 445.' },
+    { port: 138, proto: 'UDP', kind: 'clear', name: 'NetBIOS datagram', risk: 'LOW', rec: 'NetServer datagram service. Part of NetServer, see 445.' },
+    { port: 139, proto: 'TCP', kind: 'clear', name: 'NetBIOS session', risk: 'MEDIUM', rec: 'NetServer over NetBIOS. Disable guest access and require SMB signing, run the NetServer audit.' },
+    { port: 445, proto: 'TCP', kind: 'clear', name: 'SMB (NetServer)', risk: 'MEDIUM', rec: 'NetServer is on. Disable guest access and require SMB signing, run the NetServer audit.' },
+  ] },
+  { key: 'WEB', where: 'LOCAL_PORT IN (80, 443, 2001, 2010)', defs: [
+    { port: 80,   proto: 'TCP', kind: 'clear', name: 'HTTP', risk: 'MEDIUM', pair: 443,
+      rec: 'Clear text web. Redirect to HTTPS or disable. Ports are per HTTP server instance, so 80 is only the default (WRKACTJOB SBS(QHTTPSVR), WRKHTTPCFG).' },
+    { port: 443,  proto: 'TCP', kind: 'tls', name: 'HTTPS', rec: 'HTTPS listener. Protocols and ciphers are set by QSSLPCL, QSSLCSL and QSSLCSLCTL.' },
+    { port: 2001, proto: 'TCP', kind: 'clear', name: 'IBM Navigator admin (clear)', risk: 'HIGH', pair: 2010,
+      rec: 'The administrative front door on its clear text port. Use 2010 (HTTPS) only and restrict by IP or VPN. The HTTP Admin GUI Audit probes it further.' },
+    { port: 2010, proto: 'TCP', kind: 'tls', name: 'IBM Navigator admin (TLS)', rec: 'Admin GUI over TLS. Still restrict by IP or VPN, it is an administrative front door.' },
+  ] },
+  { key: 'SSH', where: 'LOCAL_PORT = 22', defs: [
+    { port: 22, proto: 'TCP', kind: 'tls', name: 'SSH', rec: 'SSH is the preferred remote shell. Check keys over passwords, root login and weak ciphers off in sshd_config.' },
+  ] },
+];
+
+// Build the statement a group runs. Real column names, real view, nothing hardcoded elsewhere.
+export function svcStatement(group) {
+  return `SELECT LOCAL_ADDRESS, LOCAL_PORT, TCP_STATE FROM QSYS2.NETSTAT_INFO WHERE ${group.where}`;
+}
+
+// Split a statement across STRSQL's input lines at a space, each at most `width` wide.
+// A statement with no usable space (or short enough) stays on one line.
+export function splitSqlStatement(stmt, width = 70) {
+  const out = [];
+  let rest = stmt.trim();
+  while (rest.length > width) {
+    const cut = rest.lastIndexOf(' ', width);
+    if (cut <= 0) break;
+    out.push(rest.slice(0, cut));
+    rest = rest.slice(cut + 1).trimStart();
+  }
+  out.push(rest);
+  return out;
+}
+
+// cols/rows from parseSqlResultTable. Returns null when LOCAL_PORT is missing,
+// the caller reports that as a failed query, never as "nothing listening".
+export function parseNetstatRows(cols, rows) {
+  const ip = cols.indexOf('LOCAL_PORT');
+  if (ip === -1) return null;
+  const ia = cols.indexOf('LOCAL_ADDRESS'), is = cols.indexOf('TCP_STATE');
+  return rows.map(r => ({ addr: ia === -1 ? '' : r[ia], port: parseInt(r[ip], 10), state: is === -1 ? '' : (r[is] || '').toUpperCase() }));
+}
+
+const _LOOPBACK = new Set(['127.0.0.1', '::1', 'LOOPBACK']);
+
+// rows: parseNetstatRows output for ONE group's query. opts.truncated: the screen said
+// more rows were selected than it showed, so an absent port is "not seen", not "off".
+// A clear service's TLS partner is always in the same group, so no cross-query state is needed.
+export function evaluateServiceGroup(group, rows, opts = {}) {
+  const { truncated = false } = opts;
+  const listeners = def => rows.filter(r => r.port === def.port &&
+    (def.proto === 'UDP' ? true : r.state === 'LISTEN'));
+  const out = [];
+  const absent = [];
+  const live = new Map(group.defs.map(d => [d.port, listeners(d)]));
+  const listening = new Set([...live].filter(([, l]) => l.length).map(([p]) => p));
+
+  for (const def of group.defs) {
+    const l = live.get(def.port);
+    const label = `${def.port} ${def.name}`;
+    if (!l.length) {
+      if (truncated) { out.push({ name: label, value: 'not seen', risk: 'INFO', detail: 'Result was truncated at the screen, so this port is not confirmed off. Re-run narrower or check WRKTCPSVR.' }); continue; }
+      if (group.collapseAbsent) { absent.push(def); continue; }
+      if (def.kind === 'tls') {
+        out.push({ name: label, value: 'not listening', risk: 'INFO',
+          detail: 'No TLS listener. Fine when the clear text service is also off, otherwise there is no encrypted way in.' });
+      } else {
+        out.push({ name: label, value: 'not listening', risk: 'OK',
+          detail: def.proto === 'UDP' ? 'No row seen. Confirm UDP rows appear in NETSTAT_INFO on your release, or check WRKTCPSVR.' : 'Not listening.' });
+      }
+      continue;
+    }
+    const addrs = [...new Set(l.map(r => r.addr || '?'))];
+    const value = `${def.proto === 'UDP' ? 'UDP' : 'LISTEN'} ${addrs.join(', ')}`;
+    if (def.kind === 'tls') { out.push({ name: label, value, risk: 'OK', detail: def.rec }); continue; }
+    if (l.every(r => _LOOPBACK.has(r.addr))) {
+      out.push({ name: label, value, risk: 'LOW', detail: `Listening on loopback only, not reachable from the network. ${def.rec}` });
+      continue;
+    }
+    const noTls = def.pair && !listening.has(def.pair)
+      ? ` No listener seen on ${def.pair}, so there is no encrypted alternative.` : '';
+    out.push({ name: label, value, risk: def.risk, detail: def.rec + noTls });
+  }
+  // Only when the whole range is quiet. With some listeners the per-port rows already tell the story.
+  if (absent.length && absent.length === group.defs.length) {
+    out.push({ name: group.collapseAbsent, value: 'none listening', risk: group.key === 'HOSTSVRTLS' ? 'INFO' : 'OK',
+      detail: group.key === 'HOSTSVRTLS' ? 'No TLS host server listener at all. Fine only if the clear host servers are off too.' : 'Not listening.' });
+  }
+  return out;
+}

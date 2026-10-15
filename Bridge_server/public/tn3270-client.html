@@ -1407,6 +1407,15 @@
             <div id="as400PtfcveOut" style="max-height:220px;overflow-y:auto;margin-top:4px"></div>
           </div>
 
+          <!-- Listening Services Inventory -->
+          <div style="margin-top:10px;padding-top:8px;border-top:1px solid #1a1a1a">
+            <div style="font-size:10px;color:var(--text-muted);font-weight:600;letter-spacing:.06em;margin-bottom:4px">LISTENING SERVICES INVENTORY</div>
+            <div class="sec-panel-hint" style="margin-bottom:6px">Runs one narrow QSYS2.NETSTAT_INFO query per service group via STRSQL (Telnet 23 vs 992, FTP, host servers 8470 to 8476 vs 9470 to 9476, DDM, TFTP, REXEC, LPD, SNMP, NFS, NetServer, web and Navigator, SSH) and rates what is listening. A port that is not listening is the pass for a clear text service. Ratings are a judgment call, not IBM's. Confirm column names and UDP rows on your release, and cross-check WRKTCPSVR.</div>
+            <button id="as400SvcinvBtn" class="sec-inject-btn" onclick="startAs400SvcInvScan()" style="background:#1a2a1a">▶ INVENTORY LISTENING SERVICES</button>
+            <div id="as400SvcinvStatus" style="font-size:10px;color:var(--text-muted);margin-top:4px;min-height:14px"></div>
+            <div id="as400SvcinvOut" style="max-height:220px;overflow-y:auto;margin-top:4px"></div>
+          </div>
+
           <div style="margin-top:8px;padding-top:6px;border-top:1px solid #111">
             <button onclick="as400ExportCsv()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ Export IBM i Audit CSV</button>
             <button onclick="as400ExportJson()" style="background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 10px;cursor:pointer">↓ JSON</button>

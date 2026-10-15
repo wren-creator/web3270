@@ -73,6 +73,7 @@ Platform key: **z/OS** (TSO/RACF/SDSF/DB2/CICS) · **IBM i** (AS/400) · **z/VM*
 | Adopted-Authority Runtime Scanner | Walks the program call stack and flags any program adopting a more privileged owner's authority. | Run from a menu. | A program that adopts `QSECOFR` is a privilege-escalation path by design, this finds exactly which one. |
 | Menu/Command-Line Bypass Probe | Drives several "Work with X" screens' command lines directly, exploiting the fact that `LMTCPB` is often never actually enforced there. | Run from a menu. | Proves a "limited capability" user can run real commands anyway, one of the most common IBM i misconfigurations. |
 | PTF/CVE Currency Checker | Runs `SYSTOOLS.CVE_INFO()` and `SYSTOOLS.GROUP_PTF_CURRENCY_LOCAL()` via STRSQL and classifies whatever rows come back against published CVSS bands and PTF-group level gaps. | Run from a menu. | Answers "is this box patched" from the partition's own live data, no hardcoded CVE list to go stale. |
+| Listening Services Inventory | Runs one narrow `QSYS2.NETSTAT_INFO` query per service group via STRSQL and rates what is listening: clear text Telnet, FTP, host servers, TFTP, SNMP, NFS, NetServer and the admin GUI against their TLS twins. Not listening is the pass for a clear service. Ratings are judgment, confirm columns and UDP rows on your release. |
 
 ## z/VM
 

@@ -3097,6 +3097,45 @@ const _WALKTHROUGHS = [
     ],
   },
 
+  // ── IBM i (AS/400) Listening Services Inventory ───────────────────
+  {
+    id:       'as400-listening-services-inventory',
+    category: 'security',
+    title:    'IBM i: Listening Services Inventory',
+    desc:     'Runs one narrow QSYS2.NETSTAT_INFO query per service group via STRSQL and rates what is listening: clear text Telnet, FTP, host servers, TFTP, SNMP and more, against their TLS counterparts.',
+    steps: [
+      {
+        title: 'Prerequisites',
+        body:  'Connect to a TN5250 (IBM i / AS/400) target, sign on, and stop at a menu with a "Selection or command" line. The tool types STRSQL there on its own. Ratings are a judgment call from a reviewed workbook, not IBM\'s, and the SQL was not run on a live IBM i, so confirm the column names on your release.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click 🔒 in the OIA status bar and enter the security password (default: 2970).',
+        highlight: 'secBtn', autoFn: null,
+      },
+      {
+        title: 'Run the inventory',
+        body:  'Scroll to the IBM i SECURITY (AS/400) section and click ▶ INVENTORY LISTENING SERVICES. The tool opens Interactive SQL and runs about ten short queries, each one a service group, for example SELECT LOCAL_ADDRESS, LOCAL_PORT, TCP_STATE FROM QSYS2.NETSTAT_INFO WHERE LOCAL_PORT IN (23, 992). A long statement wraps onto the second input line, the way a real STRSQL statement area does. One query per group keeps each result small enough to read without paging, and an empty result is evidence the port is not listening.',
+        highlight: 'as400SvcinvBtn',
+        autoFn: 'startAs400SvcInvScan',
+        autoLabel: 'Run it for me',
+      },
+      {
+        title: 'Read the findings',
+        body:  'HIGH — clear text Telnet (23), REXEC, TFTP, the clear text Navigator admin port (2001), or the clear file and remote command host servers (8473, 8475). MEDIUM — FTP, the other clear host servers, DDM on 446, LPD, SNMP, NFS, NetServer, plain HTTP. LOW — bound to loopback only, so not reachable from the network. OK — not listening (for a clear text service that is the pass), or a TLS listener present. INFO — a TLS port that is not listening, which is fine only if its clear text twin is off too. ESTABLISHED sessions on a port are not counted as listeners. A UDP port showing as off should be confirmed with WRKTCPSVR, since NETSTAT_INFO may not list UDP on every release.',
+        highlight: 'as400SvcinvOut', autoFn: null,
+      },
+      {
+        title: 'Export the audit',
+        body:  'Click ↓ Export IBM i Audit CSV to save the findings.',
+        highlight: 'as400SvcinvOut',
+        autoFn: 'as400ExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
   // ── FUNC KEY Inject ──────────────────────────────────────────────
   {
     id:       'func-key-inject',

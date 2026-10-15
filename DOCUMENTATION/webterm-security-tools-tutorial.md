@@ -51,6 +51,8 @@ The app ships **74 built-in narrated walkthroughs** (`public/js/walkthrough.js`)
 | — | | 38 | IBM i Adopted-Authority Scanner / Menu Bypass Probe — 38A/B |
 | — | | 39 | VTAM Applid Enumerator |
 | — | | 40 | IBM i PTF/CVE Currency Checker |
+| — | | 41 | IBM i Default Credential Audit |
+| — | | 42 | IBM i Listening Services Inventory |
 
 Appendices — Structured JSON findings export, the `.rec.json` format.
 
@@ -2727,6 +2729,40 @@ On the mock, running with just the standard list and defaults checked confirms `
 ### Export
 
 Click ↓ Export CSV or ↓ JSON directly below this tool's results for a standalone export (`ibmi-default-creds-<timestamp>.csv`/`.json`), or use the combined ↓ Export IBM i Audit CSV further down the panel to bundle these findings with every other IBM i tool's output from the same session, under `default-credential-audit`.
+
+---
+
+## Part 42 — IBM i (AS/400) Listening Services Inventory
+
+The question every other IBM i tool in this document skips: what is this box listening on, and is it the clear text version? Exit points, NetServer and the admin GUI each look at one channel. This tool reads the whole list of listeners from `QSYS2.NETSTAT_INFO` through STRSQL and rates each service against its encrypted counterpart.
+
+### Location
+
+Security panel → IBM i SECURITY (AS/400) → LISTENING SERVICES INVENTORY
+
+### How it works
+
+The tool opens Interactive SQL and runs one narrow query per service group, eleven in all, for example `SELECT LOCAL_ADDRESS, LOCAL_PORT, TCP_STATE FROM QSYS2.NETSTAT_INFO WHERE LOCAL_PORT IN (23, 992)`. One query per group, not one big one, because each result is a handful of rows that fit a single screen with no paging, an empty result is hard evidence the port is not listening, and a long unfiltered result on a busy box would need fragile Roll Up scraping. A statement longer than one input line wraps onto a continuation line, the way a real STRSQL statement area does. The groups are Telnet (23, 992), FTP (21, 990), clear host servers (8470 to 8476), TLS host servers (9470 to 9476), DDM and DRDA (446, 448), TFTP, REXEC and LPD (69, 512, 515), SNMP (161, 162), NFS (111, 2049), NetServer (137, 138, 139, 445), web and Navigator (80, 443, 2001, 2010), and SSH (22). The port table lives in `as400sec-parse.js` (`SERVICE_GROUPS`).
+
+### Risk levels
+
+| Rating | Meaning |
+|---|---|
+| HIGH | clear text Telnet (23), REXEC (512), TFTP (69), the clear Navigator admin port (2001), the clear file and remote command host servers (8473, 8475) |
+| MEDIUM | FTP, the other clear host servers, DDM on 446, LPD, SNMP, NFS, NetServer, plain HTTP |
+| LOW | the service is bound to loopback only (not reachable from the network), or a minor NetBIOS or trap listener |
+| INFO | a TLS port that is not listening. Fine only if its clear text twin is off too. Also "not seen" when the result was truncated at the screen |
+| OK | a clear text service that is not listening (that is the pass), or a TLS listener present |
+
+A clear text service with no listener on its TLS partner gets a line added: there is no encrypted way in. A session in `ESTABLISHED` state is not a listener and is never counted. A port is rated by its widest listener: one loopback listener and one wildcard listener rate as exposed.
+
+### Teaching scenario
+
+On the mock, Telnet 23 is up with no listener on 992, FTP is up, the host servers are on their clear ports (including file and remote command) with only two TLS ones, TFTP and SNMP answer over UDP, and LPD is bound to `127.0.0.1` for contrast. Two `ESTABLISHED` sessions on 23 sit in the same table to show why only `LISTEN` counts. The lesson: an inventory is only worth anything if "not listening" is evidence rather than an absence of rows, which is why each group is its own query.
+
+### Where the mock stops
+
+The ratings are a judgment call from a reviewed workbook, not IBM's, and the SQL was not run on a live IBM i. Confirm that your release's `NETSTAT_INFO` has these column names, and whether it lists UDP rows at all. A UDP port that shows as off carries a note to confirm with `WRKTCPSVR`. The mock's STRSQL is a simplified screen (one predicate, no AND or OR), so a real STRSQL layout may need the result-grid reader adjusted. `NETSTAT_INFO` cannot show whether FTP or a host server actually enforces TLS, only that the clear port is open, so the findings say so and point at the exit points.
 
 ---
 

@@ -889,6 +889,31 @@ const SQL_TABLES = {
         process.env.MOCK_AS400_HTTPADMIN_PATCHED === '1' ? 'INSTALLED' : 'NOT INSTALLED'],
     ],
   },
+  // QSYS2.NETSTAT_INFO, narrowed to the three real columns the Listening
+  // Services Inventory reads (the real view has about thirty). Rows model a
+  // deliberately loose shop: clear text Telnet and FTP up with no TLS Telnet,
+  // clear host servers (including remote command and file) with only two TLS
+  // ones, TFTP and SNMP over UDP (blank state, as UDP has no TCP state), LPD
+  // bound to loopback only for contrast, and a couple of ESTABLISHED sessions
+  // on 23 that a careless scan would miscount as listeners. Whether the real
+  // view lists UDP at all varies by release, confirm before trusting it.
+  'QSYS2/NETSTAT_INFO': {
+    columns: ['LOCAL_ADDRESS', 'LOCAL_PORT', 'TCP_STATE'],
+    rows: [
+      ['0.0.0.0', '23', 'LISTEN'], ['10.20.30.40', '23', 'ESTABLISHED'], ['10.20.30.40', '23', 'ESTABLISHED'],
+      ['0.0.0.0', '21', 'LISTEN'], ['0.0.0.0', '22', 'LISTEN'],
+      ['0.0.0.0', '80', 'LISTEN'], ['0.0.0.0', '443', 'LISTEN'],
+      ['0.0.0.0', '446', 'LISTEN'],
+      ['0.0.0.0', '8470', 'LISTEN'], ['0.0.0.0', '8471', 'LISTEN'], ['0.0.0.0', '8472', 'LISTEN'],
+      ['0.0.0.0', '8473', 'LISTEN'], ['0.0.0.0', '8474', 'LISTEN'], ['0.0.0.0', '8475', 'LISTEN'],
+      ['0.0.0.0', '8476', 'LISTEN'],
+      ['0.0.0.0', '9471', 'LISTEN'], ['0.0.0.0', '9476', 'LISTEN'],
+      ['0.0.0.0', '69', ''], ['0.0.0.0', '161', ''],
+      ['127.0.0.1', '515', 'LISTEN'],
+      ['0.0.0.0', '137', ''], ['0.0.0.0', '138', ''], ['0.0.0.0', '139', 'LISTEN'], ['0.0.0.0', '445', 'LISTEN'],
+      ['0.0.0.0', '2001', 'LISTEN'], ['0.0.0.0', '2010', 'LISTEN'],
+    ],
+  },
   // Short column aliases, not the real service's actual (much longer)
   // column names -- PTF_GROUP_LEVEL_INSTALLED and PTF_GROUP_LEVEL_AVAILABLE
   // are 25 chars each and collide once truncated to this mock's fixed
@@ -2116,23 +2141,53 @@ const SQL_CMD_ROW = 5;
 // parseSqlResultTable() (as400sec-parse.js) must use the same width.
 const SQL_COL_WIDTH = 15;
 function runSql(stmt) {
-  // Trailing (...)? covers table FUNCTIONS like SYSTOOLS.CVE_INFO() --
-  // real IBM i services take no args in their simplest form, same as here.
-  const m = /^SELECT\s+\*\s+FROM\s+([A-Z0-9_]+)\.([A-Z0-9_]+)\s*(\([^)]*\))?\s*;?$/i.exec(stmt.trim());
-  if (!m) return { error: 'SQL0104 - Statement not understood by this mock (try: SELECT * FROM lib.table).' };
-  const key = `${m[1].toUpperCase()}/${m[2].toUpperCase()}`;
+  // SELECT <* | col, col> FROM lib.table [()] [WHERE col = n | IN (n, n) |
+  // BETWEEN n AND m]. Trailing (...)? covers table FUNCTIONS like
+  // SYSTOOLS.CVE_INFO() -- real IBM i services take no args in their simplest
+  // form, same as here. One predicate only, no AND/OR/JOIN: that is all the
+  // Listening Services Inventory needs, and anything else is a realistic error.
+  const m = /^SELECT\s+(.+?)\s+FROM\s+([A-Z0-9_]+)\.([A-Z0-9_]+)\s*(\([^)]*\))?\s*(?:WHERE\s+(.+?))?\s*;?$/i.exec(stmt.trim());
+  if (!m) return { error: 'SQL0104 - Statement not understood by this mock (try: SELECT * FROM library.table).' };
+  const key = `${m[2].toUpperCase()}/${m[3].toUpperCase()}`;
   const table = SQL_TABLES[key];
   if (!table) return { error: `SQL0204 - ${key.replace('/', '.')} in *LIBL type *FILE not found.` };
-  return { cols: table.columns, rows: table.rows };
+
+  let idxs = table.columns.map((_, i) => i);
+  if (m[1].trim() !== '*') {
+    const names = m[1].split(',').map(s => s.trim().toUpperCase());
+    idxs = [];
+    for (const n of names) {
+      const i = table.columns.indexOf(n);
+      if (i === -1) return { error: `SQL0206 - Column ${n} not in table ${key.replace('/', '.')}.` };
+      idxs.push(i);
+    }
+  }
+
+  let rows = table.rows;
+  if (m[5]) {
+    const w = /^([A-Z0-9_]+)\s*(?:=\s*(\d+)|IN\s*\(([^)]*)\)|BETWEEN\s+(\d+)\s+AND\s+(\d+))$/i.exec(m[5].trim());
+    if (!w) return { error: 'SQL0104 - WHERE not understood by this mock (one of: col = n, col IN (n, n), col BETWEEN n AND m).' };
+    const ci = table.columns.indexOf(w[1].toUpperCase());
+    if (ci === -1) return { error: `SQL0206 - Column ${w[1].toUpperCase()} not in table ${key.replace('/', '.')}.` };
+    let keep;
+    if (w[2] !== undefined)      keep = v => Number(v) === Number(w[2]);
+    else if (w[3] !== undefined) { const set = new Set(w[3].split(',').map(s => Number(s.trim()))); keep = v => set.has(Number(v)); }
+    else                         keep = v => Number(v) >= Number(w[4]) && Number(v) <= Number(w[5]);
+    rows = rows.filter(r => keep(r[ci]));
+  }
+  return { cols: idxs.map(i => table.columns[i]), rows: rows.map(r => idxs.map(i => r[i])) };
 }
 function screenSql(ctx) {
   const fields = [
     { row: 0, col: 33, text: 'Interactive SQL', input: false },
     { row: 0, col: 68, text: SYSNAME, input: false },
     { row: 2, col: 2,  text: 'Type SQL statement, press Enter to run.', input: false },
-    { row: 3, col: 2,  text: '(This mock only understands: SELECT * FROM library.table)', input: false },
+    { row: 3, col: 2,  text: '(Mock SQL: SELECT cols FROM lib.table [WHERE col IN (n, n)])', input: false },
     { row: SQL_CMD_ROW, col: 2, text: '===>', input: false },
     { row: SQL_CMD_ROW, col: 7, text: '', input: true, length: 70 },
+    // Continuation line: a long statement wraps onto this row, same as a real
+    // STRSQL statement area. The handler joins the two rows with a space.
+    { row: SQL_CMD_ROW + 1, col: 7, text: '', input: true, length: 70 },
   ];
   if (ctx.message) fields.push({ row: 7, col: 2, text: ctx.message, input: false });
   if (ctx.resultCols) {
@@ -2522,7 +2577,7 @@ function handleConnection(socket) {
         sqlResult = null;
         goBack();
       } else {
-        const stmt = fieldAt(runs, SQL_CMD_ROW);
+        const stmt = [fieldAt(runs, SQL_CMD_ROW), fieldAt(runs, SQL_CMD_ROW + 1)].filter(Boolean).join(' ');
         if (stmt) {
           const res = runSql(stmt);
           if (res.error) { sqlResult = null; menuMessage = res.error; }

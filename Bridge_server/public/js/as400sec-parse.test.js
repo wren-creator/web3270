@@ -5,6 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   evaluateShippedProfile, evaluateSysval, parseSysvals, evaluateExitPoint,
+  SERVICE_GROUPS, svcStatement, splitSqlStatement, parseNetstatRows, evaluateServiceGroup,
   parseSqlResultTable, parseCveInfo, evaluateCveRow, parsePtfCurrency, evaluatePtfGroupRow,
 } from './as400sec-parse.js';
 
@@ -235,4 +236,90 @@ test('evaluateExitPoint: the 8 workbook exit points rate by name, registered one
     assert.equal(evaluateExitPoint(n, 'MYEXIT').risk, 'OK', n);
   }
   assert.equal(evaluateExitPoint('QIBM_NOT_A_REAL_ONE', '*NONE').risk, 'INFO');
+});
+
+const _grp = k => SERVICE_GROUPS.find(g => g.key === k);
+const _ev = (k, rows, opts) => evaluateServiceGroup(_grp(k), rows, opts);
+const _row = (addr, port, state = 'LISTEN') => ({ addr, port, state });
+
+test('svcStatement: real view and columns, and every statement splits into at most two 70 character lines', () => {
+  for (const g of SERVICE_GROUPS) {
+    const s = svcStatement(g);
+    assert.ok(s.startsWith('SELECT LOCAL_ADDRESS, LOCAL_PORT, TCP_STATE FROM QSYS2.NETSTAT_INFO WHERE '), g.key);
+    const parts = splitSqlStatement(s);
+    assert.ok(parts.length <= 2 && parts.every(p => p.length <= 70), `${g.key}: ${parts.map(p => p.length)}`);
+    assert.equal(parts.join(' '), s, g.key);
+  }
+});
+
+test('splitSqlStatement: short statements stay whole, breaks fall on spaces, no space means no split', () => {
+  assert.deepEqual(splitSqlStatement('SELECT * FROM SYSTOOLS.CVE_INFO()'), ['SELECT * FROM SYSTOOLS.CVE_INFO()']);
+  assert.deepEqual(splitSqlStatement('A'.repeat(100)), ['A'.repeat(100)]);
+  const two = splitSqlStatement('x '.repeat(50).trim(), 20);
+  assert.ok(two.every(p => p.length <= 20 && !p.startsWith(' ') && !p.endsWith(' ')));
+});
+
+test('parseNetstatRows: reads by column name, null when LOCAL_PORT is missing (never "nothing listening")', () => {
+  assert.deepEqual(parseNetstatRows(['LOCAL_ADDRESS', 'LOCAL_PORT', 'TCP_STATE'], [['0.0.0.0', '23', 'listen']]),
+    [{ addr: '0.0.0.0', port: 23, state: 'LISTEN' }]);
+  assert.equal(parseNetstatRows(['FOO', 'BAR'], [['1', '2']]), null);
+});
+
+test('evaluateServiceGroup: clear text Telnet listening is HIGH and says there is no TLS alternative', () => {
+  const r = _ev('TELNET', [_row('0.0.0.0', 23)]);
+  const t = r.find(x => x.name.startsWith('23 '));
+  assert.equal(t.risk, 'HIGH'); assert.ok(t.detail.includes('No listener seen on 992'));
+  assert.equal(r.find(x => x.name.startsWith('992 ')).risk, 'INFO');
+});
+
+test('evaluateServiceGroup: not listening is the pass for clear text, TLS twin present drops the no-alternative line', () => {
+  const none = _ev('TELNET', []);
+  assert.equal(none.find(x => x.name.startsWith('23 ')).risk, 'OK');
+  const both = _ev('TELNET', [_row('0.0.0.0', 23), _row('0.0.0.0', 992)]);
+  assert.ok(!both.find(x => x.name.startsWith('23 ')).detail.includes('No listener seen'));
+  assert.equal(both.find(x => x.name.startsWith('992 ')).risk, 'OK');
+});
+
+test('evaluateServiceGroup: ESTABLISHED sessions are not listeners', () => {
+  const r = _ev('TELNET', [_row('10.1.1.1', 23, 'ESTABLISHED'), _row('10.1.1.2', 23, 'ESTABLISHED')]);
+  assert.equal(r.find(x => x.name.startsWith('23 ')).risk, 'OK');
+});
+
+test('evaluateServiceGroup: loopback only is LOW, one wildcard listener beats a loopback one', () => {
+  assert.equal(_ev('LEGACY', [_row('127.0.0.1', 515)]).find(x => x.name.startsWith('515 ')).risk, 'LOW');
+  assert.equal(_ev('LEGACY', [_row('127.0.0.1', 515), _row('0.0.0.0', 515)]).find(x => x.name.startsWith('515 ')).risk, 'MEDIUM');
+});
+
+test('evaluateServiceGroup: UDP counts any row, TFTP is HIGH, an absent UDP port carries the confirm caveat', () => {
+  assert.equal(_ev('LEGACY', [_row('0.0.0.0', 69, '')]).find(x => x.name.startsWith('69 ')).risk, 'HIGH');
+  const off = _ev('LEGACY', []).find(x => x.name.startsWith('69 '));
+  assert.equal(off.risk, 'OK'); assert.ok(off.detail.includes('WRKTCPSVR'));
+});
+
+test('evaluateServiceGroup: host servers collapse absent ports and rate file and remote command HIGH', () => {
+  const rows = [_row('0.0.0.0', 8471), _row('0.0.0.0', 8473), _row('0.0.0.0', 8475)];
+  const r = _ev('HOSTSVR', rows);
+  assert.equal(r.find(x => x.name.startsWith('8473 ')).risk, 'HIGH');
+  assert.equal(r.find(x => x.name.startsWith('8475 ')).risk, 'HIGH');
+  assert.equal(r.find(x => x.name.startsWith('8471 ')).risk, 'MEDIUM');
+  assert.equal(r.filter(x => x.name.startsWith('84')).length, 3, 'absent ports do not get their own rows');
+  assert.equal(_ev('HOSTSVR', []).length, 1);
+  assert.equal(_ev('HOSTSVR', [])[0].risk, 'OK');
+  assert.equal(_ev('HOSTSVRTLS', [])[0].risk, 'INFO');
+  const tls = _ev('HOSTSVRTLS', [_row('0.0.0.0', 9471), _row('0.0.0.0', 9476)]);
+  assert.equal(tls.length, 2, 'no "none listening" summary when some TLS host servers are up');
+  assert.ok(tls.every(x => x.risk === 'OK'));
+});
+
+test('evaluateServiceGroup: a truncated grid never reports a port as off', () => {
+  const r = _ev('TELNET', [_row('0.0.0.0', 992)], { truncated: true });
+  assert.equal(r.find(x => x.name.startsWith('23 ')).risk, 'INFO');
+  assert.ok(r.find(x => x.name.startsWith('23 ')).detail.includes('truncated'));
+});
+
+test('evaluateServiceGroup: admin GUI clear port is HIGH, SSH listening is OK', () => {
+  const w = _ev('WEB', [_row('0.0.0.0', 2001), _row('0.0.0.0', 2010), _row('0.0.0.0', 80)]);
+  assert.equal(w.find(x => x.name.startsWith('2001 ')).risk, 'HIGH');
+  assert.equal(w.find(x => x.name.startsWith('2010 ')).risk, 'OK');
+  assert.equal(_ev('SSH', [_row('0.0.0.0', 22)])[0].risk, 'OK');
 });
