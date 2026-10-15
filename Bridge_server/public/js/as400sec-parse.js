@@ -1102,6 +1102,8 @@ export function outqRows(table, wanted) {
   return table.rows.map(r => Object.fromEntries(spec.map(([, k], i) => [k, r[ix[i]]])));
 }
 
+// Reasons are joined into sentences, so each one starts with a capital.
+const _capFirst = s => (s ? s[0].toUpperCase() + s.slice(1) : s);
 const _yes = v => /^\*?YES$/i.test(String(v || '').trim());
 const _own = v => /^\*?OWNER$/i.test(String(v || '').trim());
 const _rank = { '*EXCLUDE': 0, '*USE': 1, '*CHANGE': 2, '*ALL': 3 };
@@ -1142,7 +1144,7 @@ export function evaluateOutq(d) {
     if (o.autchk && _own(o.autchk)) { reasons.push('AUTCHK(*OWNER), the recommended setting for a sensitive queue is *DTAAUT, confirm what it means on your release'); bump('LOW'); }
     if (o.remote) { reasons.push(`remote queue, spool leaves this system for ${o.remote}, the destination must be approved`); bump('MEDIUM'); }
     out.push({ name: key(o.lib, o.name), value: `DSPDTA ${o.dspdta ?? '?'} · OPRCTL ${o.oprctl ?? '?'} · *PUBLIC ${auth ?? '?'}`, risk,
-      detail: reasons.length ? `${reasons.join('. ')}.` : 'Set up the recommended way: files visible to their owner only, no operator control, *PUBLIC excluded.' });
+      detail: reasons.length ? `${reasons.map(_capFirst).join('. ')}.` : 'Set up the recommended way: files visible to their owner only, no operator control, *PUBLIC excluded.' });
   }
 
   // QPJOBLOG and QPRINT: job logs carry data values and user names, QPRINT is where everything
@@ -1288,7 +1290,7 @@ export function evaluateJournal(d) {
       if (sec) why.push('Done as QSECOFR, the security officer is not a day-to-day administrator');
       if (known(levelOn) && !levelOn) why.push(`${g.needLabel} is not set now, so these are from before it was switched off`);
       out.push({ name: `${g.label}: ${user}`, value: `${list.length} entr${list.length === 1 ? 'y' : 'ies'} (${kindText}), newest ${last}`, risk,
-        detail: `${list.length} ${g.noun} entr${list.length === 1 ? 'y' : 'ies'} by ${user} in ${d.days} days: ${objs.slice(0, 4).join(', ')}${objs.length > 4 ? `, and ${objs.length - 4} more` : ''}.${why.length ? ' ' + why.join('. ') + '.' : ''}` });
+        detail: `${list.length} ${g.noun} entr${list.length === 1 ? 'y' : 'ies'} by ${user} in ${d.days} days: ${objs.slice(0, 4).join(', ')}${objs.length > 4 ? `, and ${objs.length - 4} more` : ''}.${why.length ? ' ' + why.map(_capFirst).join('. ') + '.' : ''}` });
     }
     if (d.truncated?.[g.key]) out.push({ name: `${g.label} read`, value: 'incomplete', risk: 'INFO', detail: `More ${g.label.toLowerCase()} entries exist than were read, so counts and users above may be missing some. Shorten the window or read it by hand.` });
   }

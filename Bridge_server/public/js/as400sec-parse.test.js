@@ -761,3 +761,14 @@ test('evaluateExitPrograms: *PUBLIC excluded is LOW, unread authority is INFO, a
   assert.equal(_erow(_ex({ exits: [_e('P', 'A', 'L')], progPub: [{ key: 'L/A', auth: '*USE' }], libPub: [{ lib: 'L', auth: '*USE' }] }), '(exit programs)').risk, 'INFO', 'the summary row never reads OK next to findings');
   assert.ok(_erow(_ex(), '(exit programs)').detail.includes('CHKOBJITG') && _erow(_ex(), '(exit programs)').detail.includes('No exit program outside a Q* library'));
 });
+
+test('evaluateOutq and evaluateJournal: every reason in a finding starts a sentence with a capital', () => {
+  const o = evaluateOutq({ inv1: [{ LIB: 'L', OUTQ: 'R', DSPDTA: 'NO' }], inv2: [{ LIB: 'L', OUTQ: 'R', AUTCHK: '*DTAAUT', OPRCTL: 'NO' }],
+    remote: [{ LIB: 'L', OUTQ: 'R', RMTSYS: 'PRT01' }], pub: [{ LIB: 'L', OUTQ: 'R', AUTH: '*USE' }], audspl: [{}], audprt: [{}], incomplete: [] });
+  const d = o.find(x => x.name === 'L/R').detail;
+  assert.ok(d.includes('. Remote queue, spool leaves this system') && !/\. [a-z]/.test(d), d);
+  const j = evaluateJournal({ days: 30, cfg: { audlvl: true, objaud: false, savrst: true, create: true, spl: true, prt: true },
+    rows: { restores: [], creates: [], changes: [{ ts: 't', type: 'ZC', user: 'QSECOFR', object: 'A/B' }], spool: [], print: [] }, truncated: {}, incomplete: [] });
+  const dj = j.find(x => x.name === 'Changes: QSECOFR').detail;
+  assert.ok(dj.includes('. Object auditing (*OBJAUD in QAUDCTL) is not set now') && !/\. [a-z]/.test(dj), dj);
+});

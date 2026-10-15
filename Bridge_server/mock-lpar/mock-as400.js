@@ -2340,7 +2340,9 @@ function journalRows({ types, days }) {
     .sort((a, b) => b[0] - a[0])
     .map(([ago, t, user, obj], i) => {
       const d = new Date(Date.now() - ago * 86400000);
-      const ts = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(8 + (i % 9))}.${pad((i * 7) % 60)}.${pad((i * 13) % 60)}`;
+      // time of day climbs with the row, so entries from one day read in order
+      const sec = 8 * 3600 + (i % 20) * 1700 + (i * 13) % 60;
+      const ts = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(Math.floor(sec / 3600))}.${pad(Math.floor(sec % 3600 / 60))}.${pad(sec % 60)}`;
       return [ts, t, user, obj];
     });
 }
