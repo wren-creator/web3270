@@ -61,6 +61,7 @@ The app ships **74 built-in narrated walkthroughs** (`public/js/walkthrough.js`)
 | — | | 48 | IBM i Output Queue and Spool Audit |
 | — | | 49 | IBM i Audit Journal Review |
 | — | | 50 | IBM i Exit Program Integrity and Authority |
+| — | | 51 | IBM i FTP Service Audit |
 
 Appendices — Structured JSON findings export, the `.rec.json` format.
 
@@ -3108,6 +3109,56 @@ On the mock, `EXITLIB/SQLEXITPGM` (the remote SQL exit) is CRITICAL: `*PUBLIC` h
 ### Where the mock stops
 
 `EXIT_PROGRAM_INFO` columns, the `*LIB` rows of `OBJECT_PRIVILEGES` and the `DISPLAY_JOURNAL` parameters were not run on a live IBM i, confirm them.
+
+---
+
+## Part 51 — IBM i (AS/400) FTP Service Audit
+
+FTP is the old front door, and on IBM i it is a wide one. A signed-on FTP session can browse the IFS and the libraries, and without an exit program on the FTP server exit points it can do far more. The Exit Point audit ([Part 37A](#)) asks whether a program is registered. The Listening Services Inventory ([Part 42](#)) asks whether the port is open. This asks what the server itself says and allows to someone who walks up to it.
+
+### Location
+
+Security panel → IBM i FTP SERVICE AUDIT. It is a network check against a host you name (default ports 21 and 990), not tied to an open terminal session, like the HTTP Admin GUI Audit and the SSH Access Audit. Behind the RoE Scope Guard ([scope-guard.md](scope-guard.md)).
+
+### How it works
+
+| Step | What is sent | What it tells you |
+|---|---|---|
+| Banner | connect on 21 and 990 | the `220-QTCP at <host>.` greeting names the system and says it is IBM i |
+| Pre-login `FEAT`, `SYST` | two commands, no sign-on | a `SYST` that answers before login hands out the OS and release |
+| Clear text check | `USER` only, never `PASS` | a `331` means the server asked for a password with no TLS in place. Unconfirmed: it may still refuse at `PASS` |
+| TLS | `AUTH TLS`, then a handshake; and a handshake on 990 | which protocol version, and whether the certificate is expired, self-signed or too small |
+| Anonymous | `anonymous` and `ftp`, once each | whether anyone can sign on with no profile |
+| Default profiles (opt-in) | the well-known defaults, a couple of tries each | whether a shipped profile still has its default password |
+| One profile you supply (optional) | `SYST`, `HELP`, `NAMEFMT 1`, `CWD`, `PASV`, `LIST` | OS release, whether `RCMD` is advertised, and how much of the IFS and the libraries that profile can see |
+
+Everything after the checks above goes over TLS when the server offers it.
+
+### Safety, and what it never does
+
+- The only verbs the code can send are `USER PASS SYST FEAT HELP AUTH PBSZ PROT PWD CWD NAMEFMT TYPE PASV LIST NLST STAT QUIT NOOP`. Anything else throws before it reaches the wire, so `STOR`, `DELE`, `MKD`, `RMD`, `RNFR` and `RCMD` cannot be sent. `RCMD` is only noticed in the `HELP` text, never run. A test asserts it.
+- The profile and password are sent once and kept nowhere, not in the page, the exports or a finding. If the only way in is clear text, the password is **not sent** unless you tick the clear text box.
+- Trying default profiles is the one intrusive part. It is off by default, and the RoE must name the activity `ftp-login-probe`. It makes at most 2 tries per profile (the server clamps it at 5 and at 60 tries in all), one second apart, on a new connection each, and stops on the first success. **Every failed FTP sign-on counts toward `QMAXSIGN`** (3 by default), and a profile that reaches it is disabled, so the cap is there to keep an audit from locking out a real person.
+- The address in a `PASV` reply is ignored. Only the host you named is ever contacted.
+- Banners and replies are cleaned of control characters and capped before they are shown.
+
+### Risk levels
+
+| Rating | Meaning |
+|---|---|
+| CRITICAL | anonymous sign-on works, or a default profile signed on |
+| FINDING | clear text sign-on accepted, no TLS at all, `SYST` or the banner leaking the release before login, TLS 1.0 or 1.1, an expired or too-small certificate, `RCMD` advertised, a profile that can browse the IFS and libraries |
+| INFO | everything that is a fact rather than a problem, and anything that could not be read. A short or failed read is INFO, never a pass |
+
+The verdict is FINDING if any row is FINDING or CRITICAL, INCONCLUSIVE if nothing answered, and SECURE only when nothing was found.
+
+### Teaching scenario
+
+On the mock (FTP on 2121 instead of 21, because a container user cannot bind below 1024, and 2990 instead of 990 when `MOCK_AS400_FTP_IMPLICIT=1`), the default shop is loose: clear text is accepted, explicit TLS is offered but not required, anonymous is refused, and `JSMITH` can list six entries in the IFS root and eight libraries. With the default-profile box ticked, `QSECOFR` and `QSRVBAS` sign on. `MOCK_AS400_FTP_REQUIRE_TLS=1` makes the clear text check come back refused, and `MOCK_AS400_FTP_ANON=1` makes anonymous CRITICAL.
+
+### Where the mock stops
+
+The real server's replies were modelled from IBM's documentation and not run on a live IBM i. Confirm on real hardware: the exact `220` banner, whether `SYST` is refused before login, what `USER` answers for an unknown profile, the `SYST` reply text after login (`OS/400 is the remote operating system. The TCP/IP version is "V7R4M0".` is the expected form), whether `HELP` lists `RCMD`, and how `NAMEFMT 1` lists `/QSYS.LIB`. Whether an FTP exit program is registered is the Exit Point audit's question, this tool only shows what an ordinary profile can reach without one.
 
 ---
 

@@ -28,7 +28,7 @@ Copy `scope.json.example` to `scope.json` next to `server.js` and edit it. No fi
 | `activities` | Which tests the RoE authorizes. If present, only these run. If absent, every non-intrusive activity runs. |
 | `windowStart` / `windowEnd` | Engagement window. Outside it, everything is denied. |
 
-**Intrusive activities** (`hipersockets-sweep`, `spool-injection`, `minidisk-link`, `xautolog-start`, `send-cp`) run only when named in `activities`, even if you leave the list out. The last two also put up a confirm dialog in the browser before running, every time, regardless of what the scope file says — the guard and the dialog are separate gates, and neither substitutes for the other.
+**Intrusive activities** (`hipersockets-sweep`, `spool-injection`, `minidisk-link`, `xautolog-start`, `send-cp`, `ftp-login-probe`) run only when named in `activities`, even if you leave the list out. The last two also put up a confirm dialog in the browser before running, every time, regardless of what the scope file says — the guard and the dialog are separate gates, and neither substitutes for the other.
 
 ## Fails closed
 
