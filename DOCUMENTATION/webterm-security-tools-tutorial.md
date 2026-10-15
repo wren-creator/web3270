@@ -56,6 +56,7 @@ The app ships **74 built-in narrated walkthroughs** (`public/js/walkthrough.js`)
 | — | | 43 | IBM i Default Password Report (ANZDFTPWD) |
 | — | | 44 | IBM i Group Profile Review |
 | — | | 45 | IBM i QSECOFR-Owned Objects |
+| — | | 46 | IBM i Library CRTAUT Review |
 
 Appendices — Structured JSON findings export, the `.rec.json` format.
 
@@ -2885,6 +2886,41 @@ On the mock, `QSECOFR` owns IBM's own objects in `QSYS`, `QGPL` and `QUSRSYS`, w
 ### Where the mock stops
 
 "Application library" means "not named `Q*`", a heuristic. A `Q`-named library that is really yours is missed, and an IBM library that does not start with `Q` (`#LIBRARY` and so on) is flagged. The view name, whether it takes a user, and its column names were not run on a live IBM i, confirm them. The tool checks `QSECOFR` only, other profiles that hold `*ALLOBJ` can own application objects too.
+
+---
+
+## Part 46 — IBM i (AS/400) Library CRTAUT Review
+
+`QCRTAUT` is the system value for the authority `*PUBLIC` gets on a newly created object. It is only the fallback. Every library carries its own `CRTAUT`, and that wins unless it says `*SYSVAL`. So a system-value review that finds `QCRTAUT` at `*USE` can sit on top of a library whose `CRTAUT` is `*ALL`, and a weak `QCRTAUT` can be fine for a library that sets its own.
+
+### Location
+
+Security panel → IBM i SECURITY (AS/400) → LIBRARY CRTAUT REVIEW
+
+### How it works
+
+A drill, the same shape as the user profile scanner. It lists libraries with `WRKLIB`, reads the `QCRTAUT` system value first (`DSPSYSVAL SYSVAL(QCRTAUT)`), then issues `DSPLIBD LIB(name)` for each application library, meaning every library not named `Q*`, plus `QGPL` because that is where users' own objects land. It reads the "Create authority" line and judges it against the system value it read first.
+
+### Risk levels
+
+The rating is for the authority new objects actually get, after the library's own setting is applied.
+
+| Rating | Meaning |
+|---|---|
+| CRITICAL | new objects are created `*PUBLIC *ALL` |
+| HIGH | new objects are created `*PUBLIC *CHANGE`, including a library that says `*SYSVAL` while `QCRTAUT` is `*CHANGE` |
+| OK | `*USE` or `*EXCLUDE`, whether set on the library or inherited. A library that sets its own and overrides a weaker `QCRTAUT` says so |
+| INFO | the library hands new objects to an authorization list (the list decides, use the Authorization List scan), or something could not be read. Never a pass |
+
+A library that sets a weaker `CRTAUT` than `QCRTAUT` is called out as overriding a stricter system value. The fix is `CHGLIB LIB(name) CRTAUT(*EXCLUDE)` (or `*USE`). `CRTAUT` only decides what **new** objects get, it never changes objects already in the library, so a fixed library still needs the Object Authority scan.
+
+### Teaching scenario
+
+On the mock, `QCRTAUT` is `*CHANGE`. `PAYROLL` and `QGPL` say `*SYSVAL`, so both inherit it and are HIGH: the lesson is that fixing the system value would fix them, and leaving it means every new payroll object is public-writable. `MYLIB` sets `*ALL`, CRITICAL, and overrides a stricter system value. `APPLIB` (`*USE`) and `HRLIB` (`*EXCLUDE`) set their own and override the weak system value, which is the right layer, OK. `TOOLLIB` uses authorization list `SECAUTL`, INFO.
+
+### Where the mock stops
+
+The "Create authority" label on `DSPLIBD` and the `CRTAUT` values were not run on a live IBM i, confirm them. "Application library" means not named `Q*`, so a `Q`-named library that is really yours is missed. A real system has far more libraries than this list, and the generic list reader pages through `WRKLIB` with Roll Up.
 
 ---
 

@@ -1326,6 +1326,15 @@
             <div id="as400GrprevOut" style="max-height:220px;overflow-y:auto;margin-top:4px"></div>
           </div>
 
+          <!-- Library CRTAUT vs QCRTAUT -->
+          <div style="margin-top:10px;padding-top:8px;border-top:1px solid #1a1a1a">
+            <div style="font-size:10px;color:var(--text-muted);font-weight:600;letter-spacing:.06em;margin-bottom:4px">LIBRARY CRTAUT REVIEW</div>
+            <div class="sec-panel-hint" style="margin-bottom:6px">QCRTAUT is only the fallback for the authority *PUBLIC gets on a new object. Every library carries its own CRTAUT, which wins unless it says *SYSVAL. Reads QCRTAUT with DSPSYSVAL, then DSPLIBD for each application library (not Q*, plus QGPL) and rates the authority new objects actually get: *ALL critical, *CHANGE high, *USE or *EXCLUDE fine. CRTAUT only affects objects created from now on, existing ones are untouched.</div>
+            <button id="as400CrtautBtn" class="sec-inject-btn" onclick="startAs400CrtautScan()" style="background:#1a2a1a">▶ REVIEW LIBRARY CRTAUT</button>
+            <div id="as400CrtautStatus" style="font-size:10px;color:var(--text-muted);margin-top:4px;min-height:14px"></div>
+            <div id="as400CrtautOut" style="max-height:220px;overflow-y:auto;margin-top:4px"></div>
+          </div>
+
           <!-- Objects owned by QSECOFR -->
           <div style="margin-top:10px;padding-top:8px;border-top:1px solid #1a1a1a">
             <div style="font-size:10px;color:var(--text-muted);font-weight:600;letter-spacing:.06em;margin-bottom:4px">QSECOFR-OWNED OBJECTS</div>

@@ -3097,6 +3097,50 @@ const _WALKTHROUGHS = [
     ],
   },
 
+  // ── IBM i (AS/400) Library CRTAUT Review ──────────────────────────
+  {
+    id:       'as400-library-crtaut-review',
+    category: 'security',
+    title:    'IBM i: Library CRTAUT Review',
+    desc:     'Reads QCRTAUT, then DSPLIBD for each application library, and rates the authority new objects really get. QCRTAUT is only the fallback, each library\'s own CRTAUT wins.',
+    steps: [
+      {
+        title: 'Why the system value is not the answer',
+        body:  'QCRTAUT says what *PUBLIC gets on a new object, but only for libraries whose CRTAUT is *SYSVAL. Every library has its own CRTAUT, and when it names a value that value wins. So a tidy QCRTAUT can sit on top of a library set to *ALL, and an untidy one can be harmless for a library that sets its own. You have to read both layers.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Prerequisites',
+        body:  'Connect to a TN5250 target, sign on, and stop at a menu with a "Selection or command" line. The "Create authority" label on DSPLIBD was not run on a live IBM i, confirm it on yours.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click 🔒 in the OIA status bar and enter the security password (default: 2970).',
+        highlight: 'secBtn', autoFn: null,
+      },
+      {
+        title: 'Run the review',
+        body:  'Click ▶ REVIEW LIBRARY CRTAUT. The tool lists libraries with WRKLIB, reads QCRTAUT first (DSPSYSVAL SYSVAL(QCRTAUT)), then issues DSPLIBD LIB(name) for each application library: every library not named Q*, plus QGPL, where users\' own objects land. Each is judged against the system value it read first.',
+        highlight: 'as400CrtautBtn',
+        autoFn: 'startAs400CrtautScan',
+        autoLabel: 'Run it for me',
+      },
+      {
+        title: 'Read the findings',
+        body:  'CRITICAL — new objects are created *PUBLIC *ALL. HIGH — *PUBLIC *CHANGE, including a library that says *SYSVAL while QCRTAUT is *CHANGE, which is the point: the library is only as strict as the fallback. OK — *USE or *EXCLUDE, and a library that sets its own value over a weaker QCRTAUT says so, that is the right layer. INFO — new objects go to an authorization list (the list decides, use the Authorization List scan) or something could not be read, never a pass. A library that sets a weaker value than QCRTAUT is called out as overriding a stricter system value. CRTAUT only decides what NEW objects get. CHGLIB LIB(name) CRTAUT(*EXCLUDE) does not touch objects already there, so run the Object Authority scan on the library too.',
+        highlight: 'as400CrtautOut', autoFn: null,
+      },
+      {
+        title: 'Export the audit',
+        body:  'Click ↓ Export IBM i Audit CSV to save the findings.',
+        highlight: 'as400CrtautOut',
+        autoFn: 'as400ExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
   // ── IBM i (AS/400) QSECOFR-Owned Objects ──────────────────────────
   {
     id:       'as400-qsecofr-owned-objects',

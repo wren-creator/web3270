@@ -77,6 +77,7 @@ Platform key: **z/OS** (TSO/RACF/SDSF/DB2/CICS) · **IBM i** (AS/400) · **z/VM*
 | Default Password Report | Runs `ANZDFTPWD ACTION(*NONE)` and rates every profile whose password equals its name: CRITICAL if it holds `*ALLOBJ` or `*SECADM`, else HIGH. Report only, nothing guessed, no lockout risk. For a client-assisted audit, the Default Credential Audit is the pentest version. |
 | Group Profile Review | Reads `QSYS2.GROUP_PROFILE_ENTRIES` and `QSYS2.USER_INFO` via STRSQL (all pages) and flags group profiles holding `*ALLOBJ` or `*SECADM`, and users who reach one only through a supplemental group, which the primary group field never shows. Stale empty groups are not found. |
 | QSECOFR-Owned Objects | Reads `QSYS2.OBJECT_OWNERSHIP` via STRSQL for objects `QSECOFR` owns outside `Q*` libraries and rates each library: HIGH when programs are among them (one that adopts its owner runs as `QSECOFR`), MEDIUM for data only. Fix is `CHGOBJOWN` to a dedicated owner profile, test first. |
+| Library CRTAUT Review | Reads `QCRTAUT` (`DSPSYSVAL`) then `DSPLIBD` per application library and rates the authority new objects actually get: the library's own `CRTAUT` wins unless it says `*SYSVAL`. `*ALL` critical, `*CHANGE` high, `*USE`/`*EXCLUDE` fine. Fix is `CHGLIB ... CRTAUT(*EXCLUDE)`, existing objects are not changed. |
 
 ## z/VM
 

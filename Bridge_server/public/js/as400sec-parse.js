@@ -924,3 +924,54 @@ export function evaluateOwnedObjects(objs, { truncated = false } = {}) {
     detail: truncated ? 'Nothing found in what was read, but the read was incomplete.' : `${OWNED_BY} owns no objects outside Q* libraries.` });
   return out;
 }
+
+
+// ── Library CRTAUT vs QCRTAUT (DSPLIBD per library + DSPSYSVAL QCRTAUT) ──────
+// QCRTAUT is only the fallback for the authority *PUBLIC gets on a new object.
+// Each library carries its own CRTAUT, which wins unless it says *SYSVAL. So a
+// system-value review that finds QCRTAUT at *USE can sit on top of a library whose
+// CRTAUT is *ALL, and a weak QCRTAUT can be fine for a library that sets its own.
+// CRTAUT only decides what NEW objects get, it never changes the ones already there,
+// so a fixed library still needs the existing objects looked at (Object Authority
+// scan). The label text on DSPLIBD ("Create authority") was not run on a live IBM i.
+export function parseLibraryNames(lines) {
+  const names = [];
+  for (let r = LIST_START_ROW; r < lines.length; r++) {
+    const name = (lines[r] || '').slice(6, 17).trim();
+    if (!/^[A-Z#$@][A-Z0-9#$@_]*$/.test(name) || name === 'Library') continue;
+    if (!names.includes(name)) names.push(name);
+  }
+  return names;
+}
+
+// Application libraries are the ones worth a DSPLIBD each. QGPL stays in, it is where
+// users' own objects land. The rest of Q* are IBM's, as is QTEMP.
+export const isAppLibrary = n => !/^Q/.test(n) || n === 'QGPL';
+
+const _CRT_RISK = { '*ALL': 'CRITICAL', '*CHANGE': 'HIGH', '*USE': 'OK', '*EXCLUDE': 'OK' };
+const _CRT_RANK = { '*EXCLUDE': 0, '*USE': 1, '*CHANGE': 2, '*ALL': 3 };
+
+export function evaluateLibCrtaut({ lib, crtaut, qcrtaut }) {
+  const own = crtaut && crtaut !== '*UNKNOWN' ? crtaut : null;
+  if (!own) return { risk: 'INFO', value: '—', detail: `Could not read ${lib}'s create authority from DSPLIBD.` };
+  if (!own.startsWith('*')) return { risk: 'INFO', value: `CRTAUT(${own})`,
+    detail: `New objects take their authority from authorization list ${own}, not a fixed value. The list decides, review it with the Authorization List scan.` };
+  const sysval = qcrtaut && qcrtaut !== '*UNKNOWN' ? qcrtaut : null;
+  const eff = own === '*SYSVAL' ? sysval : own;
+  if (!eff) return { risk: 'INFO', value: `CRTAUT(${own})`, detail: 'QCRTAUT could not be read, so the authority new objects get here is not known.' };
+  const risk = _CRT_RISK[eff] || 'INFO';
+  const value = own === '*SYSVAL' ? `*SYSVAL → ${eff}` : `CRTAUT(${own})`;
+  if (own === '*SYSVAL') {
+    return risk === 'OK'
+      ? { risk, value, detail: `Inherits QCRTAUT (${eff}), which is fine today. A later change to the system value changes this library too, so set CRTAUT on the library if it matters.` }
+      : { risk, value, detail: `New objects here are created *PUBLIC ${eff} because the library defers to QCRTAUT, which is only the fallback. Set the library's own: CHGLIB LIB(${lib}) CRTAUT(*EXCLUDE) or *USE. That does not change objects already there.` };
+  }
+  if (risk === 'OK') {
+    return { risk, value, detail: sysval && _CRT_RANK[sysval] > _CRT_RANK[own]
+      ? `The library sets its own CRTAUT (${own}) and overrides the weaker QCRTAUT (${sysval}), which is the right layer.`
+      : `The library sets its own CRTAUT (${own}).` };
+  }
+  return { risk, value, detail: `New objects here are created *PUBLIC ${eff}` +
+    (sysval && _CRT_RANK[own] > _CRT_RANK[sysval] ? `, weaker than QCRTAUT (${sysval}): this library overrides a stricter system value.` : '.') +
+    ` Set CHGLIB LIB(${lib}) CRTAUT(*EXCLUDE) or *USE. That does not change objects already there.` };
+}

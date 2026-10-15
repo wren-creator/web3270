@@ -759,13 +759,20 @@ function buildUserJobs(user) {
 }
 
 // Libraries (WRKLIB).
+// crtaut is the library's CRTAUT: the authority *PUBLIC gets on objects created in
+// it. *SYSVAL means "whatever QCRTAUT says", so the system value is only the
+// fallback and a library can override it either way. PAYROLL inherits the weak
+// system value, APPLIB overrides it upward, MYLIB overrides it downward, TOOLLIB
+// hands it to an authorization list.
 const LIBRARIES = [
-  { name: 'QGPL',    type: '*PROD', asp: 1, text: 'General purpose library',          objects: 812 },
-  { name: 'QSYS',    type: '*SYS',  asp: 1, text: 'System library',                   objects: 4213 },
-  { name: 'QTEMP',   type: '*TEMP', asp: 1, text: 'Temporary job library',            objects: 0 },
-  { name: 'PAYROLL', type: '*PROD', asp: 1, text: 'Payroll application data',         objects: 18 },
-  { name: 'APPLIB',  type: '*PROD', asp: 1, text: 'Application program library',      objects: 47 },
-  { name: 'MYLIB',   type: '*TEST', asp: 1, text: 'Personal development library',     objects: 6 },
+  { name: 'QGPL',    type: '*PROD', asp: 1, text: 'General purpose library',          objects: 812,  crtaut: '*SYSVAL' },
+  { name: 'QSYS',    type: '*SYS',  asp: 1, text: 'System library',                   objects: 4213, crtaut: '*SYSVAL' },
+  { name: 'QTEMP',   type: '*TEMP', asp: 1, text: 'Temporary job library',            objects: 0,    crtaut: '*SYSVAL' },
+  { name: 'PAYROLL', type: '*PROD', asp: 1, text: 'Payroll application data',         objects: 18,   crtaut: '*SYSVAL' },
+  { name: 'APPLIB',  type: '*PROD', asp: 1, text: 'Application program library',      objects: 47,   crtaut: '*USE' },
+  { name: 'MYLIB',   type: '*TEST', asp: 1, text: 'Personal development library',     objects: 6,    crtaut: '*ALL' },
+  { name: 'HRLIB',   type: '*PROD', asp: 1, text: 'Human resources data',             objects: 12,   crtaut: '*EXCLUDE' },
+  { name: 'TOOLLIB', type: '*PROD', asp: 1, text: 'Operations utility programs',      objects: 9,    crtaut: 'SECAUTL' },
 ];
 
 // Current library list (DSPLIBL) -- fixed order: system, product, current, user.
@@ -1118,6 +1125,12 @@ function runCommand(raw) {
     case 'WRKUSRJOB': return { type: 'screen', screen: 'USRJOB_LIST' };
     case 'WRKBCHJOB': return { type: 'screen', screen: 'BCHJOB_LIST' };
     case 'WRKLIB':  return { type: 'screen', screen: 'LIB_LIST' };
+    case 'DSPLIBD': {
+      const name = params.LIB;
+      if (!name)                                 return { type: 'error', message: 'CPD0043 - Keyword LIB required for DSPLIBD.' };
+      if (!LIBRARIES.find(l => l.name === name)) return { type: 'error', message: `CPF2110 - Library ${name} not found.` };
+      return { type: 'detail', screen: 'LIB_DETAIL', target: name };
+    }
     case 'DSPLIBL': return { type: 'detail', screen: 'LIBL_DETAIL', target: null };
     case 'STRPDM':  return { type: 'screen', screen: 'LIB_LIST' };
     case 'WRKOBJPDM': {
@@ -1986,6 +1999,8 @@ function screenLibDetail(name) {
     { row: 4, col: 2,  text: `Auxiliary storage pool  . . :  ${l.asp}`, input: false },
     { row: 5, col: 2,  text: `Number of objects  . . . . :   ${l.objects}`, input: false },
     { row: 6, col: 2,  text: `Text . . . . . . . . . . . :   ${l.text}`, input: false },
+    { row: 7, col: 2,  text: `Create authority . . . . . :   ${l.crtaut}`, input: false,
+      attr: (l.crtaut === '*ALL' || l.crtaut === '*CHANGE') ? ATTR_RED : ATTR_WHITE },
     { row: 22, col: 2,  text: 'Press Enter to continue', input: false },
     { row: 23, col: 2,  text: 'F3=Exit   F12=Cancel', input: false },
     { row: 22, col: 44, text: '', input: true, length: 1 },

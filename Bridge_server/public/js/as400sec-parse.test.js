@@ -8,6 +8,7 @@ import {
   parseDftPwd, evaluateDftPwd,
   GROUP_QUERIES, parseSuppGroups, parsePrimaryGroups, parseHolders, groupTableOk, evaluateGroups,
   OWNED_STATEMENT, parseOwnedObjects, evaluateOwnedObjects,
+  parseLibraryNames, isAppLibrary, evaluateLibCrtaut,
   SERVICE_GROUPS, svcStatement, splitSqlStatement, parseNetstatRows, evaluateServiceGroup,
   parseSqlResultTable, parseCveInfo, evaluateCveRow, parsePtfCurrency, evaluatePtfGroupRow,
 } from './as400sec-parse.js';
@@ -448,4 +449,38 @@ test('evaluateOwnedObjects: long lists are cut to six names with a count, nothin
   const t = evaluateOwnedObjects([], { truncated: true });
   assert.ok(t.every(x => x.risk === 'INFO'));
   assert.ok(evaluateOwnedObjects([_own('L', 'A', '*FILE')], { truncated: true }).some(x => x.name === '(ownership read)'));
+});
+
+test('parseLibraryNames / isAppLibrary: reads the WRKLIB list, keeps application libraries and QGPL only', () => {
+  const lines = new Array(24).fill('');
+  lines[5] = '  Opt  Library     Type    Objects  Text';
+  ['QGPL', 'QSYS', 'QTEMP', 'PAYROLL', 'APPLIB', '#LIBRARY'].forEach((n, i) => { lines[6 + i] = '      ' + n.padEnd(11) + '*PROD       12  x'; });
+  const names = parseLibraryNames(lines);
+  assert.deepEqual(names, ['QGPL', 'QSYS', 'QTEMP', 'PAYROLL', 'APPLIB', '#LIBRARY']);
+  assert.deepEqual(names.filter(isAppLibrary), ['QGPL', 'PAYROLL', 'APPLIB', '#LIBRARY']);
+});
+
+test('evaluateLibCrtaut: *SYSVAL inherits QCRTAUT, so a weak system value is a library finding, and says it is only the fallback', () => {
+  const r = evaluateLibCrtaut({ lib: 'PAYROLL', crtaut: '*SYSVAL', qcrtaut: '*CHANGE' });
+  assert.equal(r.risk, 'HIGH'); assert.equal(r.value, '*SYSVAL → *CHANGE');
+  assert.ok(r.detail.includes('only the fallback') && r.detail.includes('CHGLIB LIB(PAYROLL)') && r.detail.includes('does not change objects already there'));
+  assert.equal(evaluateLibCrtaut({ lib: 'X', crtaut: '*SYSVAL', qcrtaut: '*ALL' }).risk, 'CRITICAL');
+  const ok = evaluateLibCrtaut({ lib: 'X', crtaut: '*SYSVAL', qcrtaut: '*USE' });
+  assert.equal(ok.risk, 'OK'); assert.ok(ok.detail.includes('later change to the system value'));
+});
+
+test('evaluateLibCrtaut: a library that sets its own CRTAUT wins over the system value, both directions', () => {
+  const up = evaluateLibCrtaut({ lib: 'APPLIB', crtaut: '*USE', qcrtaut: '*CHANGE' });
+  assert.equal(up.risk, 'OK'); assert.ok(up.detail.includes('overrides the weaker QCRTAUT'));
+  assert.equal(evaluateLibCrtaut({ lib: 'HRLIB', crtaut: '*EXCLUDE', qcrtaut: '*CHANGE' }).risk, 'OK');
+  const down = evaluateLibCrtaut({ lib: 'MYLIB', crtaut: '*ALL', qcrtaut: '*USE' });
+  assert.equal(down.risk, 'CRITICAL'); assert.ok(down.detail.includes('overrides a stricter system value'));
+  assert.equal(evaluateLibCrtaut({ lib: 'L', crtaut: '*CHANGE', qcrtaut: '*CHANGE' }).risk, 'HIGH');
+});
+
+test('evaluateLibCrtaut: an authorization list is INFO, and anything unread is INFO, never a pass', () => {
+  assert.equal(evaluateLibCrtaut({ lib: 'TOOLLIB', crtaut: 'SECAUTL', qcrtaut: '*CHANGE' }).risk, 'INFO');
+  assert.equal(evaluateLibCrtaut({ lib: 'L', crtaut: '*UNKNOWN', qcrtaut: '*USE' }).risk, 'INFO');
+  assert.equal(evaluateLibCrtaut({ lib: 'L', crtaut: '*SYSVAL', qcrtaut: '*UNKNOWN' }).risk, 'INFO');
+  assert.equal(evaluateLibCrtaut({ lib: 'L', crtaut: '*EXCLUDE', qcrtaut: undefined }).risk, 'OK');
 });

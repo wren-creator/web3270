@@ -31,7 +31,7 @@ import {
   parseNetattrs, evaluateNetattr, parseJobds, evaluateJobd,
   parseAutls, parseAutlSecured, evaluateAutl, parseActjobs, evaluateActjob,
   evaluateExitPoint, evaluateNetsvr, parseIfsObjects, evaluateIfsObject,
-  parseCallStack, evaluateAdoptedAuthority, parseDftPwd, evaluateDftPwd,
+  parseCallStack, evaluateAdoptedAuthority, parseDftPwd, evaluateDftPwd, parseLibraryNames, isAppLibrary, evaluateLibCrtaut,
   parseSqlResultTable, parseCveInfo, evaluateCveRow, parsePtfCurrency, evaluatePtfGroupRow,
   SERVICE_GROUPS, svcStatement, splitSqlStatement, parseNetstatRows, evaluateServiceGroup,
   GROUP_QUERIES, parseSuppGroups, parsePrimaryGroups, parseHolders, groupTableOk, evaluateGroups,
@@ -206,6 +206,29 @@ const TOOLS = {
       });
     },
   },
+  // Library CRTAUT vs QCRTAUT. Drill: the first item reads the QCRTAUT system value,
+  // then DSPLIBD per application library, each judged against it. Items are issued in
+  // order, so _crtaut is set before any library is evaluated.
+  CRTAUT: {
+    cmd: 'WRKLIB', title: 'Work with Libraries', ids: 'Crtaut',
+    drill: {
+      collect: lines => [
+        { key: 'QCRTAUT', cmd: 'DSPSYSVAL SYSVAL(QCRTAUT)', detailTitle: 'Display System Value', sysval: true },
+        ...parseLibraryNames(lines).filter(isAppLibrary).map(n => ({ key: n, cmd: `DSPLIBD LIB(${n})` })),
+      ],
+      detailTitle: 'Display Library Description',
+      parse: (lines, text, item) => {
+        if (item.sysval) {
+          _qcrtaut = parseLabelValue(lines, 'Current value');
+          return { name: 'QCRTAUT (system value)', value: _qcrtaut, risk: 'INFO',
+            detail: 'The fallback for libraries that say *SYSVAL. Each library below keeps its own CRTAUT, which wins.' };
+        }
+        const crtaut = parseLabelValue(lines, 'Create authority');
+        const { risk, value, detail } = evaluateLibCrtaut({ lib: item.key, crtaut, qcrtaut: _qcrtaut });
+        return { name: item.key, value, risk, detail };
+      },
+    },
+  },
   IFS: {
     cmd: 'WRKLNK', title: 'Work with Object Links', ids: 'Ifs',
     single: lines => parseIfsObjects(lines).map(o => {
@@ -244,10 +267,11 @@ const TOOLS = {
 // Persisted results per tool (so all tables/CSV survive across scans).
 const RESULTS = {
   USRPRF: [], SHIPPRF: [], SYSVAL: [], OBJ: [], NETATTR: [], JOBD: [], AUTL: [], ACTJOB: [],
-  REGINF: [], NETSVR: [], DFTPWD: [], IFS: [], PGMSTK: [], BYPASS: [], PTFCVE: [], SVCINV: [], GRPREV: [], OWNSEC: [],
+  REGINF: [], NETSVR: [], DFTPWD: [], CRTAUT: [], IFS: [], PGMSTK: [], BYPASS: [], PTFCVE: [], SVCINV: [], GRPREV: [], OWNSEC: [],
 };
 
 // ── State machine ───────────────────────────────────────────────────────────
+let _qcrtaut = '*UNKNOWN';   // QCRTAUT as read by the Library CRTAUT drill, its first item
 let as400 = { running: false, tool: null, expecting: null, items: [], idx: 0, pageItems: [], pages: 0 };
 
 export function as400OnScreen(msg) {
@@ -330,7 +354,7 @@ export function as400OnScreen(msg) {
   }
 
   // Drill-down detail screen → parse, classify, then Enter back to the menu.
-  if (T.drill && as400.expecting === 'DETAIL' && text.includes(T.drill.detailTitle)) {
+  if (T.drill && as400.expecting === 'DETAIL' && text.includes(as400.items[as400.idx]?.detailTitle || T.drill.detailTitle)) {
     RESULTS[tool].push(T.drill.parse(lines, text, as400.items[as400.idx]));
     _render(tool);
     as400.idx++;
@@ -369,6 +393,7 @@ const COLS = {
   REGINF:  ['EXIT POINT', 'EXIT PROGRAM'],
   NETSVR:  ['ATTRIBUTE', 'VALUE'],
   DFTPWD:  ['PROFILE', 'STATUS / AUTHORITY'],
+  CRTAUT:  ['LIBRARY', 'CRTAUT → EFFECTIVE'],
   IFS:     ['OBJECT LINK', 'OWNER / *PUBLIC'],
   PGMSTK:  ['PROGRAM', 'OWNER'],
   BYPASS:  ['SCREEN', 'COMMAND TESTED'],
@@ -795,6 +820,7 @@ export function startAs400ActjobScan()  { _start('ACTJOB'); }
 export function startAs400ReginfScan()  { _start('REGINF'); }
 export function startAs400NetsvrScan()  { _start('NETSVR'); }
 export function startAs400DftpwdScan()  { _start('DFTPWD'); }
+export function startAs400CrtautScan()  { _qcrtaut = '*UNKNOWN'; _start('CRTAUT'); }
 export function startAs400IfsScan()     { _start('IFS'); }
 export function startAs400PgmstkScan()  { _start('PGMSTK'); }
 
@@ -813,6 +839,7 @@ function _buildAs400Rows() {
   add('REGINF',  'exit-point-audit');
   add('NETSVR',  'netserver-audit');
   add('DFTPWD',  'default-password-report');
+  add('CRTAUT',  'library-crtaut-review');
   add('IFS',     'ifs-permission-sweep');
   add('PGMSTK',  'adopted-authority-scanner');
   add('BYPASS',  'menu-bypass-probe');
@@ -841,6 +868,6 @@ Object.assign(window, {
   as400OnScreen, as400ExportCsv, as400ExportJson,
   startAs400UserScan, startAs400ShippedAudit, startAs400SysvalScan, startAs400ObjScan,
   startAs400NetattrScan, startAs400JobdScan, startAs400AutlScan, startAs400ActjobScan,
-  startAs400ReginfScan, startAs400NetsvrScan, startAs400DftpwdScan, startAs400IfsScan,
+  startAs400ReginfScan, startAs400NetsvrScan, startAs400DftpwdScan, startAs400CrtautScan, startAs400IfsScan,
   startAs400PgmstkScan, startAs400BypassProbe, startAs400PtfCveScan, startAs400SvcInvScan, startAs400GrpRevScan, startAs400OwnSecScan,
 });
