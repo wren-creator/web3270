@@ -55,6 +55,7 @@ The app ships **74 built-in narrated walkthroughs** (`public/js/walkthrough.js`)
 | — | | 42 | IBM i Listening Services Inventory |
 | — | | 43 | IBM i Default Password Report (ANZDFTPWD) |
 | — | | 44 | IBM i Group Profile Review |
+| — | | 45 | IBM i QSECOFR-Owned Objects |
 
 Appendices — Structured JSON findings export, the `.rec.json` format.
 
@@ -2847,6 +2848,43 @@ On the mock, `GRPADMIN` holds `*ALLOBJ` and has a password, with `KLEE` as a pri
 ### Where the mock stops
 
 Column names and view names were not run on a live IBM i, confirm them. `STRSQL` is a separately licensed feature on a real system, and reading `QSYS2.USER_INFO` needs authority. Real `STRSQL` result paging may differ from the mock's, which uses the same More/Bottom marker as the other lists. A column header wider than 15 characters is handled by reading column positions from the header line, not a fixed width.
+
+---
+
+## Part 45 — IBM i (AS/400) QSECOFR-Owned Objects
+
+Application objects belong to a dedicated application owner profile, not to the security officer. The owner of an object has full authority over it whatever the authority list says, so objects owned by `QSECOFR` tie the security officer to the application, and a program owned by `QSECOFR` that adopts its owner's authority runs as `QSECOFR`.
+
+### Location
+
+Security panel → IBM i SECURITY (AS/400) → QSECOFR-OWNED OBJECTS
+
+### How it works
+
+One STRSQL read, wrapped across the three input lines the mock gives a statement:
+
+`SELECT SYSTEM_OBJECT_SCHEMA, SYSTEM_OBJECT_NAME, OBJECT_TYPE FROM QSYS2.OBJECT_OWNERSHIP WHERE AUTHORIZATION_NAME = 'QSECOFR' AND SYSTEM_OBJECT_SCHEMA NOT LIKE 'Q%'`
+
+IBM's own libraries are expected to be `QSECOFR`'s, so the read leaves out libraries named `Q*`. The result is read across every page and grouped by library. The CL way to the same list is `DSPUSRPRF USRPRF(QSECOFR) TYPE(*OBJOWN) OUTPUT(*OUTFILE)`.
+
+### Risk levels
+
+| Rating | Meaning |
+|---|---|
+| HIGH | the library holds `QSECOFR`-owned code (`*PGM`, `*SRVPGM`, `*CMD`, `*MODULE`). If any adopts its owner's authority it runs as `QSECOFR`, so run the Adopted-Authority scan on that library |
+| MEDIUM | data and other objects only, which cannot be handed to the application team without a change of owner |
+| INFO | the read was cut short, so libraries may be missing. Never reported as a clean OK |
+| OK | `QSECOFR` owns nothing outside `Q*` libraries |
+
+The fix is `CHGOBJOWN OBJ(lib/name) OBJTYPE(*type) NEWOWN(owner)` to a dedicated owner profile. Test first: a program that adopts its owner changes behavior when the owner changes.
+
+### Teaching scenario
+
+On the mock, `QSECOFR` owns IBM's own objects in `QSYS`, `QGPL` and `QUSRSYS`, which the read excludes. It also owns three programs and a menu in `APPLIB` (including `PAYUPD`, the one the Adopted-Authority scan flags), three utility programs in `TOOLLIB`, and plain data files in `HRLIB` and `PAYROLL`. `APPLIB` and `TOOLLIB` are HIGH, `HRLIB` and `PAYROLL` MEDIUM. `APPADMIN` and a dedicated `APPOWNER` own other objects in the same libraries and are correctly not listed.
+
+### Where the mock stops
+
+"Application library" means "not named `Q*`", a heuristic. A `Q`-named library that is really yours is missed, and an IBM library that does not start with `Q` (`#LIBRARY` and so on) is flagged. The view name, whether it takes a user, and its column names were not run on a live IBM i, confirm them. The tool checks `QSECOFR` only, other profiles that hold `*ALLOBJ` can own application objects too.
 
 ---
 

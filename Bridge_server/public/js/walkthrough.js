@@ -3097,6 +3097,50 @@ const _WALKTHROUGHS = [
     ],
   },
 
+  // ── IBM i (AS/400) QSECOFR-Owned Objects ──────────────────────────
+  {
+    id:       'as400-qsecofr-owned-objects',
+    category: 'security',
+    title:    'IBM i: QSECOFR-Owned Objects',
+    desc:     'Reads QSYS2.OBJECT_OWNERSHIP via STRSQL for application objects the security officer owns, and rates each library, HIGH when programs are among them.',
+    steps: [
+      {
+        title: 'Why ownership matters',
+        body:  'Every IBM i object has an owner, and the owner has full authority over it no matter what the authority list says. Application objects should belong to a dedicated application owner profile. When QSECOFR owns them, the security officer is tied to the application, a program owned by QSECOFR that adopts its owner\'s authority runs as QSECOFR, and whoever restores the library as QSECOFR keeps the problem going.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Prerequisites',
+        body:  'Connect to a TN5250 target, sign on, and stop at a menu with a "Selection or command" line. Interactive SQL (STRSQL) has to be available, and you need authority to read the view. The view and column names were not run on a live IBM i, confirm them. DSPUSRPRF USRPRF(QSECOFR) TYPE(*OBJOWN) with OUTPUT(*OUTFILE) is the CL way to get the same list.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click 🔒 in the OIA status bar and enter the security password (default: 2970).',
+        highlight: 'secBtn', autoFn: null,
+      },
+      {
+        title: 'Run the scan',
+        body:  'Click ▶ FIND QSECOFR-OWNED OBJECTS. The tool opens Interactive SQL and runs one long statement that wraps across the three input lines, the way a real STRSQL statement area does. It asks for objects owned by QSECOFR outside libraries named Q*, because IBM\'s own libraries are expected to be QSECOFR\'s. The result is read across every page.',
+        highlight: 'as400OwnsecBtn',
+        autoFn: 'startAs400OwnSecScan',
+        autoLabel: 'Run it for me',
+      },
+      {
+        title: 'Read the findings',
+        body:  'One row per library. HIGH — the library holds QSECOFR-owned code (programs, service programs, commands). If any adopts its owner\'s authority it runs as QSECOFR, so run the Adopted-Authority scan on that library. MEDIUM — data only, which cannot be handed to the application team without a change of owner. The fix is CHGOBJOWN to a dedicated owner profile, but test first, because a program that adopts its owner changes behavior when the owner changes. "Application library" here just means not named Q*, so a Q-named library that is really yours is missed, and an IBM library that does not start with Q is flagged.',
+        highlight: 'as400OwnsecOut', autoFn: null,
+      },
+      {
+        title: 'Export the audit',
+        body:  'Click ↓ Export IBM i Audit CSV to save the findings.',
+        highlight: 'as400OwnsecOut',
+        autoFn: 'as400ExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
   // ── IBM i (AS/400) Group Profile Review ───────────────────────────
   {
     id:       'as400-group-profile-review',

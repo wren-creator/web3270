@@ -1326,6 +1326,15 @@
             <div id="as400GrprevOut" style="max-height:220px;overflow-y:auto;margin-top:4px"></div>
           </div>
 
+          <!-- Objects owned by QSECOFR -->
+          <div style="margin-top:10px;padding-top:8px;border-top:1px solid #1a1a1a">
+            <div style="font-size:10px;color:var(--text-muted);font-weight:600;letter-spacing:.06em;margin-bottom:4px">QSECOFR-OWNED OBJECTS</div>
+            <div class="sec-panel-hint" style="margin-bottom:6px">Reads QSYS2.OBJECT_OWNERSHIP via STRSQL for objects QSECOFR owns outside the IBM-supplied Q* libraries. Application objects belong to a dedicated application owner profile, not the security officer. A library that holds QSECOFR-owned programs is HIGH (one that adopts its owner runs as QSECOFR), data only is MEDIUM. "Application library" means a library not named Q*, which misjudges the odd exception either way. Confirm the view and column names on your release.</div>
+            <button id="as400OwnsecBtn" class="sec-inject-btn" onclick="startAs400OwnSecScan()" style="background:#1a2a1a">▶ FIND QSECOFR-OWNED OBJECTS</button>
+            <div id="as400OwnsecStatus" style="font-size:10px;color:var(--text-muted);margin-top:4px;min-height:14px"></div>
+            <div id="as400OwnsecOut" style="max-height:220px;overflow-y:auto;margin-top:4px"></div>
+          </div>
+
           <!-- Object / *PUBLIC Authority Scanner -->
           <div style="margin-top:10px;padding-top:8px;border-top:1px solid #1a1a1a">
             <div style="font-size:10px;color:var(--text-muted);font-weight:600;letter-spacing:.06em;margin-bottom:4px">OBJECT / *PUBLIC AUTHORITY SCANNER</div>

@@ -7,6 +7,7 @@ import {
   evaluateShippedProfile, evaluateSysval, parseSysvals, evaluateExitPoint,
   parseDftPwd, evaluateDftPwd,
   GROUP_QUERIES, parseSuppGroups, parsePrimaryGroups, parseHolders, groupTableOk, evaluateGroups,
+  OWNED_STATEMENT, parseOwnedObjects, evaluateOwnedObjects,
   SERVICE_GROUPS, svcStatement, splitSqlStatement, parseNetstatRows, evaluateServiceGroup,
   parseSqlResultTable, parseCveInfo, evaluateCveRow, parsePtfCurrency, evaluatePtfGroupRow,
 } from './as400sec-parse.js';
@@ -414,4 +415,37 @@ test('parseSqlResultTable: columns wider than 15 are found from the header, and 
   assert.deepEqual(cols, ['GROUP_PROFILE_NAME', 'USER_PROFILE_NAME']);
   assert.deepEqual(rows, [['GRPADMIN', 'JSMITH'], ['GRPACCT', 'RTAYLOR']]);
   assert.deepEqual(parseSqlResultTable(lines, { colWidth: 20 }).cols.length, 2);
+});
+
+const _own = (lib, name, type) => ({ lib, name, type });
+
+test('OWNED_STATEMENT: asks the real view for QSECOFR outside Q* libraries, and wraps onto at most three input lines', () => {
+  assert.ok(OWNED_STATEMENT.includes('QSYS2.OBJECT_OWNERSHIP') && OWNED_STATEMENT.includes("'QSECOFR'") && OWNED_STATEMENT.includes("NOT LIKE 'Q%'"));
+  const parts = splitSqlStatement(OWNED_STATEMENT);
+  assert.ok(parts.length <= 3 && parts.every(p => p.length <= 70), parts.map(p => p.length).join(','));
+});
+
+test('parseOwnedObjects: reads by column name, null when a column is missing', () => {
+  assert.deepEqual(parseOwnedObjects(_tbl(['SYSTEM_OBJECT_SCHEMA', 'SYSTEM_OBJECT_NAME', 'OBJECT_TYPE'], [['APPLIB', 'PAYUPD', '*PGM'], ['', 'X', '*FILE']])),
+    [_own('APPLIB', 'PAYUPD', '*PGM')]);
+  assert.equal(parseOwnedObjects(_tbl(['FOO'], [])), null);
+});
+
+test('evaluateOwnedObjects: a library with QSECOFR-owned code is HIGH, data only is MEDIUM, one row per library', () => {
+  const r = evaluateOwnedObjects([_own('APPLIB', 'PAYUPD', '*PGM'), _own('APPLIB', 'APPMENU', '*MENU'),
+    _own('HRLIB', 'HRDATA', '*FILE'), _own('HRLIB', 'HRNOTES', '*FILE')]);
+  assert.equal(r.length, 2);
+  const a = r.find(x => x.name === 'APPLIB'), h = r.find(x => x.name === 'HRLIB');
+  assert.equal(a.risk, 'HIGH'); assert.ok(a.detail.includes('PAYUPD') && a.detail.includes('Adopted-Authority'));
+  assert.equal(h.risk, 'MEDIUM'); assert.equal(h.value, '2 object(s): *FILE');
+  assert.ok(h.detail.includes('CHGOBJOWN') && h.detail.includes('Test first'));
+});
+
+test('evaluateOwnedObjects: long lists are cut to six names with a count, nothing found is OK, a partial read never is', () => {
+  const many = Array.from({ length: 9 }, (_, i) => _own('BIGLIB', `F${i}`, '*FILE'));
+  assert.ok(evaluateOwnedObjects(many)[0].detail.includes('and 3 more'));
+  assert.equal(evaluateOwnedObjects([])[0].risk, 'OK');
+  const t = evaluateOwnedObjects([], { truncated: true });
+  assert.ok(t.every(x => x.risk === 'INFO'));
+  assert.ok(evaluateOwnedObjects([_own('L', 'A', '*FILE')], { truncated: true }).some(x => x.name === '(ownership read)'));
 });

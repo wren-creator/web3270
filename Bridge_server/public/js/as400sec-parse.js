@@ -877,3 +877,50 @@ export function evaluateGroups({ supp, primary, allobj, secadm, incomplete = [] 
       : 'No group profile holds *ALLOBJ or *SECADM.' });
   return out;
 }
+
+
+// ── Objects owned by QSECOFR (QSYS2.OBJECT_OWNERSHIP via STRSQL) ─────────────
+// Application objects belong to a dedicated application owner profile, not to
+// QSECOFR or to a person. An object owned by QSECOFR is one the security officer
+// can never lose authority over, a program owned by QSECOFR is one that
+// (if it adopts) runs as QSECOFR, and the next person who restores or recreates
+// the library as QSECOFR keeps the problem alive. IBM's own libraries (Q*) are
+// expected to be QSECOFR's, so the read excludes them. "Application library" is
+// that heuristic, not a fact: libraries named Q* that are really yours, and IBM
+// libraries that do not start with Q (#LIBRARY and so on), are misjudged. The view
+// name, whether it takes a user, and its column names were not run on a live IBM i,
+// confirm them. DSPUSRPRF USRPRF(QSECOFR) TYPE(*OBJOWN) OUTPUT(*OUTFILE) is the CL way.
+export const OWNED_BY = 'QSECOFR';
+export const OWNED_STATEMENT =
+  'SELECT SYSTEM_OBJECT_SCHEMA, SYSTEM_OBJECT_NAME, OBJECT_TYPE FROM QSYS2.OBJECT_OWNERSHIP ' +
+  `WHERE AUTHORIZATION_NAME = '${OWNED_BY}' AND SYSTEM_OBJECT_SCHEMA NOT LIKE 'Q%'`;
+
+export function parseOwnedObjects(table) {
+  const il = table.cols.indexOf('SYSTEM_OBJECT_SCHEMA'), inm = table.cols.indexOf('SYSTEM_OBJECT_NAME'), it = table.cols.indexOf('OBJECT_TYPE');
+  if (il === -1 || inm === -1 || it === -1) return null;
+  return table.rows.map(r => ({ lib: r[il], name: r[inm], type: r[it] })).filter(o => o.lib && o.name);
+}
+
+const _CODE_TYPES = new Set(['*PGM', '*SRVPGM', '*CMD', '*MODULE']);
+
+// objs: parseOwnedObjects output. truncated: fewer rows read than selected.
+export function evaluateOwnedObjects(objs, { truncated = false } = {}) {
+  const out = [];
+  const byLib = new Map();
+  for (const o of objs) { if (!byLib.has(o.lib)) byLib.set(o.lib, []); byLib.get(o.lib).push(o); }
+  for (const [lib, list] of [...byLib].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const code = list.filter(o => _CODE_TYPES.has(o.type));
+    const types = [...new Set(list.map(o => o.type))].sort().join(' ');
+    const names = list.slice(0, 6).map(o => `${o.name} ${o.type}`).join(', ') + (list.length > 6 ? `, and ${list.length - 6} more` : '');
+    out.push({ name: lib, value: `${list.length} object(s): ${types}`, risk: code.length ? 'HIGH' : 'MEDIUM',
+      detail: `${OWNED_BY} owns ${names}. ` +
+        (code.length
+          ? `${code.length} of them are code (${code.slice(0, 4).map(o => o.name).join(', ')}${code.length > 4 ? ', ...' : ''}). A program owned by ${OWNED_BY} that adopts its owner's authority runs as ${OWNED_BY}, run the Adopted-Authority scan on this library. `
+          : 'Data owned by the security officer cannot be handed to the application team without a change of owner. ') +
+        'Move them to a dedicated application owner profile, CHGOBJOWN OBJ(lib/name) OBJTYPE(*type) NEWOWN(owner). Test first, a program that adopts its owner changes behavior when the owner changes.' });
+  }
+  if (truncated) out.push({ name: '(ownership read)', value: 'incomplete', risk: 'INFO', detail: 'Fewer rows were read than the host selected, so libraries may be missing above. Re-run, or read it by hand.' });
+  if (!byLib.size) out.push({ name: '(application libraries)', value: 'none', risk: truncated ? 'INFO' : 'OK',
+    detail: truncated ? 'Nothing found in what was read, but the read was incomplete.' : `${OWNED_BY} owns no objects outside Q* libraries.` });
+  return out;
+}

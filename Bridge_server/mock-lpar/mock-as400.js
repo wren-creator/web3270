@@ -947,6 +947,27 @@ const SQL_TABLES = {
       return USRPRFS.map(p => [p.name, p.status, p.group === '*NONE' ? '' : p.group, p.specialAuth.join(' ')]);
     },
   },
+  // QSYS2.OBJECT_OWNERSHIP, narrowed to four columns. A deliberately untidy
+  // shop: QSECOFR owns IBM's own objects (expected) and also a pile of
+  // application programs and data in APPLIB, PAYROLL, HRLIB and TOOLLIB, which
+  // is the finding. A dedicated owner profile (APPOWNER) owns the tidy ones.
+  // Whether the real view takes a user or lists everyone, and its column names,
+  // were not run on a live IBM i: confirm, and DSPUSRPRF TYPE(*OBJOWN) is the CL way.
+  'QSYS2/OBJECT_OWNERSHIP': {
+    columns: ['AUTHORIZATION_NAME', 'SYSTEM_OBJECT_SCHEMA', 'SYSTEM_OBJECT_NAME', 'OBJECT_TYPE'],
+    rows: [
+      ['QSECOFR', 'QSYS',    'QSECOFR',  '*USRPRF'], ['QSECOFR', 'QGPL',    'QDFTJOBD', '*JOBD'],
+      ['QSECOFR', 'QGPL',    'QBATCH',   '*JOBQ'],   ['QSECOFR', 'QUSRSYS', 'QSYSMSG',  '*MSGQ'],
+      ['QSECOFR', 'APPLIB',  'PAYUPD',   '*PGM'],    ['QSECOFR', 'APPLIB',  'PAYRPT',   '*PGM'],
+      ['QSECOFR', 'APPLIB',  'LEAVCALC', '*PGM'],    ['QSECOFR', 'APPLIB',  'APPMENU',  '*MENU'],
+      ['QSECOFR', 'PAYROLL', 'PAYHIST',  '*FILE'],   ['QSECOFR', 'PAYROLL', 'PAYAUDIT', '*FILE'],
+      ['QSECOFR', 'HRLIB',   'HRDATA',   '*FILE'],   ['QSECOFR', 'HRLIB',   'HRNOTES',  '*FILE'],
+      ['QSECOFR', 'TOOLLIB', 'UTILITY',  '*PGM'],    ['QSECOFR', 'TOOLLIB', 'CLEANUP',  '*PGM'],
+      ['QSECOFR', 'TOOLLIB', 'SAVALL',   '*PGM'],
+      ['APPADMIN', 'PAYROLL', 'EMPMAST', '*FILE'],   ['APPADMIN', 'APPLIB', 'CONFIG',   '*FILE'],
+      ['APPOWNER', 'APPLIB',  'ORDENTRY', '*PGM'],   ['APPOWNER', 'APPLIB', 'ORDERS',   '*FILE'],
+    ],
+  },
   'QSYS2/GROUP_PROFILE_ENTRIES': {
     columns: ['GROUP_PROFILE_NAME', 'USER_PROFILE_NAME'],
     get rows() {
@@ -2213,19 +2234,34 @@ function runSql(stmt) {
 
   let rows = table.rows;
   if (m[5]) {
-    const w = /^([A-Z0-9_]+)\s*(?:=\s*(\d+)|IN\s*\(([^)]*)\)|BETWEEN\s+(\d+)\s+AND\s+(\d+)|LIKE\s+'([^']*)'|IS\s+(NOT\s+)?NULL)$/i.exec(m[5].trim());
-    if (!w) return { error: "SQL0104 - WHERE not understood by this mock (one of: col = n, col IN (n, n), col BETWEEN n AND m, col LIKE '%x%', col IS [NOT] NULL)." };
-    const ci = table.columns.indexOf(w[1].toUpperCase());
-    if (ci === -1) return { error: `SQL0206 - Column ${w[1].toUpperCase()} not in table ${key.replace('/', '.')}.` };
-    let keep;
-    if (w[2] !== undefined)      keep = v => Number(v) === Number(w[2]);
-    else if (w[3] !== undefined) { const set = new Set(w[3].split(',').map(s => Number(s.trim()))); keep = v => set.has(Number(v)); }
-    else if (w[4] !== undefined) keep = v => Number(v) >= Number(w[4]) && Number(v) <= Number(w[5]);
-    else if (w[6] !== undefined) {
-      const re = new RegExp('^' + w[6].replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*') + '$', 'i');
-      keep = v => re.test(String(v));
-    } else                       keep = v => (String(v) === '') === !w[7];   // IS NULL keeps blanks, IS NOT NULL keeps the rest
-    rows = rows.filter(r => keep(r[ci]));
+    // Predicates joined by AND (OR, parentheses and JOIN are not understood).
+    // Each is: col = n | col = 'text' | col IN (n or 'text', ...) | col BETWEEN n
+    // AND m | col [NOT] LIKE 'x%' | col IS [NOT] NULL. BETWEEN's own AND is
+    // consumed inside its predicate, so it is not mistaken for a separator.
+    const PRED = /^([A-Z0-9_]+)\s*(?:=\s*(?:(\d+)|'([^']*)')|IN\s*\(([^)]*)\)|BETWEEN\s+(\d+)\s+AND\s+(\d+)|(NOT\s+)?LIKE\s+'([^']*)'|IS\s+(NOT\s+)?NULL)\s*/i;
+    const unq = s => { const x = s.trim(); return /^'.*'$/.test(x) ? x.slice(1, -1) : x; };
+    let rest = m[5].trim();
+    while (rest) {
+      const w = PRED.exec(rest);
+      if (!w) return { error: "SQL0104 - WHERE not understood by this mock (predicates joined by AND: col = n or 'x', col IN (..), col BETWEEN n AND m, col [NOT] LIKE '%x%', col IS [NOT] NULL)." };
+      const ci = table.columns.indexOf(w[1].toUpperCase());
+      if (ci === -1) return { error: `SQL0206 - Column ${w[1].toUpperCase()} not in table ${key.replace('/', '.')}.` };
+      let keep;
+      if (w[2] !== undefined)      keep = v => Number(v) === Number(w[2]);
+      else if (w[3] !== undefined) keep = v => String(v) === w[3];
+      else if (w[4] !== undefined) { const set = new Set(w[4].split(',').map(unq)); keep = v => set.has(String(v)); }
+      else if (w[5] !== undefined) keep = v => Number(v) >= Number(w[5]) && Number(v) <= Number(w[6]);
+      else if (w[8] !== undefined) {
+        const re = new RegExp('^' + w[8].replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*') + '$', 'i');
+        keep = v => re.test(String(v)) === !w[7];
+      } else                       keep = v => (String(v) === '') === !w[9];   // IS NULL keeps blanks, IS NOT NULL keeps the rest
+      rows = rows.filter(r => keep(r[ci]));
+      rest = rest.slice(w[0].length);
+      if (!rest) break;
+      const and = /^AND\s+/i.exec(rest);
+      if (!and) return { error: 'SQL0104 - Expected AND between WHERE predicates.' };
+      rest = rest.slice(and[0].length);
+    }
   }
   return { cols: idxs.map(i => table.columns[i]), rows: rows.map(r => idxs.map(i => r[i])) };
 }
@@ -2237,11 +2273,12 @@ function screenSql(ctx) {
     { row: 3, col: 2,  text: '(Mock SQL: SELECT cols FROM lib.table [WHERE col IN (n, n)])', input: false },
     { row: SQL_CMD_ROW, col: 2, text: '===>', input: false },
     { row: SQL_CMD_ROW, col: 7, text: '', input: true, length: 70 },
-    // Continuation line: a long statement wraps onto this row, same as a real
-    // STRSQL statement area. The handler joins the two rows with a space.
+    // Continuation lines: a long statement wraps onto these rows, same as a real
+    // STRSQL statement area. The handler joins the three rows with a space.
     { row: SQL_CMD_ROW + 1, col: 7, text: '', input: true, length: 70 },
+    { row: SQL_CMD_ROW + 2, col: 7, text: '', input: true, length: 70 },
   ];
-  if (ctx.message) fields.push({ row: 7, col: 2, text: ctx.message, input: false });
+  if (ctx.message) fields.push({ row: 8, col: 2, text: ctx.message, input: false });
   if (ctx.resultCols) {
     // Fixed-width columns, SQL_COL_WIDTH wide each. padEnd alone doesn't
     // truncate a value already >= the width (CVE_ID values like
@@ -2644,7 +2681,7 @@ function handleConnection(socket) {
           sqlPage = aid === AID_PGDN ? Math.min(sqlPage + 1, last) : Math.max(sqlPage - 1, 0);
         }
       } else {
-        const stmt = [fieldAt(runs, SQL_CMD_ROW), fieldAt(runs, SQL_CMD_ROW + 1)].filter(Boolean).join(' ');
+        const stmt = [fieldAt(runs, SQL_CMD_ROW), fieldAt(runs, SQL_CMD_ROW + 1), fieldAt(runs, SQL_CMD_ROW + 2)].filter(Boolean).join(' ');
         if (stmt) {
           const res = runSql(stmt);
           if (res.error) { sqlResult = null; menuMessage = res.error; }

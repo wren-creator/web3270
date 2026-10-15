@@ -35,6 +35,7 @@ import {
   parseSqlResultTable, parseCveInfo, evaluateCveRow, parsePtfCurrency, evaluatePtfGroupRow,
   SERVICE_GROUPS, svcStatement, splitSqlStatement, parseNetstatRows, evaluateServiceGroup,
   GROUP_QUERIES, parseSuppGroups, parsePrimaryGroups, parseHolders, groupTableOk, evaluateGroups,
+  OWNED_BY, OWNED_STATEMENT, parseOwnedObjects, evaluateOwnedObjects,
 } from './as400sec-parse.js';
 
 // ── Screen / transport helpers ─────────────────────────────────────────────
@@ -237,12 +238,13 @@ const TOOLS = {
   PTFCVE: { ids: 'Ptfcve' },
   SVCINV: { ids: 'Svcinv' },
   GRPREV: { ids: 'Grprev' },
+  OWNSEC: { ids: 'Ownsec' },
 };
 
 // Persisted results per tool (so all tables/CSV survive across scans).
 const RESULTS = {
   USRPRF: [], SHIPPRF: [], SYSVAL: [], OBJ: [], NETATTR: [], JOBD: [], AUTL: [], ACTJOB: [],
-  REGINF: [], NETSVR: [], DFTPWD: [], IFS: [], PGMSTK: [], BYPASS: [], PTFCVE: [], SVCINV: [], GRPREV: [],
+  REGINF: [], NETSVR: [], DFTPWD: [], IFS: [], PGMSTK: [], BYPASS: [], PTFCVE: [], SVCINV: [], GRPREV: [], OWNSEC: [],
 };
 
 // ── State machine ───────────────────────────────────────────────────────────
@@ -373,6 +375,7 @@ const COLS = {
   PTFCVE:  ['CVE / PTF GROUP', 'CVSS / LEVEL'],
   SVCINV:  ['PORT / SERVICE', 'STATE / BIND'],
   GRPREV:  ['GROUP / USER', 'AUTHORITY / VIA'],
+  OWNSEC:  ['LIBRARY', 'QSECOFR-OWNED'],
 };
 
 function _render(tool) {
@@ -551,7 +554,7 @@ const PTFCVE_QUERIES = [
 // queries use cannot tell this query's result from the previous one's. The mock
 // clears both statement rows when it runs the statement, while an echo still
 // shows the typed text, so blank input rows mean "this is the real result".
-const _sqlInputBlank = lines => !((lines[5] || '').slice(7).trim()) && !((lines[6] || '').slice(7).trim());
+const _sqlInputBlank = lines => [5, 6, 7].every(r => !((lines[r] || '').slice(7).trim()));
 
 const SVCINV_QUERIES = SERVICE_GROUPS.map(g => ({
   key: g.key, stmt: svcStatement(g),
@@ -562,6 +565,16 @@ const SVCINV_QUERIES = SERVICE_GROUPS.map(g => ({
     return evaluateServiceGroup(g, parsed, { truncated: info.truncated });
   },
 }));
+
+// Objects owned by QSECOFR: one read, judged at once.
+const OWNSEC_QUERIES = [{
+  key: 'OWNER', stmt: OWNED_STATEMENT, fresh: _sqlInputBlank,
+  collect: (table, info) => {
+    const objs = parseOwnedObjects(table);
+    if (!objs) return [{ name: 'OBJECT_OWNERSHIP', value: '—', risk: 'INFO', detail: 'query returned the wrong columns, skipped' }];
+    return evaluateOwnedObjects(objs, { truncated: info.truncated });
+  },
+}];
 
 // Group Profile Review: four reads that only store their rows, finalize() judges them together.
 const _grpQuery = (key, label, cols, store) => ({
@@ -593,6 +606,14 @@ const SQL_TOOLS = {
     done: () => {
       const bad = RESULTS.SVCINV.filter(r => ['CRITICAL', 'HIGH', 'MEDIUM'].includes(r.risk)).length;
       return { text: `Done — ${bad}/${RESULTS.SVCINV.length} service(s) need attention.`, bad };
+    },
+  },
+  OWNSEC: {
+    queries: OWNSEC_QUERIES, btn: 'as400OwnsecBtn',
+    done: () => {
+      const bad = RESULTS.OWNSEC.filter(r => r.risk === 'CRITICAL' || r.risk === 'HIGH').length;
+      const libs = RESULTS.OWNSEC.filter(r => r.risk !== 'OK' && r.risk !== 'INFO').length;
+      return { text: `Done — ${libs} ${libs === 1 ? 'library' : 'libraries'} with ${OWNED_BY}-owned objects, ${bad} holding code.`, bad };
     },
   },
   GRPREV: {
@@ -747,6 +768,7 @@ function _startSqlTool(tool) {
 export function startAs400PtfCveScan() { _startSqlTool('PTFCVE'); }
 export function startAs400SvcInvScan() { _startSqlTool('SVCINV'); }
 export function startAs400GrpRevScan() { _startSqlTool('GRPREV'); }
+export function startAs400OwnSecScan() { _startSqlTool('OWNSEC'); }
 
 export function startAs400BypassProbe() {
   if (bypass.running) return;
@@ -797,6 +819,7 @@ function _buildAs400Rows() {
   add('PTFCVE',  'ptf-cve-currency-checker');
   add('SVCINV',  'listening-services-inventory');
   add('GRPREV',  'group-profile-review');
+  add('OWNSEC',  'qsecofr-owned-objects');
   // Pre sign-on tool: its results live in probe.js, not RESULTS.
   credAuditFindings().forEach(r => rows.push(['default-credential-audit', r.name, r.value, r.risk, r.detail, ts]));
   return { rows, ts };
@@ -819,5 +842,5 @@ Object.assign(window, {
   startAs400UserScan, startAs400ShippedAudit, startAs400SysvalScan, startAs400ObjScan,
   startAs400NetattrScan, startAs400JobdScan, startAs400AutlScan, startAs400ActjobScan,
   startAs400ReginfScan, startAs400NetsvrScan, startAs400DftpwdScan, startAs400IfsScan,
-  startAs400PgmstkScan, startAs400BypassProbe, startAs400PtfCveScan, startAs400SvcInvScan, startAs400GrpRevScan,
+  startAs400PgmstkScan, startAs400BypassProbe, startAs400PtfCveScan, startAs400SvcInvScan, startAs400GrpRevScan, startAs400OwnSecScan,
 });
