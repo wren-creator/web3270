@@ -9,6 +9,7 @@ import {
   GROUP_QUERIES, parseSuppGroups, parsePrimaryGroups, parseHolders, groupTableOk, evaluateGroups,
   OWNED_STATEMENT, parseOwnedObjects, evaluateOwnedObjects,
   parseLibraryNames, isAppLibrary, evaluateLibCrtaut,
+  parseAdoptLibraries, adoptProgramStatement, adoptPublicStatement, parseAdoptPrograms, parsePublicAuth, evaluateAdopting,
   SERVICE_GROUPS, svcStatement, splitSqlStatement, parseNetstatRows, evaluateServiceGroup,
   parseSqlResultTable, parseCveInfo, evaluateCveRow, parsePtfCurrency, evaluatePtfGroupRow,
 } from './as400sec-parse.js';
@@ -483,4 +484,64 @@ test('evaluateLibCrtaut: an authorization list is INFO, and anything unread is I
   assert.equal(evaluateLibCrtaut({ lib: 'L', crtaut: '*UNKNOWN', qcrtaut: '*USE' }).risk, 'INFO');
   assert.equal(evaluateLibCrtaut({ lib: 'L', crtaut: '*SYSVAL', qcrtaut: '*UNKNOWN' }).risk, 'INFO');
   assert.equal(evaluateLibCrtaut({ lib: 'L', crtaut: '*EXCLUDE', qcrtaut: undefined }).risk, 'OK');
+});
+
+test('adopt statements: real views, a library or NOT LIKE Q%, and every one wraps onto at most three 70 character lines', () => {
+  for (const lib of [null, 'APPLIB', 'TOOLLIB']) {
+    for (const s of [adoptProgramStatement(lib), adoptPublicStatement(lib)]) {
+      const parts = splitSqlStatement(s);
+      assert.ok(parts.length <= 3 && parts.every(p => p.length <= 70), `${lib}: ${parts.map(p => p.length)}`);
+      assert.equal(parts.join(' '), s);
+    }
+  }
+  assert.ok(adoptProgramStatement('APPLIB').includes("USER_PROFILE = '*OWNER'") && adoptProgramStatement('APPLIB').includes("PROGRAM_LIBRARY = 'APPLIB'"));
+  assert.ok(adoptProgramStatement(null).includes("NOT LIKE 'Q%'") && adoptPublicStatement(null).includes("NOT LIKE 'Q%'"));
+  assert.ok(adoptPublicStatement('APPLIB').includes("USER_NAME = '*PUBLIC'") && adoptPublicStatement('APPLIB').includes("OBJECT_TYPE = '*PGM'"));
+});
+
+test('parseAdoptLibraries: uppercases, dedupes, caps at eight, and refuses anything that is not a library name', () => {
+  assert.deepEqual(parseAdoptLibraries('applib, TOOLLIB  applib').libs, ['APPLIB', 'TOOLLIB']);
+  assert.deepEqual(parseAdoptLibraries('').libs, []);
+  const bad = parseAdoptLibraries("APPLIB, x'; DROP TABLE y");
+  assert.ok(bad.bad.length >= 1 && !bad.libs.some(l => /['; ]/.test(l)));
+  const many = parseAdoptLibraries('A1,A2,A3,A4,A5,A6,A7,A8,A9');
+  assert.equal(many.libs.length, 8); assert.equal(many.capped, true);
+});
+
+test('parseAdoptPrograms / parsePublicAuth: by column name, null when a column is missing', () => {
+  assert.deepEqual(parseAdoptPrograms(_tbl(['PROGRAM_LIBRARY', 'PROGRAM_NAME', 'PROGRAM_OWNER'], [['APPLIB', 'PAYUPD', 'QSECOFR']])),
+    [{ lib: 'APPLIB', name: 'PAYUPD', owner: 'QSECOFR' }]);
+  assert.equal(parseAdoptPrograms(_tbl(['FOO'], [])), null);
+  assert.deepEqual(parsePublicAuth(_tbl(['SYSTEM_OBJECT_SCHEMA', 'SYSTEM_OBJECT_NAME', 'OBJECT_AUTHORITY'], [['APPLIB', 'PAYUPD', '*USE']])),
+    [{ key: 'APPLIB/PAYUPD', auth: '*USE' }]);
+  assert.equal(parsePublicAuth(_tbl(['X'], [])), null);
+});
+
+const _adopt = (o = {}) => evaluateAdopting({ programs: [], publicAuth: [], allobj: [], secadm: [], incomplete: [], ...o });
+const _p = (lib, name, owner) => ({ lib, name, owner });
+
+test('evaluateAdopting: powerful owner is CRITICAL with *PUBLIC above *USE, HIGH when *PUBLIC may run it, MEDIUM when excluded', () => {
+  const r = _adopt({ allobj: ['QSECOFR'], secadm: ['SECMGR'],
+    programs: [_p('A', 'P1', 'QSECOFR'), _p('A', 'P2', 'QSECOFR'), _p('A', 'P3', 'QSECOFR'), _p('A', 'P4', 'SECMGR')],
+    publicAuth: [{ key: 'A/P1', auth: '*ALL' }, { key: 'A/P2', auth: '*USE' }, { key: 'A/P3', auth: '*EXCLUDE' }, { key: 'A/P4', auth: '*USE' }] });
+  const by = n => r.find(x => x.name === n);
+  assert.equal(by('A/P1').risk, 'CRITICAL'); assert.equal(by('A/P2').risk, 'HIGH');
+  assert.equal(by('A/P3').risk, 'MEDIUM');   assert.equal(by('A/P4').risk, 'HIGH', '*SECADM counts as powerful too');
+  assert.equal(r[0].name, 'A/P1', 'worst first');
+});
+
+test('evaluateAdopting: an owner that is not powerful is LOW (MEDIUM if *PUBLIC is above *USE), unknown *PUBLIC on a powerful owner is HIGH', () => {
+  const r = _adopt({ allobj: ['QSECOFR'], programs: [_p('A', 'O1', 'APPOWNER'), _p('A', 'O2', 'APPOWNER'), _p('A', 'X', 'QSECOFR')],
+    publicAuth: [{ key: 'A/O1', auth: '*USE' }, { key: 'A/O2', auth: '*CHANGE' }] });
+  assert.equal(r.find(x => x.name === 'A/O1').risk, 'LOW');
+  assert.equal(r.find(x => x.name === 'A/O2').risk, 'MEDIUM');
+  const x = r.find(y => y.name === 'A/X');
+  assert.equal(x.risk, 'HIGH'); assert.ok(x.detail.includes('could not be read'));
+});
+
+test('evaluateAdopting: nothing adopting is OK, but an incomplete read is INFO and never a clean pass', () => {
+  assert.equal(_adopt().find(x => x.name === '(adopting programs)').risk, 'OK');
+  const r = _adopt({ incomplete: ['*ALLOBJ holders'] });
+  assert.ok(r.some(x => x.name === '*ALLOBJ holders' && x.risk === 'INFO'));
+  assert.equal(r.find(x => x.name === '(adopting programs)').risk, 'INFO');
 });

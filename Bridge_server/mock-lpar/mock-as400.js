@@ -975,6 +975,44 @@ const SQL_TABLES = {
       ['APPOWNER', 'APPLIB',  'ORDENTRY', '*PGM'],   ['APPOWNER', 'APPLIB', 'ORDERS',   '*FILE'],
     ],
   },
+  // QSYS2.PROGRAM_INFO and QSYS2.OBJECT_PRIVILEGES, narrowed to the columns the
+  // Static Adopted-Authority Scan reads. USER_PROFILE is the program's USRPRF
+  // attribute: '*OWNER' means it runs with its owner's authority added, '*USER'
+  // means it does not. The rows line up with OBJECT_OWNERSHIP above (QSECOFR owns
+  // PAYUPD, PAYRPT, LEAVCALC, UTILITY, CLEANUP and SAVALL) and with the call-stack
+  // scanner's PAYUPD. IBM's own QSYS rows are there so the NOT LIKE 'Q%' read has
+  // something to leave out. The real PROGRAM_INFO is large and slow without a library
+  // filter, and column names were not run on a live IBM i, confirm them.
+  'QSYS2/PROGRAM_INFO': {
+    columns: ['PROGRAM_LIBRARY', 'PROGRAM_NAME', 'PROGRAM_OWNER', 'USER_PROFILE'],
+    rows: [
+      ['APPLIB',  'PAYUPD',   'QSECOFR',  '*OWNER'], ['APPLIB',  'PAYRPT',   'QSECOFR',  '*USER'],
+      ['APPLIB',  'LEAVCALC', 'QSECOFR',  '*OWNER'], ['APPLIB',  'SYNCUSR',  'APPADMIN', '*OWNER'],
+      ['APPLIB',  'ORDENTRY', 'APPOWNER', '*OWNER'], ['APPLIB',  'ORDRPT',   'APPOWNER', '*USER'],
+      ['PAYROLL', 'PAYCALC',  'APPADMIN', '*OWNER'],
+      ['TOOLLIB', 'UTILITY',  'QSECOFR',  '*OWNER'], ['TOOLLIB', 'CLEANUP',  'QSECOFR',  '*USER'],
+      ['TOOLLIB', 'SAVALL',   'QSECOFR',  '*OWNER'],
+      ['MYLIB',   'TESTPGM',  'JSMITH',   '*OWNER'],
+      ['QSYS',    'QCMDEXC',  'QSYS',     '*OWNER'], ['QSYS',    'QSYSMAIN', 'QSYS',     '*OWNER'],
+    ],
+  },
+  'QSYS2/OBJECT_PRIVILEGES': {
+    columns: ['SYSTEM_OBJECT_SCHEMA', 'SYSTEM_OBJECT_NAME', 'OBJECT_TYPE', 'USER_NAME', 'OBJECT_AUTHORITY'],
+    rows: [
+      ['APPLIB',  'PAYUPD',   '*PGM',  '*PUBLIC', '*USE'],     ['APPLIB',  'PAYUPD',   '*PGM',  'JSMITH',   '*USE'],
+      ['APPLIB',  'PAYRPT',   '*PGM',  '*PUBLIC', '*USE'],
+      ['APPLIB',  'LEAVCALC', '*PGM',  '*PUBLIC', '*CHANGE'],
+      ['APPLIB',  'SYNCUSR',  '*PGM',  '*PUBLIC', '*USE'],
+      ['APPLIB',  'ORDENTRY', '*PGM',  '*PUBLIC', '*USE'],     ['APPLIB',  'ORDRPT',   '*PGM',  '*PUBLIC', '*USE'],
+      ['APPLIB',  'CONFIG',   '*FILE', '*PUBLIC', '*USE'],
+      ['PAYROLL', 'PAYCALC',  '*PGM',  '*PUBLIC', '*EXCLUDE'], ['PAYROLL', 'PAYCALC',  '*PGM',  'GRPACCT', '*USE'],
+      ['PAYROLL', 'EMPMAST',  '*FILE', '*PUBLIC', '*ALL'],
+      ['TOOLLIB', 'UTILITY',  '*PGM',  '*PUBLIC', '*ALL'],     ['TOOLLIB', 'CLEANUP',  '*PGM',  '*PUBLIC', '*USE'],
+      ['TOOLLIB', 'SAVALL',   '*PGM',  '*PUBLIC', '*EXCLUDE'],
+      ['MYLIB',   'TESTPGM',  '*PGM',  '*PUBLIC', '*CHANGE'],
+      ['QSYS',    'QCMDEXC',  '*PGM',  '*PUBLIC', '*USE'],
+    ],
+  },
   'QSYS2/GROUP_PROFILE_ENTRIES': {
     columns: ['GROUP_PROFILE_NAME', 'USER_PROFILE_NAME'],
     get rows() {

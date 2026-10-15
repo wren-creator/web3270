@@ -3097,6 +3097,55 @@ const _WALKTHROUGHS = [
     ],
   },
 
+  // ── IBM i (AS/400) Static Adopted-Authority Scan ──────────────────
+  {
+    id:       'as400-static-adopted-authority-scan',
+    category: 'security',
+    title:    'IBM i: Static Adopted-Authority Scan',
+    desc:     'Reads whole libraries via STRSQL for every program with USRPRF(*OWNER), who owns it, and what *PUBLIC may do to it, judged against who holds *ALLOBJ or *SECADM.',
+    steps: [
+      {
+        title: 'What this adds to the runtime scanner',
+        body:  'The Adopted-Authority Runtime Scanner walks the live call stack, so it only finds a program that happens to be running when you look. A program that adopts its owner\'s authority is a risk whether or not anyone is running it. This scan reads the libraries themselves. The exposure is USRPRF(*OWNER) on a program owned by a powerful profile. USEADPAUT is a different attribute: it controls whether a program inherits adopted authority from its callers, not what it adopts itself.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Prerequisites',
+        body:  'Connect to a TN5250 target, sign on, and stop at a menu with a "Selection or command" line. Interactive SQL (STRSQL) has to be available and you need authority to read QSYS2.PROGRAM_INFO and QSYS2.OBJECT_PRIVILEGES. The view and column names were not run on a live IBM i, confirm them.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click 🔒 in the OIA status bar and enter the security password (default: 2970).',
+        highlight: 'secBtn', autoFn: null,
+      },
+      {
+        title: 'Choose the libraries',
+        body:  'Type the libraries to read in the box, for example APPLIB, TOOLLIB, comma separated, up to eight. Leave it blank to read every library not named Q*. On a real production system that can run for a long time, because PROGRAM_INFO is large, so name the libraries there. Each library gets two reads, its adopting programs and *PUBLIC\'s authority on its programs, then the *ALLOBJ and *SECADM holders are read once.',
+        highlight: 'as400AdoptLibs', autoFn: null,
+      },
+      {
+        title: 'Run the scan',
+        body:  'Click ▶ SCAN FOR ADOPTING PROGRAMS. Every result is read across all its pages, so no library is cut off at ten rows.',
+        highlight: 'as400AdoptBtn',
+        autoFn: 'startAs400AdoptScan',
+        autoLabel: 'Run it for me',
+      },
+      {
+        title: 'Read the findings',
+        body:  'One row per adopting program. CRITICAL — the owner holds *ALLOBJ or *SECADM and *PUBLIC has *CHANGE or *ALL, more than running it needs. HIGH — a powerful owner and *PUBLIC may run it, so any user is on a path to that authority, read what it does. MEDIUM — a powerful owner but *PUBLIC is excluded, confirm who is authorized, or a bounded owner with *PUBLIC above *USE. LOW — an owner that is not powerful, still needs a documented reason. INFO — a read failed or was cut short, so the findings may be underrated, never a clean pass. Programs that do not adopt are not listed.',
+        highlight: 'as400AdoptOut', autoFn: null,
+      },
+      {
+        title: 'Export the audit',
+        body:  'Click ↓ Export IBM i Audit CSV to save the findings.',
+        highlight: 'as400AdoptOut',
+        autoFn: 'as400ExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
   // ── IBM i (AS/400) Library CRTAUT Review ──────────────────────────
   {
     id:       'as400-library-crtaut-review',

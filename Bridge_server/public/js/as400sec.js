@@ -36,6 +36,7 @@ import {
   SERVICE_GROUPS, svcStatement, splitSqlStatement, parseNetstatRows, evaluateServiceGroup,
   GROUP_QUERIES, parseSuppGroups, parsePrimaryGroups, parseHolders, groupTableOk, evaluateGroups,
   OWNED_BY, OWNED_STATEMENT, parseOwnedObjects, evaluateOwnedObjects,
+  parseAdoptLibraries, adoptProgramStatement, adoptPublicStatement, parseAdoptPrograms, parsePublicAuth, evaluateAdopting,
 } from './as400sec-parse.js';
 
 // ── Screen / transport helpers ─────────────────────────────────────────────
@@ -262,12 +263,13 @@ const TOOLS = {
   SVCINV: { ids: 'Svcinv' },
   GRPREV: { ids: 'Grprev' },
   OWNSEC: { ids: 'Ownsec' },
+  ADOPT:  { ids: 'Adopt' },
 };
 
 // Persisted results per tool (so all tables/CSV survive across scans).
 const RESULTS = {
   USRPRF: [], SHIPPRF: [], SYSVAL: [], OBJ: [], NETATTR: [], JOBD: [], AUTL: [], ACTJOB: [],
-  REGINF: [], NETSVR: [], DFTPWD: [], CRTAUT: [], IFS: [], PGMSTK: [], BYPASS: [], PTFCVE: [], SVCINV: [], GRPREV: [], OWNSEC: [],
+  REGINF: [], NETSVR: [], DFTPWD: [], CRTAUT: [], IFS: [], PGMSTK: [], BYPASS: [], PTFCVE: [], SVCINV: [], GRPREV: [], OWNSEC: [], ADOPT: [],
 };
 
 // ── State machine ───────────────────────────────────────────────────────────
@@ -401,6 +403,7 @@ const COLS = {
   SVCINV:  ['PORT / SERVICE', 'STATE / BIND'],
   GRPREV:  ['GROUP / USER', 'AUTHORITY / VIA'],
   OWNSEC:  ['LIBRARY', 'QSECOFR-OWNED'],
+  ADOPT:   ['PROGRAM', 'OWNER / *PUBLIC'],
 };
 
 function _render(tool) {
@@ -601,6 +604,34 @@ const OWNSEC_QUERIES = [{
   },
 }];
 
+// Static Adopted-Authority Scan: the queries depend on the libraries the operator names
+// (blank = every library not named Q*), so they are built at start. Reads only store
+// their rows, finalize() judges them together.
+function _adoptQuery(key, stmt, label, onTable) {
+  return { key, stmt, fresh: _sqlInputBlank, onError: ctx => ctx.incomplete.push(label),
+    collect: (table, info, ctx) => {
+      const parsed = onTable(table, ctx);
+      if (!parsed || info.truncated) ctx.incomplete.push(label);
+      return [];
+    } };
+}
+function _buildAdoptQueries() {
+  const { libs, bad, capped } = parseAdoptLibraries(document.getElementById('as400AdoptLibs')?.value);
+  if (bad.length) return { error: `Not a library name: ${bad.join(', ')}` };
+  const scopes = libs.length ? libs : [null];
+  const qs = [];
+  for (const lib of scopes) {
+    const tag = lib || 'all non-Q*';
+    qs.push(_adoptQuery(`PROG ${tag}`, adoptProgramStatement(lib), `programs in ${tag}`, (table, ctx) => {
+      const p = parseAdoptPrograms(table); if (p) ctx.programs.push(...p); return p; }));
+    qs.push(_adoptQuery(`PUBLIC ${tag}`, adoptPublicStatement(lib), `*PUBLIC authority in ${tag}`, (table, ctx) => {
+      const p = parsePublicAuth(table); if (p) ctx.publicAuth.push(...p); return p; }));
+  }
+  qs.push(_grpQuery('ALLOBJ', '*ALLOBJ holders', ['AUTHORIZATION_NAME', 'STATUS'], 'allobj'));
+  qs.push(_grpQuery('SECADM', '*SECADM holders', ['AUTHORIZATION_NAME', 'STATUS'], 'secadm'));
+  return { queries: qs, note: capped ? 'Only the first 8 libraries are read.' : '' };
+}
+
 // Group Profile Review: four reads that only store their rows, finalize() judges them together.
 const _grpQuery = (key, label, cols, store) => ({
   key, stmt: GROUP_QUERIES[key], fresh: _sqlInputBlank,
@@ -631,6 +662,15 @@ const SQL_TOOLS = {
     done: () => {
       const bad = RESULTS.SVCINV.filter(r => ['CRITICAL', 'HIGH', 'MEDIUM'].includes(r.risk)).length;
       return { text: `Done — ${bad}/${RESULTS.SVCINV.length} service(s) need attention.`, bad };
+    },
+  },
+  ADOPT: {
+    queries: [], btn: 'as400AdoptBtn', build: _buildAdoptQueries,
+    finalize: ctx => evaluateAdopting({ programs: ctx.programs, publicAuth: ctx.publicAuth, allobj: ctx.allobj || [],
+      secadm: ctx.secadm || [], incomplete: ctx.incomplete }),
+    done: () => {
+      const bad = RESULTS.ADOPT.filter(r => r.risk === 'CRITICAL' || r.risk === 'HIGH').length;
+      return { text: `Done — ${bad} adopting program(s) owned by a powerful profile and open to *PUBLIC.`, bad };
     },
   },
   OWNSEC: {
@@ -780,9 +820,14 @@ function _startSqlTool(tool) {
     _status(tool, 'Sign on and navigate to an AS/400 menu (with a command line) first.', 'error');
     return;
   }
+  if (SQL_TOOLS[tool].build) {
+    const b = SQL_TOOLS[tool].build();
+    if (b.error) { _status(tool, b.error, 'error'); return; }
+    SQL_TOOLS[tool].queries = b.queries;
+  }
   RESULTS[tool] = [];
   _render(tool);
-  sqlrun = { running: true, tool, idx: 0, stage: 'NAV', tables: [], selected: 0, lastText: '', ctx: { incomplete: [] } };
+  sqlrun = { running: true, tool, idx: 0, stage: 'NAV', tables: [], selected: 0, lastText: '', ctx: { incomplete: [], programs: [], publicAuth: [] } };
   const btn = document.getElementById(SQL_TOOLS[tool].btn);
   if (btn) btn.disabled = true;
   _status(tool, 'Issuing STRSQL…');
@@ -794,6 +839,7 @@ export function startAs400PtfCveScan() { _startSqlTool('PTFCVE'); }
 export function startAs400SvcInvScan() { _startSqlTool('SVCINV'); }
 export function startAs400GrpRevScan() { _startSqlTool('GRPREV'); }
 export function startAs400OwnSecScan() { _startSqlTool('OWNSEC'); }
+export function startAs400AdoptScan()  { _startSqlTool('ADOPT'); }
 
 export function startAs400BypassProbe() {
   if (bypass.running) return;
@@ -847,6 +893,7 @@ function _buildAs400Rows() {
   add('SVCINV',  'listening-services-inventory');
   add('GRPREV',  'group-profile-review');
   add('OWNSEC',  'qsecofr-owned-objects');
+  add('ADOPT',   'static-adopted-authority-scan');
   // Pre sign-on tool: its results live in probe.js, not RESULTS.
   credAuditFindings().forEach(r => rows.push(['default-credential-audit', r.name, r.value, r.risk, r.detail, ts]));
   return { rows, ts };
@@ -869,5 +916,5 @@ Object.assign(window, {
   startAs400UserScan, startAs400ShippedAudit, startAs400SysvalScan, startAs400ObjScan,
   startAs400NetattrScan, startAs400JobdScan, startAs400AutlScan, startAs400ActjobScan,
   startAs400ReginfScan, startAs400NetsvrScan, startAs400DftpwdScan, startAs400CrtautScan, startAs400IfsScan,
-  startAs400PgmstkScan, startAs400BypassProbe, startAs400PtfCveScan, startAs400SvcInvScan, startAs400GrpRevScan, startAs400OwnSecScan,
+  startAs400PgmstkScan, startAs400BypassProbe, startAs400PtfCveScan, startAs400SvcInvScan, startAs400GrpRevScan, startAs400OwnSecScan, startAs400AdoptScan,
 });

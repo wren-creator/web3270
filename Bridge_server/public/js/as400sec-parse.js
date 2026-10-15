@@ -975,3 +975,84 @@ export function evaluateLibCrtaut({ lib, crtaut, qcrtaut }) {
     (sysval && _CRT_RANK[own] > _CRT_RANK[sysval] ? `, weaker than QCRTAUT (${sysval}): this library overrides a stricter system value.` : '.') +
     ` Set CHGLIB LIB(${lib}) CRTAUT(*EXCLUDE) or *USE. That does not change objects already there.` };
 }
+
+
+// ── Static Adopted-Authority Scan (QSYS2.PROGRAM_INFO + OBJECT_PRIVILEGES) ───
+// The Adopted-Authority Runtime Scanner only sees programs on the live call stack
+// at the moment it looks. A program that adopts its owner's authority is dangerous
+// whether or not anyone is running it, so this reads whole libraries: every program
+// whose USRPRF attribute is *OWNER, who owns it, and what *PUBLIC may do to it.
+// The exposure is USRPRF(*OWNER) on a program owned by a powerful profile. (USEADPAUT
+// is a different attribute: it controls whether a program inherits adopted authority
+// from its CALLERS, not what it adopts itself.)
+//   program owner holds *ALLOBJ or *SECADM   adopting is a privilege escalation path
+//   *PUBLIC may run it                       any user is on that path
+//   *PUBLIC above *USE (*CHANGE, *ALL)       more than running it, and a program that
+//                                            can be debugged or altered while it adopts
+//                                            a powerful owner is the worse case
+// A blank library list reads every library not named Q*, which on a big production
+// box can run for a long time, name the libraries there. PROGRAM_INFO and
+// OBJECT_PRIVILEGES column names were not run on a live IBM i, confirm them.
+const _LIB_OK = /^[A-Z#$@][A-Z0-9#$@_]{0,9}$/;
+export function parseAdoptLibraries(text) {
+  const libs = [...new Set(String(text || '').toUpperCase().split(/[\s,]+/).filter(Boolean))];
+  const bad = libs.filter(l => !_LIB_OK.test(l));
+  return { libs: libs.filter(l => _LIB_OK.test(l)).slice(0, 8), bad, capped: libs.length > 8 };
+}
+const _libPred = (col, lib) => (lib ? `${col} = '${lib}'` : `${col} NOT LIKE 'Q%'`);
+export const adoptProgramStatement = lib =>
+  `SELECT PROGRAM_LIBRARY, PROGRAM_NAME, PROGRAM_OWNER FROM QSYS2.PROGRAM_INFO WHERE USER_PROFILE = '*OWNER' AND ${_libPred('PROGRAM_LIBRARY', lib)}`;
+export const adoptPublicStatement = lib =>
+  `SELECT SYSTEM_OBJECT_SCHEMA, SYSTEM_OBJECT_NAME, OBJECT_AUTHORITY FROM QSYS2.OBJECT_PRIVILEGES WHERE USER_NAME = '*PUBLIC' AND OBJECT_TYPE = '*PGM' AND ${_libPred('SYSTEM_OBJECT_SCHEMA', lib)}`;
+
+function _cols(table, names) {
+  const ix = names.map(n => table.cols.indexOf(n));
+  return ix.includes(-1) ? null : ix;
+}
+export function parseAdoptPrograms(table) {
+  const ix = _cols(table, ['PROGRAM_LIBRARY', 'PROGRAM_NAME', 'PROGRAM_OWNER']);
+  return ix ? table.rows.map(r => ({ lib: r[ix[0]], name: r[ix[1]], owner: r[ix[2]] })).filter(p => p.lib && p.name) : null;
+}
+export function parsePublicAuth(table) {
+  const ix = _cols(table, ['SYSTEM_OBJECT_SCHEMA', 'SYSTEM_OBJECT_NAME', 'OBJECT_AUTHORITY']);
+  return ix ? table.rows.map(r => ({ key: `${r[ix[0]]}/${r[ix[1]]}`, auth: r[ix[2]] })).filter(x => x.auth) : null;
+}
+
+// programs: [{lib,name,owner}], publicAuth: [{key,auth}], allobj/secadm: name lists,
+// incomplete: names of reads that failed or were cut short.
+export function evaluateAdopting({ programs, publicAuth, allobj, secadm, incomplete = [] }) {
+  const priv = new Set([...allobj, ...secadm]);
+  const pub = new Map(publicAuth.map(p => [p.key, p.auth]));
+  const out = [];
+  let privCount = 0;
+  for (const p of programs) {
+    const key = `${p.lib}/${p.name}`;
+    const auth = pub.get(key);
+    const privOwner = priv.has(p.owner);
+    const runnable = auth && auth !== '*EXCLUDE';
+    const above = auth === '*CHANGE' || auth === '*ALL';
+    let risk, why;
+    if (privOwner) {
+      privCount++;
+      if (above)           { risk = 'CRITICAL'; why = `*PUBLIC holds ${auth}, more than adoption needs. Anyone can run it as ${p.owner}, and a program that can be debugged or altered while it adopts a powerful owner is the worse case.`; }
+      else if (runnable)   { risk = 'HIGH';     why = `*PUBLIC may run it (${auth}), so any user is on a path to ${p.owner}'s authority. Read what it does and whether it can be driven to run a command.`; }
+      else if (auth)       { risk = 'MEDIUM';   why = `*PUBLIC is excluded, so only named users can run it as ${p.owner}. Confirm who is authorized and why.`; }
+      else                 { risk = 'HIGH';     why = `*PUBLIC authority could not be read, so assume anyone can run it as ${p.owner}.`; }
+    } else {
+      risk = above ? 'MEDIUM' : 'LOW';
+      why = `${p.owner} does not hold *ALLOBJ or *SECADM, so this is a bounded adoption. It still needs a documented reason.` + (above ? ` *PUBLIC holds ${auth}, which is more than running it.` : '');
+    }
+    out.push({ name: key, value: `owner ${p.owner} · *PUBLIC ${auth || '?'}`, risk,
+      detail: `Adopts ${p.owner}'s authority (USRPRF(*OWNER)). ${why}` });
+  }
+  const order = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
+  out.sort((a, b) => order[a.risk] - order[b.risk]);
+  for (const w of incomplete) {
+    out.push({ name: w, value: 'incomplete', risk: 'INFO', detail: `The ${w} read failed or was cut short, so the findings may be missing some or underrated. Re-run, or read it by hand.` });
+  }
+  out.push({ name: '(adopting programs)', value: `${programs.length} program(s), ${privCount} owned by *ALLOBJ/*SECADM`,
+    risk: incomplete.length ? 'INFO' : (programs.length ? 'INFO' : 'OK'),
+    detail: programs.length ? 'Every adopting program needs a documented reason and an owner that is not a powerful profile unless that is justified.'
+      : incomplete.length ? 'None found in what was read, but a read was incomplete.' : 'No program in the libraries read adopts its owner\'s authority.' });
+  return out;
+}

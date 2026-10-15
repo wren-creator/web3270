@@ -57,6 +57,7 @@ The app ships **74 built-in narrated walkthroughs** (`public/js/walkthrough.js`)
 | — | | 44 | IBM i Group Profile Review |
 | — | | 45 | IBM i QSECOFR-Owned Objects |
 | — | | 46 | IBM i Library CRTAUT Review |
+| — | | 47 | IBM i Static Adopted-Authority Scan |
 
 Appendices — Structured JSON findings export, the `.rec.json` format.
 
@@ -2921,6 +2922,48 @@ On the mock, `QCRTAUT` is `*CHANGE`. `PAYROLL` and `QGPL` say `*SYSVAL`, so both
 ### Where the mock stops
 
 The "Create authority" label on `DSPLIBD` and the `CRTAUT` values were not run on a live IBM i, confirm them. "Application library" means not named `Q*`, so a `Q`-named library that is really yours is missed. A real system has far more libraries than this list, and the generic list reader pages through `WRKLIB` with Roll Up.
+
+---
+
+## Part 47 — IBM i (AS/400) Static Adopted-Authority Scan
+
+The Adopted-Authority Runtime Scanner ([Part 38A](#)) walks the live call stack, so it only finds a program that happens to be running when it looks. A program that adopts its owner's authority is a risk whether or not anyone is running it. This scan reads whole libraries.
+
+### Location
+
+Security panel → IBM i SECURITY (AS/400) → STATIC ADOPTED-AUTHORITY SCAN, with a box for the libraries to read.
+
+### How it works
+
+The exposure is `USRPRF(*OWNER)` on a program owned by a powerful profile. (`USEADPAUT` is a different attribute, it controls whether a program inherits adopted authority from its callers, not what it adopts itself.) The scan makes these STRSQL reads, each across all its pages:
+
+| Read | Gives |
+|---|---|
+| `QSYS2.PROGRAM_INFO WHERE USER_PROFILE = '*OWNER'` per library | every adopting program and its owner |
+| `QSYS2.OBJECT_PRIVILEGES WHERE USER_NAME = '*PUBLIC' AND OBJECT_TYPE = '*PGM'` per library | what `*PUBLIC` may do to each program |
+| `QSYS2.USER_INFO WHERE SPECIAL_AUTHORITIES LIKE '%ALLOBJ%'` (and `%SECADM%`) | who is powerful |
+
+Name up to eight libraries in the box, comma separated. Blank reads every library not named `Q*`, which can run for a long time on a large production system because `PROGRAM_INFO` is large, so name the libraries there. Anything that is not a library name is refused before a query runs.
+
+### Risk levels
+
+| Rating | Meaning |
+|---|---|
+| CRITICAL | the owner holds `*ALLOBJ` or `*SECADM` and `*PUBLIC` holds `*CHANGE` or `*ALL`, more than adoption needs |
+| HIGH | a powerful owner and `*PUBLIC` may run it, so any user is on a path to that authority. Also a powerful owner whose `*PUBLIC` authority could not be read |
+| MEDIUM | a powerful owner but `*PUBLIC` is `*EXCLUDE`, confirm who is authorized. Or a bounded owner with `*PUBLIC` above `*USE` |
+| LOW | an owner that is not powerful, still needs a documented reason |
+| INFO | a read failed or was cut short, so findings may be underrated. Never a clean OK on partial data |
+
+Programs that do not adopt are not listed.
+
+### Teaching scenario
+
+On the mock, `LEAVCALC` (owned by `QSECOFR`, `*PUBLIC *CHANGE`) and `UTILITY` (`QSECOFR`, `*PUBLIC *ALL`) are CRITICAL. `PAYUPD`, the one the runtime scanner caught on the call stack, and `SYNCUSR` (owned by `APPADMIN`) are HIGH. `PAYCALC` and `SAVALL` are MEDIUM, `*PUBLIC` excluded. `ORDENTRY`, owned by a dedicated `APPOWNER`, is LOW. `PAYRPT`, `CLEANUP` and `ORDRPT` do not adopt and are not listed, and `QSYS` is IBM's own. Run the Group Profile Review and QSECOFR-Owned Objects scans first and the same people and libraries show up from three angles.
+
+### Where the mock stops
+
+View and column names were not run on a live IBM i, confirm them. "Powerful" means holds `*ALLOBJ` or `*SECADM`. A program with a different adopted authority (`*SERVICE`, `*JOBCTL`, `*SPLCTL`) is rated by its owner like any other. The scan says nothing about what a program does, only that it adopts and who can run it, so each HIGH needs a human to read the program.
 
 ---
 

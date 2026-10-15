@@ -1326,6 +1326,16 @@
             <div id="as400GrprevOut" style="max-height:220px;overflow-y:auto;margin-top:4px"></div>
           </div>
 
+          <!-- Static Adopted-Authority Scan -->
+          <div style="margin-top:10px;padding-top:8px;border-top:1px solid #1a1a1a">
+            <div style="font-size:10px;color:var(--text-muted);font-weight:600;letter-spacing:.06em;margin-bottom:4px">STATIC ADOPTED-AUTHORITY SCAN</div>
+            <div class="sec-panel-hint" style="margin-bottom:6px">The Adopted-Authority Runtime Scanner above only sees programs on the call stack right now. This reads whole libraries via STRSQL: every program with USRPRF(*OWNER), who owns it, and what *PUBLIC may do to it (QSYS2.PROGRAM_INFO and QSYS2.OBJECT_PRIVILEGES), judged against who holds *ALLOBJ or *SECADM. A privileged owner with *PUBLIC able to run it is HIGH, with more than *USE it is CRITICAL. Leave the box blank to read every library not named Q*, which can run a long time on a big system, so name the libraries there. Confirm view and column names on your release.</div>
+            <input id="as400AdoptLibs" type="text" placeholder="APPLIB, TOOLLIB (blank = every library not named Q*)" style="width:100%;box-sizing:border-box;background:#0a0a0a;border:1px solid #333;border-radius:3px;color:#ccc;font-family:inherit;font-size:10px;padding:3px 6px;margin-bottom:4px">
+            <button id="as400AdoptBtn" class="sec-inject-btn" onclick="startAs400AdoptScan()" style="background:#1a2a1a">▶ SCAN FOR ADOPTING PROGRAMS</button>
+            <div id="as400AdoptStatus" style="font-size:10px;color:var(--text-muted);margin-top:4px;min-height:14px"></div>
+            <div id="as400AdoptOut" style="max-height:220px;overflow-y:auto;margin-top:4px"></div>
+          </div>
+
           <!-- Library CRTAUT vs QCRTAUT -->
           <div style="margin-top:10px;padding-top:8px;border-top:1px solid #1a1a1a">
             <div style="font-size:10px;color:var(--text-muted);font-weight:600;letter-spacing:.06em;margin-bottom:4px">LIBRARY CRTAUT REVIEW</div>
