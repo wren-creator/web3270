@@ -390,7 +390,7 @@ const USRPRFS = [
     specialAuth: ['*SAVSYS'],
     lmtcpb: '*YES', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: true,  pwdChg: '*NA',      lastSignon: '*NONE' },
   { name: 'KLEE',     text: 'Kim Lee - Application support', status: '*ENABLED',  group: 'GRPADMIN',
-    specialAuth: [],
+    specialAuth: ['*SPLCTL'],
     lmtcpb: '*YES', pwdExpiry: '*SYSVAL', pwdDefault: false, pwdNone: false, pwdChg: '06/30/26', lastSignon: '07/07/26 07:45:10' },
   { name: 'RTAYLOR',  text: 'R Taylor - Developer',          status: '*ENABLED',  group: 'GRPDEV',
     supGroups: ['GRPACCT'],
@@ -1011,7 +1011,35 @@ const SQL_TABLES = {
       ['TOOLLIB', 'SAVALL',   '*PGM',  '*PUBLIC', '*EXCLUDE'],
       ['MYLIB',   'TESTPGM',  '*PGM',  '*PUBLIC', '*CHANGE'],
       ['QSYS',    'QCMDEXC',  '*PGM',  '*PUBLIC', '*USE'],
+      ['PAYROLL', 'PAYRPTQ',  '*OUTQ', '*PUBLIC', '*CHANGE'],  ['PAYROLL', 'PAYRPTQ',  '*OUTQ', 'GRPACCT', '*CHANGE'],
+      ['HRLIB',   'HRRPTQ',   '*OUTQ', '*PUBLIC', '*EXCLUDE'],
+      ['APPLIB',  'APPOUTQ',  '*OUTQ', '*PUBLIC', '*USE'],     ['APPLIB',  'REMPRT',   '*OUTQ', '*PUBLIC', '*USE'],
+      ['QGPL',    'QPRINT',   '*OUTQ', '*PUBLIC', '*USE'],     ['QUSRSYS', 'QPJOBLOG', '*OUTQ', '*PUBLIC', '*CHANGE'],
     ],
+  },
+  // QSYS2.OUTPUT_QUEUE_INFO and QSYS2.SYSTEM_VALUE_INFO, narrowed to the columns the
+  // Output Queue and Spool Audit reads. The queues model a shop that spooled
+  // sensitive reports into queues set up for convenience: PAYRPTQ lets anyone with
+  // read authority display any file and is open to *PUBLIC, HRRPTQ is set up right,
+  // APPOUTQ is operator controlled, REMPRT sends spool to another system. Value
+  // formats (YES/NO, *OWNER/*DTAAUT) and column names were not run on a live IBM i,
+  // confirm them.
+  'QSYS2/OUTPUT_QUEUE_INFO': {
+    columns: ['OUTPUT_QUEUE_NAME', 'OUTPUT_QUEUE_LIBRARY_NAME', 'DISPLAY_ANY_FILE', 'AUTHORITY_TO_CHECK', 'OPERATOR_CONTROLLED', 'NUMBER_OF_FILES', 'REMOTE_SYSTEM_NAME'],
+    rows: [
+      ['PAYRPTQ', 'PAYROLL', 'YES', '*OWNER',  'YES', '42', ''],
+      ['HRRPTQ',  'HRLIB',   'NO',  '*DTAAUT', 'NO',  '7',  ''],
+      ['APPOUTQ', 'APPLIB',  'NO',  '*OWNER',  'YES', '15', ''],
+      ['REMPRT',  'APPLIB',  'NO',  '*DTAAUT', 'NO',  '0',  'PRT01.CORP.LAN'],
+      ['QPRINT',    'QGPL',    'NO', '*DTAAUT', 'NO', '2',  ''],
+      ['QPJOBLOG',  'QUSRSYS', 'NO', '*DTAAUT', 'NO', '311', ''],
+    ],
+  },
+  'QSYS2/SYSTEM_VALUE_INFO': {
+    columns: ['SYSTEM_VALUE_NAME', 'CURRENT_NUMERIC_VALUE', 'CURRENT_CHARACTER_VALUE'],
+    get rows() {
+      return Object.entries(SYSVALS).map(([n, s]) => /^\d+$/.test(s.value) ? [n, s.value, ''] : [n, '', s.value]);
+    },
   },
   'QSYS2/GROUP_PROFILE_ENTRIES': {
     columns: ['GROUP_PROFILE_NAME', 'USER_PROFILE_NAME'],
@@ -2275,13 +2303,20 @@ function runSql(stmt) {
   if (!table) return { error: `SQL0204 - ${key.replace('/', '.')} in *LIBL type *FILE not found.` };
 
   let idxs = table.columns.map((_, i) => i);
+  let aliases = table.columns.slice();
   if (m[1].trim() !== '*') {
-    const names = m[1].split(',').map(s => s.trim().toUpperCase());
+    // col, col AS alias, col alias. The alias becomes the result header, which is how
+    // a real statement keeps wide column names inside the 76-column grid.
     idxs = [];
-    for (const n of names) {
+    aliases = [];
+    for (const item of m[1].split(',')) {
+      const am = /^([A-Z0-9_]+)(?:\s+(?:AS\s+)?([A-Z0-9_]+))?$/i.exec(item.trim());
+      if (!am) return { error: 'SQL0104 - Select list not understood by this mock (col, col AS alias).' };
+      const n = am[1].toUpperCase();
       const i = table.columns.indexOf(n);
       if (i === -1) return { error: `SQL0206 - Column ${n} not in table ${key.replace('/', '.')}.` };
       idxs.push(i);
+      aliases.push((am[2] || n).toUpperCase());
     }
   }
 
@@ -2316,7 +2351,7 @@ function runSql(stmt) {
       rest = rest.slice(and[0].length);
     }
   }
-  return { cols: idxs.map(i => table.columns[i]), rows: rows.map(r => idxs.map(i => r[i])) };
+  return { cols: aliases, rows: rows.map(r => idxs.map(i => r[i])) };
 }
 function screenSql(ctx) {
   const fields = [
@@ -2325,11 +2360,11 @@ function screenSql(ctx) {
     { row: 2, col: 2,  text: 'Type SQL statement, press Enter to run.', input: false },
     { row: 3, col: 2,  text: '(Mock SQL: SELECT cols FROM lib.table [WHERE col IN (n, n)])', input: false },
     { row: SQL_CMD_ROW, col: 2, text: '===>', input: false },
-    { row: SQL_CMD_ROW, col: 7, text: '', input: true, length: 70 },
+    { row: SQL_CMD_ROW, col: 7, text: '', input: true, length: 72 },
     // Continuation lines: a long statement wraps onto these rows, same as a real
     // STRSQL statement area. The handler joins the three rows with a space.
-    { row: SQL_CMD_ROW + 1, col: 7, text: '', input: true, length: 70 },
-    { row: SQL_CMD_ROW + 2, col: 7, text: '', input: true, length: 70 },
+    { row: SQL_CMD_ROW + 1, col: 7, text: '', input: true, length: 72 },
+    { row: SQL_CMD_ROW + 2, col: 7, text: '', input: true, length: 72 },
   ];
   if (ctx.message) fields.push({ row: 8, col: 2, text: ctx.message, input: false });
   if (ctx.resultCols) {

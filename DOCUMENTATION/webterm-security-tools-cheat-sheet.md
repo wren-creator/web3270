@@ -79,6 +79,7 @@ Platform key: **z/OS** (TSO/RACF/SDSF/DB2/CICS) · **IBM i** (AS/400) · **z/VM*
 | QSECOFR-Owned Objects | Reads `QSYS2.OBJECT_OWNERSHIP` via STRSQL for objects `QSECOFR` owns outside `Q*` libraries and rates each library: HIGH when programs are among them (one that adopts its owner runs as `QSECOFR`), MEDIUM for data only. Fix is `CHGOBJOWN` to a dedicated owner profile, test first. |
 | Library CRTAUT Review | Reads `QCRTAUT` (`DSPSYSVAL`) then `DSPLIBD` per application library and rates the authority new objects actually get: the library's own `CRTAUT` wins unless it says `*SYSVAL`. `*ALL` critical, `*CHANGE` high, `*USE`/`*EXCLUDE` fine. Fix is `CHGLIB ... CRTAUT(*EXCLUDE)`, existing objects are not changed. |
 | Static Adopted-Authority Scan | Reads whole libraries via STRSQL (`PROGRAM_INFO`, `OBJECT_PRIVILEGES`, `USER_INFO`) for every program with `USRPRF(*OWNER)`, its owner, and `*PUBLIC`'s authority. Powerful owner (`*ALLOBJ`/`*SECADM`) plus `*PUBLIC` above `*USE` is CRITICAL, plus `*PUBLIC` able to run it is HIGH. Name the libraries, blank reads every non-Q library and can be slow. |
+| Output Queue and Spool Audit | Reads `OUTPUT_QUEUE_INFO` and `OBJECT_PRIVILEGES` via STRSQL for who can read spooled output: `DSPDTA`, `OPRCTL`, `AUTCHK`, `*PUBLIC` per queue, remote queues, `QPJOBLOG`/`QPRINT`, `*SPLCTL` and `*JOBCTL` holders, and whether `QAUDLVL` has `*SPLFDTA` and `*PRTDTA`. `DSPDTA` open plus `*PUBLIC` readable is CRITICAL. Name the libraries, blank reads every non-Q library. Get the client's signed list of sensitive queues. |
 
 ## z/VM
 

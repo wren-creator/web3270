@@ -1326,6 +1326,16 @@
             <div id="as400GrprevOut" style="max-height:220px;overflow-y:auto;margin-top:4px"></div>
           </div>
 
+          <!-- Output Queue and Spool Audit -->
+          <div style="margin-top:10px;padding-top:8px;border-top:1px solid #1a1a1a">
+            <div style="font-size:10px;color:var(--text-muted);font-weight:600;letter-spacing:.06em;margin-bottom:4px">OUTPUT QUEUE AND SPOOL AUDIT</div>
+            <div class="sec-panel-hint" style="margin-bottom:6px">Reads QSYS2.OUTPUT_QUEUE_INFO and QSYS2.OBJECT_PRIVILEGES via STRSQL for who can read what is spooled: DSPDTA (can any reader display any file), OPRCTL (can anyone with *JOBCTL), *PUBLIC's authority on each queue, remote queues, QPJOBLOG and QPRINT, who holds *SPLCTL, and whether QAUDLVL carries *SPLFDTA and *PRTDTA so spool activity is audited at all. A queue where DSPDTA lets any reader see any file and *PUBLIC can read is CRITICAL. Which queues are sensitive is the client's call, get a signed list. Name the libraries that hold output queues (blank reads every library not named Q*, which can be slow). Confirm view, column and value names on your release.</div>
+            <input id="as400OutqLibs" type="text" placeholder="PAYROLL, HRLIB (blank = every library not named Q*)" style="width:100%;box-sizing:border-box;background:#0a0a0a;border:1px solid #333;border-radius:3px;color:#ccc;font-family:inherit;font-size:10px;padding:3px 6px;margin-bottom:4px">
+            <button id="as400OutqBtn" class="sec-inject-btn" onclick="startAs400OutqScan()" style="background:#1a2a1a">▶ AUDIT OUTPUT QUEUES</button>
+            <div id="as400OutqStatus" style="font-size:10px;color:var(--text-muted);margin-top:4px;min-height:14px"></div>
+            <div id="as400OutqOut" style="max-height:220px;overflow-y:auto;margin-top:4px"></div>
+          </div>
+
           <!-- Static Adopted-Authority Scan -->
           <div style="margin-top:10px;padding-top:8px;border-top:1px solid #1a1a1a">
             <div style="font-size:10px;color:var(--text-muted);font-weight:600;letter-spacing:.06em;margin-bottom:4px">STATIC ADOPTED-AUTHORITY SCAN</div>

@@ -58,6 +58,7 @@ The app ships **74 built-in narrated walkthroughs** (`public/js/walkthrough.js`)
 | — | | 45 | IBM i QSECOFR-Owned Objects |
 | — | | 46 | IBM i Library CRTAUT Review |
 | — | | 47 | IBM i Static Adopted-Authority Scan |
+| — | | 48 | IBM i Output Queue and Spool Audit |
 
 Appendices — Structured JSON findings export, the `.rec.json` format.
 
@@ -2964,6 +2965,52 @@ On the mock, `LEAVCALC` (owned by `QSECOFR`, `*PUBLIC *CHANGE`) and `UTILITY` (`
 ### Where the mock stops
 
 View and column names were not run on a live IBM i, confirm them. "Powerful" means holds `*ALLOBJ` or `*SECADM`. A program with a different adopted authority (`*SERVICE`, `*JOBCTL`, `*SPLCTL`) is rated by its owner like any other. The scan says nothing about what a program does, only that it adopts and who can run it, so each HIGH needs a human to read the program.
+
+---
+
+## Part 48 — IBM i (AS/400) Output Queue and Spool Audit
+
+Payroll registers, statements and job logs end up as spooled files, and the output queue they sit in decides who can read them. The data was locked down in the database and then printed into a queue anyone can open.
+
+### Location
+
+Security panel → IBM i SECURITY (AS/400) → OUTPUT QUEUE AND SPOOL AUDIT, with a box for the libraries that hold output queues.
+
+### How it works
+
+STRSQL reads, every one filtered by library (an unfiltered authority query on a real system will crawl), each across all its pages. Per library: queue settings (`QSYS2.OUTPUT_QUEUE_INFO`: `DSPDTA`, then `AUTCHK` and `OPRCTL`) and `*PUBLIC`'s authority on each queue (`OBJECT_PRIVILEGES`). Once: remote queues, `QPJOBLOG` and `QPRINT`, the `*SPLCTL` and `*JOBCTL` holders, and `QAUDLVL` for `*SPLFDTA` and `*PRTDTA`. Name up to eight libraries, or leave the box blank for every library not named `Q*`. Names are validated before any statement is built. Aliases keep the wide column names inside the 76 column grid, and the two audit-level checks ask the system for a match (`CURRENT_CHARACTER_VALUE LIKE '%SPLFDTA%'`) instead of reading a long value that would be cut off.
+
+### What decides who can read a queue
+
+| Setting | Why it matters |
+|---|---|
+| `DSPDTA` | whether any user with read authority to the queue can display any file in it, or only the file's owner |
+| `OPRCTL` | whether anyone holding `*JOBCTL` can read every file in the queue |
+| `AUTCHK` | whether ownership or data authority controls the files. The recommended setting for a sensitive queue is `*DTAAUT`, confirm what the choice means on your release |
+| `*PUBLIC` | `*EXCLUDE` on a sensitive queue, and nothing above `*USE` anywhere |
+
+The recommended setup for a sensitive queue is `DSPDTA(*OWNER)`, `AUTCHK(*DTAAUT)`, `OPRCTL(*NO)`, `*PUBLIC *EXCLUDE`, reached through an authorization list.
+
+### Risk levels
+
+| Rating | Meaning |
+|---|---|
+| CRITICAL | `DSPDTA` lets any reader display any file and `*PUBLIC` can read the queue: everyone reads everything spooled there |
+| HIGH | `DSPDTA` open without `*PUBLIC`, or `*PUBLIC` holds `*CHANGE` or `*ALL` on a queue, or `QPJOBLOG` is writable (job logs carry data values and user names), or `QPRINT` above `*USE` |
+| MEDIUM | `OPRCTL(*YES)`, a remote queue (spool leaves the system, approve the destination), a `*SPLCTL` holder who is not IBM-supplied, `*JOBCTL` holders with operator-controlled queues, or `QAUDLVL` without `*SPLFDTA` or `*PRTDTA` (so SF and PO audit entries are never written) |
+| LOW | `*PUBLIC *USE` on a queue, `AUTCHK(*OWNER)`, or an IBM-supplied `*SPLCTL` holder |
+| INFO | a read failed or was cut short. Never a clean OK on partial data |
+| OK | set up the recommended way |
+
+Which queues are sensitive is the client's decision, so the tool rates each queue's settings on their own and the signed list of sensitive queues decides how much each row matters. LPD on port 515 bypasses all of this, see the Listening Services Inventory.
+
+### Teaching scenario
+
+On the mock, `PAYROLL/PAYRPTQ` lets any reader display any file, is operator controlled, and `*PUBLIC` holds `*CHANGE`: CRITICAL. `QUSRSYS/QPJOBLOG` is writable by `*PUBLIC`: HIGH. `APPLIB/APPOUTQ` is operator controlled and `APPLIB/REMPRT` sends spool to another system: MEDIUM. `HRLIB/HRRPTQ` is set up the right way: OK. `QAUDLVL` carries neither `*SPLFDTA` nor `*PRTDTA`, so spool activity is not audited at all, and `KLEE` holds `*SPLCTL`.
+
+### Where the mock stops
+
+Value formats (`YES` or `NO`, `*OWNER` or `*DTAAUT`) and every column name were not run on a live IBM i, confirm them. Anything with a `DSPDTA` or `OPRCTL` value the tool does not recognize is shown as `?`, not guessed.
 
 ---
 

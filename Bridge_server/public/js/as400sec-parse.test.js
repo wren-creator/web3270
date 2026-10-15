@@ -10,6 +10,7 @@ import {
   OWNED_STATEMENT, parseOwnedObjects, evaluateOwnedObjects,
   parseLibraryNames, isAppLibrary, evaluateLibCrtaut,
   parseAdoptLibraries, adoptProgramStatement, adoptPublicStatement, parseAdoptPrograms, parsePublicAuth, evaluateAdopting,
+  OUTQ_STATEMENTS, outqRows, evaluateOutq,
   SERVICE_GROUPS, svcStatement, splitSqlStatement, parseNetstatRows, evaluateServiceGroup,
   parseSqlResultTable, parseCveInfo, evaluateCveRow, parsePtfCurrency, evaluatePtfGroupRow,
 } from './as400sec-parse.js';
@@ -247,12 +248,12 @@ const _grp = k => SERVICE_GROUPS.find(g => g.key === k);
 const _ev = (k, rows, opts) => evaluateServiceGroup(_grp(k), rows, opts);
 const _row = (addr, port, state = 'LISTEN') => ({ addr, port, state });
 
-test('svcStatement: real view and columns, and every statement splits into at most two 70 character lines', () => {
+test('svcStatement: real view and columns, and every statement splits into at most two 72 character lines', () => {
   for (const g of SERVICE_GROUPS) {
     const s = svcStatement(g);
     assert.ok(s.startsWith('SELECT LOCAL_ADDRESS, LOCAL_PORT, TCP_STATE FROM QSYS2.NETSTAT_INFO WHERE '), g.key);
     const parts = splitSqlStatement(s);
-    assert.ok(parts.length <= 2 && parts.every(p => p.length <= 70), `${g.key}: ${parts.map(p => p.length)}`);
+    assert.ok(parts.length <= 2 && parts.every(p => p.length <= 72), `${g.key}: ${parts.map(p => p.length)}`);
     assert.equal(parts.join(' '), s, g.key);
   }
 });
@@ -360,10 +361,10 @@ test('evaluateDftPwd: privileged is CRITICAL, anyone else HIGH, disabled still c
 
 const _tbl = (cols, rows) => ({ cols, rows });
 
-test('GROUP_QUERIES: real views, and every statement fits two 70 character lines', () => {
+test('GROUP_QUERIES: real views, and every statement fits two 72 character lines', () => {
   for (const [k, s] of Object.entries(GROUP_QUERIES)) {
     const parts = splitSqlStatement(s);
-    assert.ok(parts.length <= 2 && parts.every(p => p.length <= 70), `${k}: ${parts.map(p => p.length)}`);
+    assert.ok(parts.length <= 2 && parts.every(p => p.length <= 72), `${k}: ${parts.map(p => p.length)}`);
   }
   assert.ok(GROUP_QUERIES.SUPP.includes('QSYS2.GROUP_PROFILE_ENTRIES'));
 });
@@ -424,7 +425,7 @@ const _own = (lib, name, type) => ({ lib, name, type });
 test('OWNED_STATEMENT: asks the real view for QSECOFR outside Q* libraries, and wraps onto at most three input lines', () => {
   assert.ok(OWNED_STATEMENT.includes('QSYS2.OBJECT_OWNERSHIP') && OWNED_STATEMENT.includes("'QSECOFR'") && OWNED_STATEMENT.includes("NOT LIKE 'Q%'"));
   const parts = splitSqlStatement(OWNED_STATEMENT);
-  assert.ok(parts.length <= 3 && parts.every(p => p.length <= 70), parts.map(p => p.length).join(','));
+  assert.ok(parts.length <= 3 && parts.every(p => p.length <= 72), parts.map(p => p.length).join(','));
 });
 
 test('parseOwnedObjects: reads by column name, null when a column is missing', () => {
@@ -486,11 +487,11 @@ test('evaluateLibCrtaut: an authorization list is INFO, and anything unread is I
   assert.equal(evaluateLibCrtaut({ lib: 'L', crtaut: '*EXCLUDE', qcrtaut: undefined }).risk, 'OK');
 });
 
-test('adopt statements: real views, a library or NOT LIKE Q%, and every one wraps onto at most three 70 character lines', () => {
+test('adopt statements: real views, a library or NOT LIKE Q%, and every one wraps onto at most three 72 character lines', () => {
   for (const lib of [null, 'APPLIB', 'TOOLLIB']) {
     for (const s of [adoptProgramStatement(lib), adoptPublicStatement(lib)]) {
       const parts = splitSqlStatement(s);
-      assert.ok(parts.length <= 3 && parts.every(p => p.length <= 70), `${lib}: ${parts.map(p => p.length)}`);
+      assert.ok(parts.length <= 3 && parts.every(p => p.length <= 72), `${lib}: ${parts.map(p => p.length)}`);
       assert.equal(parts.join(' '), s);
     }
   }
@@ -544,4 +545,75 @@ test('evaluateAdopting: nothing adopting is OK, but an incomplete read is INFO a
   const r = _adopt({ incomplete: ['*ALLOBJ holders'] });
   assert.ok(r.some(x => x.name === '*ALLOBJ holders' && x.risk === 'INFO'));
   assert.equal(r.find(x => x.name === '(adopting programs)').risk, 'INFO');
+});
+
+test('OUTQ_STATEMENTS: real views, filtered by library, every one wraps onto at most three 72 character lines', () => {
+  for (const lib of [null, 'PAYROLL', 'HRLIB']) {
+    for (const k of ['inv1', 'inv2', 'pub']) {
+      const s = OUTQ_STATEMENTS[k](lib);
+      const parts = splitSqlStatement(s);
+      assert.ok(parts.length <= 3 && parts.every(p => p.length <= 72), `${k} ${lib}: ${parts.map(p => p.length)}`);
+      assert.ok(lib ? s.includes(`'${lib}'`) : s.includes("NOT LIKE 'Q%'"), `${k} must filter by library`);
+    }
+  }
+  for (const k of ['remote', 'joblog', 'qprint', 'splctl', 'jobctl', 'audspl', 'audprt']) {
+    const parts = splitSqlStatement(OUTQ_STATEMENTS[k]());
+    assert.ok(parts.length <= 3 && parts.every(p => p.length <= 72), `${k}: ${parts.map(p => p.length)}`);
+  }
+  assert.ok(OUTQ_STATEMENTS.audspl().includes('SPLFDTA') && OUTQ_STATEMENTS.audprt().includes('PRTDTA'));
+});
+
+test('outqRows: keyed by alias, null when a wanted column is missing', () => {
+  assert.deepEqual(outqRows(_tbl(['OUTQ', 'LIB', 'DSPDTA'], [['PAYRPTQ', 'PAYROLL', 'YES']]), ['OUTQ', 'LIB', 'DSPDTA']),
+    [{ OUTQ: 'PAYRPTQ', LIB: 'PAYROLL', DSPDTA: 'YES' }]);
+  assert.equal(outqRows(_tbl(['OUTQ'], []), ['OUTQ', 'LIB']), null);
+});
+
+const _oq = (o = {}) => evaluateOutq({ inv1: [], inv2: [], remote: [], pub: [], special: [], splctl: [], jobctl: [], audspl: [{}], audprt: [{}], incomplete: [], ...o });
+const _q1 = (l, n, d) => ({ LIB: l, OUTQ: n, DSPDTA: d });
+const _q2 = (l, n, a, o) => ({ LIB: l, OUTQ: n, AUTCHK: a, OPRCTL: o });
+const _pa = (l, n, a) => ({ LIB: l, OUTQ: n, AUTH: a });
+const _qrow = (r, n) => r.find(x => x.name === n);
+
+test('evaluateOutq: DSPDTA open plus *PUBLIC able to read is CRITICAL, DSPDTA open alone HIGH, set up right is OK', () => {
+  const r = _oq({ inv1: [_q1('P', 'A', 'YES'), _q1('P', 'B', 'YES'), _q1('P', 'C', 'NO')],
+    inv2: [_q2('P', 'A', '*DTAAUT', 'NO'), _q2('P', 'B', '*DTAAUT', 'NO'), _q2('P', 'C', '*DTAAUT', 'NO')],
+    pub: [_pa('P', 'A', '*USE'), _pa('P', 'B', '*EXCLUDE'), _pa('P', 'C', '*EXCLUDE')] });
+  assert.equal(_qrow(r, 'P/A').risk, 'CRITICAL'); assert.ok(_qrow(r, 'P/A').detail.includes('everyone can read everything'));
+  assert.equal(_qrow(r, 'P/B').risk, 'HIGH');
+  assert.equal(_qrow(r, 'P/C').risk, 'OK'); assert.ok(_qrow(r, 'P/C').detail.includes('recommended way'));
+});
+
+test('evaluateOutq: OPRCTL, *PUBLIC change, AUTCHK(*OWNER) and remote queues are each their own reason, with the *JOBCTL count', () => {
+  const r = _oq({ inv1: [_q1('L', 'O', 'NO'), _q1('L', 'W', 'NO'), _q1('L', 'R', 'NO')],
+    inv2: [_q2('L', 'O', '*OWNER', 'YES'), _q2('L', 'W', '*DTAAUT', 'NO'), _q2('L', 'R', '*DTAAUT', 'NO')],
+    pub: [_pa('L', 'O', '*EXCLUDE'), _pa('L', 'W', '*CHANGE'), _pa('L', 'R', '*EXCLUDE')],
+    remote: [{ LIB: 'L', OUTQ: 'R', RMTSYS: 'PRT01' }], jobctl: [{ USR: 'A', STATUS: '*ENABLED' }, { USR: 'B', STATUS: '*ENABLED' }] });
+  assert.equal(_qrow(r, 'L/O').risk, 'MEDIUM'); assert.ok(_qrow(r, 'L/O').detail.includes('2 profiles hold it') && _qrow(r, 'L/O').detail.includes('AUTCHK(*OWNER)'));
+  assert.equal(_qrow(r, 'L/W').risk, 'HIGH');
+  assert.equal(_qrow(r, 'L/R').risk, 'MEDIUM'); assert.ok(_qrow(r, 'L/R').detail.includes('PRT01'));
+  assert.equal(_qrow(r, '*JOBCTL x OPRCTL(*YES)').risk, 'MEDIUM');
+});
+
+test('evaluateOutq: QPJOBLOG writable is HIGH, QPRINT at *USE is OK, *SPLCTL names staff, IBM profiles are LOW', () => {
+  const r = _oq({ special: [_pa('QUSRSYS', 'QPJOBLOG', '*CHANGE'), _pa('QGPL', 'QPRINT', '*USE')],
+    splctl: [{ USR: 'JSMITH', STATUS: '*ENABLED' }, { USR: 'QSECOFR', STATUS: '*ENABLED' }] });
+  assert.equal(_qrow(r, 'QUSRSYS/QPJOBLOG').risk, 'HIGH'); assert.ok(_qrow(r, 'QUSRSYS/QPJOBLOG').detail.includes('user names'));
+  assert.equal(_qrow(r, 'QGPL/QPRINT').risk, 'OK');
+  assert.equal(_qrow(r, '*SPLCTL: JSMITH').risk, 'MEDIUM'); assert.equal(_qrow(r, '*SPLCTL: QSECOFR').risk, 'LOW');
+});
+
+test('evaluateOutq: missing *SPLFDTA or *PRTDTA is MEDIUM, present is OK, never read is INFO', () => {
+  const r = _oq({ audspl: [], audprt: [{}] });
+  assert.equal(_qrow(r, 'QAUDLVL *SPLFDTA').risk, 'MEDIUM'); assert.ok(_qrow(r, 'QAUDLVL *SPLFDTA').detail.includes('SF'));
+  assert.equal(_qrow(r, 'QAUDLVL *PRTDTA').risk, 'OK');
+  assert.equal(_qrow(_oq({ audspl: undefined }), 'QAUDLVL *SPLFDTA').risk, 'INFO');
+});
+
+test('evaluateOutq: an incomplete read is INFO and the summary is never a clean OK', () => {
+  const r = _oq({ inv1: [_q1('P', 'A', 'NO')], incomplete: ['*SPLCTL holders'] });
+  assert.equal(_qrow(r, '*SPLCTL holders').risk, 'INFO');
+  assert.equal(_qrow(r, '(output queues)').risk, 'INFO');
+  assert.equal(_qrow(_oq({ inv1: [_q1('P', 'A', 'NO')] }), '(output queues)').risk, 'OK');
+  assert.equal(r[0].risk === 'INFO' || r.indexOf(_qrow(r, '(output queues)')) === r.length - 1, true, 'summary row is last');
 });

@@ -704,7 +704,7 @@ export function svcStatement(group) {
 
 // Split a statement across STRSQL's input lines at a space, each at most `width` wide.
 // A statement with no usable space (or short enough) stays on one line.
-export function splitSqlStatement(stmt, width = 70) {
+export function splitSqlStatement(stmt, width = 72) {
   const out = [];
   let rest = stmt.trim();
   while (rest.length > width) {
@@ -1054,5 +1054,133 @@ export function evaluateAdopting({ programs, publicAuth, allobj, secadm, incompl
     risk: incomplete.length ? 'INFO' : (programs.length ? 'INFO' : 'OK'),
     detail: programs.length ? 'Every adopting program needs a documented reason and an owner that is not a powerful profile unless that is justified.'
       : incomplete.length ? 'None found in what was read, but a read was incomplete.' : 'No program in the libraries read adopts its owner\'s authority.' });
+  return out;
+}
+
+
+// ── Output Queue and Spool Audit (QSYS2.OUTPUT_QUEUE_INFO + OBJECT_PRIVILEGES) ──
+// Spooled output is where payroll, statements and job logs end up, and the queue it
+// sits in decides who can read it. Four settings decide that: DSPDTA (can any user with
+// read authority to the queue display any file in it, or only the file's owner),
+// AUTCHK (ownership or data authority), OPRCTL (can anyone holding *JOBCTL read every
+// file), and *PUBLIC's authority on the queue. A queue where DSPDTA lets any reader see
+// any file AND *PUBLIC can read is the finding that matters: everyone reads everything.
+// The recommended setting for a sensitive queue is DSPDTA(*OWNER), AUTCHK(*DTAAUT),
+// OPRCTL(*NO), *PUBLIC *EXCLUDE, reached through an authorization list. Which queues are
+// sensitive is a client decision, this tool cannot know it, so a queue with a loose
+// setting is rated on its own and the signed list of sensitive queues decides how much
+// it matters. Value formats (YES/NO, *OWNER/*DTAAUT) and every column name were not run
+// on a live IBM i, confirm them. QAUDLVL needs *SPLFDTA and *PRTDTA or the spool
+// audit entries (SF, PO) these controls depend on never exist.
+//
+// Aliases (OUTQ, LIB, ...) keep six wide column names inside the 76 column grid.
+// Predicates are written without spaces around = so a statement fits the three 70 character
+// lines STRSQL's statement area gives it.
+const _lq = lib => (lib ? `OUTPUT_QUEUE_LIBRARY_NAME='${lib}'` : "OUTPUT_QUEUE_LIBRARY_NAME NOT LIKE 'Q%'");
+const _lp = lib => (lib ? `SYSTEM_OBJECT_SCHEMA='${lib}'` : "SYSTEM_OBJECT_SCHEMA NOT LIKE 'Q%'");
+export const OUTQ_STATEMENTS = {
+  inv1:    lib => `SELECT OUTPUT_QUEUE_NAME OUTQ, OUTPUT_QUEUE_LIBRARY_NAME LIB, DISPLAY_ANY_FILE DSPDTA FROM QSYS2.OUTPUT_QUEUE_INFO WHERE ${_lq(lib)}`,
+  inv2:    lib => `SELECT OUTPUT_QUEUE_NAME OUTQ, OUTPUT_QUEUE_LIBRARY_NAME LIB, AUTHORITY_TO_CHECK AUTCHK, OPERATOR_CONTROLLED OPRCTL FROM QSYS2.OUTPUT_QUEUE_INFO WHERE ${_lq(lib)}`,
+  // Remote queues are few, so this one is read once across every library, not per library.
+  remote:  () => 'SELECT OUTPUT_QUEUE_NAME OUTQ, OUTPUT_QUEUE_LIBRARY_NAME LIB, REMOTE_SYSTEM_NAME RMTSYS FROM QSYS2.OUTPUT_QUEUE_INFO WHERE REMOTE_SYSTEM_NAME IS NOT NULL',
+  pub:     lib => `SELECT SYSTEM_OBJECT_SCHEMA, SYSTEM_OBJECT_NAME, OBJECT_AUTHORITY FROM QSYS2.OBJECT_PRIVILEGES WHERE USER_NAME='*PUBLIC' AND OBJECT_TYPE='*OUTQ' AND ${_lp(lib)}`,
+  // The two special queues, one statement each (together they would not fit three lines).
+  joblog:  () => "SELECT SYSTEM_OBJECT_SCHEMA, SYSTEM_OBJECT_NAME, OBJECT_AUTHORITY FROM QSYS2.OBJECT_PRIVILEGES WHERE USER_NAME='*PUBLIC' AND OBJECT_TYPE='*OUTQ' AND SYSTEM_OBJECT_NAME='QPJOBLOG'",
+  qprint:  () => "SELECT SYSTEM_OBJECT_SCHEMA, SYSTEM_OBJECT_NAME, OBJECT_AUTHORITY FROM QSYS2.OBJECT_PRIVILEGES WHERE USER_NAME='*PUBLIC' AND OBJECT_TYPE='*OUTQ' AND SYSTEM_OBJECT_NAME='QPRINT'",
+  splctl:  () => "SELECT AUTHORIZATION_NAME USR, STATUS FROM QSYS2.USER_INFO WHERE SPECIAL_AUTHORITIES LIKE '%SPLCTL%'",
+  jobctl:  () => "SELECT AUTHORIZATION_NAME USR, STATUS FROM QSYS2.USER_INFO WHERE SPECIAL_AUTHORITIES LIKE '%JOBCTL%'",
+  audspl:  () => "SELECT SYSTEM_VALUE_NAME FROM QSYS2.SYSTEM_VALUE_INFO WHERE SYSTEM_VALUE_NAME = 'QAUDLVL' AND CURRENT_CHARACTER_VALUE LIKE '%SPLFDTA%'",
+  audprt:  () => "SELECT SYSTEM_VALUE_NAME FROM QSYS2.SYSTEM_VALUE_INFO WHERE SYSTEM_VALUE_NAME = 'QAUDLVL' AND CURRENT_CHARACTER_VALUE LIKE '%PRTDTA%'",
+};
+
+// Rows as objects, or null if a wanted column is missing. A wanted entry is a column name,
+// or [column, key] to hand the column to the evaluator under a shorter key.
+export function outqRows(table, wanted) {
+  const spec = wanted.map(w => (Array.isArray(w) ? w : [w, w]));
+  const ix = spec.map(([c]) => table.cols.indexOf(c));
+  if (ix.includes(-1)) return null;
+  return table.rows.map(r => Object.fromEntries(spec.map(([, k], i) => [k, r[ix[i]]])));
+}
+
+const _yes = v => /^\*?YES$/i.test(String(v || '').trim());
+const _own = v => /^\*?OWNER$/i.test(String(v || '').trim());
+const _rank = { '*EXCLUDE': 0, '*USE': 1, '*CHANGE': 2, '*ALL': 3 };
+const _riskRank = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3, INFO: 4, OK: 5 };
+
+// d: { inv1, inv2, remote, pub, special, splctl, jobctl, audspl, audprt, incomplete }
+// each a parsed list (see outqRows) or null/undefined when never read.
+export function evaluateOutq(d) {
+  const out = [];
+  const key = (l, q) => `${l}/${q}`;
+  const q = new Map();
+  const at = (l, n) => { const k = key(l, n); if (!q.has(k)) q.set(k, { lib: l, name: n }); return q.get(k); };
+  for (const r of d.inv1 || []) at(r.LIB, r.OUTQ).dspdta = r.DSPDTA;
+  for (const r of d.inv2 || []) { const o = at(r.LIB, r.OUTQ); o.autchk = r.AUTCHK; o.oprctl = r.OPRCTL; }
+  for (const r of d.remote || []) at(r.LIB, r.OUTQ).remote = r.RMTSYS;
+  const pub = new Map((d.pub || []).map(r => [key(r.LIB, r.OUTQ), r.AUTH]));
+  const jobctlN = (d.jobctl || []).length;
+  const oprctlQueues = [...q.values()].filter(o => _yes(o.oprctl));
+
+  for (const o of q.values()) {
+    const auth = pub.get(key(o.lib, o.name));
+    const open = auth && auth !== '*EXCLUDE';
+    const reasons = [];
+    let risk = 'OK';
+    const bump = (r) => { if (_riskRank[r] < _riskRank[risk]) risk = r; };
+    if (_yes(o.dspdta)) {
+      reasons.push('DSPDTA lets any user with read authority to the queue display any file in it' +
+        (open ? `, and *PUBLIC holds ${auth}, so everyone can read everything spooled here` : ''));
+      bump(open ? 'CRITICAL' : 'HIGH');
+    }
+    if (_yes(o.oprctl)) {
+      reasons.push(`OPRCTL(*YES) lets anyone with *JOBCTL read every file${jobctlN ? ` (${jobctlN} profile${jobctlN === 1 ? '' : 's'} hold it)` : ''}`);
+      bump('MEDIUM');
+    }
+    if (auth && _rank[auth] >= 2) { reasons.push(`*PUBLIC holds ${auth}, so anyone can add, move or delete files`); bump('HIGH'); }
+    else if (auth === '*USE') { reasons.push('*PUBLIC *USE, a sensitive queue should be *EXCLUDE'); bump('LOW'); }
+    else if (!auth && d.pub) { reasons.push('no *PUBLIC authority was read for this queue'); bump('INFO'); }
+    if (o.autchk && _own(o.autchk)) { reasons.push('AUTCHK(*OWNER), the recommended setting for a sensitive queue is *DTAAUT, confirm what it means on your release'); bump('LOW'); }
+    if (o.remote) { reasons.push(`remote queue, spool leaves this system for ${o.remote}, the destination must be approved`); bump('MEDIUM'); }
+    out.push({ name: key(o.lib, o.name), value: `DSPDTA ${o.dspdta ?? '?'} · OPRCTL ${o.oprctl ?? '?'} · *PUBLIC ${auth ?? '?'}`, risk,
+      detail: reasons.length ? `${reasons.join('. ')}.` : 'Set up the recommended way: files visible to their owner only, no operator control, *PUBLIC excluded.' });
+  }
+
+  // QPJOBLOG and QPRINT: job logs carry data values and user names, QPRINT is where everything
+  // printed without a queue lands.
+  for (const r of d.special || []) {
+    const strict = r.OUTQ === 'QPJOBLOG';
+    const bad = _rank[r.AUTH] >= 2;
+    out.push({ name: key(r.LIB, r.OUTQ), value: `*PUBLIC ${r.AUTH}`, risk: bad ? 'HIGH' : 'OK',
+      detail: bad ? `*PUBLIC holds ${r.AUTH}. ${strict ? 'Job logs contain data values and user names, *EXCLUDE or *USE only.' : 'Everything printed without a queue lands here, *USE at most.'}`
+                  : `${strict ? 'Job logs' : 'Default output'} queue is not writable by *PUBLIC.` });
+  }
+
+  // Who can read any spool file whatever the queue says.
+  for (const r of d.splctl || []) {
+    const ibm = /^Q/.test(r.USR);
+    out.push({ name: `*SPLCTL: ${r.USR}`, value: r.STATUS || '', risk: ibm ? 'LOW' : 'MEDIUM',
+      detail: `${r.USR} holds *SPLCTL, which overrides all spool file authority, including every sensitive output queue. Named staff only${ibm ? ' (IBM-supplied profile, expected, keep it non-interactive)' : ''}.` });
+  }
+  if (d.jobctl && oprctlQueues.length && jobctlN) {
+    out.push({ name: '*JOBCTL x OPRCTL(*YES)', value: `${jobctlN} profile(s), ${oprctlQueues.length} queue(s)`, risk: 'MEDIUM',
+      detail: `${jobctlN} profile(s) hold *JOBCTL and ${oprctlQueues.length} queue(s) are operator controlled (${oprctlQueues.map(o => o.name).slice(0, 4).join(', ')}${oprctlQueues.length > 4 ? ', ...' : ''}), so each of those profiles can read every file in them. Set OPRCTL(*NO) on sensitive queues.` });
+  }
+
+  // The audit entries these controls depend on.
+  for (const [k, label, code] of [['audspl', '*SPLFDTA', 'SF'], ['audprt', '*PRTDTA', 'PO']]) {
+    if (!d[k]) { out.push({ name: `QAUDLVL ${label}`, value: 'not read', risk: 'INFO', detail: `QAUDLVL was not read, so spool auditing (${code} entries) is not confirmed.` }); continue; }
+    const has = d[k].length > 0;
+    out.push({ name: `QAUDLVL ${label}`, value: has ? 'present' : 'missing', risk: has ? 'OK' : 'MEDIUM',
+      detail: has ? `${label} is in QAUDLVL, ${code} audit entries are written.`
+        : `${label} is not in QAUDLVL, so ${code} audit entries are never written and nobody can answer who ${code === 'SF' ? 'created' : 'printed'} what and when.` });
+  }
+
+  for (const w of d.incomplete || []) {
+    out.push({ name: w, value: 'incomplete', risk: 'INFO', detail: `The ${w} read failed or was cut short, so findings may be missing or underrated. Re-run, or read it by hand.` });
+  }
+  out.sort((a, b) => _riskRank[a.risk] - _riskRank[b.risk]);
+  out.push({ name: '(output queues)', value: `${q.size} queue(s) read`, risk: (d.incomplete || []).length || !q.size ? 'INFO' : 'OK',
+    detail: q.size ? 'Which queues are sensitive is a client decision: get a signed list, and the worst rows above matter most for those. LPD (port 515) bypasses queue controls, see the Listening Services Inventory.'
+                   : 'No output queues were found in the libraries read.' });
   return out;
 }

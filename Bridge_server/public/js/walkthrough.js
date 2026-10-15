@@ -3097,6 +3097,50 @@ const _WALKTHROUGHS = [
     ],
   },
 
+  // ── IBM i (AS/400) Output Queue and Spool Audit ───────────────────
+  {
+    id:       'as400-output-queue-spool-audit',
+    category: 'security',
+    title:    'IBM i: Output Queue and Spool Audit',
+    desc:     'Reads output queue settings and authority via STRSQL: who can display any spooled file, who holds *SPLCTL, remote queues, QPJOBLOG and QPRINT, and whether spool activity is audited at all.',
+    steps: [
+      {
+        title: 'Why spool is its own audit',
+        body:  'Payroll registers, statements and job logs end up as spooled files, and the output queue they sit in decides who can read them. The data was locked down in the database and then printed into a queue anyone can open. Four settings decide it: DSPDTA (can any user with read authority to the queue display any file in it, or only the file\'s owner), OPRCTL (can anyone holding *JOBCTL read every file), AUTCHK, and *PUBLIC\'s authority on the queue.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Prerequisites',
+        body:  'Connect to a TN5250 target, sign on, and stop at a menu with a "Selection or command" line. Interactive SQL (STRSQL) has to be available and you need authority to read QSYS2.OUTPUT_QUEUE_INFO, OBJECT_PRIVILEGES and USER_INFO. Column names and value formats (YES or NO, *OWNER or *DTAAUT) were not run on a live IBM i, confirm them. Get the client\'s signed list of sensitive queues first, only they can say which loose queue is a real problem.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click 🔒 in the OIA status bar and enter the security password (default: 2970).',
+        highlight: 'secBtn', autoFn: null,
+      },
+      {
+        title: 'Choose the libraries and run',
+        body:  'Name the libraries that hold output queues, up to eight, or leave the box blank to read every library not named Q*, which can be slow on a big system. Click ▶ AUDIT OUTPUT QUEUES. Each library gets four reads (settings, authority checks, remote queues, *PUBLIC authority), then the tool reads QPJOBLOG and QPRINT, the *SPLCTL and *JOBCTL holders, and QAUDLVL for *SPLFDTA and *PRTDTA. Always filtered by library, an unfiltered authority query on a real system will crawl.',
+        highlight: 'as400OutqBtn',
+        autoFn: 'startAs400OutqScan',
+        autoLabel: 'Run it for me',
+      },
+      {
+        title: 'Read the findings',
+        body:  'CRITICAL — DSPDTA lets any reader display any file and *PUBLIC can read the queue: everyone reads everything spooled there. HIGH — DSPDTA open without *PUBLIC, or *PUBLIC can change the queue, or QPJOBLOG is writable (job logs carry data values and user names). MEDIUM — OPRCTL(*YES) with *JOBCTL holders, a remote queue (spool leaves the system, approve the destination), a *SPLCTL holder (it overrides every queue), or QAUDLVL without *SPLFDTA or *PRTDTA, so SF and PO audit entries are never written. LOW — *PUBLIC *USE, or AUTCHK(*OWNER). OK — set up the recommended way: DSPDTA(*OWNER), AUTCHK(*DTAAUT), OPRCTL(*NO), *PUBLIC *EXCLUDE. LPD on port 515 bypasses all of this, see the Listening Services Inventory.',
+        highlight: 'as400OutqOut', autoFn: null,
+      },
+      {
+        title: 'Export the audit',
+        body:  'Click ↓ Export IBM i Audit CSV to save the findings.',
+        highlight: 'as400OutqOut',
+        autoFn: 'as400ExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
   // ── IBM i (AS/400) Static Adopted-Authority Scan ──────────────────
   {
     id:       'as400-static-adopted-authority-scan',

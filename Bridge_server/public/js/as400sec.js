@@ -37,6 +37,7 @@ import {
   GROUP_QUERIES, parseSuppGroups, parsePrimaryGroups, parseHolders, groupTableOk, evaluateGroups,
   OWNED_BY, OWNED_STATEMENT, parseOwnedObjects, evaluateOwnedObjects,
   parseAdoptLibraries, adoptProgramStatement, adoptPublicStatement, parseAdoptPrograms, parsePublicAuth, evaluateAdopting,
+  OUTQ_STATEMENTS, outqRows, evaluateOutq,
 } from './as400sec-parse.js';
 
 // ── Screen / transport helpers ─────────────────────────────────────────────
@@ -264,12 +265,13 @@ const TOOLS = {
   GRPREV: { ids: 'Grprev' },
   OWNSEC: { ids: 'Ownsec' },
   ADOPT:  { ids: 'Adopt' },
+  OUTQ:   { ids: 'Outq' },
 };
 
 // Persisted results per tool (so all tables/CSV survive across scans).
 const RESULTS = {
   USRPRF: [], SHIPPRF: [], SYSVAL: [], OBJ: [], NETATTR: [], JOBD: [], AUTL: [], ACTJOB: [],
-  REGINF: [], NETSVR: [], DFTPWD: [], CRTAUT: [], IFS: [], PGMSTK: [], BYPASS: [], PTFCVE: [], SVCINV: [], GRPREV: [], OWNSEC: [], ADOPT: [],
+  REGINF: [], NETSVR: [], DFTPWD: [], CRTAUT: [], IFS: [], PGMSTK: [], BYPASS: [], PTFCVE: [], SVCINV: [], GRPREV: [], OWNSEC: [], ADOPT: [], OUTQ: [],
 };
 
 // ── State machine ───────────────────────────────────────────────────────────
@@ -404,6 +406,7 @@ const COLS = {
   GRPREV:  ['GROUP / USER', 'AUTHORITY / VIA'],
   OWNSEC:  ['LIBRARY', 'QSECOFR-OWNED'],
   ADOPT:   ['PROGRAM', 'OWNER / *PUBLIC'],
+  OUTQ:    ['QUEUE / CHECK', 'SETTINGS'],
 };
 
 function _render(tool) {
@@ -632,6 +635,40 @@ function _buildAdoptQueries() {
   return { queries: qs, note: capped ? 'Only the first 8 libraries are read.' : '' };
 }
 
+// Output Queue and Spool Audit: per library the inventory, remote queues and *PUBLIC
+// authority, then once the special queues, *SPLCTL and *JOBCTL holders and the two QAUDLVL
+// checks. Reads only store their rows, finalize() judges them together.
+const _OUTQ_PRIV = [['SYSTEM_OBJECT_SCHEMA', 'LIB'], ['SYSTEM_OBJECT_NAME', 'OUTQ'], ['OBJECT_AUTHORITY', 'AUTH']];
+const _OUTQ_COLS = {
+  inv1: ['OUTQ', 'LIB', 'DSPDTA'], inv2: ['OUTQ', 'LIB', 'AUTCHK', 'OPRCTL'], remote: ['OUTQ', 'LIB', 'RMTSYS'],
+  pub: _OUTQ_PRIV, joblog: _OUTQ_PRIV, qprint: _OUTQ_PRIV,
+  splctl: ['USR', 'STATUS'], jobctl: ['USR', 'STATUS'], audspl: ['SYSTEM_VALUE_NAME'], audprt: ['SYSTEM_VALUE_NAME'],
+};
+function _outqQuery(kind, lib, label) {
+  return { key: `${kind}${lib ? ' ' + lib : ''}`, stmt: OUTQ_STATEMENTS[kind](lib), fresh: _sqlInputBlank,
+    onError: ctx => ctx.incomplete.push(label),
+    collect: (table, info, ctx) => {
+      const rows = outqRows(table, _OUTQ_COLS[kind]);
+      if (!rows || info.truncated) ctx.incomplete.push(label);
+      if (rows) ctx[kind === 'joblog' || kind === 'qprint' ? 'special' : kind] = (ctx[kind === 'joblog' || kind === 'qprint' ? 'special' : kind] || []).concat(rows);
+      return [];
+    } };
+}
+function _buildOutqQueries() {
+  const { libs, bad, capped } = parseAdoptLibraries(document.getElementById('as400OutqLibs')?.value);
+  if (bad.length) return { error: `Not a library name: ${bad.join(', ')}` };
+  const qs = [];
+  for (const lib of (libs.length ? libs : [null])) {
+    const tag = lib || 'all non-Q*';
+    qs.push(_outqQuery('inv1', lib, `queue settings in ${tag}`), _outqQuery('inv2', lib, `queue authority checks in ${tag}`),
+      _outqQuery('pub', lib, `*PUBLIC authority on queues in ${tag}`));
+  }
+  qs.push(_outqQuery('remote', null, 'remote queues'), _outqQuery('joblog', null, 'QPJOBLOG authority'), _outqQuery('qprint', null, 'QPRINT authority'), _outqQuery('splctl', null, '*SPLCTL holders'),
+    _outqQuery('jobctl', null, '*JOBCTL holders'), _outqQuery('audspl', null, 'QAUDLVL *SPLFDTA check'),
+    _outqQuery('audprt', null, 'QAUDLVL *PRTDTA check'));
+  return { queries: qs, note: capped ? 'Only the first 8 libraries are read.' : '' };
+}
+
 // Group Profile Review: four reads that only store their rows, finalize() judges them together.
 const _grpQuery = (key, label, cols, store) => ({
   key, stmt: GROUP_QUERIES[key], fresh: _sqlInputBlank,
@@ -662,6 +699,14 @@ const SQL_TOOLS = {
     done: () => {
       const bad = RESULTS.SVCINV.filter(r => ['CRITICAL', 'HIGH', 'MEDIUM'].includes(r.risk)).length;
       return { text: `Done — ${bad}/${RESULTS.SVCINV.length} service(s) need attention.`, bad };
+    },
+  },
+  OUTQ: {
+    queries: [], btn: 'as400OutqBtn', build: _buildOutqQueries,
+    finalize: ctx => evaluateOutq({ ...ctx }),
+    done: () => {
+      const bad = RESULTS.OUTQ.filter(r => r.risk === 'CRITICAL' || r.risk === 'HIGH').length;
+      return { text: `Done — ${bad} queue/audit finding(s) rated HIGH or worse.`, bad };
     },
   },
   ADOPT: {
@@ -840,6 +885,7 @@ export function startAs400SvcInvScan() { _startSqlTool('SVCINV'); }
 export function startAs400GrpRevScan() { _startSqlTool('GRPREV'); }
 export function startAs400OwnSecScan() { _startSqlTool('OWNSEC'); }
 export function startAs400AdoptScan()  { _startSqlTool('ADOPT'); }
+export function startAs400OutqScan()   { _startSqlTool('OUTQ'); }
 
 export function startAs400BypassProbe() {
   if (bypass.running) return;
@@ -894,6 +940,7 @@ function _buildAs400Rows() {
   add('GRPREV',  'group-profile-review');
   add('OWNSEC',  'qsecofr-owned-objects');
   add('ADOPT',   'static-adopted-authority-scan');
+  add('OUTQ',    'output-queue-spool-audit');
   // Pre sign-on tool: its results live in probe.js, not RESULTS.
   credAuditFindings().forEach(r => rows.push(['default-credential-audit', r.name, r.value, r.risk, r.detail, ts]));
   return { rows, ts };
@@ -916,5 +963,5 @@ Object.assign(window, {
   startAs400UserScan, startAs400ShippedAudit, startAs400SysvalScan, startAs400ObjScan,
   startAs400NetattrScan, startAs400JobdScan, startAs400AutlScan, startAs400ActjobScan,
   startAs400ReginfScan, startAs400NetsvrScan, startAs400DftpwdScan, startAs400CrtautScan, startAs400IfsScan,
-  startAs400PgmstkScan, startAs400BypassProbe, startAs400PtfCveScan, startAs400SvcInvScan, startAs400GrpRevScan, startAs400OwnSecScan, startAs400AdoptScan,
+  startAs400PgmstkScan, startAs400BypassProbe, startAs400PtfCveScan, startAs400SvcInvScan, startAs400GrpRevScan, startAs400OwnSecScan, startAs400AdoptScan, startAs400OutqScan,
 });
