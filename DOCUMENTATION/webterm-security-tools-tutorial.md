@@ -59,6 +59,7 @@ The app ships **74 built-in narrated walkthroughs** (`public/js/walkthrough.js`)
 | — | | 46 | IBM i Library CRTAUT Review |
 | — | | 47 | IBM i Static Adopted-Authority Scan |
 | — | | 48 | IBM i Output Queue and Spool Audit |
+| — | | 49 | IBM i Audit Journal Review |
 
 Appendices — Structured JSON findings export, the `.rec.json` format.
 
@@ -3011,6 +3012,51 @@ On the mock, `PAYROLL/PAYRPTQ` lets any reader display any file, is operator con
 ### Where the mock stops
 
 Value formats (`YES` or `NO`, `*OWNER` or `*DTAAUT`) and every column name were not run on a live IBM i, confirm them. Anything with a `DSPDTA` or `OPRCTL` value the tool does not recognize is shown as `?`, not guessed.
+
+---
+
+## Part 49 — IBM i (AS/400) Audit Journal Review
+
+The audit journal is where "who did that, and when" gets answered, but only if auditing was on and set to record it. Every other control in this document is a setting. This one reads the evidence of what actually happened, and checks first that there is any evidence to read.
+
+### Location
+
+Security panel → IBM i SECURITY (AS/400) → AUDIT JOURNAL REVIEW, with a box for how many days back (1 to 365, blank is 30).
+
+### How it works
+
+Six small config reads, then one journal read per group of entry types, all through STRSQL and each across all its pages (up to 600 rows a group). The config reads ask the system for a match instead of reading a long value that would be cut off: is `*AUDLVL` and `*OBJAUD` in `QAUDCTL`, and does `QAUDLVL` carry `*SAVRST`, `*CREATE`, `*SPLFDTA` and `*PRTDTA`. The journal reads use `QSYS2.DISPLAY_JOURNAL` on `QSYS/QAUDJRN` with `JOURNAL_ENTRY_TYPES` and `STARTING_TIMESTAMP`, following IBM's published examples.
+
+| Group | Entry types | Needs |
+|---|---|---|
+| Restores | `OR` object, `RA` authority, `RO` owner, `RP` adopting program | `*SAVRST` |
+| Creates | `CO` | `*CREATE` |
+| Changes | `ZC` | object auditing: `*OBJAUD` in `QAUDCTL`, plus an audit value on the object or library |
+| Spool | `SF` | `*SPLFDTA` |
+| Print | `PO` | `*PRTDTA` |
+
+Entries are grouped by user: one row per group and user, with the count, the entry types, the newest timestamp and the first few objects.
+
+### Risk levels
+
+| Rating | Meaning |
+|---|---|
+| HIGH | `QAUDCTL` has no `*AUDLVL`, auditing is off and the journal stops growing. The row gives the newest entry read, ask who switched it off. A restore of an adopting program (`RP`) |
+| CRITICAL | a restore of an adopting program done as `QSECOFR` |
+| MEDIUM | restores in general (each should match a change ticket, and `QALWOBJRST` should be `*NONE` outside restore windows), or a group with no entries because its audit level is not set |
+| LOW | creates and changes |
+| INFO | spool and print counts, a group with no entries while auditing is off or unconfirmed, and anything not read or cut short |
+| OK | no entries in the window and the level is set |
+
+Work done as `QSECOFR` rates one step higher: the security officer is not a day-to-day administrator. A group with no entries is only good news when its level is set. Otherwise zero proves nothing, and the row says so. When a level is off now, entries are marked as from before it was switched off.
+
+### Teaching scenario
+
+On the mock, auditing was on and was switched off about nine days ago (`QAUDCTL` is `*NONE`), so the journal holds entries up to then and nothing after. The review rates that HIGH and names the newest entry. Inside the window it finds `QSECOFR` restoring `TOOLLIB/UTILITY` (an adopting program, `RP`), `APPADMIN` restoring the payroll programs, `QSECOFR` creating objects in `APPLIB`, and eleven program changes by `APPADMIN` that take two pages to read. Spool and print show no entries and MEDIUM, because `*SPLFDTA` and `*PRTDTA` were never set. Shorten the window to 10 days and the older entries drop out.
+
+### Where the mock stops
+
+`DISPLAY_JOURNAL`'s parameters and its columns (`ENTRY_TIMESTAMP`, `JOURNAL_ENTRY_TYPE`, `JOB_USER`, `OBJECT`) follow IBM's published examples, and were not run on a live IBM i here, confirm them. Reading the journal needs `*USE` authority to it. A journal that was cleared, detached or never audited looks the same as a quiet one, so check the receiver chain and when `QAUDCTL` last changed. Per-type functions such as `SYSTOOLS.AUDIT_JOURNAL_xx` exist for some entry types and were not used. Exit program integrity (`CHKOBJITG`) and exit program authority are not part of this review.
 
 ---
 

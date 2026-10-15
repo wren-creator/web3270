@@ -1326,6 +1326,16 @@
             <div id="as400GrprevOut" style="max-height:220px;overflow-y:auto;margin-top:4px"></div>
           </div>
 
+          <!-- Audit Journal Review -->
+          <div style="margin-top:10px;padding-top:8px;border-top:1px solid #1a1a1a">
+            <div style="font-size:10px;color:var(--text-muted);font-weight:600;letter-spacing:.06em;margin-bottom:4px">AUDIT JOURNAL REVIEW</div>
+            <div class="sec-panel-hint" style="margin-bottom:6px">Reads QSYS/QAUDJRN through QSYS2.DISPLAY_JOURNAL for restores (OR RA RO RP), creates (CO), changes (ZC), spool (SF) and print (PO), grouped by user, after checking that auditing is on and each entry type's audit level is set. Zero entries only counts as good news when the level is set. Anything done as QSECOFR rates one step higher. Needs *USE authority to the journal. Reads stop at 600 rows per group and say so. The journal parameters and columns follow IBM's published examples and were not run on a live IBM i here, confirm them.</div>
+            <input id="as400JrnDays" type="text" placeholder="Days back, 1 to 365 (blank = 30)" style="width:100%;box-sizing:border-box;background:#0a0a0a;border:1px solid #333;border-radius:3px;color:#ccc;font-family:inherit;font-size:10px;padding:3px 6px;margin-bottom:4px">
+            <button id="as400JrnBtn" class="sec-inject-btn" onclick="startAs400JrnScan()" style="background:#1a2a1a">▶ REVIEW AUDIT JOURNAL</button>
+            <div id="as400JrnStatus" style="font-size:10px;color:var(--text-muted);margin-top:4px;min-height:14px"></div>
+            <div id="as400JrnOut" style="max-height:220px;overflow-y:auto;margin-top:4px"></div>
+          </div>
+
           <!-- Output Queue and Spool Audit -->
           <div style="margin-top:10px;padding-top:8px;border-top:1px solid #1a1a1a">
             <div style="font-size:10px;color:var(--text-muted);font-weight:600;letter-spacing:.06em;margin-bottom:4px">OUTPUT QUEUE AND SPOOL AUDIT</div>

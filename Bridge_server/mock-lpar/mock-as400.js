@@ -2290,7 +2290,50 @@ const SQL_COL_WIDTH = 15;
 // Rows a STRSQL result screen shows before Roll Up. A knob so a short page can prove the
 // client really pages, MOCK_AS400_SQL_PAGE=3 turns every query into several pages.
 const SQL_PAGE = Math.max(1, parseInt(process.env.MOCK_AS400_SQL_PAGE || '10', 10));
+// QAUDJRN as QSYS2.DISPLAY_JOURNAL() returns it, narrowed to four columns. The story:
+// auditing WAS on, and was switched off nine days ago (QAUDCTL is *NONE above), so the
+// journal holds entries up to then and nothing after. Rows are [days ago, type, user,
+// object], timestamps are built from today so the window arithmetic is honest. A
+// restore of a program QSECOFR owns (RP), routine changes made as QSECOFR, and a
+// pile of program changes (two pages of them) are in there on purpose.
+const JOURNAL_ROWS = [
+  [30, 'OR', 'APPADMIN', 'APPLIB/ORDENTRY'],
+  [12, 'OR', 'QSECOFR',  'TOOLLIB/UTILITY'], [12, 'OR', 'QSECOFR', 'TOOLLIB/SAVALL'], [12, 'RP', 'QSECOFR', 'TOOLLIB/UTILITY'],
+  [9,  'OR', 'APPADMIN', 'APPLIB/PAYUPD'],   [9, 'OR', 'APPADMIN', 'APPLIB/PAYRPT'],  [9, 'OR', 'APPADMIN', 'APPLIB/LEAVCALC'],
+  [9,  'RO', 'APPADMIN', 'APPLIB/PAYUPD'],
+  [14, 'CO', 'QSECOFR',  'APPLIB/NEWRPT'],   [14, 'CO', 'QSECOFR',  'APPLIB/NEWMNU'],
+  [11, 'CO', 'JSMITH',   'MYLIB/TESTPF'],    [11, 'CO', 'JSMITH',   'MYLIB/TESTLF'],
+  [10, 'CO', 'JSMITH',   'MYLIB/TESTPGM'],   [10, 'CO', 'JSMITH',   'MYLIB/TESTDTA'],
+  ...['PAYUPD', 'PAYUPD', 'PAYUPD', 'PAYUPD', 'PAYUPD', 'PAYUPD', 'PAYUPD', 'LEAVCALC', 'LEAVCALC', 'LEAVCALC', 'LEAVCALC'].map((n, i) => [16 - Math.floor(i / 2), 'ZC', 'APPADMIN', `APPLIB/${n}`]),
+  [10, 'ZC', 'JSMITH', 'MYLIB/TESTPGM'], [10, 'ZC', 'JSMITH', 'MYLIB/TESTPGM'],
+];
+function journalRows({ types, days }) {
+  const want = new Set(types.split(',').map(s => s.trim().toUpperCase()).filter(Boolean));
+  const all = want.has('*ALL');
+  const pad = n => String(n).padStart(2, '0');
+  return JOURNAL_ROWS
+    .filter(([ago, t]) => (all || want.has(t)) && ago <= days)
+    .sort((a, b) => b[0] - a[0])
+    .map(([ago, t, user, obj], i) => {
+      const d = new Date(Date.now() - ago * 86400000);
+      const ts = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(8 + (i % 9))}.${pad((i * 7) % 60)}.${pad((i * 13) % 60)}`;
+      return [ts, t, user, obj];
+    });
+}
+
 function runSql(stmt) {
+  // TABLE(QSYS2.DISPLAY_JOURNAL('QSYS','QAUDJRN', JOURNAL_ENTRY_TYPES=>'OR,RA',
+  // STARTING_TIMESTAMP=>CURRENT TIMESTAMP - 30 DAYS)) AS J becomes a plain read of a
+  // virtual table, keeping only the entry types and the day window. Anything else
+  // in the argument list is accepted and ignored.
+  let journalOpts = null;
+  const jm = /FROM\s+TABLE\s*\(\s*QSYS2\.DISPLAY_JOURNAL\s*\(([^)]*)\)\s*\)\s*(?:AS\s+\w+|(?!WHERE\b)\w+)?/i.exec(stmt);
+  if (jm) {
+    const ty = /JOURNAL_ENTRY_TYPES\s*=>\s*'([^']*)'/i.exec(jm[1]);
+    const dy = /-\s*(\d+)\s*DAYS?/i.exec(jm[1]);
+    journalOpts = { types: ty ? ty[1] : '*ALL', days: dy ? parseInt(dy[1], 10) : 365 };
+    stmt = stmt.replace(jm[0], 'FROM QSYS2.DISPLAY_JOURNAL');
+  }
   // SELECT <* | col, col> FROM lib.table [()] [WHERE col = n | IN (n, n) |
   // BETWEEN n AND m]. Trailing (...)? covers table FUNCTIONS like
   // SYSTOOLS.CVE_INFO() -- real IBM i services take no args in their simplest
@@ -2299,7 +2342,9 @@ function runSql(stmt) {
   const m = /^SELECT\s+(.+?)\s+FROM\s+([A-Z0-9_]+)\.([A-Z0-9_]+)\s*(\([^)]*\))?\s*(?:WHERE\s+(.+?))?\s*;?$/i.exec(stmt.trim());
   if (!m) return { error: 'SQL0104 - Statement not understood by this mock (try: SELECT * FROM library.table).' };
   const key = `${m[2].toUpperCase()}/${m[3].toUpperCase()}`;
-  const table = SQL_TABLES[key];
+  const table = key === 'QSYS2/DISPLAY_JOURNAL' && journalOpts
+    ? { columns: ['ENTRY_TIMESTAMP', 'JOURNAL_ENTRY_TYPE', 'JOB_USER', 'OBJECT'], rows: journalRows(journalOpts) }
+    : SQL_TABLES[key];
   if (!table) return { error: `SQL0204 - ${key.replace('/', '.')} in *LIBL type *FILE not found.` };
 
   let idxs = table.columns.map((_, i) => i);
@@ -2377,7 +2422,8 @@ function screenSql(ctx) {
     // Each column is as wide as its name needs (a real STRSQL grid shows full
     // names, GROUP_PROFILE_NAME is 18 characters), never below SQL_COL_WIDTH. If
     // that overflows the 76-column grid, fall back to the fixed width, as before.
-    const widths = ctx.resultCols.map(c => Math.max(SQL_COL_WIDTH, c.length + 2));
+    const widths = ctx.resultCols.map((c, i) => Math.max(SQL_COL_WIDTH, c.length + 2,
+      ...ctx.resultRows.map(r => String(r[i] ?? '').length + 2)));
     const fit = widths.reduce((a, b) => a + b, 0) <= 76 ? widths : ctx.resultCols.map(() => SQL_COL_WIDTH);
     const cell = (v, i) => String(v).padEnd(fit[i], ' ').slice(0, fit[i]);
     const header = ctx.resultCols.map(cell).join('').slice(0, 76);

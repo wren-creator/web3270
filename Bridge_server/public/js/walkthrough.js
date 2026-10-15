@@ -3097,6 +3097,50 @@ const _WALKTHROUGHS = [
     ],
   },
 
+  // ── IBM i (AS/400) Audit Journal Review ────────────────────────────
+  {
+    id:       'as400-audit-journal-review',
+    category: 'security',
+    title:    'IBM i: Audit Journal Review',
+    desc:     'Reads QSYS/QAUDJRN through QSYS2.DISPLAY_JOURNAL for restores, creates, changes, spool and print entries grouped by user, after checking that auditing is on and the right levels are set.',
+    steps: [
+      {
+        title: 'What the journal can and cannot tell you',
+        body:  'The audit journal is where "who did that, and when" gets answered, but only if auditing was on and set to record it. So the review reads two things: whether the audit levels each entry type needs are set, and what the journal holds for those types. Zero entries is good news only when the level is set. With it off, zero proves nothing, and the tool says so.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Prerequisites',
+        body:  'Connect to a TN5250 target, sign on, and stop at a menu with a "Selection or command" line. Interactive SQL (STRSQL) has to be available and you need *USE authority to the QAUDJRN journal. The DISPLAY_JOURNAL parameters and columns follow IBM\'s published examples but were not run on a live IBM i here, confirm them.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click 🔒 in the OIA status bar and enter the security password (default: 2970).',
+        highlight: 'secBtn', autoFn: null,
+      },
+      {
+        title: 'Choose the window and run',
+        body:  'Type how many days back to read, 1 to 365, or leave it blank for 30, then click ▶ REVIEW AUDIT JOURNAL. The tool runs six small checks (is *AUDLVL set in QAUDCTL, is *OBJAUD, and does QAUDLVL carry *SAVRST, *CREATE, *SPLFDTA and *PRTDTA), then one journal read per group of entry types: restores (OR, RA, RO, RP), creates (CO), changes (ZC), spool (SF) and print (PO). Every read goes across all its pages, up to 600 rows a group.',
+        highlight: 'as400JrnBtn',
+        autoFn: 'startAs400JrnScan',
+        autoLabel: 'Run it for me',
+      },
+      {
+        title: 'Read the findings',
+        body:  'HIGH — QAUDCTL has no *AUDLVL, so auditing is off and the journal stops growing; the row gives the newest entry read, ask who switched it off. A restore of an adopting program (RP) is HIGH too. MEDIUM — restores in general (each should match a change ticket), and a group with no entries because its audit level is not set. LOW — creates and changes. INFO — spool and print counts, and anything not read. Everything done as QSECOFR rates one step higher, the security officer is not a day-to-day administrator. A row says when its entries are from before a level was switched off. A journal that was cleared, detached or never audited looks the same as a quiet one, so check the receiver chain too.',
+        highlight: 'as400JrnOut', autoFn: null,
+      },
+      {
+        title: 'Export the audit',
+        body:  'Click ↓ Export IBM i Audit CSV to save the findings.',
+        highlight: 'as400JrnOut',
+        autoFn: 'as400ExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
   // ── IBM i (AS/400) Output Queue and Spool Audit ───────────────────
   {
     id:       'as400-output-queue-spool-audit',

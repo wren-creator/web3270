@@ -38,6 +38,7 @@ import {
   OWNED_BY, OWNED_STATEMENT, parseOwnedObjects, evaluateOwnedObjects,
   parseAdoptLibraries, adoptProgramStatement, adoptPublicStatement, parseAdoptPrograms, parsePublicAuth, evaluateAdopting,
   OUTQ_STATEMENTS, outqRows, evaluateOutq,
+  JOURNAL_GROUPS, JOURNAL_CONFIG, parseJournalDays, journalStatement, parseJournalRows, evaluateJournal,
 } from './as400sec-parse.js';
 
 // ── Screen / transport helpers ─────────────────────────────────────────────
@@ -266,12 +267,13 @@ const TOOLS = {
   OWNSEC: { ids: 'Ownsec' },
   ADOPT:  { ids: 'Adopt' },
   OUTQ:   { ids: 'Outq' },
+  JRN:    { ids: 'Jrn' },
 };
 
 // Persisted results per tool (so all tables/CSV survive across scans).
 const RESULTS = {
   USRPRF: [], SHIPPRF: [], SYSVAL: [], OBJ: [], NETATTR: [], JOBD: [], AUTL: [], ACTJOB: [],
-  REGINF: [], NETSVR: [], DFTPWD: [], CRTAUT: [], IFS: [], PGMSTK: [], BYPASS: [], PTFCVE: [], SVCINV: [], GRPREV: [], OWNSEC: [], ADOPT: [], OUTQ: [],
+  REGINF: [], NETSVR: [], DFTPWD: [], CRTAUT: [], IFS: [], PGMSTK: [], BYPASS: [], PTFCVE: [], SVCINV: [], GRPREV: [], OWNSEC: [], ADOPT: [], OUTQ: [], JRN: [],
 };
 
 // ── State machine ───────────────────────────────────────────────────────────
@@ -407,6 +409,7 @@ const COLS = {
   OWNSEC:  ['LIBRARY', 'QSECOFR-OWNED'],
   ADOPT:   ['PROGRAM', 'OWNER / *PUBLIC'],
   OUTQ:    ['QUEUE / CHECK', 'SETTINGS'],
+  JRN:     ['ENTRY GROUP: USER', 'ENTRIES'],
 };
 
 function _render(tool) {
@@ -669,6 +672,32 @@ function _buildOutqQueries() {
   return { queries: qs, note: capped ? 'Only the first 8 libraries are read.' : '' };
 }
 
+// Audit Journal Review: six tiny config checks (is auditing on, and are the levels these entry
+// types need set), then one journal read per group of entry types, over the days the operator
+// chose. Reads only store their rows, finalize() judges them together.
+function _buildJournalQueries() {
+  const { days, error } = parseJournalDays(document.getElementById('as400JrnDays')?.value);
+  if (error) return { error };
+  const qs = [];
+  for (const [name, stmt] of Object.entries(JOURNAL_CONFIG)) {
+    qs.push({ key: `config ${name}`, stmt, fresh: _sqlInputBlank,
+      onError: ctx => ctx.incomplete.push(`audit setting ${name}`),
+      collect: (table, info, ctx) => { (ctx.cfg = ctx.cfg || {})[name] = table.rows.length > 0; return []; } });
+  }
+  for (const g of JOURNAL_GROUPS) {
+    qs.push({ key: `journal ${g.types}`, stmt: journalStatement(g.types, days), fresh: _sqlInputBlank,
+      onError: ctx => ctx.incomplete.push(`${g.label.toLowerCase()} journal read`),
+      collect: (table, info, ctx) => {
+        const rows = parseJournalRows(table);
+        if (!rows) { ctx.incomplete.push(`${g.label.toLowerCase()} journal read`); return []; }
+        (ctx.jrows = ctx.jrows || {})[g.key] = rows;
+        if (info.truncated) (ctx.jtrunc = ctx.jtrunc || {})[g.key] = true;
+        return [];
+      } });
+  }
+  return { queries: qs, days };
+}
+
 // Group Profile Review: four reads that only store their rows, finalize() judges them together.
 const _grpQuery = (key, label, cols, store) => ({
   key, stmt: GROUP_QUERIES[key], fresh: _sqlInputBlank,
@@ -699,6 +728,14 @@ const SQL_TOOLS = {
     done: () => {
       const bad = RESULTS.SVCINV.filter(r => ['CRITICAL', 'HIGH', 'MEDIUM'].includes(r.risk)).length;
       return { text: `Done — ${bad}/${RESULTS.SVCINV.length} service(s) need attention.`, bad };
+    },
+  },
+  JRN: {
+    queries: [], btn: 'as400JrnBtn', build: _buildJournalQueries,
+    finalize: ctx => evaluateJournal({ days: sqlrun.days, cfg: ctx.cfg, rows: ctx.jrows, truncated: ctx.jtrunc, incomplete: ctx.incomplete }),
+    done: () => {
+      const bad = RESULTS.JRN.filter(r => r.risk === 'CRITICAL' || r.risk === 'HIGH').length;
+      return { text: `Done — ${bad} audit journal finding(s) rated HIGH or worse.`, bad };
     },
   },
   OUTQ: {
@@ -737,7 +774,7 @@ const SQL_TOOLS = {
   },
 };
 
-let sqlrun = { running: false, tool: null, idx: 0, stage: null, tables: [], selected: 0, lastText: '', ctx: null };
+let sqlrun = { running: false, tool: null, idx: 0, stage: null, tables: [], selected: 0, lastText: '', ctx: null, days: 30 };
 
 // Type a statement into STRSQL, wrapping onto the continuation line when it is
 // longer than one input line (as a real STRSQL statement area does).
@@ -865,14 +902,16 @@ function _startSqlTool(tool) {
     _status(tool, 'Sign on and navigate to an AS/400 menu (with a command line) first.', 'error');
     return;
   }
+  let days;
   if (SQL_TOOLS[tool].build) {
     const b = SQL_TOOLS[tool].build();
     if (b.error) { _status(tool, b.error, 'error'); return; }
     SQL_TOOLS[tool].queries = b.queries;
+    days = b.days;
   }
   RESULTS[tool] = [];
   _render(tool);
-  sqlrun = { running: true, tool, idx: 0, stage: 'NAV', tables: [], selected: 0, lastText: '', ctx: { incomplete: [], programs: [], publicAuth: [] } };
+  sqlrun = { running: true, tool, idx: 0, stage: 'NAV', tables: [], selected: 0, lastText: '', ctx: { incomplete: [], programs: [], publicAuth: [] }, days };
   const btn = document.getElementById(SQL_TOOLS[tool].btn);
   if (btn) btn.disabled = true;
   _status(tool, 'Issuing STRSQL…');
@@ -886,6 +925,7 @@ export function startAs400GrpRevScan() { _startSqlTool('GRPREV'); }
 export function startAs400OwnSecScan() { _startSqlTool('OWNSEC'); }
 export function startAs400AdoptScan()  { _startSqlTool('ADOPT'); }
 export function startAs400OutqScan()   { _startSqlTool('OUTQ'); }
+export function startAs400JrnScan()    { _startSqlTool('JRN'); }
 
 export function startAs400BypassProbe() {
   if (bypass.running) return;
@@ -941,6 +981,7 @@ function _buildAs400Rows() {
   add('OWNSEC',  'qsecofr-owned-objects');
   add('ADOPT',   'static-adopted-authority-scan');
   add('OUTQ',    'output-queue-spool-audit');
+  add('JRN',     'audit-journal-review');
   // Pre sign-on tool: its results live in probe.js, not RESULTS.
   credAuditFindings().forEach(r => rows.push(['default-credential-audit', r.name, r.value, r.risk, r.detail, ts]));
   return { rows, ts };
@@ -963,5 +1004,5 @@ Object.assign(window, {
   startAs400UserScan, startAs400ShippedAudit, startAs400SysvalScan, startAs400ObjScan,
   startAs400NetattrScan, startAs400JobdScan, startAs400AutlScan, startAs400ActjobScan,
   startAs400ReginfScan, startAs400NetsvrScan, startAs400DftpwdScan, startAs400CrtautScan, startAs400IfsScan,
-  startAs400PgmstkScan, startAs400BypassProbe, startAs400PtfCveScan, startAs400SvcInvScan, startAs400GrpRevScan, startAs400OwnSecScan, startAs400AdoptScan, startAs400OutqScan,
+  startAs400PgmstkScan, startAs400BypassProbe, startAs400PtfCveScan, startAs400SvcInvScan, startAs400GrpRevScan, startAs400OwnSecScan, startAs400AdoptScan, startAs400OutqScan, startAs400JrnScan,
 });

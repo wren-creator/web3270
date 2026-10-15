@@ -11,6 +11,7 @@ import {
   parseLibraryNames, isAppLibrary, evaluateLibCrtaut,
   parseAdoptLibraries, adoptProgramStatement, adoptPublicStatement, parseAdoptPrograms, parsePublicAuth, evaluateAdopting,
   OUTQ_STATEMENTS, outqRows, evaluateOutq,
+  JOURNAL_GROUPS, JOURNAL_CONFIG, parseJournalDays, journalStatement, parseJournalRows, evaluateJournal,
   SERVICE_GROUPS, svcStatement, splitSqlStatement, parseNetstatRows, evaluateServiceGroup,
   parseSqlResultTable, parseCveInfo, evaluateCveRow, parsePtfCurrency, evaluatePtfGroupRow,
 } from './as400sec-parse.js';
@@ -616,4 +617,81 @@ test('evaluateOutq: an incomplete read is INFO and the summary is never a clean 
   assert.equal(_qrow(r, '(output queues)').risk, 'INFO');
   assert.equal(_qrow(_oq({ inv1: [_q1('P', 'A', 'NO')] }), '(output queues)').risk, 'OK');
   assert.equal(r[0].risk === 'INFO' || r.indexOf(_qrow(r, '(output queues)')) === r.length - 1, true, 'summary row is last');
+});
+
+test('journal statements: DISPLAY_JOURNAL on QSYS/QAUDJRN with the types and the window, and every statement wraps onto at most three 72 character lines', () => {
+  for (const g of JOURNAL_GROUPS) {
+    const s = journalStatement(g.types, 365);
+    assert.ok(s.includes("QSYS2.DISPLAY_JOURNAL('QSYS','QAUDJRN'") && s.includes(`JOURNAL_ENTRY_TYPES => '${g.types}'`) && s.includes('CURRENT_TIMESTAMP - 365 DAYS'));
+    const parts = splitSqlStatement(s);
+    assert.ok(parts.length <= 3 && parts.every(p => p.length <= 72), `${g.key}: ${parts.map(p => p.length)}`);
+  }
+  for (const [k, s] of Object.entries(JOURNAL_CONFIG)) {
+    const parts = splitSqlStatement(s);
+    assert.ok(parts.length <= 3 && parts.every(p => p.length <= 72), k);
+    assert.ok(s.includes('LIKE'), k);
+  }
+  assert.deepEqual(JOURNAL_GROUPS.map(g => g.types), ['OR,RA,RO,RP', 'CO', 'ZC', 'SF', 'PO']);
+});
+
+test('parseJournalDays: blank is 30, a whole number 1 to 365 passes, anything else is refused before a statement is built', () => {
+  assert.deepEqual(parseJournalDays(''), { days: 30 });
+  assert.deepEqual(parseJournalDays(undefined), { days: 30 });
+  assert.deepEqual(parseJournalDays(' 90 '), { days: 90 });
+  for (const bad of ['0', '366', '-5', '1.5', 'abc', "30; DROP", '30 DAYS']) assert.ok(parseJournalDays(bad).error, bad);
+});
+
+test('parseJournalRows: by column name, null when one is missing', () => {
+  assert.deepEqual(parseJournalRows(_tbl(['ENTRY_TIMESTAMP', 'JOURNAL_ENTRY_TYPE', 'JOB_USER', 'OBJECT'], [['2026-10-05-09.00.00', 'OR', 'APPADMIN', 'APPLIB/PAYUPD']])),
+    [{ ts: '2026-10-05-09.00.00', type: 'OR', user: 'APPADMIN', object: 'APPLIB/PAYUPD' }]);
+  assert.equal(parseJournalRows(_tbl(['FOO'], [])), null);
+});
+
+const _j = (type, user, object, ts = '2026-10-05-09.00.00') => ({ ts, type, user, object });
+const _jev = (o = {}) => evaluateJournal({ days: 30, cfg: { audlvl: true, objaud: true, savrst: true, create: true, spl: true, prt: true },
+  rows: { restores: [], creates: [], changes: [], spool: [], print: [] }, truncated: {}, incomplete: [], ...o });
+const _jrow = (r, n) => r.find(x => x.name === n);
+
+test('evaluateJournal: restores are MEDIUM per user, an adopting program restore (RP) is HIGH, and QSECOFR is one step higher', () => {
+  const r = _jev({ rows: { restores: [_j('OR', 'APPADMIN', 'A/X'), _j('OR', 'QSECOFR', 'A/Y'), _j('RP', 'OPS', 'A/Z')], creates: [], changes: [], spool: [], print: [] } });
+  assert.equal(_jrow(r, 'Restores: APPADMIN').risk, 'MEDIUM');
+  assert.equal(_jrow(r, 'Restores: QSECOFR').risk, 'HIGH'); assert.ok(_jrow(r, 'Restores: QSECOFR').detail.includes('security officer'));
+  assert.equal(_jrow(r, 'Restores: OPS').risk, 'HIGH'); assert.ok(_jrow(r, 'Restores: OPS').detail.includes('adopts its owner'));
+  assert.ok(_jrow(r, 'Restores: APPADMIN').detail.includes('change ticket') && _jrow(r, 'Restores: APPADMIN').detail.includes('QALWOBJRST'));
+});
+
+test('evaluateJournal: creates and changes are LOW, QSECOFR makes them MEDIUM, spool and print are INFO counts', () => {
+  const r = _jev({ rows: { restores: [], creates: [_j('CO', 'JSMITH', 'M/A'), _j('CO', 'QSECOFR', 'A/B')], changes: [_j('ZC', 'APPADMIN', 'A/P')], spool: [_j('SF', 'JSMITH', 'x')], print: [] } });
+  assert.equal(_jrow(r, 'Creates: JSMITH').risk, 'LOW'); assert.equal(_jrow(r, 'Creates: QSECOFR').risk, 'MEDIUM');
+  assert.equal(_jrow(r, 'Changes: APPADMIN').risk, 'LOW'); assert.equal(_jrow(r, 'Spool: JSMITH').risk, 'INFO');
+});
+
+test('evaluateJournal: zero entries is OK only when the level is set, MEDIUM when it is not, INFO when auditing is off', () => {
+  assert.equal(_jrow(_jev(), 'Spool (SF)').risk, 'OK');
+  const lack = _jev({ cfg: { audlvl: true, objaud: true, savrst: true, create: true, spl: false, prt: true } });
+  assert.equal(_jrow(lack, 'Spool (SF)').risk, 'MEDIUM'); assert.ok(_jrow(lack, 'Spool (SF)').detail.includes('proves nothing'));
+  assert.equal(_jrow(lack, 'Print (PO)').risk, 'OK');
+  const off = _jev({ cfg: { audlvl: false, objaud: true, savrst: true, create: true, spl: true, prt: true } });
+  assert.equal(_jrow(off, 'Restores (OR,RA,RO,RP)').risk, 'MEDIUM', 'with auditing off every level counts as missing');
+  const unknown = _jev({ cfg: { audlvl: true } });
+  assert.equal(_jrow(unknown, 'Restores (OR,RA,RO,RP)').risk, 'INFO');
+});
+
+test('evaluateJournal: auditing switched off is HIGH and says when the newest entry is', () => {
+  const r = _jev({ cfg: { audlvl: false, objaud: false, savrst: false, create: false, spl: false, prt: false },
+    rows: { restores: [_j('OR', 'APPADMIN', 'A/X', '2026-10-05-09.00.00')], creates: [], changes: [], spool: [], print: [] } });
+  const q = _jrow(r, 'QAUDCTL');
+  assert.equal(q.risk, 'HIGH'); assert.ok(q.detail.includes('2026-10-05-09.00.00') && q.detail.includes('who switched it off'));
+  assert.ok(_jrow(r, 'Restores: APPADMIN').detail.includes('from before it was switched off'));
+  assert.equal(r[0].risk, 'HIGH');
+});
+
+test('evaluateJournal: a group that failed, was cut short or an unread QAUDCTL is INFO, never a pass', () => {
+  const r = _jev({ rows: { restores: undefined, creates: [], changes: [], spool: [], print: [] }, cfg: {}, truncated: {}, incomplete: ['spool journal read'] });
+  assert.equal(_jrow(r, 'Restores (OR,RA,RO,RP)').risk, 'INFO');
+  assert.equal(_jrow(r, 'QAUDCTL').risk, 'INFO');
+  assert.equal(_jrow(r, 'spool journal read').risk, 'INFO');
+  const t = _jev({ rows: { restores: [_j('OR', 'A', 'x')], creates: [], changes: [], spool: [], print: [] }, truncated: { restores: true } });
+  assert.equal(_jrow(t, 'Restores read').risk, 'INFO');
+  assert.equal(r[r.length - 1].name, '(audit journal)');
 });

@@ -1184,3 +1184,117 @@ export function evaluateOutq(d) {
                    : 'No output queues were found in the libraries read.' });
   return out;
 }
+
+
+// ── Audit Journal Review (QSYS2.DISPLAY_JOURNAL on QSYS/QAUDJRN) ──────────────
+// The audit journal is where "who did that, and when" gets answered, if auditing was on.
+// So this reads two things: whether the right audit levels are set, and what the
+// journal holds for the entry types that matter, grouped by user:
+//   restores   OR RA RO RP   an object, its authority, its owner, or an adopting program came
+//                            back from a restore (needs *SAVRST). Every one should match a
+//                            change ticket, and QALWOBJRST should be *NONE outside restore windows.
+//   creates    CO            an object was created (needs *CREATE)
+//   changes    ZC            an object was changed (needs object auditing: *OBJAUD in QAUDCTL
+//                            AND an audit value on the object or library, QCRTOBJAUD / CRTOBJAUD)
+//   spool      SF            a spooled file was created (needs *SPLFDTA)
+//   print      PO            something was printed (needs *PRTDTA)
+// A group with no entries is only good news if its level is set: with the level off, zero
+// entries proves nothing, and the tool says so. Work done as QSECOFR is rated one step
+// higher, the security officer is not a day-to-day administrator. DISPLAY_JOURNAL's parameters
+// (JOURNAL_ENTRY_TYPES, STARTING_TIMESTAMP) and columns (ENTRY_TIMESTAMP, JOURNAL_ENTRY_TYPE,
+// JOB_USER, OBJECT) follow IBM's published examples, and were not run on a live IBM i here.
+// A big journal means many pages, the read stops at 600 rows and says so. Reading it needs
+// *USE authority to the journal. Exit program integrity (CHKOBJITG) and exit program
+// authority are not part of this review.
+export const JOURNAL_GROUPS = [
+  { key: 'restores', noun: 'restore', label: 'Restores', types: 'OR,RA,RO,RP', need: 'savrst', needLabel: '*SAVRST' },
+  { key: 'creates',  noun: 'create', label: 'Creates',  types: 'CO',          need: 'create', needLabel: '*CREATE' },
+  { key: 'changes',  noun: 'change', label: 'Changes',  types: 'ZC',          need: 'objaud', needLabel: 'object auditing (*OBJAUD in QAUDCTL)' },
+  { key: 'spool',    noun: 'spool', label: 'Spool',    types: 'SF',          need: 'spl',    needLabel: '*SPLFDTA' },
+  { key: 'print',    noun: 'print', label: 'Print',    types: 'PO',          need: 'prt',    needLabel: '*PRTDTA' },
+];
+export const JOURNAL_CONFIG = {
+  audlvl: "SELECT SYSTEM_VALUE_NAME FROM QSYS2.SYSTEM_VALUE_INFO WHERE SYSTEM_VALUE_NAME='QAUDCTL' AND CURRENT_CHARACTER_VALUE LIKE '%AUDLVL%'",
+  objaud: "SELECT SYSTEM_VALUE_NAME FROM QSYS2.SYSTEM_VALUE_INFO WHERE SYSTEM_VALUE_NAME='QAUDCTL' AND CURRENT_CHARACTER_VALUE LIKE '%OBJAUD%'",
+  savrst: "SELECT SYSTEM_VALUE_NAME FROM QSYS2.SYSTEM_VALUE_INFO WHERE SYSTEM_VALUE_NAME='QAUDLVL' AND CURRENT_CHARACTER_VALUE LIKE '%SAVRST%'",
+  create: "SELECT SYSTEM_VALUE_NAME FROM QSYS2.SYSTEM_VALUE_INFO WHERE SYSTEM_VALUE_NAME='QAUDLVL' AND CURRENT_CHARACTER_VALUE LIKE '%CREATE%'",
+  spl:    "SELECT SYSTEM_VALUE_NAME FROM QSYS2.SYSTEM_VALUE_INFO WHERE SYSTEM_VALUE_NAME='QAUDLVL' AND CURRENT_CHARACTER_VALUE LIKE '%SPLFDTA%'",
+  prt:    "SELECT SYSTEM_VALUE_NAME FROM QSYS2.SYSTEM_VALUE_INFO WHERE SYSTEM_VALUE_NAME='QAUDLVL' AND CURRENT_CHARACTER_VALUE LIKE '%PRTDTA%'",
+};
+export const parseJournalDays = text => {
+  const s = String(text ?? '').trim();
+  if (!s) return { days: 30 };
+  if (!/^\d{1,3}$/.test(s) || +s < 1 || +s > 365) return { error: 'Days back must be a whole number from 1 to 365' };
+  return { days: +s };
+};
+export const journalStatement = (types, days) =>
+  `SELECT ENTRY_TIMESTAMP,JOURNAL_ENTRY_TYPE,JOB_USER,OBJECT FROM TABLE(QSYS2.DISPLAY_JOURNAL('QSYS','QAUDJRN', JOURNAL_ENTRY_TYPES => '${types}', STARTING_TIMESTAMP => CURRENT_TIMESTAMP - ${days} DAYS)) AS J`;
+
+// table = { cols, rows } -> [{ ts, type, user, object }], or null if a needed column is missing.
+export function parseJournalRows(table) {
+  const ix = ['ENTRY_TIMESTAMP', 'JOURNAL_ENTRY_TYPE', 'JOB_USER', 'OBJECT'].map(c => table.cols.indexOf(c));
+  if (ix.includes(-1)) return null;
+  return table.rows.map(r => ({ ts: r[ix[0]], type: r[ix[1]], user: r[ix[2]], object: r[ix[3]] })).filter(r => r.type);
+}
+
+const _step = { MEDIUM: 'HIGH', HIGH: 'CRITICAL', LOW: 'MEDIUM', INFO: 'INFO', CRITICAL: 'CRITICAL', OK: 'OK' };
+const _jRank = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3, INFO: 4, OK: 5 };
+
+// d: { days, cfg: {audlvl,objaud,savrst,create,spl,prt: boolean|undefined}, rows: {restores,creates,changes,spool,print: list|undefined},
+//      truncated: {group: bool}, incomplete: [names] }
+export function evaluateJournal(d) {
+  const out = [];
+  const cfg = d.cfg || {};
+  const known = v => typeof v === 'boolean';
+  const all = Object.values(d.rows || {}).flat().filter(Boolean);
+  const newest = all.map(r => r.ts).filter(Boolean).sort().pop();
+
+  if (known(cfg.audlvl) && !cfg.audlvl) {
+    out.push({ name: 'QAUDCTL', value: 'no *AUDLVL', risk: 'HIGH',
+      detail: `Event auditing is off, so the audit journal stops growing. Everything below is only what was written before it was switched off${newest ? `, the newest entry read is ${newest}` : ''}. Ask who switched it off and when, that is a finding on its own.` });
+  } else if (!known(cfg.audlvl)) {
+    out.push({ name: 'QAUDCTL', value: 'not read', risk: 'INFO', detail: 'QAUDCTL was not read, so whether auditing is on is not confirmed.' });
+  }
+  const off = known(cfg.audlvl) && !cfg.audlvl;
+
+  for (const g of JOURNAL_GROUPS) {
+    const rows = d.rows?.[g.key];
+    const levelOn = g.need === 'objaud' ? cfg.objaud : cfg.audlvl === false ? false : cfg[g.need];
+    if (!rows) { out.push({ name: `${g.label} (${g.types})`, value: 'not read', risk: 'INFO', detail: `The ${g.label.toLowerCase()} read failed, so nothing is known about them.` }); continue; }
+    if (!rows.length) {
+      const lack = known(levelOn) && !levelOn;
+      out.push({ name: `${g.label} (${g.types})`, value: `none in ${d.days} days`,
+        risk: lack ? 'MEDIUM' : (off || !known(levelOn) ? 'INFO' : 'OK'),
+        detail: lack ? `No entries, but ${g.needLabel} is not set, so none would be written. Zero here proves nothing.`
+          : (off || !known(levelOn)) ? 'No entries, and auditing is off or unconfirmed, so this proves nothing.'
+          : `No ${g.label.toLowerCase()} in the window, and ${g.needLabel} is set.` });
+      continue;
+    }
+    const byUser = new Map();
+    for (const r of rows) { if (!byUser.has(r.user)) byUser.set(r.user, []); byUser.get(r.user).push(r); }
+    for (const [user, list] of byUser) {
+      const kinds = {}; for (const r of list) kinds[r.type] = (kinds[r.type] || 0) + 1;
+      const kindText = Object.entries(kinds).map(([k, n]) => `${k} ${n}`).join(', ');
+      const objs = [...new Set(list.map(r => r.object))];
+      const last = list.map(r => r.ts).sort().pop();
+      let risk = g.key === 'restores' ? (kinds.RP ? 'HIGH' : 'MEDIUM') : g.key === 'creates' || g.key === 'changes' ? 'LOW' : 'INFO';
+      const sec = user === 'QSECOFR' && risk !== 'INFO';
+      if (sec) risk = _step[risk];
+      const why = [];
+      if (g.key === 'restores') {
+        why.push('Match each to a change ticket, and QALWOBJRST should be *NONE outside restore windows');
+        if (kinds.RP) why.push('RP means a program that adopts its owner\'s authority was restored, read it before trusting it');
+      }
+      if (sec) why.push('Done as QSECOFR, the security officer is not a day-to-day administrator');
+      if (known(levelOn) && !levelOn) why.push(`${g.needLabel} is not set now, so these are from before it was switched off`);
+      out.push({ name: `${g.label}: ${user}`, value: `${list.length} entr${list.length === 1 ? 'y' : 'ies'} (${kindText}), newest ${last}`, risk,
+        detail: `${list.length} ${g.noun} entr${list.length === 1 ? 'y' : 'ies'} by ${user} in ${d.days} days: ${objs.slice(0, 4).join(', ')}${objs.length > 4 ? `, and ${objs.length - 4} more` : ''}.${why.length ? ' ' + why.join('. ') + '.' : ''}` });
+    }
+    if (d.truncated?.[g.key]) out.push({ name: `${g.label} read`, value: 'incomplete', risk: 'INFO', detail: `More ${g.label.toLowerCase()} entries exist than were read, so counts and users above may be missing some. Shorten the window or read it by hand.` });
+  }
+  for (const w of d.incomplete || []) out.push({ name: w, value: 'incomplete', risk: 'INFO', detail: `The ${w} read failed or was cut short, so findings may be missing or underrated.` });
+  out.sort((a, b) => _jRank[a.risk] - _jRank[b.risk]);
+  out.push({ name: '(audit journal)', value: `${all.length} entr${all.length === 1 ? 'y' : 'ies'} read, last ${d.days} days`, risk: 'INFO',
+    detail: `${newest ? `Newest entry ${newest}. ` : ''}Reading the journal needs *USE authority to it. A journal that was cleared, detached or never audited looks the same as a quiet one, so check the receiver chain and when QAUDCTL last changed.` });
+  return out;
+}
