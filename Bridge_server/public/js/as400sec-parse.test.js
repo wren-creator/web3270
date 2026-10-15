@@ -5,6 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   evaluateShippedProfile, evaluateSysval, parseSysvals, evaluateExitPoint,
+  parseDftPwd, evaluateDftPwd,
   SERVICE_GROUPS, svcStatement, splitSqlStatement, parseNetstatRows, evaluateServiceGroup,
   parseSqlResultTable, parseCveInfo, evaluateCveRow, parsePtfCurrency, evaluatePtfGroupRow,
 } from './as400sec-parse.js';
@@ -322,4 +323,33 @@ test('evaluateServiceGroup: admin GUI clear port is HIGH, SSH listening is OK', 
   assert.equal(w.find(x => x.name.startsWith('2001 ')).risk, 'HIGH');
   assert.equal(w.find(x => x.name.startsWith('2010 ')).risk, 'OK');
   assert.equal(_ev('SSH', [_row('0.0.0.0', 22)])[0].risk, 'OK');
+});
+
+test('parseDftPwd: reads profile, status and authority from the ANZDFTPWD report layout', () => {
+  const lines = [];
+  lines[4] = '  Profile      Status        Special authority';
+  lines[5] = '  ----------   ----------    -----------------';
+  lines[6] = '  QSECOFR      *ENABLED      *ALLOBJ / *SECADM';
+  lines[7] = '  QSRV         *DISABLED     *ALLOBJ / *SECADM';
+  lines[8] = '  JSMITH       *ENABLED      (none notable)';
+  lines[10] = '  *** 3 profile(s) have a default password ***';
+  const rows = parseDftPwd(lines.map(l => l || ''));
+  assert.deepEqual(rows.map(r => r.name), ['QSECOFR', 'QSRV', 'JSMITH']);
+  assert.equal(rows[1].status, '*DISABLED'); assert.equal(rows[0].special, '*ALLOBJ / *SECADM');
+});
+
+test('parseDftPwd: the "(none)" placeholder and the summary line are not profiles', () => {
+  const lines = [];
+  lines[5] = '  ----------   ----------    -----------------';
+  lines[7] = '  (none)';
+  lines[8] = '  No profiles have a default password.';
+  assert.deepEqual(parseDftPwd(lines.map(l => l || '')), []);
+});
+
+test('evaluateDftPwd: privileged is CRITICAL, anyone else HIGH, disabled still counts and says why', () => {
+  assert.equal(evaluateDftPwd({ name: 'QSECOFR', status: '*ENABLED', special: '*ALLOBJ / *SECADM' }).risk, 'CRITICAL');
+  assert.equal(evaluateDftPwd({ name: 'JSMITH', status: '*ENABLED', special: '(none notable)' }).risk, 'HIGH');
+  const d = evaluateDftPwd({ name: 'QSRV', status: '*DISABLED', special: '*ALLOBJ / *SECADM' });
+  assert.equal(d.risk, 'CRITICAL'); assert.ok(d.finding.includes('disabled'));
+  assert.ok(!evaluateDftPwd({ name: 'X', status: '*ENABLED', special: '' }).finding.includes('holds'));
 });

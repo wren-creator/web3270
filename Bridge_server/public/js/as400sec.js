@@ -31,7 +31,7 @@ import {
   parseNetattrs, evaluateNetattr, parseJobds, evaluateJobd,
   parseAutls, parseAutlSecured, evaluateAutl, parseActjobs, evaluateActjob,
   evaluateExitPoint, evaluateNetsvr, parseIfsObjects, evaluateIfsObject,
-  parseCallStack, evaluateAdoptedAuthority,
+  parseCallStack, evaluateAdoptedAuthority, parseDftPwd, evaluateDftPwd,
   parseSqlResultTable, parseCveInfo, evaluateCveRow, parsePtfCurrency, evaluatePtfGroupRow,
   SERVICE_GROUPS, svcStatement, splitSqlStatement, parseNetstatRows, evaluateServiceGroup,
 } from './as400sec-parse.js';
@@ -191,6 +191,19 @@ const TOOLS = {
       return { name: a.name, value: a.value, risk, detail: rec };
     }),
   },
+  // ANZDFTPWD ACTION(*NONE): report only, the tool never issues an action that
+  // changes a profile. See parseDftPwd in as400sec-parse.js.
+  DFTPWD: {
+    cmd: 'ANZDFTPWD ACTION(*NONE)', title: 'Analyze Default Passwords', ids: 'Dftpwd',
+    single: lines => {
+      const hits = parseDftPwd(lines);
+      if (!hits.length) return [{ name: '(none)', value: '—', risk: 'OK', detail: 'No profile has a default password.' }];
+      return hits.map(h => {
+        const { risk, finding } = evaluateDftPwd(h);
+        return { name: h.name, value: `${h.status} ${h.special}`.trim(), risk, detail: finding };
+      });
+    },
+  },
   IFS: {
     cmd: 'WRKLNK', title: 'Work with Object Links', ids: 'Ifs',
     single: lines => parseIfsObjects(lines).map(o => {
@@ -227,7 +240,7 @@ const TOOLS = {
 // Persisted results per tool (so all tables/CSV survive across scans).
 const RESULTS = {
   USRPRF: [], SHIPPRF: [], SYSVAL: [], OBJ: [], NETATTR: [], JOBD: [], AUTL: [], ACTJOB: [],
-  REGINF: [], NETSVR: [], IFS: [], PGMSTK: [], BYPASS: [], PTFCVE: [], SVCINV: [],
+  REGINF: [], NETSVR: [], DFTPWD: [], IFS: [], PGMSTK: [], BYPASS: [], PTFCVE: [], SVCINV: [],
 };
 
 // ── State machine ───────────────────────────────────────────────────────────
@@ -351,6 +364,7 @@ const COLS = {
   ACTJOB:  ['JOB', 'USER'],
   REGINF:  ['EXIT POINT', 'EXIT PROGRAM'],
   NETSVR:  ['ATTRIBUTE', 'VALUE'],
+  DFTPWD:  ['PROFILE', 'STATUS / AUTHORITY'],
   IFS:     ['OBJECT LINK', 'OWNER / *PUBLIC'],
   PGMSTK:  ['PROGRAM', 'OWNER'],
   BYPASS:  ['SCREEN', 'COMMAND TESTED'],
@@ -695,6 +709,7 @@ export function startAs400AutlScan()    { _start('AUTL'); }
 export function startAs400ActjobScan()  { _start('ACTJOB'); }
 export function startAs400ReginfScan()  { _start('REGINF'); }
 export function startAs400NetsvrScan()  { _start('NETSVR'); }
+export function startAs400DftpwdScan()  { _start('DFTPWD'); }
 export function startAs400IfsScan()     { _start('IFS'); }
 export function startAs400PgmstkScan()  { _start('PGMSTK'); }
 
@@ -712,6 +727,7 @@ function _buildAs400Rows() {
   add('ACTJOB',  'actjob-scanner');
   add('REGINF',  'exit-point-audit');
   add('NETSVR',  'netserver-audit');
+  add('DFTPWD',  'default-password-report');
   add('IFS',     'ifs-permission-sweep');
   add('PGMSTK',  'adopted-authority-scanner');
   add('BYPASS',  'menu-bypass-probe');
@@ -738,6 +754,6 @@ Object.assign(window, {
   as400OnScreen, as400ExportCsv, as400ExportJson,
   startAs400UserScan, startAs400ShippedAudit, startAs400SysvalScan, startAs400ObjScan,
   startAs400NetattrScan, startAs400JobdScan, startAs400AutlScan, startAs400ActjobScan,
-  startAs400ReginfScan, startAs400NetsvrScan, startAs400IfsScan,
+  startAs400ReginfScan, startAs400NetsvrScan, startAs400DftpwdScan, startAs400IfsScan,
   startAs400PgmstkScan, startAs400BypassProbe, startAs400PtfCveScan, startAs400SvcInvScan,
 });

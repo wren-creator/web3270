@@ -986,7 +986,13 @@ function runCommand(raw) {
       return { type: 'error', message: `Profile ${name} changed — ${changed.join(' ')}.` };
     }
     case 'STRSST': return { type: 'detail', screen: 'SST_DETAIL', target: null };
-    case 'ANZDFTPWD': return { type: 'detail', screen: 'ANZDFTPWD_DETAIL', target: null };
+    case 'ANZDFTPWD': {
+      // Report only. A real ACTION(*DISABLE), *PWDEXP or *BOTH changes profiles,
+      // this mock never does, so say so instead of quietly pretending.
+      if (params.ACTION && params.ACTION !== '*NONE')
+        return { type: 'error', message: `CPD0000 - ANZDFTPWD ACTION(${params.ACTION}) would change profiles, the mock models only ACTION(*NONE).` };
+      return { type: 'detail', screen: 'ANZDFTPWD_DETAIL', target: null };
+    }
     case 'WRKOBJ': return { type: 'screen', screen: 'OBJ_LIST' };
     case 'DSPOBJAUT': {
       const obj = params.OBJ; // LIB/NAME or NAME

@@ -3097,6 +3097,50 @@ const _WALKTHROUGHS = [
     ],
   },
 
+  // ── IBM i (AS/400) Default Password Report (ANZDFTPWD) ────────────
+  {
+    id:       'as400-default-password-report',
+    category: 'security',
+    title:    'IBM i: Default Password Report (ANZDFTPWD)',
+    desc:     'Runs ANZDFTPWD ACTION(*NONE) and rates every profile whose password is the same as its name. The supported way to find default passwords in a client-assisted audit, with no guessing at a sign-on screen.',
+    steps: [
+      {
+        title: 'Which tool is this',
+        body:  'IBM i can check its own password hashes against the profile names. That is ANZDFTPWD, and it is the right way to find default passwords in an audit the client knows about: nothing is guessed, no profile can lock out. The Default Credential Audit is the other tool. It guesses at the Sign On screen, so it belongs to a pentest whose ROE names credential enumeration as its own activity. Different engagement, different tool.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Prerequisites',
+        body:  'Connect to a TN5250 target and sign on with a profile that holds *ALLOBJ and *SECADM, which ANZDFTPWD requires. Stop at a menu with a "Selection or command" line.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Unlock the Security panel',
+        body:  'Click 🔒 in the OIA status bar and enter the security password (default: 2970).',
+        highlight: 'secBtn', autoFn: null,
+      },
+      {
+        title: 'Run the report',
+        body:  'Click ▶ REPORT DEFAULT PASSWORDS. The tool issues ANZDFTPWD ACTION(*NONE) and reads the report. Report only: it never runs ACTION(*DISABLE), *PWDEXP or *BOTH, which change profiles. On a real system ANZDFTPWD writes a spooled report, the mock shows it as a screen.',
+        highlight: 'as400DftpwdBtn',
+        autoFn: 'startAs400DftpwdScan',
+        autoLabel: 'Run it for me',
+      },
+      {
+        title: 'Read the findings',
+        body:  'CRITICAL — a default password on a profile holding *ALLOBJ or *SECADM. HIGH — a default password on any other profile. A disabled profile still counts, because anyone who can enable it gets in with a password everyone can guess. OK — none found. Review this report before ever running ANZDFTPWD with an action that changes profiles.',
+        highlight: 'as400DftpwdOut', autoFn: null,
+      },
+      {
+        title: 'Export the audit',
+        body:  'Click ↓ Export IBM i Audit CSV to save the findings.',
+        highlight: 'as400DftpwdOut',
+        autoFn: 'as400ExportCsv',
+        autoLabel: 'Export CSV for me',
+      },
+    ],
+  },
+
   // ── IBM i (AS/400) Listening Services Inventory ───────────────────
   {
     id:       'as400-listening-services-inventory',

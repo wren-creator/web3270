@@ -1308,6 +1308,15 @@
             <div id="as400ShipprfOut" style="max-height:220px;overflow-y:auto;margin-top:4px"></div>
           </div>
 
+          <!-- Default Password Report (ANZDFTPWD, report only) -->
+          <div style="margin-top:10px;padding-top:8px;border-top:1px solid #1a1a1a">
+            <div style="font-size:10px;color:var(--text-muted);font-weight:600;letter-spacing:.06em;margin-bottom:4px">DEFAULT PASSWORD REPORT <span style="font-weight:400;text-transform:none">(client-assisted audit, signed on with *ALLOBJ and *SECADM)</span></div>
+            <div class="sec-panel-hint" style="margin-bottom:6px">Runs ANZDFTPWD ACTION(*NONE): IBM i checks its own password hashes against the profile names, so nothing is guessed at a sign-on screen and no profile can lock out. Report only, the tool never runs an action that disables or expires a profile. Use this for an audit the client knows about. The Default Credential Audit above guesses at the Sign On screen and belongs to a pentest whose ROE names it. A real ANZDFTPWD writes a spooled report, this reads the mock's screen version of it.</div>
+            <button id="as400DftpwdBtn" class="sec-inject-btn" onclick="startAs400DftpwdScan()" style="background:#1a2a1a">▶ REPORT DEFAULT PASSWORDS</button>
+            <div id="as400DftpwdStatus" style="font-size:10px;color:var(--text-muted);margin-top:4px;min-height:14px"></div>
+            <div id="as400DftpwdOut" style="max-height:220px;overflow-y:auto;margin-top:4px"></div>
+          </div>
+
           <!-- Object / *PUBLIC Authority Scanner -->
           <div style="margin-top:10px;padding-top:8px;border-top:1px solid #1a1a1a">
             <div style="font-size:10px;color:var(--text-muted);font-weight:600;letter-spacing:.06em;margin-bottom:4px">OBJECT / *PUBLIC AUTHORITY SCANNER</div>

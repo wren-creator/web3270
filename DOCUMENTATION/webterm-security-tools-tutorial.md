@@ -53,6 +53,7 @@ The app ships **74 built-in narrated walkthroughs** (`public/js/walkthrough.js`)
 | — | | 40 | IBM i PTF/CVE Currency Checker |
 | — | | 41 | IBM i Default Credential Audit |
 | — | | 42 | IBM i Listening Services Inventory |
+| — | | 43 | IBM i Default Password Report (ANZDFTPWD) |
 
 Appendices — Structured JSON findings export, the `.rec.json` format.
 
@@ -2763,6 +2764,45 @@ On the mock, Telnet 23 is up with no listener on 992, FTP is up, the host server
 ### Where the mock stops
 
 The ratings are a judgment call from a reviewed workbook, not IBM's, and the SQL was not run on a live IBM i. Confirm that your release's `NETSTAT_INFO` has these column names, and whether it lists UDP rows at all. A UDP port that shows as off carries a note to confirm with `WRKTCPSVR`. The mock's STRSQL is a simplified screen (one predicate, no AND or OR), so a real STRSQL layout may need the result-grid reader adjusted. `NETSTAT_INFO` cannot show whether FTP or a host server actually enforces TLS, only that the clear port is open, so the findings say so and point at the exit points.
+
+---
+
+## Part 43 — IBM i (AS/400) Default Password Report (ANZDFTPWD)
+
+The supported way to find default passwords on an IBM i: the system checks its own password hashes against the profile names. Nothing is guessed at a sign-on screen, so no profile can lock out and nothing shows up as an attack in the audit journal.
+
+### Location
+
+Security panel → IBM i SECURITY (AS/400) → DEFAULT PASSWORD REPORT
+
+### Which tool for which engagement
+
+| | Default Password Report (this part) | Default Credential Audit ([Part 41](#)) |
+|---|---|---|
+| Method | `ANZDFTPWD ACTION(*NONE)`, the system checks its own hashes | tries known pairs at the Sign On screen |
+| Runs | after sign-on, with `*ALLOBJ` and `*SECADM` | before sign-on, no access needed |
+| Fits | a client-assisted audit, the client knows | a pentest whose ROE names credential enumeration as its own activity |
+| Risk | none, report only | can trip `QMAXSIGN` and disable profiles |
+
+Run the report when you have the access and the client's blessing. Keep the Default Credential Audit for the engagement where you start with nothing.
+
+### How it works
+
+The tool issues `ANZDFTPWD ACTION(*NONE)` and reads the report. It never runs `ACTION(*DISABLE)`, `*PWDEXP` or `*BOTH`, those change profiles. The mock refuses any action other than `*NONE` and says why. A real `ANZDFTPWD` writes a spooled report (read it with `WRKSPLF`), the mock shows the same data as a screen, so a real run needs the spooled file. Command parameters were not tested on a live IBM i, confirm them with F4.
+
+### Risk levels
+
+| Rating | Meaning |
+|---|---|
+| CRITICAL | a default password on a profile holding `*ALLOBJ` or `*SECADM` |
+| HIGH | a default password on any other profile |
+| OK | none found |
+
+A disabled profile still counts: anyone who can enable it gets in with a password everyone can guess.
+
+### Teaching scenario
+
+On the mock, four profiles have a default password (`QSECOFR`, `QSRV`, `QSRVBAS` and the planted `QYSPJ`), all privileged, so all CRITICAL. Run `CHGUSRPRF USRPRF(name) PASSWORD(*NONE)` on each, re-run, and the report comes back clean.
 
 ---
 

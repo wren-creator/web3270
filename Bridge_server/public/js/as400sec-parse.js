@@ -764,3 +764,36 @@ export function evaluateServiceGroup(group, rows, opts = {}) {
   }
   return out;
 }
+
+
+// ── Default password report (ANZDFTPWD ACTION(*NONE)) ───────────────────────
+// The supported way to find default passwords: IBM i checks its own password
+// hashes against the profile name, so nothing is guessed at a sign-on screen and
+// no profile can lock out. Report only: the tool must never be run with
+// ACTION(*DISABLE), *PWDEXP or *BOTH, those change profiles. Needs *ALLOBJ and
+// *SECADM. Belongs to a client-assisted audit. The Default Credential Audit
+// (probe.js) guesses at the Sign On screen and belongs to a pentest with its own
+// ROE clause. Real ANZDFTPWD writes a spooled report, this reads the mock's
+// screen version of it, so a real run needs the spooled file (WRKSPLF) instead.
+// Layout: profile at col 2, status at col 15, special authority from col 29.
+export function parseDftPwd(lines) {
+  const out = [];
+  let inRows = false;
+  for (const line of lines) {
+    if (/^-{5,}/.test((line || '').trim())) { inRows = true; continue; }
+    if (!inRows) continue;
+    const name = (line || '').slice(2, 15).trim();
+    if (!/^[A-Z][A-Z0-9$#@]*$/.test(name)) { if (name || !(line || '').trim()) break; continue; }
+    out.push({ name, status: (line || '').slice(15, 29).trim(), special: (line || '').slice(29).trim() });
+  }
+  return out;
+}
+
+export function evaluateDftPwd({ name, status, special }) {
+  const priv = /\*ALLOBJ|\*SECADM/.test(special || '');
+  const disabled = status === '*DISABLED';
+  return { risk: priv ? 'CRITICAL' : 'HIGH', finding:
+    `Password is the same as the profile name${priv ? `, and ${name} holds ${special}` : ''}.` +
+    (disabled ? ' The profile is disabled, but anyone who can enable it gets in with a password everyone can guess.' : '') +
+    ` Change it, or set PASSWORD(*NONE) on a service profile. Review this report before running ANZDFTPWD with an action that changes profiles.` };
+}
