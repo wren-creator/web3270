@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  evaluateShippedProfile, evaluateSysval, parseSysvals,
+  evaluateShippedProfile, evaluateSysval, parseSysvals, evaluateExitPoint,
   parseSqlResultTable, parseCveInfo, evaluateCveRow, parsePtfCurrency, evaluatePtfGroupRow,
 } from './as400sec-parse.js';
 
@@ -186,4 +186,53 @@ test('parseSysvals: keeps the whole value cell in .full, first token in .value',
   const out = parseSysvals(lines.map(l => l || ''));
   const row = out.find(o => o.name === 'QAUDCTL');
   assert.equal(row.value, '*AUDLVL'); assert.equal(row.full, '*AUDLVL *OBJAUD');
+});
+
+test('evaluateSysval: the 18 workbook values flag their weak setting and pass the hardened one', () => {
+  const cases = [
+    ['QPWDLMTREP', '0', 'MEDIUM', '2'],
+    ['QPWDVLDPGM', '*NONE', 'LOW', 'MYPWDPGM'],
+    ['QINACTMSGQ', 'QSYSOPR', 'MEDIUM', '*ENDJOB'],
+    ['QINACTMSGQ', '*DSCJOB', 'OK'],
+    ['QLMTDEVSSN', '0', 'MEDIUM', '1'],
+    ['QAUDENDACN', '*NOTIFY', 'MEDIUM', '*PWRDWNSYS'],
+    ['QALWUSRDMN', '*ALL', 'MEDIUM', 'QGPL'],
+    ['QUSEADPAUT', '*NONE', 'MEDIUM', 'ADPAUTL'],
+    ['QRMTSIGN', '*VERIFY', 'MEDIUM', '*REJECT'],
+    ['QRMTSIGN', '*SAMEPRF', 'MEDIUM', '*FRCSIGNON'],
+    ['QRMTSRVATR', '1', 'MEDIUM', '0'],
+    ['QSHRMEMCTL', '0', 'MEDIUM', '1'],
+    ['QAUDFRCLVL', '50', 'INFO', '*SYS'],
+  ];
+  for (const [name, weak, risk, good] of cases) {
+    assert.equal(evaluateSysval(name, weak).risk, risk, `${name}=${weak}`);
+    if (good) assert.equal(evaluateSysval(name, good).risk, 'OK', `${name}=${good}`);
+  }
+});
+
+test('evaluateSysval: review-only values (no single weak setting) are INFO, never OK or a false finding', () => {
+  for (const n of ['QPWDLMTCHR', 'QAUDLVL2', 'QCRTOBJAUD', 'QFRCCVNRST', 'QSCANFS', 'QSCANFSCTL']) {
+    const r = evaluateSysval(n, '*NONE');
+    assert.equal(r.risk, 'INFO', n); assert.ok(r.rec.length > 0, n);
+  }
+});
+
+test('evaluateSysval: QAUDLVL lists exactly what is missing, reads the whole cell', () => {
+  assert.equal(evaluateSysval('QAUDLVL', '*NONE').risk, 'HIGH');
+  const r = evaluateSysval('QAUDLVL', '*AUTFAIL', '*AUTFAIL *SECURITY');
+  assert.equal(r.risk, 'MEDIUM');
+  assert.ok(r.rec.includes('*SPLFDTA') && r.rec.includes('*PRTDTA') && r.rec.includes('*AUDLVL2'));
+  assert.ok(!r.rec.includes('*AUTFAIL *') && !/missing[^.]*\*SECURITY/.test(r.rec));
+  const all = '*AUTFAIL *CREATE *DELETE *JOBDTA *OBJMGT *PGMADP *PGMFAIL *PRTDTA *SAVRST *SECURITY *SPLFDTA *SYSMGT *AUDLVL2';
+  assert.equal(evaluateSysval('QAUDLVL', '*AUTFAIL', all).risk, 'OK');
+});
+
+test('evaluateExitPoint: the 8 workbook exit points rate by name, registered ones are OK', () => {
+  const want = { QIBM_QZRC_RMT: 'CRITICAL', QIBM_QZDA_NDB1: 'HIGH', QIBM_QZDA_ROI1: 'MEDIUM', QIBM_QZSO_SIGNON: 'MEDIUM',
+    QIBM_QTMF_SVR_LOGON: 'HIGH', QIBM_QSY_VLD_PASSWRD: 'LOW', QIBM_QTG_DEVINIT: 'MEDIUM', QIBM_QZHQ_DATA_QUEUE: 'MEDIUM' };
+  for (const [n, risk] of Object.entries(want)) {
+    assert.equal(evaluateExitPoint(n, '*NONE').risk, risk, n);
+    assert.equal(evaluateExitPoint(n, 'MYEXIT').risk, 'OK', n);
+  }
+  assert.equal(evaluateExitPoint('QIBM_NOT_A_REAL_ONE', '*NONE').risk, 'INFO');
 });

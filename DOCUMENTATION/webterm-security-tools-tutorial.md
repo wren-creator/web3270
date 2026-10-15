@@ -1965,15 +1965,19 @@ Security panel → IBM i SECURITY (AS/400) → SYSTEM VALUE SECURITY ANALYZER
 
 ### How it works
 
-The tool types `WRKSYSVAL` on the menu command line and presses Enter. It parses the list screen (system-value name at columns 6–18, current value from column 20) and classifies each value with a rule table in `as400sec-parse.js` (`evaluateSysval`). It then F3s back to the menu.
+The tool types `WRKSYSVAL` on the menu command line and presses Enter. It parses the list screen (system-value name at columns 6–18, current value from column 20) and classifies each value with a rule table in `as400sec-parse.js` (`evaluateSysval`). It then F3s back to the menu. The list is 33 values long and pages (14 a screen), so the tool presses Roll Up while the panel says `More...` and de-dupes by name. Multi-value settings (`QAUDCTL`, `QAUDLVL`) are read from the whole value cell, not just the first token.
 
 ### Risk levels
 
 | Rating | System values |
 |---|---|
-| HIGH | `QSECURITY` < 40, `QMAXSIGN`(*NOMAX), `QLMTSECOFR`(0), `QALWOBJRST`(*ALL), `QCRTAUT`(*CHANGE/*ALL), `QAUDCTL`(*NONE) |
-| MEDIUM | weak `QPWD*` rules (`QPWDEXPITV`, `QPWDMINLEN`, `QPWDRQDDIF`, `QPWDLVL`), `QINACTITV`(*NONE), `QMAXSGNACN`(1), `QRETSVRSEC`(1) |
-| OK | hardened settings such as `QDSPSGNINF`(1) |
+| HIGH | `QSECURITY` < 40, `QMAXSIGN`(*NOMAX), `QLMTSECOFR`(0), `QALWOBJRST`(*ALL), `QCRTAUT`(*CHANGE/*ALL), `QAUDCTL`(*NONE), `QAUDLVL`(*NONE) |
+| MEDIUM | weak `QPWD*` rules (`QPWDEXPITV`, `QPWDMINLEN`, `QPWDRQDDIF`, `QPWDLVL`, `QPWDLMTREP`(0)), `QINACTITV`(*NONE), `QINACTMSGQ`(a message queue, not *ENDJOB/*DSCJOB), `QLMTDEVSSN`(0), `QMAXSGNACN`(1), `QRETSVRSEC`(1), `QAUDCTL` set but missing `*AUDLVL` or `*OBJAUD`, `QAUDLVL` missing recommended levels, `QAUDENDACN`(*NOTIFY), `QALWUSRDMN`(*ALL), `QUSEADPAUT`(*NONE, anyone can create adopting programs), `QRMTSIGN`(*VERIFY/*SAMEPRF), `QRMTSRVATR`(1), `QSHRMEMCTL`(0) |
+| LOW | `QPWDVLDPGM`(*NONE), check exit point `QIBM_QSY_VLD_PASSWRD` too |
+| INFO | review items with no single weak value: `QPWDLMTCHR`, `QAUDLVL2`, `QCRTOBJAUD`, `QFRCCVNRST`, `QSCANFS`, `QSCANFSCTL`, and `QAUDFRCLVL` when not `*SYS` |
+| OK | hardened settings such as `QDSPSGNINF`(1), `QAUDFRCLVL`(*SYS), `QRMTSRVATR`(0), `QSHRMEMCTL`(1) |
+
+The 18 values from `QPWDLMTREP` down came from a corrected IBM i audit workbook (2026-10-14). They are from review, not a live IBM i, so confirm each value on the prompt for your release before putting a finding in front of an auditor.
 
 The DETAIL column carries the recommended value (e.g. "Use QSECURITY 40 or 50", "Enable security auditing").
 
@@ -2483,14 +2487,15 @@ An exit point is a named hook IBM i calls out to before servicing certain reques
 | Rating | Exit point |
 |---|---|
 | CRITICAL | `QIBM_QTMF_SERVER_REQ` (FTP server request validation), `QIBM_QPWFS_FILE_SERV` (NetServer file-serving validation), `QIBM_QCA_RTV_COMMAND` (remote command call) — each bypasses `LMTCPB(*YES)` entirely over its own channel when unregistered |
-| HIGH | `QIBM_QZDA_INIT` (remote SQL/ODBC server init) unregistered |
-| MEDIUM | `QIBM_QZDA_SQL1` (ad hoc remote SQL) unregistered |
-| LOW | `QIBM_QTMF_CLIENT_REQ` (outbound FTP client requests) unregistered — lower exposure than server-side |
+| CRITICAL (added) | `QIBM_QZRC_RMT` (remote command and program call server). The workbook names this as the real remote-command exit point, so confirm on `WRKREGINF` whether your release also uses `QIBM_QCA_RTV_COMMAND` |
+| HIGH | `QIBM_QZDA_INIT` (remote SQL/ODBC server init), `QIBM_QZDA_NDB1` (native database requests), `QIBM_QTMF_SVR_LOGON` (FTP logon) unregistered |
+| MEDIUM | `QIBM_QZDA_SQL1` (ad hoc remote SQL), `QIBM_QZDA_ROI1` (retrieve object information), `QIBM_QZSO_SIGNON` (signon server), `QIBM_QTG_DEVINIT` (Telnet device init), `QIBM_QZHQ_DATA_QUEUE` (data queue server) unregistered |
+| LOW | `QIBM_QTMF_CLIENT_REQ` (outbound FTP client requests) unregistered, lower exposure than server-side. `QIBM_QSY_VLD_PASSWRD` (password validation), pair with `QPWDVLDPGM` |
 | OK | any exit point showing a real registered program name |
 
 ### Teaching scenario
 
-On the mock, `QIBM_QTMF_SERVER_REQ` shows `*NONE` → CRITICAL: any FTP client can `GET`/`PUT`/`RCMD` against this box regardless of what the user's 5250 session is restricted to. Contrast `QIBM_QZDA_SQL1`, which shows a real exit program (`SQLEXITPGM`) registered → OK. The lesson for an engagement: always check `WRKREGINF` before trusting that `LMTCPB(*YES)` actually restricts a user — it only restricts the 5250 command line, not every other way onto the box.
+On the mock, `QIBM_QTMF_SERVER_REQ` shows `*NONE` → CRITICAL: any FTP client can `GET`/`PUT`/`RCMD` against this box regardless of what the user's 5250 session is restricted to. Contrast `QIBM_QZDA_SQL1` (`SQLEXITPGM`) and `QIBM_QZSO_SIGNON` (`SIGNONEXIT`), which show a real exit program registered → OK. The CRITICAL/HIGH/MEDIUM ratings are a judgment call, not IBM's. The lesson for an engagement: always check `WRKREGINF` before trusting that `LMTCPB(*YES)` actually restricts a user — it only restricts the 5250 command line, not every other way onto the box.
 
 ---
 

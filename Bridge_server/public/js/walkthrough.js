@@ -2400,7 +2400,7 @@ const _WALKTHROUGHS = [
       },
       {
         title: 'Read the findings',
-        body:  'Each system value is rated. HIGH — QSECURITY below 40, QMAXSIGN(*NOMAX), QLMTSECOFR(0), QALWOBJRST(*ALL), QCRTAUT(*CHANGE/*ALL), QAUDCTL(*NONE). MEDIUM — weak QPWD* password rules, QINACTITV(*NONE), QAUDCTL set but missing *AUDLVL or *OBJAUD (object auditing silently logs nothing). OK — hardened settings such as QDSPSGNINF(1). The DETAIL column gives the recommended value.',
+        body:  'Each system value is rated. HIGH — QSECURITY below 40, QMAXSIGN(*NOMAX), QLMTSECOFR(0), QALWOBJRST(*ALL), QCRTAUT(*CHANGE/*ALL), QAUDCTL(*NONE). MEDIUM — weak QPWD* password rules, QINACTITV(*NONE), QAUDCTL set but missing *AUDLVL or *OBJAUD (object auditing silently logs nothing), QUSEADPAUT(*NONE), QRMTSIGN(*VERIFY/*SAMEPRF), QAUDLVL missing levels. The list pages, 33 values over three screens. OK — hardened settings such as QDSPSGNINF(1). The DETAIL column gives the recommended value.',
         highlight: 'as400SysvalOut',
         autoFn: null,
       },
@@ -2889,7 +2889,7 @@ const _WALKTHROUGHS = [
       },
       {
         title: 'Read the findings',
-        body:  'CRITICAL — FTP server request validation, NetServer file-serving validation, or remote command call with no exit program registered: each one bypasses LMTCPB(*YES) entirely over its own channel. HIGH — remote SQL/ODBC init unregistered. An exit point showing a real program name is OK — something is actually gating that channel.',
+        body:  'CRITICAL — FTP server request validation, NetServer file-serving validation, or the remote command and program call server (QIBM_QZRC_RMT) with no exit program registered: each one bypasses LMTCPB(*YES) entirely over its own channel. HIGH — remote SQL/ODBC init, native database requests, or FTP logon unregistered. MEDIUM — retrieve-object-information, signon server, Telnet device init, or data queue server unregistered. An exit point showing a real program name is OK — something is actually gating that channel.',
         highlight: 'as400ReginfOut', autoFn: null,
       },
       {

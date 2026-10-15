@@ -74,6 +74,8 @@ function _fillFirstInput(text) {
 const TOOLS = {
   SYSVAL: {
     cmd: 'WRKSYSVAL', title: 'Work with System Values', ids: 'Sysval',
+    paged: true,   // 33 values, Roll Up while the panel says "More..."
+
     single: lines => parseSysvals(lines).map(sv => {
       const { risk, rec } = evaluateSysval(sv.name, sv.value, sv.full);
       return { name: sv.name, value: sv.value, risk, detail: rec };
@@ -261,7 +263,22 @@ export function as400OnScreen(msg) {
       as400.expecting = 'MENU';
       _pressF3();          // return to the menu; each detail is driven from there
     } else {
-      RESULTS[tool] = T.single(lines);
+      let rows = T.single(lines);
+      if (T.paged) {
+        // Parse each page on its own (row offsets are per screen), Roll Up while
+        // the panel still says "More...", then de-dupe by name.
+        as400.pageItems.push(...rows);
+        if (text.includes('More...') && as400.pages < 12) {
+          as400.pages++;
+          _pressPgDn();
+          return;
+        }
+        const seen = new Set();
+        rows = as400.pageItems.filter(r => !seen.has(r.name) && seen.add(r.name));
+        as400.pageItems = [];
+        as400.pages = 0;
+      }
+      RESULTS[tool] = rows;
       _render(tool);
       const n = RESULTS[tool].length;
       _status(tool, n ? `Done — ${n} item(s) analyzed.` : 'Nothing parsed from the list.', n ? 'success' : 'error');

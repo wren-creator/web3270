@@ -302,6 +302,44 @@ const SYSVALS = {
                 note: 'Security auditing is OFF — no audit journal of privileged actions.' },
   QDSPSGNINF: { value: '1',       text: 'Sign-on information display',        weak: false,
                 note: 'Users are shown last sign-on info — a good setting.' },
+  // ── From the corrected IBM i audit workbook (added 2026-10-14). Values mirror
+  // common shipped or drifted settings, a few hardened for contrast. ──
+  QPWDLMTREP: { value: '0',       text: 'Limit repeating characters',         weak: true,
+                note: '0 = no restriction on repeated characters. 2 stops consecutive repeats, 1 is stricter.' },
+  QPWDLMTCHR: { value: '*NONE',   text: 'Restricted password characters',     weak: false,
+                note: '*NONE allows every character. Restrict characters only if policy requires it.' },
+  QPWDVLDPGM: { value: '*NONE',   text: 'Password validation program',        weak: false,
+                note: 'No custom validation program here. Also check exit point QIBM_QSY_VLD_PASSWRD, validation can be registered there.' },
+  QINACTMSGQ: { value: 'QSYSOPR', text: 'Inactive job message queue',         weak: true,
+                note: 'A message queue only sends a message and leaves the session open, that is notification, not a control. Use *ENDJOB or *DSCJOB.' },
+  QLMTDEVSSN: { value: '0',       text: 'Limit device sessions',              weak: true,
+                note: '0 = no limit on device sessions per user. 1 limits a user to one.' },
+  QAUDLVL:    { value: '*AUTFAIL *SECURITY', text: 'Auditing level',          weak: true,
+                note: 'Event auditing is on but narrow. Missing the spool, print, program-adoption, system-management, create/delete and save/restore levels.' },
+  QAUDLVL2:   { value: '*NONE',   text: 'Auditing level extension',           weak: false,
+                note: 'Only read when QAUDLVL includes *AUDLVL2.' },
+  QAUDENDACN: { value: '*NOTIFY', text: 'Action when auditing cannot run',    weak: true,
+                note: '*NOTIFY lets the system keep running unaudited when the audit journal cannot be written. *PWRDWNSYS for high security.' },
+  QAUDFRCLVL: { value: '*SYS',    text: 'Audit journal force level',          weak: false,
+                note: '*SYS lets the system decide when audit records are forced to disk. A lower number loses fewer entries in a crash.' },
+  QCRTOBJAUD: { value: '*NONE',   text: 'Auditing for new objects',           weak: false,
+                note: '*NONE is acceptable as the system default. Set CRTOBJAUD to *CHANGE or *ALL on sensitive libraries.' },
+  QALWUSRDMN: { value: '*ALL',    text: 'Allow user domain objects',          weak: true,
+                note: '*ALL is the shipped default, not a hardened setting. Name the libraries that may hold user-domain objects.' },
+  QFRCCVNRST: { value: '1',       text: 'Force conversion on restore',        weak: false,
+                note: 'Controls conversion or rejection of objects on restore. Choose a value per policy and record why.' },
+  QUSEADPAUT: { value: '*NONE',   text: 'Use adopted authority',              weak: true,
+                note: '*NONE means no restriction: any user can create a program that uses adopted authority. Name an authorization list instead.' },
+  QSCANFS:    { value: '*ROOTOPNUD', text: 'Scan file systems',               weak: false,
+                note: 'Needs a registered scan exit program to mean anything.' },
+  QSCANFSCTL: { value: '*NONE',   text: 'Scan file systems control',          weak: false,
+                note: 'Controls what happens on scan failure and which operations trigger scans.' },
+  QRMTSIGN:   { value: '*VERIFY', text: 'Remote sign-on control',             weak: true,
+                note: '*VERIFY and *SAMEPRF let a remote session skip the sign-on screen. Use *REJECT or *FRCSIGNON.' },
+  QRMTSRVATR: { value: '0',       text: 'Remote service attribute',           weak: false,
+                note: '0 disables remote service access. 1 enables it.' },
+  QSHRMEMCTL: { value: '1',       text: 'Shared memory control',              weak: false,
+                note: '1 limits write-capable shared memory to users with *ALLOBJ.' },
 };
 const SYSVAL_KEYS = Object.keys(SYSVALS);
 
@@ -530,6 +568,17 @@ const EXIT_POINTS = {
   QIBM_QTMF_CLIENT_REQ: { value: '*NONE' },
   QIBM_QPWFS_FILE_SERV: { value: '*NONE' },
   QIBM_QCA_RTV_COMMAND: { value: '*NONE' },
+  // From the corrected IBM i audit workbook (added 2026-10-14). QZRC_RMT is the
+  // remote command and program call server's own exit point; one is registered
+  // here (QZSO_SIGNON) for contrast.
+  QIBM_QZDA_NDB1:       { value: '*NONE' },
+  QIBM_QZDA_ROI1:       { value: '*NONE' },
+  QIBM_QZRC_RMT:        { value: '*NONE' },
+  QIBM_QZSO_SIGNON:     { value: 'SIGNONEXIT' },
+  QIBM_QTMF_SVR_LOGON:  { value: '*NONE' },
+  QIBM_QSY_VLD_PASSWRD: { value: '*NONE' },
+  QIBM_QTG_DEVINIT:     { value: '*NONE' },
+  QIBM_QZHQ_DATA_QUEUE: { value: '*NONE' },
 };
 
 // NetServer (SMB) configuration. A genuine IBM i has no single green-screen
@@ -1041,8 +1090,7 @@ const USRPRF_PAGE_SIZE = 14;
 // panels ignore it and show the whole table; a couple of the Wave 3 panels
 // are scoped to a library/file picked via the CL command that opened them).
 const LIST_META = {
-  SYSVAL_LIST: { count: () => SYSVAL_KEYS.length, detail: i => ['SYSVAL_DETAIL', SYSVAL_KEYS[i]] },
-  // USRPRF_LIST / DSPLIB_OBJS are handled by their own paged branches, not here.
+  // SYSVAL_LIST / USRPRF_LIST / DSPLIB_OBJS are handled by their own paged branches, not here.
   DSPJOB_LIBL: { count: () => LIBL.length,          detail: i => ['DSPLIB_OBJS', LIBL[i].name] },
   OBJ_LIST:    { count: () => OBJECTS.length,      detail: i => ['OBJ_DETAIL', i] },
   JOBD_LIST:   { count: () => JOBDS.length,        detail: i => ['JOBD_DETAIL', JOBDS[i].name] },
@@ -1179,13 +1227,19 @@ function screenSysvalList(ctx) {
     { row: 3, col: 4,  text: '5=Display', input: false },
     { row: 5, col: 2,  text: 'Opt  System Value    Current value', input: false },
   ];
-  SYSVAL_KEYS.forEach((name, idx) => {
+  // 33 system values no longer fit one screen: Roll Up/Down, 14 a page, and the
+  // same "More..." / "Bottom" marker the User Profile list uses (the client
+  // scanner keys on that literal text).
+  const pageCount = Math.max(1, Math.ceil(SYSVAL_KEYS.length / USRPRF_PAGE_SIZE));
+  const page = Math.min(Math.max(ctx.page || 0, 0), pageCount - 1);
+  SYSVAL_KEYS.slice(page * USRPRF_PAGE_SIZE, (page + 1) * USRPRF_PAGE_SIZE).forEach((name, idx) => {
     const sv = SYSVALS[name];
     const row = LIST_START_ROW + idx;
     fields.push({ row, col: 2,  text: '', input: true, length: 2 });
     fields.push({ row, col: 6,  text: name.padEnd(13, ' '), input: false });
     fields.push({ row, col: 20, text: sv.value, input: false, attr: authAttr(sv.weak) });
   });
+  fields.push({ row: 20, col: 60, text: page < pageCount - 1 ? 'More...' : 'Bottom', input: false });
   listTrailer(fields, ctx.message);
   return wrapPanel(fields, { row: LIST_START_ROW, col: 2 });
 }
@@ -2120,6 +2174,7 @@ function handleConnection(socket) {
   let stubLabel = '';      // which option led to the current STUB screen
   let cmdTarget = null;    // detail target: sysval name / profile name / object index
   let usrprfPage = 0;      // WRKUSRPRF paging (Roll Up/Down); reset on entry
+  let sysvalPage = 0;      // WRKSYSVAL paging, same shape
   let dsplibPage = 0;      // DSPJOB → library list → Display Library object paging
   let navStack = [];       // back-navigation stack for the WRK/DSP security panels
   let sqlResult = null;    // last STRSQL result: { cols, rows } or null
@@ -2133,7 +2188,7 @@ function handleConnection(socket) {
   // few Wave 3 panels (e.g. MBRPDM_LIST) are themselves scoped by cmdTarget
   // and also drill into a detail screen that overwrites it — plain screen-id
   // stacking would lose the scope on the way back out.
-  function goTo(next, target = null) { navStack.push({ screen, cmdTarget }); screen = next; cmdTarget = target; menuMessage = ''; if (next === 'USRPRF_LIST') usrprfPage = 0; if (next === 'DSPLIB_OBJS') dsplibPage = 0; }
+  function goTo(next, target = null) { navStack.push({ screen, cmdTarget }); screen = next; cmdTarget = target; menuMessage = ''; if (next === 'USRPRF_LIST') usrprfPage = 0; if (next === 'SYSVAL_LIST') sysvalPage = 0; if (next === 'DSPLIB_OBJS') dsplibPage = 0; }
   function goBack() {
     const prev = navStack.pop();
     screen = prev ? prev.screen : 'MAIN';
@@ -2278,7 +2333,7 @@ function handleConnection(socket) {
     } else if (screen === 'STUB') {
       ds = screenStub(stubLabel, { user });
     } else if (screen === 'SYSVAL_LIST') {
-      ds = screenSysvalList({ message: menuMessage });
+      ds = screenSysvalList({ message: menuMessage, page: sysvalPage });
     } else if (screen === 'SYSVAL_DETAIL') {
       ds = screenSysvalDetail(cmdTarget);
     } else if (screen === 'SST_DETAIL') {
@@ -2488,6 +2543,24 @@ function handleConnection(socket) {
         menuMessage = `Program ${rpgPgmName} ended normally.`;
       } else {
         rpgYield = r.value;
+      }
+    } else if (screen === 'SYSVAL_LIST') {
+      const cmdLine = fieldAt(runs, LIST_CMD_ROW);
+      const pageCount = Math.max(1, Math.ceil(SYSVAL_KEYS.length / USRPRF_PAGE_SIZE));
+      if (aid === AID_F3 || aid === AID_F12) {
+        goBack();
+      } else if (cmdLine) {
+        applyCommand(runCommand(cmdLine));
+      } else if (aid === AID_PGDN) {
+        if (sysvalPage < pageCount - 1) sysvalPage++;
+      } else if (aid === AID_PGUP) {
+        if (sysvalPage > 0) sysvalPage--;
+      } else {
+        const pick = pickOption(runs, LIST_START_ROW, USRPRF_PAGE_SIZE);
+        if (pick) {
+          const name = SYSVAL_KEYS[sysvalPage * USRPRF_PAGE_SIZE + pick.index];
+          if (name) goTo('SYSVAL_DETAIL', name);
+        }
       }
     } else if (screen === 'USRPRF_LIST') {
       // Paged list — own handler so Roll Up/Down work and a picked Opt maps

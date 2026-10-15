@@ -75,23 +75,54 @@ const SYSVAL_RULES = {
   QALWOBJRST: { risk: 'HIGH',   test: v => v === '*ALL',                    rec: 'Restrict object restore (*NONE)' },
   QCRTAUT:    { risk: 'HIGH',   test: v => v === '*CHANGE' || v === '*ALL', rec: 'Default new-object public authority to *EXCLUDE/*USE' },
   QRETSVRSEC: { risk: 'MEDIUM', test: v => v === '1',                       rec: 'Do not retain decryptable server security data (0)' },
-  QAUDCTL:    { risk: 'HIGH',   test: v => v === '*NONE',                   rec: 'Enable security auditing' },
-  QDSPSGNINF: { risk: 'OK',     test: () => false,                          rec: '' },
-};
-export function evaluateSysval(name, value, full = value) {
-  const R = SYSVAL_RULES[name];
-  if (!R) return { risk: 'INFO', rec: '' };
-  if (R.test(value)) return { risk: R.risk, rec: R.rec };
   // QAUDCTL: *AUDLVL turns on event auditing (QAUDLVL), *OBJAUD turns on object
   // auditing (CHGOBJAUD / CRTOBJAUD). Without *OBJAUD every object audit setting
   // elsewhere logs nothing, silently, so "not *NONE" is not enough to pass.
-  if (name === 'QAUDCTL') {
-    const have = new Set(String(full).split(/\s+/));
-    const missing = ['*AUDLVL', '*OBJAUD'].filter(v => !have.has(v));
-    if (missing.length) return { risk: 'MEDIUM', rec:
-      `QAUDCTL is missing ${missing.join(' and ')}. Use *AUDLVL *OBJAUD *NOQTEMP: without *OBJAUD, object auditing set on other objects logs nothing.` };
-  }
-  return { risk: 'OK', rec: '' };
+  QAUDCTL:    { check: (v, full) => {
+                  if (v === '*NONE') return { risk: 'HIGH', rec: 'Enable security auditing' };
+                  const have = new Set(String(full).split(/\s+/));
+                  const missing = ['*AUDLVL', '*OBJAUD'].filter(x => !have.has(x));
+                  return missing.length ? { risk: 'MEDIUM', rec:
+                    `QAUDCTL is missing ${missing.join(' and ')}. Use *AUDLVL *OBJAUD *NOQTEMP: without *OBJAUD, object auditing set on other objects logs nothing.` } : null;
+                } },
+  QDSPSGNINF: { risk: 'OK',     test: () => false,                          rec: '' },
+  // ── From the corrected IBM i audit workbook, 2026-10-14. Verify each value on
+  // the prompt for your release before putting a finding in front of an auditor.
+  // INFO rows have no single weak value, they are review items. ──
+  QPWDLMTREP: { risk: 'MEDIUM', test: v => v === '0',                       rec: 'Set 2 (no consecutive repeated characters), 1 is stricter' },
+  QPWDLMTCHR: { risk: 'INFO',   test: () => true,                           rec: 'Restrict characters only if policy requires it. *NONE allows everything.' },
+  QPWDVLDPGM: { risk: 'LOW',    test: v => v === '*NONE',                   rec: 'No custom password validation program. Also check exit point QIBM_QSY_VLD_PASSWRD, validation can be registered there.' },
+  QINACTMSGQ: { risk: 'MEDIUM', test: v => v !== '*ENDJOB' && v !== '*DSCJOB', rec: 'A message queue only notifies and leaves the session open. Use *ENDJOB or *DSCJOB.' },
+  QLMTDEVSSN: { risk: 'MEDIUM', test: v => v === '0',                       rec: 'Set 1 (0 is no limit on device sessions)' },
+  QAUDLVL:    { check: (v, full) => {
+                  if (v === '*NONE') return { risk: 'HIGH', rec: 'Event auditing is off. Set QAUDLVL (see the audit level list in the workbook).' };
+                  const have = new Set(String(full).split(/\s+/));
+                  const missing = AUDLVL_RECOMMENDED.filter(x => !have.has(x));
+                  return missing.length ? { risk: 'MEDIUM', rec:
+                    `QAUDLVL is missing ${missing.join(' ')}. *SPLFDTA and *PRTDTA back the spool controls, *AUDLVL2 makes QAUDLVL2 count.` } : null;
+                } },
+  QAUDLVL2:   { risk: 'INFO',   test: () => true,                           rec: 'Only read when QAUDLVL includes *AUDLVL2. Validate each value on the prompt before adopting it.' },
+  QAUDENDACN: { risk: 'MEDIUM', test: v => v === '*NOTIFY',                 rec: '*NOTIFY lets the system run unaudited when the audit journal cannot be written. Use *PWRDWNSYS for high security, or document the risk acceptance.' },
+  QAUDFRCLVL: { risk: 'INFO',   test: v => v !== '*SYS',                    rec: 'Higher numbers are weaker, a crash loses more audit entries. Use *SYS or a low number.' },
+  QCRTOBJAUD: { risk: 'INFO',   test: () => true,                           rec: '*NONE is acceptable as the system default. Set CRTOBJAUD to *CHANGE or *ALL on sensitive libraries (DSPLIBD).' },
+  QALWUSRDMN: { risk: 'MEDIUM', test: v => v === '*ALL',                    rec: '*ALL is the shipped default, not a hardened setting. Name the libraries that may hold user-domain objects.' },
+  QFRCCVNRST: { risk: 'INFO',   test: () => true,                           rec: 'Choose a value per policy and record why. Auditors need a number.' },
+  QUSEADPAUT: { risk: 'MEDIUM', test: v => v === '*NONE',                   rec: '*NONE means anyone can create programs that use adopted authority. Name an authorization list.' },
+  QSCANFS:    { risk: 'INFO',   test: () => true,                           rec: 'Needs a registered scan exit program to mean anything.' },
+  QSCANFSCTL: { risk: 'INFO',   test: () => true,                           rec: 'Controls what happens on scan failure and which operations trigger scans. Confirm values on the prompt.' },
+  QRMTSIGN:   { risk: 'MEDIUM', test: v => v === '*SAMEPRF' || v === '*VERIFY', rec: 'These let a remote session skip the sign-on screen. Use *REJECT or *FRCSIGNON, document any exception.' },
+  QRMTSRVATR: { risk: 'MEDIUM', test: v => v === '1',                       rec: 'Set 0 (1 enables remote service access)' },
+  QSHRMEMCTL: { risk: 'MEDIUM', test: v => v === '0',                       rec: 'Set 1 (limits write-capable shared memory to users with *ALLOBJ)' },
+};
+// QAUDLVL values the workbook recommends. *AUDLVL2 is the switch that makes QAUDLVL2 count.
+const AUDLVL_RECOMMENDED = ['*AUTFAIL', '*CREATE', '*DELETE', '*JOBDTA', '*OBJMGT', '*PGMADP', '*PGMFAIL',
+  '*PRTDTA', '*SAVRST', '*SECURITY', '*SPLFDTA', '*SYSMGT', '*AUDLVL2'];
+export function evaluateSysval(name, value, full = value) {
+  const R = SYSVAL_RULES[name];
+  if (!R) return { risk: 'INFO', rec: '' };
+  // Multi-value system values (QAUDCTL, QAUDLVL) carry their own check, which sees the whole cell.
+  if (R.check) return R.check(value, full) || { risk: 'OK', rec: '' };
+  return R.test(value) ? { risk: R.risk, rec: R.rec } : { risk: 'OK', rec: '' };
 }
 
 // ── Tool 3: Objects (WRKOBJ list) ──────────────────────────────────────────
@@ -298,6 +329,16 @@ const REGINF_RULES = {
   QIBM_QTMF_CLIENT_REQ: { risk: 'LOW',      rec: 'Outbound FTP client requests — lower exposure than server-side, still worth gating.' },
   QIBM_QPWFS_FILE_SERV: { risk: 'CRITICAL', rec: 'Register a NetServer exit program — without one, any mapped SMB drive reaches the IFS unchecked.' },
   QIBM_QCA_RTV_COMMAND: { risk: 'CRITICAL', rec: 'Register a remote-command exit program — without one, Client Access RMTCMD bypasses LMTCPB(*YES) entirely.' },
+  // From the corrected IBM i audit workbook, 2026-10-14. Ratings are a judgment call, not IBM's.
+  // Confirm each name on WRKREGINF before relying on it, release differences are real.
+  QIBM_QZRC_RMT:        { risk: 'CRITICAL', rec: 'Register an exit program on the remote command and program call server — without one, anyone with a profile can run commands over the network. (Confirm against QIBM_QCA_RTV_COMMAND on WRKREGINF.)' },
+  QIBM_QZDA_NDB1:       { risk: 'HIGH',     rec: 'Register a validation exit program — native database requests (ODBC, JDBC, Toolbox file access) reach the files unchecked.' },
+  QIBM_QZDA_ROI1:       { risk: 'MEDIUM',   rec: 'Register a validation exit program — retrieve-object-information requests are unchecked, so object names and attributes leak to any profile.' },
+  QIBM_QZSO_SIGNON:     { risk: 'MEDIUM',   rec: 'Register a signon server validation exit program — host server sign-on is the front door for every remote client.' },
+  QIBM_QTMF_SVR_LOGON:  { risk: 'HIGH',     rec: 'Register an FTP logon exit program — without one, nothing decides who may sign on over FTP, only what they can do after (QIBM_QTMF_SERVER_REQ).' },
+  QIBM_QSY_VLD_PASSWRD: { risk: 'LOW',      rec: 'No password validation exit program. Pair this with the QPWDVLDPGM system value, either one can carry custom password rules.' },
+  QIBM_QTG_DEVINIT:     { risk: 'MEDIUM',   rec: 'Register a Telnet device initialization exit program — nothing governs who can start a Telnet session or how.' },
+  QIBM_QZHQ_DATA_QUEUE: { risk: 'MEDIUM',   rec: 'Register a data queue server exit program — remote data queue access is unchecked, and often forgotten.' },
 };
 export function evaluateExitPoint(name, value) {
   const R = REGINF_RULES[name];
