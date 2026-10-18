@@ -1868,6 +1868,50 @@ const _WALKTHROUGHS = [
     ],
   },
 
+  {
+    id:       'as400-ibmi-host-server-recon',
+    category: 'security',
+    title:    'IBM i: Host Server Recon',
+    desc:     'A read-only look at what an IBM i tells anyone on the network before a sign-on: the ports of every host server from the server mapper, and the OS release, password level and answering job from the sign-on server. No profile or password.',
+    steps: [
+      {
+        title: 'What a box says before anyone signs on',
+        body:  'Two listeners answer without a sign-on. The server mapper on 449 tells a client where each host server lives, and the sign-on server on 8476 and 9476 answers the exchange-attributes step every IBM i client does before it asks for a password. Together they give the port of every host server, the OS release, the password level (QPWDLVL) and the job that answered.',
+        highlight: 'ibmiReconOut', autoFn: null,
+      },
+      {
+        title: 'Prerequisites and scope',
+        body:  'This is a network check against a host you name, not tied to an open terminal session, and it is gated by the RoE Scope Guard: the host has to be in scope. No activity needs naming, because no credential is ever sent. It contacts the server mapper and the sign-on server only. The remote command server and the other host servers are named but never connected to.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Pick a target',
+        body:  'Type the host or IP. Leave the mapper port at 449 unless you are testing against the mock, which listens on 4449 (start it with node mock-lpar/mock-as400-hostsvr.js).',
+        highlight: 'ibmiReconHost', autoFn: null,
+      },
+      {
+        title: 'Run it',
+        body:  'Click ▶ READ HOST SERVERS. It asks the mapper for each of the seven host servers, plain and TLS, then sends the sign-on server one exchange-attributes request over plain and over TLS. It takes a few seconds.',
+        highlight: 'ibmiReconBtn', autoFn: null,
+      },
+      {
+        title: 'Read the result',
+        body:  'The top block shows what the sign-on server said: OS release, password level and the answering job. The table lists each host server and its plain and TLS ports, with none where the mapper names no TLS twin. FINDING rows cover a server offered in plain text with no TLS twin, the sign-on server answering in clear text, the OS release shown before any sign-on, QPWDLVL below 2, and the remote command server being registered. Registered is not the same as reachable, so check that one from the network.',
+        highlight: 'ibmiReconOut', autoFn: null,
+      },
+      {
+        title: 'Pair it with the inside view',
+        body:  'The Listening Services Inventory asks what is listening from inside, with NETSTAT_INFO. This tool asks what answers from outside. When the two disagree, for example a service the inventory says is not listening but the mapper still names, that is a finding worth writing up.',
+        highlight: null, autoFn: null,
+      },
+      {
+        title: 'Export',
+        body:  'Click ↓ Export CSV (or JSON) for a record of the host, verdict, severity and finding text. The same checks run from the command line as the mainframe-nse scripts ibmi-svrmap-info and ibmi-signon-info.',
+        highlight: 'ibmiReconOut', autoFn: null,
+      },
+    ],
+  },
+
   // ── Wave 14: SDSF Job Scanner ─────────────────────────────────────
   {
     id:       'sdsf-job-scanner',

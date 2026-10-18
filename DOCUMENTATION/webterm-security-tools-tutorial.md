@@ -3160,6 +3160,50 @@ On the mock (FTP on 2121 instead of 21, because a container user cannot bind bel
 
 The real server's replies were modelled from IBM's documentation and not run on a live IBM i. Confirm on real hardware: the exact `220` banner, whether `SYST` is refused before login, what `USER` answers for an unknown profile, the `SYST` reply text after login (`OS/400 is the remote operating system. The TCP/IP version is "V7R4M0".` is the expected form), whether `HELP` lists `RCMD`, and how `NAMEFMT 1` lists `/QSYS.LIB`. Whether an FTP exit program is registered is the Exit Point audit's question, this tool only shows what an ordinary profile can reach without one.
 
+## Part 52: IBM i (AS/400) Host Server Recon
+
+Before anyone signs on to an IBM i, two listeners already answer questions for anyone on the network. The server mapper on 449 tells a client where each host server lives. The sign-on server on 8476 (plain) and 9476 (TLS) answers the exchange-attributes step every IBM i client does before it asks for a password. Neither needs a profile. Between them they give the ports of every host server, the OS release, the password level (`QPWDLVL`) and the job that answered. This is the outside view that pairs with the Listening Services Inventory, which asks the same question from inside with `NETSTAT_INFO`.
+
+### Location
+
+Security panel → IBM i HOST SERVER RECON. It is a network check against a host you name, not tied to an open terminal session, like the FTP Service Audit and the HTTP Admin GUI Audit. Behind the RoE Scope Guard: the host has to be in scope. No activity needs naming in `scope.json`, because no credential is ever sent.
+
+### How it works
+
+| Step | What is sent | What it tells you |
+|---|---|---|
+| Server mapper, 14 lookups | the service name in ASCII (`as-central`, `as-central-s`, and so on), one connection per name | the port of each host server, plain and TLS |
+| Sign-on server, plain | one exchange-attributes request: a header and three client fields, no user and no password | OS release, password level, the answering job |
+| Sign-on server, TLS | the same request over TLS | the same facts, plus the TLS version and certificate state |
+
+It never connects to any host server except the sign-on server. The remote command server (`as-rmtcmd`) and the rest are only named, with the port the mapper gave. The sign-on server's seed in the reply is read and dropped.
+
+The same two checks run from the command line as the `mainframe-nse` scripts `ibmi-svrmap-info` and `ibmi-signon-info`, with a third script, `ibmi-hostservers`, for plain versus TLS port states from a normal nmap scan. The byte layouts, and which of them have been seen on a live system, are in that project's `ibmi/docs/WIRE-NOTES.md`.
+
+### Safety, and what it never does
+
+- No profile, no password, no sign-on. The request carries a header and three client fields, and a test asserts exactly that.
+- Only the mapper and the sign-on server are ever contacted. A test puts a decoy listener where the remote command server would be and proves it receives nothing.
+- The mapper is asked only the fourteen known service names.
+- Certificates are looked at, never trusted: validation is off so whatever is presented can be judged.
+
+### Risk levels
+
+| Rating | Meaning |
+|---|---|
+| FINDING | a host server offered in plain text with no TLS twin, the sign-on server answering in clear text, the OS release revealed before any sign-on, `QPWDLVL` below 2, the remote command server registered (reachability is not tested), TLS 1.0 or 1.1, an expired or too-small RSA certificate |
+| INFO | everything that is a fact rather than a problem: the mapper answering, ports off their defaults, a self-signed certificate, `QPWDLVL` 2 or higher, and any listener that gave no usable answer |
+
+The verdict is FINDING if any row is FINDING or CRITICAL, INCONCLUSIVE if nothing answered, and SECURE only when nothing was found. A silent mapper is INCONCLUSIVE, never a pass.
+
+### Teaching scenario
+
+Start the mock host servers with `node mock-lpar/mock-as400-hostsvr.js`. The mapper listens on `4449` (449 is privileged) and the sign-on server on its real `8476`. Enter `127.0.0.1` and mapper port `4449`, and run it. The default mock is a loose shop: no TLS twin for the data queue or remote command servers, the OS release in the clear (`V7R4M0`), password level 2. Set `MOCK_AS400_PWDLVL=1` and run again to see the password level become a finding.
+
+### Where the mock stops
+
+The mock agrees with bytes captured from a live IBM i 7.5: the mapper reply (`2B` plus a 4 byte port) and the sign-on reply (`F003`, return code, and code points `1101`, `1102`, `1103`, `1119`, `111F`). It is still one release. Other releases may send other code points, and password levels above 3 print as a bare number until their meaning is checked. The remote command server being registered says it exists, not that it is reachable: check that from the network.
+
 ---
 
 ## Appendix — Structured JSON findings export
