@@ -1891,7 +1891,7 @@ const _WALKTHROUGHS = [
       },
       {
         title: 'The optional sign-on screen',
-        body:  'Tick "also read the 5250 sign-on screen" to read the telnet sign-on on 23 and 992 as well. It opens a real 5250 session for a moment, so the server allocates a virtual device (QPADEVxxxx) and frees it when the probe hangs up. No user ID and no device name are sent. It reports the system name, subsystem and device, and flags a sign-on served over plain telnet. Leave it unticked for the mapper and sign-on server alone.',
+        body:  'Tick "also read the 5250 sign-on screen" to read the telnet sign-on as well. The two boxes under it are the plain and TLS telnet ports, 23 and 992 on a real box (the mock listens on 3272). It opens a real 5250 session for a moment, so the server allocates a virtual device (QPADEVxxxx) and frees it when the probe hangs up. No user ID and no device name are sent. It reports the system name, subsystem and device, and flags a sign-on served over plain telnet. Leave it unticked for the mapper and sign-on server alone.',
         highlight: 'ibmiReconBanner', autoFn: null,
       },
       {

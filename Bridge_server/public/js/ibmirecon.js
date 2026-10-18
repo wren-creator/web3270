@@ -31,6 +31,8 @@ async function startIbmiRecon() {
   const host = document.getElementById('ibmiReconHost')?.value.trim();
   const mapperPort = parseInt(document.getElementById('ibmiReconPort')?.value, 10) || 449;
   const banner = !!document.getElementById('ibmiReconBanner')?.checked;
+  const telnetPort = parseInt(document.getElementById('ibmiReconTelnetPort')?.value, 10) || 23;
+  const telnetTlsPort = parseInt(document.getElementById('ibmiReconTelnetTlsPort')?.value, 10) || 992;
   const out = document.getElementById('ibmiReconOut');
   const btn = document.getElementById('ibmiReconBtn');
 
@@ -44,7 +46,7 @@ async function startIbmiRecon() {
     const res = await fetch('/api/ibmi-recon', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ host, mapperPort, banner }),
+      body: JSON.stringify({ host, mapperPort, banner, telnetPort, telnetTlsPort }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);

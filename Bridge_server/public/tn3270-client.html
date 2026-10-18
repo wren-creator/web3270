@@ -1246,7 +1246,11 @@
 
           <input id="ibmiReconHost" placeholder="host or IP" style="width:100%;box-sizing:border-box;background:#0d0d0d;border:1px solid #222;color:#aaa;font-family:'IBM Plex Mono',monospace;font-size:10px;padding:4px 6px;border-radius:2px;margin-bottom:6px">
           <input id="ibmiReconPort" placeholder="449" value="449" title="Server mapper port" style="width:100%;box-sizing:border-box;background:#0d0d0d;border:1px solid #222;color:#aaa;font-family:'IBM Plex Mono',monospace;font-size:10px;padding:4px 6px;border-radius:2px;margin-bottom:6px">
-          <label style="display:block;font-size:10px;color:var(--text-muted);margin-bottom:6px"><input id="ibmiReconBanner" type="checkbox"> also read the 5250 sign-on screen (23 and 992). Opens a telnet session for a moment, no user ID or device name is sent</label>
+          <label style="display:block;font-size:10px;color:var(--text-muted);margin-bottom:4px"><input id="ibmiReconBanner" type="checkbox"> also read the 5250 sign-on screen. Opens a telnet session for a moment, no user ID or device name is sent</label>
+          <div style="display:flex;gap:6px;margin-bottom:6px">
+            <input id="ibmiReconTelnetPort" placeholder="23" value="23" title="5250 telnet port (the mock listens on 3272)" style="flex:1;min-width:0;box-sizing:border-box;background:#0d0d0d;border:1px solid #222;color:#aaa;font-family:'IBM Plex Mono',monospace;font-size:10px;padding:4px 6px;border-radius:2px">
+            <input id="ibmiReconTelnetTlsPort" placeholder="992" value="992" title="5250 telnet TLS port" style="flex:1;min-width:0;box-sizing:border-box;background:#0d0d0d;border:1px solid #222;color:#aaa;font-family:'IBM Plex Mono',monospace;font-size:10px;padding:4px 6px;border-radius:2px">
+          </div>
 
           <button id="ibmiReconBtn" class="sec-inject-btn" onclick="startIbmiRecon()" style="background:#1a2a1a">▶ READ HOST SERVERS</button>
           <div id="ibmiReconStatus" style="font-size:10px;color:var(--text-muted);margin-top:4px;min-height:14px"></div>
