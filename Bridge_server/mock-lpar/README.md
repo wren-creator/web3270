@@ -384,6 +384,38 @@ is HTML-escaped and never evaluated, and `/about` shows the fix),
 (default `2010`), `MOCK_AS400_HTTPADMIN_KEY` / `_CERT` (default `/app/certs/`).
 Tests: `node --test mock-lpar/mock-as400-httpadmin.test.js`.
 
+### Host servers (server mapper and sign-on server)
+
+`mock-as400-hostsvr.js` is the front door of a real IBM i's host servers: the
+server mapper (449 on a real box) and the sign-on server (8476 plain, 9476
+TLS). It exists so the IBM i Host Server Recon probe has something to read,
+and it is deliberately small. There is no central, database, file or remote
+command server behind the ports the mapper names, which is what lets a test
+prove the probe never connects to them.
+
+Reply shapes follow a capture from a live IBM i 7.5, not only the probe's own
+reading: the mapper answers `0x2B` plus a 4 byte port (`0x2D` for an unknown
+name), and the sign-on server answers the exchange-attributes request with
+reply id `F003`, a return code, and code points `1101` (version), `1102`
+(datastream level), `1103` (seed), `1119` (password level) and `111F` (the
+answering job, in EBCDIC). It answers nothing else, so a sign-on attempt gets
+the connection dropped.
+
+A loose shop on purpose: no TLS twin for the data queue or remote command
+servers, a QPWDLVL a probe can flag, the OS release in the clear.
+
+Run it alone with `node mock-lpar/mock-as400-hostsvr.js`. The mapper listens
+on `4449` (449 is privileged), the sign-on server on its real `8476`, and the
+TLS one on `9476` when a cert is present. Point the probe at the mapper with
+`mapperPort`. It is not in `docker-compose.yml` yet.
+
+Config env vars: `MOCK_AS400_MAPPER_PORT` (default `4449`), `MOCK_AS400_OSLEVEL`
+(default `V7R4M0`), `MOCK_AS400_PWDLVL` (default `2`),
+`MOCK_AS400_SIGNON_JOB` (default `135258/QUSER/QZSOSIGN`),
+`MOCK_AS400_HOSTSVR_TLS_TWINS` (`all`, `none`, or unset for all but data queue
+and remote command), `MOCK_AS400_HTTPADMIN_KEY` / `_CERT` (the TLS cert).
+Tests: `node --test features/ibmi-recon.test.js`.
+
 Implements: RFC 4777 negotiation (NEW-ENVIRON + TERMINAL-TYPE), the
 10-byte GDS record header wrapping every record, Clear Unit / Clear
 Unit Alternate for default-vs-wide screen geometry, Write-to-Display
