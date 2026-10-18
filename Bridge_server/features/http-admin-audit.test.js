@@ -120,3 +120,13 @@ test('an expired certificate is flagged', () => {
     } finally { await closed(srv); }
   })();
 });
+
+test('certFindings: a 256 bit EC key is not "below 2048", a 1024 bit RSA key is', async () => {
+  const { certFindings } = await import('./http-admin-audit.js');
+  const now = Date.parse('2026-10-18T00:00:00Z');
+  const base = { valid_from: 'Oct  1 00:00:00 2026 GMT', valid_to: 'Oct  1 00:00:00 2027 GMT', issuer: { CN: 'ca' }, subject: { CN: 'host' } };
+  const ec = certFindings({ ...base, bits: 256, asn1Curve: 'prime256v1', nistCurve: 'P-256' }, now);
+  assert.equal(ec.some(([, t]) => /below 2048/.test(t)), false);
+  const rsa = certFindings({ ...base, bits: 1024 }, now);
+  assert.equal(rsa.some(([, t]) => /1024 bits, below 2048/.test(t)), true);
+});
