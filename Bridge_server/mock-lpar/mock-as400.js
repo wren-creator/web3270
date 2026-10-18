@@ -3024,3 +3024,8 @@ require('./mock-as400-ftp').start({
   sysname: SYSNAME, usrprfs: USRPRFS, credentials: CREDENTIALS, log,
 });
 
+// The server mapper (449 on a real box, 4449 here) and the sign-on server
+// (8476, and 9476 over TLS when a cert is present), for the IBM i Host Server
+// Recon probe. Nothing else a host server does is modelled.
+require('./mock-as400-hostsvr').start({ log });
+

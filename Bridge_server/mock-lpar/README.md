@@ -404,10 +404,12 @@ the connection dropped.
 A loose shop on purpose: no TLS twin for the data queue or remote command
 servers, a QPWDLVL a probe can flag, the OS release in the clear.
 
-Run it alone with `node mock-lpar/mock-as400-hostsvr.js`. The mapper listens
-on `4449` (449 is privileged), the sign-on server on its real `8476`, and the
-TLS one on `9476` when a cert is present. Point the probe at the mapper with
-`mapperPort`. It is not in `docker-compose.yml` yet.
+`mock-as400.js` starts it with the rest, so the `mock-as400` container serves
+it at `mock-as400:4449` (the mapper, since 449 is privileged), `:8476` and
+`:9476` (TLS, using the same throwaway cert as the HTTP admin mock). Like the
+5250 port, none of them are published to the host. Run it alone with
+`node mock-lpar/mock-as400-hostsvr.js`. Point the probe at the mapper with
+`mapperPort`.
 
 Config env vars: `MOCK_AS400_MAPPER_PORT` (default `4449`), `MOCK_AS400_OSLEVEL`
 (default `V7R4M0`), `MOCK_AS400_PWDLVL` (default `2`),

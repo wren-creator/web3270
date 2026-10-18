@@ -8,6 +8,7 @@ WORKDIR /app
 COPY mock-lpar/mock-as400.js ./mock-lpar/mock-as400.js
 COPY mock-lpar/mock-as400-httpadmin.js ./mock-lpar/mock-as400-httpadmin.js
 COPY mock-lpar/mock-as400-ftp.js ./mock-lpar/mock-as400-ftp.js
+COPY mock-lpar/mock-as400-hostsvr.js ./mock-lpar/mock-as400-hostsvr.js
 COPY mock-lpar/rpg ./mock-lpar/rpg
 
 # Self-signed cert for the HTTPS admin port (2010). Throwaway, mock only.
@@ -22,7 +23,7 @@ RUN apk add --no-cache openssl \
 RUN addgroup -S mockas400 && adduser -S mockas400 -G mockas400
 USER mockas400
 
-EXPOSE 3272 2001 2010 2121 2990
+EXPOSE 3272 2001 2010 2121 2990 4449 8476 9476
 
 ENV MOCK_AS400_PORT=3272 \
     MOCK_AS400_SYSID=AS400MOCK \
