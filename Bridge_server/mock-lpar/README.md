@@ -401,8 +401,10 @@ reply id `F003`, a return code, and code points `1101` (version), `1102`
 answering job, in EBCDIC). It answers nothing else, so a sign-on attempt gets
 the connection dropped.
 
-A loose shop on purpose: no TLS twin for the data queue or remote command
-servers, a QPWDLVL a probe can flag, the OS release in the clear.
+A loose shop on purpose: TLS twins only for the database and sign-on servers
+(the two TLS ports the mock's `NETSTAT_INFO` lists, so the outside view and the
+inside view agree), a `QPWDLVL` of 0 a probe can flag, the OS release in the
+clear.
 
 `mock-as400.js` starts it with the rest, so the `mock-as400` container serves
 it at `mock-as400:4449` (the mapper, since 449 is privileged), `:8476` and
@@ -414,8 +416,8 @@ it at `mock-as400:4449` (the mapper, since 449 is privileged), `:8476` and
 Config env vars: `MOCK_AS400_MAPPER_PORT` (default `4449`), `MOCK_AS400_OSLEVEL`
 (default `V7R4M0`), `MOCK_AS400_PWDLVL` (default: the mock's own `QPWDLVL` system value, so the sign-on server and `WRKSYSVAL` agree),
 `MOCK_AS400_SIGNON_JOB` (default `135258/QUSER/QZSOSIGN`),
-`MOCK_AS400_HOSTSVR_TLS_TWINS` (`all`, `none`, or unset for all but data queue
-and remote command), `MOCK_AS400_HTTPADMIN_KEY` / `_CERT` (the TLS cert).
+`MOCK_AS400_HOSTSVR_TLS_TWINS` (`all`, `none`, or unset for the database and
+sign-on servers only), `MOCK_AS400_HTTPADMIN_KEY` / `_CERT` (the TLS cert).
 Tests: `node --test features/ibmi-recon.test.js`.
 
 Implements: RFC 4777 negotiation (NEW-ENVIRON + TERMINAL-TYPE), the

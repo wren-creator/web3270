@@ -3199,7 +3199,7 @@ The verdict is FINDING if any row is FINDING or CRITICAL, INCONCLUSIVE if nothin
 
 ### Teaching scenario
 
-Start the mock host servers with `node mock-lpar/mock-as400-hostsvr.js`. The mapper listens on `4449` (449 is privileged) and the sign-on server on its real `8476`. Enter `127.0.0.1` and mapper port `4449`, and run it. The default mock is a loose shop: no TLS twin for the data queue or remote command servers, the OS release in the clear (`V7R4M0`), password level 2. Set `MOCK_AS400_PWDLVL=1` and run again to see the password level become a finding.
+Start the mock IBM i with `node mock-lpar/mock-as400.js`, which now serves the mapper on `4449` (449 is privileged), the sign-on server on its real `8476`, and the 5250 sign-on on `3272`. Enter `127.0.0.1` and mapper port `4449`, tick the sign-on screen box and put `3272` in the first port box, and run it. The mock is a loose shop: TLS twins only for the database and sign-on servers (the two TLS ports its `NETSTAT_INFO` lists, so the outside view and the inside view agree), the OS release in the clear (`V7R4M0`), and password level 0, the same value `WRKSYSVAL` shows for `QPWDLVL`. Set `MOCK_AS400_PWDLVL=2` before starting it and run again to see the password level stop being a finding. `node mock-lpar/mock-as400-hostsvr.js` starts just the two host servers if you do not need the rest.
 
 ### Where the mock stops
 

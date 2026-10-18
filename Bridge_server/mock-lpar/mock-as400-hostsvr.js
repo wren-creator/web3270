@@ -15,7 +15,9 @@
 //
 // Knobs (env): MOCK_AS400_OSLEVEL (default V7R4M0), MOCK_AS400_PWDLVL (the
 // level mock-as400.js passes in, which is its own QPWDLVL system value, else 2),
-// MOCK_AS400_HOSTSVR_TLS_TWINS=all|none (default: all but dtaq and rmtcmd).
+// MOCK_AS400_HOSTSVR_TLS_TWINS=all|none (default: TLS twins for the database and
+// sign-on servers only, the two TLS ports the mock's NETSTAT_INFO lists, so the
+// view from outside and the view from inside the mock agree).
 
 const net = require('net');
 const tls = require('tls');
@@ -58,8 +60,8 @@ function makeContext({ ports = {}, log = () => {}, env = process.env, pwdLevel }
   if (twins === 'none') {
     for (const k of Object.keys(table)) if (k.endsWith('-s') && k !== 'as-signon-s') delete table[k];
   } else if (twins === 'default') {
-    delete table['as-dtaq-s'];
-    delete table['as-rmtcmd-s'];
+    // Same two TLS listeners the mock's QSYS2.NETSTAT_INFO reports (9471, 9476).
+    for (const k of ['as-central-s', 'as-dtaq-s', 'as-file-s', 'as-netprt-s', 'as-rmtcmd-s']) delete table[k];
   }
   return {
     log,
