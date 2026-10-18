@@ -184,9 +184,9 @@ services:
       MOCK_AS400_FTP_IMPLICIT: "0"
       # Server mapper on 4449 (real box: 449) and sign-on server on 8476 and
       # 9476, for the IBM i Host Server Recon probe. MOCK_AS400_PWDLVL sets the
-      # QPWDLVL it reports, MOCK_AS400_HOSTSVR_TLS_TWINS (all, none, or unset)
-      # decides which servers the mapper says have a TLS twin.
-      MOCK_AS400_PWDLVL: "2"
+      # QPWDLVL it reports (unset: the mock's own QPWDLVL system value, so the
+      # sign-on server and WRKSYSVAL agree), MOCK_AS400_HOSTSVR_TLS_TWINS (all,
+      # none, or unset) decides which servers the mapper says have a TLS twin.
       LOG_LEVEL:        "debug"
 
     networks:

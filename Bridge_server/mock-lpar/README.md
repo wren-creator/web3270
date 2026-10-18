@@ -412,7 +412,7 @@ it at `mock-as400:4449` (the mapper, since 449 is privileged), `:8476` and
 `mapperPort`.
 
 Config env vars: `MOCK_AS400_MAPPER_PORT` (default `4449`), `MOCK_AS400_OSLEVEL`
-(default `V7R4M0`), `MOCK_AS400_PWDLVL` (default `2`),
+(default `V7R4M0`), `MOCK_AS400_PWDLVL` (default: the mock's own `QPWDLVL` system value, so the sign-on server and `WRKSYSVAL` agree),
 `MOCK_AS400_SIGNON_JOB` (default `135258/QUSER/QZSOSIGN`),
 `MOCK_AS400_HOSTSVR_TLS_TWINS` (`all`, `none`, or unset for all but data queue
 and remote command), `MOCK_AS400_HTTPADMIN_KEY` / `_CERT` (the TLS cert).

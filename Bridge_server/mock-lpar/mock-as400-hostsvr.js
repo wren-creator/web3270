@@ -13,7 +13,8 @@
 // 1102 (datastream level), 1103 (seed), 1119 (password level) and 111F
 // (answering job, EBCDIC).
 //
-// Knobs (env): MOCK_AS400_OSLEVEL (default V7R4M0), MOCK_AS400_PWDLVL (2),
+// Knobs (env): MOCK_AS400_OSLEVEL (default V7R4M0), MOCK_AS400_PWDLVL (the
+// level mock-as400.js passes in, which is its own QPWDLVL system value, else 2),
 // MOCK_AS400_HOSTSVR_TLS_TWINS=all|none (default: all but dtaq and rmtcmd).
 
 const net = require('net');
@@ -51,7 +52,7 @@ function parseLevel(osLevel) {
   return m ? { v: +m[1], r: +m[2], m: +m[3] } : { v: 7, r: 4, m: 0 };
 }
 
-function makeContext({ ports = {}, log = () => {}, env = process.env } = {}) {
+function makeContext({ ports = {}, log = () => {}, env = process.env, pwdLevel } = {}) {
   const twins = env.MOCK_AS400_HOSTSVR_TLS_TWINS || 'default';
   const table = { ...DEFAULT_PORTS, ...ports };
   if (twins === 'none') {
@@ -64,7 +65,10 @@ function makeContext({ ports = {}, log = () => {}, env = process.env } = {}) {
     log,
     table,
     osLevel: parseLevel(env.MOCK_AS400_OSLEVEL || 'V7R4M0'),
-    pwdLevel: parseInt(env.MOCK_AS400_PWDLVL || '2', 10),
+    // The env knob wins, then the level the mock IBM i itself is set to (so the
+    // sign-on server and WRKSYSVAL QPWDLVL never disagree), then 2.
+    pwdLevel: env.MOCK_AS400_PWDLVL !== undefined ? parseInt(env.MOCK_AS400_PWDLVL, 10)
+      : (Number.isInteger(pwdLevel) ? pwdLevel : 2),
     job: env.MOCK_AS400_SIGNON_JOB || '135258/QUSER/QZSOSIGN',
     seen: { lookups: [], signonRequests: 0 },
     tlsOpts: null,
@@ -139,8 +143,8 @@ function loadCert(env) {
   try { return { key: fs.readFileSync(keyPath), cert: fs.readFileSync(certPath) }; } catch { return null; }
 }
 
-function start({ log, env = process.env }) {
-  const ctx = makeContext({ log, env });
+function start({ log, env = process.env, pwdLevel }) {
+  const ctx = makeContext({ log, env, pwdLevel });
   ctx.tlsOpts = loadCert(env);
   // Real ports are 449, 8476 and 9476. 449 is privileged, so the mapper
   // listens on 4449 here and the probe is pointed at it; the sign-on ports

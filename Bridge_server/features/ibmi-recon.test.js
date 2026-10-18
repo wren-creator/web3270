@@ -268,3 +268,9 @@ test('parseSignonLines: stock labels and renamed labels', () => {
   assert.deepEqual([renamed.system, renamed.display, renamed.isSignon], ['PUB400', 'QPADEV0067', true]);
   assert.equal(parseSignonLines(['hello world']).isSignon, false);
 });
+
+test('the host server mock follows the level it is given, and an env knob overrides it', () => {
+  assert.equal(hostsvr.makeContext({ pwdLevel: 0, env: {} }).pwdLevel, 0);
+  assert.equal(hostsvr.makeContext({ env: {} }).pwdLevel, 2);
+  assert.equal(hostsvr.makeContext({ pwdLevel: 0, env: { MOCK_AS400_PWDLVL: '3' } }).pwdLevel, 3);
+});
