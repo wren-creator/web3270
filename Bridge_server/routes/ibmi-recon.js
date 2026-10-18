@@ -38,8 +38,13 @@ export function handle(req, res, ctx) {
     if (!scopeOk.allowed) return json(res, 403, { error: `Blocked by RoE scope guard: ${scopeOk.reason}` });
 
     const mapperPort = validPort(body.mapperPort, 449);
-    ctx?.logger?.info?.(`[ibmi-recon] reading ${host} (server mapper ${mapperPort})`);
-    const result = await reconIbmi({ host, mapperPort });
+    ctx?.logger?.info?.(`[ibmi-recon] reading ${host} (server mapper ${mapperPort}${body.banner === true ? ', with sign-on screen' : ''})`);
+    const result = await reconIbmi({
+      host, mapperPort,
+      banner: body.banner === true,
+      telnetPort: validPort(body.telnetPort, 23),
+      telnetTlsPort: validPort(body.telnetTlsPort, 992),
+    });
     json(res, 200, { host, ...result });
   }).catch(err => {
     ctx?.logger?.error?.(`[ibmi-recon] ${err.message}`);

@@ -1,0 +1,59 @@
+{
+  "_note": "Canonical copy lives in mainframe-nse/ibmi/test/fixtures. web3270 keeps a copy at Bridge_server/features/fixtures/ibmi-pub400-hostserver.json. Change the bytes in mainframe-nse first, then copy.",
+  "source": "A public hosted IBM i 7.5, captured 2026-10-18 with the ibmi-svrmap-info and ibmi-signon-info scripts (dump option).",
+  "mapper": {
+    "as-central": "2b00002116",
+    "as-central-s": "2b000024fe",
+    "as-database": "2b00002117",
+    "as-database-s": "2b000024ff",
+    "as-dtaq": "2b00002118",
+    "as-dtaq-s": "2b00002500",
+    "as-file": "2b00002119",
+    "as-file-s": "2b00002501",
+    "as-netprt": "2b0000211a",
+    "as-netprt-s": "2b00002502",
+    "as-rmtcmd": "2b0000211b",
+    "as-rmtcmd-s": "2b00002503",
+    "as-signon": "2b0000211c",
+    "as-signon-s": "2b00002504"
+  },
+  "signon_reply": "0000005e0000e00900000000000000000004f003000000000000000a110100070500000000081102000f0000000e11030102030405060708000000071119030000001f111f00000000f1f3f5f2f5f861d8e4e2c5d961d8e9e2d6e2c9c7d5",
+  "signon_reply_note": "Rebuilt from the code points the live server sent, in the order it sent them. The 8 byte server seed is a placeholder (0102030405060708), the real one is one time and was never kept. Plain and TLS ports answered with the same fields; only the job number differed.",
+  "expected": {
+    "servers": {
+      "central": [
+        8470,
+        9470
+      ],
+      "database": [
+        8471,
+        9471
+      ],
+      "dtaq": [
+        8472,
+        9472
+      ],
+      "file": [
+        8473,
+        9473
+      ],
+      "netprt": [
+        8474,
+        9474
+      ],
+      "rmtcmd": [
+        8475,
+        9475
+      ],
+      "signon": [
+        8476,
+        9476
+      ]
+    },
+    "osVersion": "V7R5M0",
+    "datastreamLevel": 15,
+    "passwordLevel": 3,
+    "serverJob": "135258/QUSER/QZSOSIGN",
+    "returnCode": 0
+  }
+}

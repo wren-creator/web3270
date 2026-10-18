@@ -1890,6 +1890,11 @@ const _WALKTHROUGHS = [
         highlight: 'ibmiReconHost', autoFn: null,
       },
       {
+        title: 'The optional sign-on screen',
+        body:  'Tick "also read the 5250 sign-on screen" to read the telnet sign-on on 23 and 992 as well. It opens a real 5250 session for a moment, so the server allocates a virtual device (QPADEVxxxx) and frees it when the probe hangs up. No user ID and no device name are sent. It reports the system name, subsystem and device, and flags a sign-on served over plain telnet. Leave it unticked for the mapper and sign-on server alone.',
+        highlight: 'ibmiReconBanner', autoFn: null,
+      },
+      {
         title: 'Run it',
         body:  'Click ▶ READ HOST SERVERS. It asks the mapper for each of the seven host servers, plain and TLS, then sends the sign-on server one exchange-attributes request over plain and over TLS. It takes a few seconds.',
         highlight: 'ibmiReconBtn', autoFn: null,

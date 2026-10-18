@@ -1242,10 +1242,11 @@
       <div class="sec-section">
         <div class="sec-section-hdr">IBM i HOST SERVER RECON</div>
         <div class="sec-section-body">
-          <div class="sec-panel-hint" style="margin-bottom:8px">Read-only look at what an IBM i tells anyone on the network before a sign-on. The server mapper (449) names the port of every host server, plain and TLS, so a server with no TLS twin shows up. The sign-on server gives the OS release, the password level (QPWDLVL) and the job that answered. No profile or password is asked for or sent, and the remote command server is never contacted, only named. The same checks run from the command line as the mainframe-nse scripts ibmi-svrmap-info and ibmi-signon-info.</div>
+          <div class="sec-panel-hint" style="margin-bottom:8px">Read-only look at what an IBM i tells anyone on the network before a sign-on. The server mapper (449) names the port of every host server, plain and TLS, so a server with no TLS twin shows up. The sign-on server gives the OS release, the password level (QPWDLVL) and the job that answered. No profile or password is asked for or sent, and the remote command server is never contacted, only named. The same checks run from the command line as the mainframe-nse scripts ibmi-svrmap-info, ibmi-signon-info and tn5250-info.</div>
 
           <input id="ibmiReconHost" placeholder="host or IP" style="width:100%;box-sizing:border-box;background:#0d0d0d;border:1px solid #222;color:#aaa;font-family:'IBM Plex Mono',monospace;font-size:10px;padding:4px 6px;border-radius:2px;margin-bottom:6px">
           <input id="ibmiReconPort" placeholder="449" value="449" title="Server mapper port" style="width:100%;box-sizing:border-box;background:#0d0d0d;border:1px solid #222;color:#aaa;font-family:'IBM Plex Mono',monospace;font-size:10px;padding:4px 6px;border-radius:2px;margin-bottom:6px">
+          <label style="display:block;font-size:10px;color:var(--text-muted);margin-bottom:6px"><input id="ibmiReconBanner" type="checkbox"> also read the 5250 sign-on screen (23 and 992). Opens a telnet session for a moment, no user ID or device name is sent</label>
 
           <button id="ibmiReconBtn" class="sec-inject-btn" onclick="startIbmiRecon()" style="background:#1a2a1a">▶ READ HOST SERVERS</button>
           <div id="ibmiReconStatus" style="font-size:10px;color:var(--text-muted);margin-top:4px;min-height:14px"></div>

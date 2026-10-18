@@ -3175,10 +3175,11 @@ Security panel → IBM i HOST SERVER RECON. It is a network check against a host
 | Server mapper, 14 lookups | the service name in ASCII (`as-central`, `as-central-s`, and so on), one connection per name | the port of each host server, plain and TLS |
 | Sign-on server, plain | one exchange-attributes request: a header and three client fields, no user and no password | OS release, password level, the answering job |
 | Sign-on server, TLS | the same request over TLS | the same facts, plus the TLS version and certificate state |
+| Sign-on screen (optional, tick the box) | a 5250 telnet session on 23 and on 992, negotiation only, then hang up | the system name, subsystem and the device the server assigned, and whether the sign-on is served in clear text |
 
-It never connects to any host server except the sign-on server. The remote command server (`as-rmtcmd`) and the rest are only named, with the port the mapper gave. The sign-on server's seed in the reply is read and dropped.
+It never connects to any host server except the sign-on server. The optional sign-on screen read also talks to telnet (23 and 992), and it is off unless you tick the box: it opens a real 5250 session, so the server allocates a virtual device (`QPADEVxxxx`) for a moment and frees it when the probe hangs up. No `DEVNAME` is asked for and no `USER` is sent, so nothing is created and nothing is typed. A test captures every byte the client sends and asserts none of `USER`, `DEVNAME`, `IBMRSEED`, `IBMSUBSPW` or `PASS` is among them. The remote command server (`as-rmtcmd`) and the rest are only named, with the port the mapper gave. The sign-on server's seed in the reply is read and dropped.
 
-The same two checks run from the command line as the `mainframe-nse` scripts `ibmi-svrmap-info` and `ibmi-signon-info`, with a third script, `ibmi-hostservers`, for plain versus TLS port states from a normal nmap scan. The byte layouts, and which of them have been seen on a live system, are in that project's `ibmi/docs/WIRE-NOTES.md`.
+The same checks run from the command line as the `mainframe-nse` scripts `ibmi-svrmap-info`, `ibmi-signon-info` and `tn5250-info`, with a fourth script, `ibmi-hostservers`, for plain versus TLS port states from a normal nmap scan. The byte layouts, and which of them have been seen on a live system, are in that project's `ibmi/docs/WIRE-NOTES.md`.
 
 ### Safety, and what it never does
 
@@ -3191,7 +3192,7 @@ The same two checks run from the command line as the `mainframe-nse` scripts `ib
 
 | Rating | Meaning |
 |---|---|
-| FINDING | a host server offered in plain text with no TLS twin, the sign-on server answering in clear text, the OS release revealed before any sign-on, `QPWDLVL` below 2, the remote command server registered (reachability is not tested), TLS 1.0 or 1.1, an expired or too-small RSA certificate |
+| FINDING | a host server offered in plain text with no TLS twin, the sign-on server answering in clear text, the sign-on screen served over plain telnet, the OS release revealed before any sign-on, `QPWDLVL` below 2, the remote command server registered (reachability is not tested), TLS 1.0 or 1.1, an expired or too-small RSA certificate |
 | INFO | everything that is a fact rather than a problem: the mapper answering, ports off their defaults, a self-signed certificate, `QPWDLVL` 2 or higher, and any listener that gave no usable answer |
 
 The verdict is FINDING if any row is FINDING or CRITICAL, INCONCLUSIVE if nothing answered, and SECURE only when nothing was found. A silent mapper is INCONCLUSIVE, never a pass.
@@ -3202,7 +3203,7 @@ Start the mock host servers with `node mock-lpar/mock-as400-hostsvr.js`. The map
 
 ### Where the mock stops
 
-The mock agrees with bytes captured from a live IBM i 7.5: the mapper reply (`2B` plus a 4 byte port) and the sign-on reply (`F003`, return code, and code points `1101`, `1102`, `1103`, `1119`, `111F`). It is still one release. Other releases may send other code points, and password levels above 3 print as a bare number until their meaning is checked. The remote command server being registered says it exists, not that it is reachable: check that from the network.
+The mock agrees with bytes captured from a live IBM i 7.5: the mapper reply (`2B` plus a 4 byte port) and the sign-on reply (`F003`, return code, and code points `1101`, `1102`, `1103`, `1119`, `111F`). The sign-on screen read was checked by replaying a record captured from the same live host through this tool's own 5250 parser. It is still one release, and one site's customized sign-on screen (it renames the stock labels, which the parser allows for). Other releases may send other code points, and password levels above 3 print as a bare number until their meaning is checked. The remote command server being registered says it exists, not that it is reachable: check that from the network.
 
 ---
 

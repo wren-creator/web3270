@@ -6,7 +6,7 @@ import path from 'node:path';
 import net from 'net';
 import { execFileSync } from 'node:child_process';
 import hostsvr from '../mock-lpar/mock-as400-hostsvr.js';
-import { reconIbmi, parseSignonReply, buildSignonRequest, SERVERS } from './ibmi-recon.js';
+import { reconIbmi, parseSignonReply, parseSignonLines, buildSignonRequest, lookupService, signonExchange, SERVERS } from './ibmi-recon.js';
 
 function selfSignedCert() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ibmirecon-'));
@@ -146,4 +146,125 @@ test('the request carries no user or password: header, three LLCPs, nothing else
   const cps = [];
   for (let pos = 20; pos < q.length; pos += q.readUInt32BE(pos)) cps.push(q.readUInt16BE(pos + 4));
   assert.deepEqual(cps, [0x1101, 0x1102, 0x1103]);
+});
+
+// ── Captured bytes from a live IBM i 7.5 ──────────────────────────────────
+// The same fixture is in mainframe-nse (ibmi/test/fixtures/pub400-hostserver.json),
+// where the Lua scripts are checked against it. If a layout is wrong, it is
+// wrong against these bytes in both places.
+const FIXTURE = JSON.parse(fs.readFileSync(new URL('./fixtures/ibmi-pub400-hostserver.json', import.meta.url), 'utf8'));
+
+test('fixture: every mapper reply from the live server decodes to the documented port', async () => {
+  const replies = Object.fromEntries(Object.entries(FIXTURE.mapper).map(([k, v]) => [k, Buffer.from(v, 'hex')]));
+  const srv = await listen(net.createServer(sock => {
+    sock.once('data', d => sock.end(replies[d.toString('ascii').trim()] || Buffer.from([0x2D])));
+  }));
+  try {
+    const port = srv.address().port;
+    for (const s of SERVERS) {
+      const [plain, secure] = FIXTURE.expected.servers[s.label];
+      const p = await lookupService({ host: '127.0.0.1', port, name: s.plain, timeoutMs: 2000 });
+      const t = await lookupService({ host: '127.0.0.1', port, name: s.secure, timeoutMs: 2000 });
+      assert.deepEqual([p.port, t.port], [plain, secure], s.label);
+    }
+    const unknown = await lookupService({ host: '127.0.0.1', port, name: 'as-nothing', timeoutMs: 2000 });
+    assert.equal(unknown.state, 'unknown');
+  } finally { await closed(srv); }
+});
+
+test('fixture: the live sign-on reply gives the release, level, password level and job', async () => {
+  const reply = Buffer.from(FIXTURE.signon_reply, 'hex');
+  const srv = await listen(net.createServer(sock => {
+    sock.once('data', d => {
+      // Only a real exchange-attributes request is answered, like the live server.
+      if (d.length >= 20 && d.readUInt16BE(6) === 0xE009 && d.readUInt16BE(18) === 0x7003) sock.end(reply);
+      else sock.destroy();
+    });
+  }));
+  try {
+    const r = await signonExchange({ host: '127.0.0.1', port: srv.address().port, timeoutMs: 2000 });
+    assert.equal(r.ok, true);
+    const e = FIXTURE.expected;
+    assert.equal(r.reply.version, e.osVersion);
+    assert.equal(r.reply.level, e.datastreamLevel);
+    assert.equal(r.reply.passwordLevel, e.passwordLevel);
+    assert.equal(r.reply.serverJob, e.serverJob);
+    assert.equal(r.reply.returnCode, e.returnCode);
+    assert.equal(r.reply.replyId, 0xF003);
+  } finally { await closed(srv); }
+});
+
+// ── The 5250 sign-on screen, replayed from captured records ───────────────
+const IAC = 0xFF, DO = 0xFD, WILL = 0xFB, EOR_CMD = 0xEF;
+const hexRecord = name => Buffer.from(fs.readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8').trim(), 'hex');
+
+// A fake IBM i telnet server: offers the options PUB400 offered, then sends
+// one captured record. Keeps every byte the client sends, so a test can prove
+// nothing sensitive went back.
+async function fakeTelnet(record) {
+  const fromClient = [];
+  const srv = await listen(net.createServer(sock => {
+    sock.on('data', d => fromClient.push(d));
+    sock.on('error', () => {});
+    sock.write(Buffer.from([IAC, DO, 39, IAC, DO, 24, IAC, DO, 25, IAC, WILL, 25, IAC, DO, 0, IAC, WILL, 0]));
+    setTimeout(() => {
+      const escaped = Buffer.from(record.toString('binary').replace(/\xff/g, '\xff\xff'), 'binary');
+      sock.write(Buffer.concat([escaped, Buffer.from([IAC, EOR_CMD])]));
+    }, 150);
+  }));
+  return { port: srv.address().port, fromClient, stop: () => closed(srv) };
+}
+
+test('banner: a captured live sign-on record reads through web3270\'s own 5250 parser', async () => {
+  const t = await fakeTelnet(hexRecord('ibmi-pub400-23-signon-record.hex'));
+  try {
+    const r = await reconIbmi({ host: '127.0.0.1', mapperPort: 1, timeoutMs: 3000, banner: true, telnetPort: t.port, telnetTlsPort: 1 });
+    const b = r.facts.banner.plain;
+    assert.equal(b.system, 'PUB400');
+    assert.equal(b.subsystem, 'QINTER');
+    assert.equal(b.display, 'QPADEV0067');
+    assert.equal(b.isSignon, true);
+    assert.match(texts(r), /names system PUB400, subsystem QINTER, device QPADEV0067/);
+    assert.match(texts(r), /mentions IBM i 7\.5.*hint and not a measurement/);
+    assert.match(texts(r), /FINDING The sign-on screen is served over plain telnet/);
+  } finally { await t.stop(); }
+});
+
+test('banner: a stock-layout sign-on reads the same way', async () => {
+  const t = await fakeTelnet(hexRecord('ibmi-web3270-mock-as400-signon-record.hex'));
+  try {
+    const r = await reconIbmi({ host: '127.0.0.1', mapperPort: 1, timeoutMs: 3000, banner: true, telnetPort: t.port, telnetTlsPort: 1 });
+    const b = r.facts.banner.plain;
+    assert.equal(b.system, 'AS400MOCK');
+    assert.equal(b.subsystem, 'QINTER');
+    assert.equal(b.display, 'QPADEV0001');
+    assert.equal(b.isSignon, true);
+  } finally { await t.stop(); }
+});
+
+test('banner: no user, no device name and no password seed ever go back', async () => {
+  const t = await fakeTelnet(hexRecord('ibmi-pub400-23-signon-record.hex'));
+  try {
+    await reconIbmi({ host: '127.0.0.1', mapperPort: 1, timeoutMs: 3000, banner: true, telnetPort: t.port, telnetTlsPort: 1 });
+    const sent = Buffer.concat(t.fromClient).toString('latin1');
+    for (const word of ['USER', 'DEVNAME', 'IBMRSEED', 'IBMSUBSPW', 'PASS']) assert.ok(!sent.includes(word), word);
+  } finally { await t.stop(); }
+});
+
+test('banner is off unless asked for, so no telnet session opens by default', async () => {
+  let opened = 0;
+  const srv = await listen(net.createServer(s => { opened++; s.destroy(); }));
+  try {
+    const r = await reconIbmi({ host: '127.0.0.1', mapperPort: 1, timeoutMs: 500 });
+    assert.equal(opened, 0);
+    assert.equal(r.facts.banner, undefined);
+  } finally { await closed(srv); }
+});
+
+test('parseSignonLines: stock labels and renamed labels', () => {
+  const stock = parseSignonLines(['                    Sign On', '  System  . . . . . :   MYBOX', '  Subsystem . . . . :   QINTER', '  Display . . . . . :   QPADEV0003', '  User  . . . . . . .', '  Password  . . . . .']);
+  assert.deepEqual([stock.system, stock.subsystem, stock.display, stock.isSignon], ['MYBOX', 'QINTER', 'QPADEV0003', true]);
+  const renamed = parseSignonLines(['Server name . . . :   PUB400', 'Display name. . . :   QPADEV0067', 'Your user name:', 'Password (max. 128):']);
+  assert.deepEqual([renamed.system, renamed.display, renamed.isSignon], ['PUB400', 'QPADEV0067', true]);
+  assert.equal(parseSignonLines(['hello world']).isSignon, false);
 });

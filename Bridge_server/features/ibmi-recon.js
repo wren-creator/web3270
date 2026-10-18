@@ -12,6 +12,12 @@
 // server. It does not connect to the remote command server (as-rmtcmd) or
 // any other host server, it only reports the port the mapper names for them.
 //
+// With banner:true it also reads the 5250 sign-on screen on 23 and 992 through
+// web3270's own Tn5250Session. That one opens a real telnet session, so a
+// virtual device (QPADEVxxxx) is allocated for a moment and released when the
+// probe hangs up. No DEVNAME is asked for and no USER is sent, so nothing is
+// created and nothing is typed. It is off unless asked for.
+//
 // The wire formats were confirmed on a live IBM i 7.5 (the mainframe-nse
 // project's NSE scripts, same logic in Lua, see its docs/WIRE-NOTES.md). The
 // two stay in step through that file and its captured fixtures.
@@ -20,6 +26,7 @@ import tls from 'tls';
 import crypto from 'crypto';
 import { toAscii } from '../tn3270/ebcdic.js';
 import { certFindings } from './http-admin-audit.js';
+import Tn5250Session from '../tn5250/session.js';
 
 const TIMEOUT_MS = 6000;
 
@@ -170,10 +177,73 @@ export async function signonExchange({ host, port, useTls = false, timeoutMs }) 
   return { ok: true, reply: parsed, tlsInfo: r.tlsInfo };
 }
 
+// Read the sign-on screen: connect, let the session negotiate, take the first
+// screen that has text on it, hang up. Resolves { ok, lines } or { ok:false,
+// message }; never rejects.
+export function readBanner({ host, port, useTls = false, timeoutMs = TIMEOUT_MS }) {
+  return new Promise(resolve => {
+    let done = false;
+    let timer;
+    let session;
+    const finish = r => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      try { session.disconnect('probe done'); } catch { /* already closed */ }
+      resolve(r);
+    };
+    try {
+      session = new Tn5250Session({
+        wsId: 'ibmi-recon', host, port, useTls,
+        // Whatever certificate is presented is judged elsewhere, not trusted here.
+        tlsOptions: useTls ? { rejectUnauthorized: false, servername: net.isIP(host) ? undefined : host } : {},
+      });
+    } catch (err) {
+      return resolve({ ok: false, message: err.message });
+    }
+    timer = setTimeout(() => finish({ ok: false, message: 'timed out' }), timeoutMs);
+    session.on('screen', scr => {
+      const lines = scr.rows.map(row => row.map(c => c.char || ' ').join('').replace(/\s+$/, ''));
+      if (lines.some(l => /[A-Za-z]/.test(l))) finish({ ok: true, lines });
+    });
+    session.on('error', err => finish({ ok: false, message: err.code || err.message }));
+    session.on('disconnected', () => finish({ ok: false, message: 'closed before a screen arrived' }));
+    session.connect();
+  });
+}
+
+// What a sign-on screen gives away. Sites rename the stock labels (a live 7.5
+// host says "Server name" and "Display name"), so each allows the variants.
+export function parseSignonLines(lines) {
+  const label = (...names) => {
+    for (const n of names) {
+      for (const l of lines) {
+        const m = new RegExp(`${n}[\\s.]*:\\s*([\\w#@$-]+)`).exec(l);
+        if (m) return m[1];
+      }
+    }
+    return null;
+  };
+  const text = lines.join('\n').toLowerCase();
+  const hasUser = /user\s+\.|user name|user\s*:|user id/.test(text);
+  const hasPass = text.includes('password');
+  const rel = /IBM i\s+V?(\d+[.R]\d+)/.exec(lines.join('\n'));
+  return {
+    system: label('System', 'Server name', 'Server'),
+    subsystem: label('Subsystem'),
+    display: label('Display name', 'Display'),
+    isSignon: hasUser && hasPass,
+    releaseHint: rel ? rel[1] : null,
+  };
+}
+
 // Returns { verdict, findings: [{ severity, text }], facts }.
 // severity: CRITICAL | FINDING | INFO. verdict: FINDING when any finding is
 // FINDING or CRITICAL, INCONCLUSIVE when nothing answered, SECURE otherwise.
-export async function reconIbmi({ host, mapperPort = 449, timeoutMs, now = Date.now() }) {
+export async function reconIbmi({
+  host, mapperPort = 449, timeoutMs, now = Date.now(),
+  banner = false, telnetPort = 23, telnetTlsPort = 992,
+}) {
   const findings = [];
   const add = (severity, text) => findings.push({ severity, text });
   const facts = { host, mapperPort, servers: {} };
@@ -253,7 +323,27 @@ export async function reconIbmi({ host, mapperPort = 449, timeoutMs, now = Date.
   }
   facts.signonAnswered = !!got;
 
-  if (!mapperAnswered && !got) {
+  // 3. Optional: the 5250 sign-on screen itself.
+  let bannerAnswered = false;
+  if (banner) {
+    facts.banner = {};
+    for (const t of [{ key: 'plain', port: telnetPort, tls: false }, { key: 'tls', port: telnetTlsPort, tls: true }]) {
+      const r = await readBanner({ host, port: t.port, useTls: t.tls, timeoutMs });
+      if (!r.ok) {
+        add('INFO', `No sign-on screen on ${t.port} (${t.tls ? 'TLS' : 'clear text'}): ${r.message}.`);
+        continue;
+      }
+      bannerAnswered = true;
+      const b = parseSignonLines(r.lines);
+      facts.banner[t.key] = { port: t.port, system: b.system, subsystem: b.subsystem, display: b.display, isSignon: b.isSignon };
+      const named = [b.system && `system ${b.system}`, b.subsystem && `subsystem ${b.subsystem}`, b.display && `device ${b.display}`].filter(Boolean).join(', ');
+      add('INFO', `Sign-on screen on ${t.port}${named ? ` names ${named}` : ''}.`);
+      if (b.releaseHint) add('INFO', `The sign-on greeting mentions IBM i ${b.releaseHint}. That is the site's own text, a hint and not a measurement.`);
+      if (b.isSignon && !t.tls) add('FINDING', `The sign-on screen is served over plain telnet on ${t.port}, so a user ID and password typed there would cross the network unencrypted.`);
+    }
+  }
+
+  if (!mapperAnswered && !got && !bannerAnswered) {
     return { verdict: 'INCONCLUSIVE', findings, facts };
   }
   const verdict = findings.some(f => f.severity === 'FINDING' || f.severity === 'CRITICAL') ? 'FINDING' : 'SECURE';

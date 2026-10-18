@@ -30,20 +30,21 @@ function _table(rows, header) {
 async function startIbmiRecon() {
   const host = document.getElementById('ibmiReconHost')?.value.trim();
   const mapperPort = parseInt(document.getElementById('ibmiReconPort')?.value, 10) || 449;
+  const banner = !!document.getElementById('ibmiReconBanner')?.checked;
   const out = document.getElementById('ibmiReconOut');
   const btn = document.getElementById('ibmiReconBtn');
 
   if (!host) { _reconStatus('Host is required.'); return; }
 
   if (btn) btn.disabled = true;
-  _reconStatus(`Reading ${host} (server mapper ${mapperPort})…`);
+  _reconStatus(`Reading ${host} (server mapper ${mapperPort}${banner ? ', with sign-on screen' : ''})…`);
   if (out) out.innerHTML = '';
 
   try {
     const res = await fetch('/api/ibmi-recon', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ host, mapperPort }),
+      body: JSON.stringify({ host, mapperPort, banner }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
