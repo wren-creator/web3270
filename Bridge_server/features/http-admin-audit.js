@@ -75,7 +75,11 @@ export function certFindings(cert, now) {
   const selfSigned = cert.issuer && cert.subject &&
     JSON.stringify(cert.issuer) === JSON.stringify(cert.subject);
   if (selfSigned) out.push(['INFO', 'Certificate is self-signed, so clients cannot verify the console they are signing in to.']);
-  if (cert.bits && cert.bits < 2048) out.push(['FINDING', `Certificate key is ${cert.bits} bits, below 2048.`]);
+  // 2048 is the floor for RSA. An elliptic-curve key (Node reports a curve
+  // name for those) is strong at 256 bits, so judging it by the RSA rule is a
+  // false positive on every ECDSA certificate.
+  const isEc = !!(cert.asn1Curve || cert.nistCurve);
+  if (cert.bits && cert.bits < 2048 && !isEc) out.push(['FINDING', `Certificate key is ${cert.bits} bits, below 2048.`]);
   return out;
 }
 
