@@ -330,13 +330,16 @@ class Tn5250Session extends EventEmitter {
   getModifiedFields() {
     const fields = [];
     let current = null;
+    let left = 0; // cells the host gave this field, per its SF length
     for (let a = 0; a < this.buffer.length; a++) {
       const cell = this.buffer[a];
       if (!cell) continue;
       if (cell.fa !== undefined) {
         if (current && current.mdt && current.data.length > 0) fields.push(current);
         current = { addr: a + 1, data: '', mdt: !!(cell.ffw & FFW_MODIFIED), protected: !cell.hasFfw || !!(cell.ffw & FFW_BYPASS) };
-      } else if (current && !current.protected) {
+        left = cell.flen || Infinity;
+      } else if (current && !current.protected && left > 0) {
+        left--;
         if (cell.modified) current.mdt = true;
         if (cell.char) current.data += Ebcdic.toAscii(Buffer.from([cell.char]), this.codepage);
       }
@@ -540,6 +543,10 @@ class Tn5250Session extends EventEmitter {
                  cmd === CMD_READ_MDT_FIELDS_ALT || cmd === CMD_READ_IMMEDIATE) {
         this.readOpcode = cmd;
         // Host is entering read-wait mode — wait for the user's AID key.
+        // No IC order means the terminal homes the cursor to the first
+        // input field (PUB400 sends none on its sign-on screen). Otherwise
+        // typing lands in the protected welcome text and nothing is sent.
+        if (this._pendingInsert === null) this._pendingInsert = this._homeCursorAddr();
         this._applyPendingInsert();
         this._emitScreen();
         return;
@@ -563,6 +570,22 @@ class Tn5250Session extends EventEmitter {
       this.cursorAddr = this._pendingInsert;
       this._pendingInsert = null;
     }
+  }
+
+  // Where the cursor should sit when the host sent no IC: null (leave it) if
+  // it is already inside an input field or the screen has none, else the
+  // first data cell of the first input field.
+  _homeCursorAddr() {
+    const fields = this._extractFields();
+    let first = null;
+    for (let k = 0; k < fields.length; k++) {
+      const f = fields[k];
+      if (f.protected) continue;
+      const end = k + 1 < fields.length ? fields[k + 1].startAddr : this.buffer.length;
+      if (this.cursorAddr > f.startAddr && this.cursorAddr < end) return null;
+      if (first === null) first = Math.min(f.startAddr + 1, this.buffer.length - 1);
+    }
+    return first;
   }
 
   _processWriteToDisplay(bytes, i) {
@@ -645,6 +668,19 @@ class Tn5250Session extends EventEmitter {
         return bytes.length;
       }
 
+      // A bare attribute byte (0x20-0x3F, no SF) is a display attribute, not
+      // text. PUB400's sign-on screen writes SF for the password field and
+      // then re-writes its attribute byte at the same cell. Overwriting the
+      // cell as a literal character erased the field definition, so the
+      // password field vanished and the user field swallowed the rest of
+      // the screen. Keep the field, only refresh its attribute.
+      if (isAttrByte(b) && this.buffer[this._writeAddr] && this.buffer[this._writeAddr].hasFfw) {
+        this.buffer[this._writeAddr].fa = b;
+        this._writeAddr = Math.min(this._writeAddr + 1, this.rows * this.cols - 1);
+        i++;
+        continue;
+      }
+
       // Not a recognized order byte — literal EBCDIC display data.
       if (this.buffer[this._writeAddr]) {
         this.buffer[this._writeAddr] = { char: b, fa: undefined, modified: false };
@@ -692,13 +728,16 @@ class Tn5250Session extends EventEmitter {
     // hasFfw distinguishes "no FFW at all" (output-only, always protected)
     // from "FFW present with no bits set" (a genuine, if unusual, input
     // field) — ffw alone can't tell those apart since both are 0x0000.
-    this.buffer[this._writeAddr] = { char: 0x00, fa: attr, ffw, hasFfw, modified: false };
+    // flen is kept so a field ends where the host said it does. Without it a
+    // field ran to the next attribute cell, and on PUB400's sign-on screen
+    // (no attribute between the user field and the next row's label) the
+    // user ID was sent with "Password (max. 128):" glued on the end.
+    this.buffer[this._writeAddr] = { char: 0x00, fa: attr, ffw, hasFfw, flen: hasFfw ? length : undefined, modified: false };
     this._writeAddr = Math.min(this._writeAddr + 1, this.rows * this.cols - 1);
 
-    // `length` is the field's data length; the actual field content
-    // arrives as subsequent literal-data bytes in the same WTD command
-    // (or via a later SBA + data), so we don't pre-fill it here.
-    void length;
+    // The field's content arrives as subsequent literal-data bytes in the
+    // same WTD command (or via a later SBA + data), so nothing is
+    // pre-filled here.
     return i;
   }
 
@@ -744,6 +783,7 @@ class Tn5250Session extends EventEmitter {
   _extractFields() {
     const fields = [];
     let current = null;
+    let left = 0;
     for (let a = 0; a < this.buffer.length; a++) {
       const cell = this.buffer[a];
       if (!cell) continue;
@@ -757,8 +797,11 @@ class Tn5250Session extends EventEmitter {
           modified: !!(cell.ffw & FFW_MODIFIED),
           nondisplay: cell.fa === ATTR.NONDISPLAY,
           content: '',
+          length: cell.flen,
         };
-      } else if (current) {
+        left = cell.flen || Infinity;
+      } else if (current && left > 0) {
+        left--;
         if (cell.char) current.content += Ebcdic.toAscii(Buffer.from([cell.char]), this.codepage);
       }
     }
