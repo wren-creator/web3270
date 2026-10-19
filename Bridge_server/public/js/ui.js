@@ -3,6 +3,7 @@ import { renderLiveScreen } from './rendering.js';
 import { fitScreen, measureCellWidth } from './geometry.js';
 import { sendKey, sendType, AID_MAP, cmdHistoryRecall } from './keyboard.js';
 import { cycleSession } from './tabs.js';
+import { collectModifiedFields as collectScreenFields } from './modfields.js';
 
 export function switchPanelTab(el, name) {
   document.querySelectorAll('.panel-tab').forEach(t => t.classList.remove('active'));
@@ -37,29 +38,7 @@ const AIDS_WITH_FIELDS = new Set([
   'PF13','PF14','PF15','PF16','PF17','PF18','PF19','PF20','PF21','PF22','PF23','PF24',
 ]);
 
-function collectModifiedFields() {
-  if (!state.liveScreen || !state.liveScreen.rows || !state.liveScreen.fields) return [];
-  const cols = state.liveScreen.cols || 80;
-  const rows = state.liveScreen.rows;
-  const screenFields = state.liveScreen.fields;
-  const result = [];
-  for (let fi = 0; fi < screenFields.length; fi++) {
-    const f = screenFields[fi]; if (f.protected) continue;
-    const dataStart = f.startAddr + 1;
-    const nextFa = screenFields[fi + 1] ? screenFields[fi + 1].startAddr : (rows.length * cols);
-    const dataEnd = nextFa - 1;
-    let data = ''; let hasModified = false;
-    for (let addr = dataStart; addr <= dataEnd; addr++) {
-      const r = Math.floor(addr / cols); const c = addr % cols;
-      const cell = rows[r] && rows[r][c];
-      if (!cell) { data += ' '; continue; }
-      const ch = (cell.char && cell.char !== '\x00') ? cell.char : ' ';
-      data += ch; if (cell.modified) hasModified = true;
-    }
-    if (hasModified) result.push({ addr: dataStart, data: data.trimEnd() });
-  }
-  return result;
-}
+const collectModifiedFields = () => collectScreenFields(state.liveScreen);
 
 document.addEventListener('keydown', e => {
   if (e.repeat) return;

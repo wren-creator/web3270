@@ -330,13 +330,16 @@ class Tn5250Session extends EventEmitter {
   getModifiedFields() {
     const fields = [];
     let current = null;
+    let left = 0; // cells the host gave this field, per its SF length
     for (let a = 0; a < this.buffer.length; a++) {
       const cell = this.buffer[a];
       if (!cell) continue;
       if (cell.fa !== undefined) {
         if (current && current.mdt && current.data.length > 0) fields.push(current);
         current = { addr: a + 1, data: '', mdt: !!(cell.ffw & FFW_MODIFIED), protected: !cell.hasFfw || !!(cell.ffw & FFW_BYPASS) };
-      } else if (current && !current.protected) {
+        left = cell.flen || Infinity;
+      } else if (current && !current.protected && left > 0) {
+        left--;
         if (cell.modified) current.mdt = true;
         if (cell.char) current.data += Ebcdic.toAscii(Buffer.from([cell.char]), this.codepage);
       }
@@ -498,13 +501,21 @@ class Tn5250Session extends EventEmitter {
       // (IBMRSEED — password-encryption challenge — is intentionally not
       // answered here; we don't support encrypted signon in this pass.)
       const parts = [IAC, SB, OPT_NEWENV, ENV_IS];
-      const pushVar = (name, value) => {
-        parts.push(ENV_VAR, ...Buffer.from(name));
+      // RFC 4777: the IBM variables (DEVNAME, CODEPAGE, CHARSET, KBDTYPE) are
+      // USERVARs; only USER is a well-known VAR. s3270's trace, which signs
+      // in to PUB400 fine, sends them that way.
+      const pushVar = (type, name, value) => {
+        parts.push(type, ...Buffer.from(name));
         if (value != null) parts.push(ENV_VALUE, ...Buffer.from(String(value)));
       };
-      if (this.deviceName) pushVar('DEVNAME', this.deviceName);
-      pushVar('CODEPAGE', String(this.codepage).padStart(3, '0'));
-      if (this.user) parts.push(ENV_USERVAR, ...Buffer.from('USER'), ENV_VALUE, ...Buffer.from(this.user));
+      if (this.deviceName) pushVar(ENV_USERVAR, 'DEVNAME', this.deviceName);
+      pushVar(ENV_USERVAR, 'CODEPAGE', String(this.codepage).padStart(3, '0'));
+      // Without CHARSET the host guesses the character set, and a password
+      // with punctuation (the "!" at 0x5A) can be read as a different
+      // character. 697 is the Latin-1 set that goes with the US/Intl pages.
+      pushVar(ENV_USERVAR, 'CHARSET', '697');
+      pushVar(ENV_USERVAR, 'KBDTYPE', 'USB');
+      if (this.user) pushVar(ENV_VAR, 'USER', this.user);
       parts.push(IAC, SE);
       this._send(Buffer.from(parts));
       logger.info(`[ws:${this.wsId}] Sent NEW-ENVIRON IS (devname=${this.deviceName || 'any'})`);
@@ -540,12 +551,18 @@ class Tn5250Session extends EventEmitter {
                  cmd === CMD_READ_MDT_FIELDS_ALT || cmd === CMD_READ_IMMEDIATE) {
         this.readOpcode = cmd;
         // Host is entering read-wait mode — wait for the user's AID key.
+        // No IC order means the terminal homes the cursor to the first
+        // input field (PUB400 sends none on its sign-on screen). Otherwise
+        // typing lands in the protected welcome text and nothing is sent.
+        if (this._pendingInsert === null) this._pendingInsert = this._homeCursorAddr();
         this._applyPendingInsert();
         this._emitScreen();
         return;
       } else if (cmd === CMD_WRITE_STRUCTURED_FIELD) {
-        logger.warn(`[ws:${this.wsId}] 5250 Write Structured Field received — not yet implemented, skipping record`);
-        return;
+        i = this._processWriteStructuredField(bytes, i);
+        // A record that was only structured fields (the Query) changes
+        // nothing on screen, so don't redraw it.
+        if (i >= bytes.length) return;
       } else {
         logger.warn(`[ws:${this.wsId}] 5250 unhandled command 0x${cmd?.toString(16)} — skipping record`);
         return;
@@ -563,6 +580,72 @@ class Tn5250Session extends EventEmitter {
       this.cursorAddr = this._pendingInsert;
       this._pendingInsert = null;
     }
+  }
+
+  // Write Structured Field: a run of structured fields, each
+  // [len hi, len lo, class, type, flags, ...]. The only one a plain sign-on
+  // needs is class 0xD9 type 0x70, the Query: right after a successful
+  // sign-on an IBM i asks the terminal what it is, and waits for the answer
+  // before it sends the first menu. Everything else (GUI windows, scrollbars)
+  // is skipped by length and logged.
+  _processWriteStructuredField(bytes, i) {
+    while (i + 4 <= bytes.length && bytes[i] !== ESC) {
+      const len = (bytes[i] << 8) | bytes[i + 1];
+      const cls = bytes[i + 2];
+      const type = bytes[i + 3];
+      if (cls === 0xD9 && type === 0x70) {
+        logger.info(`[ws:${this.wsId}] 5250 Query received, sending Query Reply`);
+        this._sendQueryReply();
+      } else {
+        logger.warn(`[ws:${this.wsId}] 5250 structured field 0x${cls.toString(16)}/0x${type.toString(16)} not implemented — skipped`);
+      }
+      if (len < 4) break; // malformed, don't loop on it
+      i += len;
+    }
+    return i;
+  }
+
+  // Query Reply (5494 Functions Reference): the cursor address and an
+  // inbound-WSF AID, then one 58-byte structured field describing the
+  // terminal. Layout matches what lib5250 and tn5250j send.
+  _sendQueryReply() {
+    const ebc = s => Ebcdic.fromAscii(s, 37);
+    const m = String(this.model || '').match(/^(\d{4})-(\w+)/);
+    const devType = m ? m[1] : '3179';
+    const modelNo = m ? m[2].replace(/\D/g, '').padStart(3, '0').slice(-3) : '002';
+    const sf = Buffer.concat([
+      Buffer.from([0x00, 0x3A, 0xD9, 0x70, 0x80]),        // length, class, type Query, flags (reply)
+      Buffer.from([0x06, 0x00]),                           // controller hardware class
+      Buffer.from([0x01, 0x01, 0x00]),                     // code level: version 1 release 1 mod 0
+      Buffer.alloc(16),                                    // reserved
+      Buffer.from([0x01]),                                 // device type: display
+      ebc(devType),                                        // device type number, e.g. 3179
+      ebc(modelNo),                                        // device model number, e.g. 002
+      Buffer.from([0x02, 0x00, 0x00]),                     // keyboard id (standard), extended id, reserved
+      Buffer.alloc(4),                                     // serial number
+      Buffer.from([0x00, 0x40]),                           // max input fields
+      Buffer.alloc(2),                                     // reserved
+      Buffer.from([0x23, 0x31, 0x00, 0x00]),               // controller/display capability
+      Buffer.alloc(9),                                     // reserved, pads to 58
+    ]);
+    const data = Buffer.concat([Buffer.from([0x00, 0x00, 0x88]), sf]); // cursor row/col 0, AID 0x88
+    this._sendDataRecord(data);
+  }
+
+  // Where the cursor should sit when the host sent no IC: null (leave it) if
+  // it is already inside an input field or the screen has none, else the
+  // first data cell of the first input field.
+  _homeCursorAddr() {
+    const fields = this._extractFields();
+    let first = null;
+    for (let k = 0; k < fields.length; k++) {
+      const f = fields[k];
+      if (f.protected) continue;
+      const end = k + 1 < fields.length ? fields[k + 1].startAddr : this.buffer.length;
+      if (this.cursorAddr > f.startAddr && this.cursorAddr < end) return null;
+      if (first === null) first = Math.min(f.startAddr + 1, this.buffer.length - 1);
+    }
+    return first;
   }
 
   _processWriteToDisplay(bytes, i) {
@@ -645,6 +728,19 @@ class Tn5250Session extends EventEmitter {
         return bytes.length;
       }
 
+      // A bare attribute byte (0x20-0x3F, no SF) is a display attribute, not
+      // text. PUB400's sign-on screen writes SF for the password field and
+      // then re-writes its attribute byte at the same cell. Overwriting the
+      // cell as a literal character erased the field definition, so the
+      // password field vanished and the user field swallowed the rest of
+      // the screen. Keep the field, only refresh its attribute.
+      if (isAttrByte(b) && this.buffer[this._writeAddr] && this.buffer[this._writeAddr].hasFfw) {
+        this.buffer[this._writeAddr].fa = b;
+        this._writeAddr = Math.min(this._writeAddr + 1, this.rows * this.cols - 1);
+        i++;
+        continue;
+      }
+
       // Not a recognized order byte — literal EBCDIC display data.
       if (this.buffer[this._writeAddr]) {
         this.buffer[this._writeAddr] = { char: b, fa: undefined, modified: false };
@@ -692,13 +788,16 @@ class Tn5250Session extends EventEmitter {
     // hasFfw distinguishes "no FFW at all" (output-only, always protected)
     // from "FFW present with no bits set" (a genuine, if unusual, input
     // field) — ffw alone can't tell those apart since both are 0x0000.
-    this.buffer[this._writeAddr] = { char: 0x00, fa: attr, ffw, hasFfw, modified: false };
+    // flen is kept so a field ends where the host said it does. Without it a
+    // field ran to the next attribute cell, and on PUB400's sign-on screen
+    // (no attribute between the user field and the next row's label) the
+    // user ID was sent with "Password (max. 128):" glued on the end.
+    this.buffer[this._writeAddr] = { char: 0x00, fa: attr, ffw, hasFfw, flen: hasFfw ? length : undefined, modified: false };
     this._writeAddr = Math.min(this._writeAddr + 1, this.rows * this.cols - 1);
 
-    // `length` is the field's data length; the actual field content
-    // arrives as subsequent literal-data bytes in the same WTD command
-    // (or via a later SBA + data), so we don't pre-fill it here.
-    void length;
+    // The field's content arrives as subsequent literal-data bytes in the
+    // same WTD command (or via a later SBA + data), so nothing is
+    // pre-filled here.
     return i;
   }
 
@@ -720,8 +819,29 @@ class Tn5250Session extends EventEmitter {
     });
   }
 
+  // Which data cells belong to a non-display (password) field. Only the
+  // attribute cell used to be flagged, so the cells you type into were not:
+  // the browser showed the password in clear and upper-cased it (it skips the
+  // upper-casing only for non-display cells), and a case-sensitive IBM i
+  // password then failed.
+  _nondisplayMask() {
+    const mask = new Uint8Array(this.buffer.length);
+    let left = 0;
+    for (let a = 0; a < this.buffer.length; a++) {
+      const cell = this.buffer[a];
+      if (cell && cell.fa !== undefined) {
+        left = (cell.hasFfw && cell.fa === ATTR.NONDISPLAY) ? (cell.flen || Infinity) : 0;
+      } else if (left > 0) {
+        mask[a] = 1;
+        left--;
+      }
+    }
+    return mask;
+  }
+
   _bufferToRows() {
     const rows = [];
+    const hidden = this._nondisplayMask();
     for (let r = 0; r < this.rows; r++) {
       const cells = [];
       for (let c = 0; c < this.cols; c++) {
@@ -731,7 +851,7 @@ class Tn5250Session extends EventEmitter {
           char: cell.char ? Ebcdic.toAscii(Buffer.from([cell.char]), this.codepage) : ' ',
           fa: cell.fa,
           modified: cell.modified,
-          nondisplay: cell.fa === ATTR.NONDISPLAY,
+          nondisplay: cell.fa === ATTR.NONDISPLAY || hidden[addr] === 1,
           color: 0x00,
           highlight: 0x00,
         });
@@ -744,6 +864,7 @@ class Tn5250Session extends EventEmitter {
   _extractFields() {
     const fields = [];
     let current = null;
+    let left = 0;
     for (let a = 0; a < this.buffer.length; a++) {
       const cell = this.buffer[a];
       if (!cell) continue;
@@ -757,8 +878,11 @@ class Tn5250Session extends EventEmitter {
           modified: !!(cell.ffw & FFW_MODIFIED),
           nondisplay: cell.fa === ATTR.NONDISPLAY,
           content: '',
+          length: cell.flen,
         };
-      } else if (current) {
+        left = cell.flen || Infinity;
+      } else if (current && left > 0) {
+        left--;
         if (cell.char) current.content += Ebcdic.toAscii(Buffer.from([cell.char]), this.codepage);
       }
     }

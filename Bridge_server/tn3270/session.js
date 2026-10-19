@@ -38,7 +38,14 @@ const NOP  = 0xF1;
 const OPT_BINARY        = 0x00;
 const OPT_EOR           = 0x19;
 const OPT_TTYPE         = 0x18;
+const OPT_NEWENV        = 0x27;
 const OPT_TN3270E       = 0x28;
+
+// NEW-ENVIRON sub-option bytes (RFC 1572)
+const ENV_IS            = 0x00;
+const ENV_SEND          = 0x01;
+const ENV_VALUE         = 0x01;
+const ENV_USERVAR       = 0x03;
 
 // TN3270E sub-option function codes
 const TN3E_ASSOCIATE    = 0x00;
@@ -718,6 +725,18 @@ class Tn3270Session extends EventEmitter {
       return;
     }
 
+    // 4. NEW-ENVIRON (RFC 1572 / 4777) — tells the host our code page and
+    // character set. Refusing it (what this did before) left PUB400 guessing
+    // the translation, and a password with punctuation then failed with
+    // CPF1120 even though the same bytes signed in fine from c3270.
+    if (opt === OPT_NEWENV) {
+      if (cmd === DO && !this._newEnvOffered) {
+        this._newEnvOffered = true;
+        this._send(Buffer.from([IAC, WILL, OPT_NEWENV]));
+      }
+      return;
+    }
+
     // Refuse anything else
     if (cmd === DO)   this._send(Buffer.from([IAC, WONT, opt]));
     if (cmd === WILL) this._send(Buffer.from([IAC, DONT, opt]));
@@ -748,6 +767,22 @@ class Tn3270Session extends EventEmitter {
   logger.debug(`[ws:${this.wsId}] TTYPE subneg raw bytes: ${data.toString('hex')}`);
   
   const opt = data[0];
+
+  // NEW-ENVIRON SEND: answer with the three IBM variables a real 3270 client
+  // sends (all USERVARs). Same values as c3270 for a US code page.
+  if (opt === OPT_NEWENV && data[1] === ENV_SEND) {
+    const parts = [IAC, SB, OPT_NEWENV, ENV_IS];
+    const pushVar = (name, value) => {
+      parts.push(ENV_USERVAR, ...Buffer.from(name), ENV_VALUE, ...Buffer.from(String(value)));
+    };
+    pushVar('CODEPAGE', String(this.codepage).padStart(3, '0'));
+    pushVar('CHARSET', '697');
+    pushVar('KBDTYPE', 'USB');
+    parts.push(IAC, SE);
+    this._send(Buffer.from(parts));
+    logger.info(`[ws:${this.wsId}] Sent NEW-ENVIRON IS (codepage=${String(this.codepage).padStart(3, '0')})`);
+    return;
+  }
 
   // Handle TN3270E (RFC 2355)
   if (opt === OPT_TN3270E) {
@@ -1478,18 +1513,28 @@ class Tn3270Session extends EventEmitter {
     this._send(Buffer.from(escaped));
   }
 
+  // Inbound addresses use 12-bit coded form (ADDR12) whenever the buffer fits
+  // in 4096 cells, which is every standard model, and 14-bit binary only above
+  // that. This is what x3270/c3270 send. We used to send 14-bit always, which
+  // real mainframes accept, but PUB400's IBM i gateway does not: it read no
+  // fields out of the record and answered CPF1296 "Sign-on information
+  // required" to a full user and password. The same session with 12-bit
+  // addresses got its fields read (checked live against a made-up user).
+  _encodeAddr(addr) {
+    if (this.buffer.length <= 4096) return [ADDR12[(addr >> 6) & 0x3F], ADDR12[addr & 0x3F]];
+    return [(addr >> 8) & 0x3F, addr & 0xFF];
+  }
+
   _encodeSBA(addr) {
-    // Encode buffer address in 14-bit format (top 2 bits of byte 1 = 00),
-    // preceded by the SBA order byte. 14-bit is unambiguous and universally
-    // accepted; avoids the EBCDIC-table pitfalls of 12-bit encoding.
-    return Buffer.from([ORDER_SBA, (addr >> 8) & 0x3F, addr & 0xFF]);
+    // SBA order byte followed by the buffer address.
+    return Buffer.from([ORDER_SBA, ...this._encodeAddr(addr)]);
   }
 
   _encodeAddrRaw(addr) {
-    // Encode buffer address in 14-bit format WITHOUT the SBA order prefix.
-    // Used for the cursor address in AID responses, which per IBM 3270
-    // spec is sent as raw bytes, not as an SBA order.
-    return Buffer.from([(addr >> 8) & 0x3F, addr & 0xFF]);
+    // Buffer address WITHOUT the SBA order prefix. Used for the cursor
+    // address in AID responses, which per IBM 3270 spec is sent as raw
+    // bytes, not as an SBA order.
+    return Buffer.from(this._encodeAddr(addr));
   }
 
   _sendReadBuffer() {
