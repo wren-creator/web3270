@@ -559,8 +559,10 @@ class Tn5250Session extends EventEmitter {
         this._emitScreen();
         return;
       } else if (cmd === CMD_WRITE_STRUCTURED_FIELD) {
-        logger.warn(`[ws:${this.wsId}] 5250 Write Structured Field received — not yet implemented, skipping record`);
-        return;
+        i = this._processWriteStructuredField(bytes, i);
+        // A record that was only structured fields (the Query) changes
+        // nothing on screen, so don't redraw it.
+        if (i >= bytes.length) return;
       } else {
         logger.warn(`[ws:${this.wsId}] 5250 unhandled command 0x${cmd?.toString(16)} — skipping record`);
         return;
@@ -578,6 +580,56 @@ class Tn5250Session extends EventEmitter {
       this.cursorAddr = this._pendingInsert;
       this._pendingInsert = null;
     }
+  }
+
+  // Write Structured Field: a run of structured fields, each
+  // [len hi, len lo, class, type, flags, ...]. The only one a plain sign-on
+  // needs is class 0xD9 type 0x70, the Query: right after a successful
+  // sign-on an IBM i asks the terminal what it is, and waits for the answer
+  // before it sends the first menu. Everything else (GUI windows, scrollbars)
+  // is skipped by length and logged.
+  _processWriteStructuredField(bytes, i) {
+    while (i + 4 <= bytes.length && bytes[i] !== ESC) {
+      const len = (bytes[i] << 8) | bytes[i + 1];
+      const cls = bytes[i + 2];
+      const type = bytes[i + 3];
+      if (cls === 0xD9 && type === 0x70) {
+        logger.info(`[ws:${this.wsId}] 5250 Query received, sending Query Reply`);
+        this._sendQueryReply();
+      } else {
+        logger.warn(`[ws:${this.wsId}] 5250 structured field 0x${cls.toString(16)}/0x${type.toString(16)} not implemented — skipped`);
+      }
+      if (len < 4) break; // malformed, don't loop on it
+      i += len;
+    }
+    return i;
+  }
+
+  // Query Reply (5494 Functions Reference): the cursor address and an
+  // inbound-WSF AID, then one 58-byte structured field describing the
+  // terminal. Layout matches what lib5250 and tn5250j send.
+  _sendQueryReply() {
+    const ebc = s => Ebcdic.fromAscii(s, 37);
+    const m = String(this.model || '').match(/^(\d{4})-(\w+)/);
+    const devType = m ? m[1] : '3179';
+    const modelNo = m ? m[2].replace(/\D/g, '').padStart(3, '0').slice(-3) : '002';
+    const sf = Buffer.concat([
+      Buffer.from([0x00, 0x3A, 0xD9, 0x70, 0x80]),        // length, class, type Query, flags (reply)
+      Buffer.from([0x06, 0x00]),                           // controller hardware class
+      Buffer.from([0x01, 0x01, 0x00]),                     // code level: version 1 release 1 mod 0
+      Buffer.alloc(16),                                    // reserved
+      Buffer.from([0x01]),                                 // device type: display
+      ebc(devType),                                        // device type number, e.g. 3179
+      ebc(modelNo),                                        // device model number, e.g. 002
+      Buffer.from([0x02, 0x00, 0x00]),                     // keyboard id (standard), extended id, reserved
+      Buffer.alloc(4),                                     // serial number
+      Buffer.from([0x00, 0x40]),                           // max input fields
+      Buffer.alloc(2),                                     // reserved
+      Buffer.from([0x23, 0x31, 0x00, 0x00]),               // controller/display capability
+      Buffer.alloc(9),                                     // reserved, pads to 58
+    ]);
+    const data = Buffer.concat([Buffer.from([0x00, 0x00, 0x88]), sf]); // cursor row/col 0, AID 0x88
+    this._sendDataRecord(data);
   }
 
   // Where the cursor should sit when the host sent no IC: null (leave it) if

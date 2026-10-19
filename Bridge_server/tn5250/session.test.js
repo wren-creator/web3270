@@ -85,3 +85,33 @@ test('PUB400 sign-on: the cells you type a password into are non-display, the us
     assert.equal(rows[7][10].nondisplay, false);  // text outside any field
   } finally { stop(); }
 });
+
+// Right after a successful sign-on an IBM i sends a Write Structured Field
+// Query (class D9, type 70) and holds the first menu until the terminal
+// answers. The engine used to log "not yet implemented" and stay silent, so a
+// correct 5250 login stalled there.
+test('Query: a Write Structured Field Query gets a Query Reply and no screen redraw', async () => {
+  const IAC = 0xFF, EOR_CMD = 0xEF;
+  const got = [];
+  const query = Buffer.from('001112a00000040000030' + '4f30005d97000', 'hex'); // header + ESC WSF + SF(len 5, D9, 70, flags 0)
+  const srv = await new Promise(res => {
+    const s = net.createServer(sock => {
+      sock.on('data', d => got.push(d));
+      sock.on('error', () => {});
+      setTimeout(() => sock.write(Buffer.concat([query, Buffer.from([IAC, EOR_CMD])])), 100);
+    }).listen(0, '127.0.0.1', () => res(s));
+  });
+  const ses = new Tn5250Session({ wsId: 'q', host: '127.0.0.1', port: srv.address().port, useTls: false });
+  let screens = 0;
+  ses.on('screen', () => screens++);
+  ses.on('error', () => {});
+  ses.connect();
+  await new Promise(r => setTimeout(r, 500));
+  ses.disconnect('test');
+  srv.close();
+  const sent = Buffer.concat(got).toString('hex');
+  // cursor 0,0, AID 0x88, then the 58 byte structured field D9 70 80 ... "3179" "002"
+  assert.match(sent, /000088003ad97080060001010000/);
+  assert.ok(sent.includes('f3f1f7f9f0f0f2'), 'device type 3179, model 002');
+  assert.equal(screens, 0);
+});
