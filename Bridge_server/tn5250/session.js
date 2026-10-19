@@ -759,8 +759,29 @@ class Tn5250Session extends EventEmitter {
     });
   }
 
+  // Which data cells belong to a non-display (password) field. Only the
+  // attribute cell used to be flagged, so the cells you type into were not:
+  // the browser showed the password in clear and upper-cased it (it skips the
+  // upper-casing only for non-display cells), and a case-sensitive IBM i
+  // password then failed.
+  _nondisplayMask() {
+    const mask = new Uint8Array(this.buffer.length);
+    let left = 0;
+    for (let a = 0; a < this.buffer.length; a++) {
+      const cell = this.buffer[a];
+      if (cell && cell.fa !== undefined) {
+        left = (cell.hasFfw && cell.fa === ATTR.NONDISPLAY) ? (cell.flen || Infinity) : 0;
+      } else if (left > 0) {
+        mask[a] = 1;
+        left--;
+      }
+    }
+    return mask;
+  }
+
   _bufferToRows() {
     const rows = [];
+    const hidden = this._nondisplayMask();
     for (let r = 0; r < this.rows; r++) {
       const cells = [];
       for (let c = 0; c < this.cols; c++) {
@@ -770,7 +791,7 @@ class Tn5250Session extends EventEmitter {
           char: cell.char ? Ebcdic.toAscii(Buffer.from([cell.char]), this.codepage) : ' ',
           fa: cell.fa,
           modified: cell.modified,
-          nondisplay: cell.fa === ATTR.NONDISPLAY,
+          nondisplay: cell.fa === ATTR.NONDISPLAY || hidden[addr] === 1,
           color: 0x00,
           highlight: 0x00,
         });

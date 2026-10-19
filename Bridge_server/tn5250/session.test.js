@@ -71,3 +71,17 @@ test('stock sign-on layout still lands the cursor where the host put it', async 
     assert.equal(screen.fields.filter(f => !f.protected).length, 5);
   } finally { stop(); }
 });
+
+// The browser upper-cases what you type except into non-display cells, and it
+// hides non-display cells. Only the attribute cell was flagged, so a password
+// typed on PUB400 showed in clear and went out upper-cased.
+test('PUB400 sign-on: the cells you type a password into are non-display, the user ID cells are not', async () => {
+  const { ses, stop } = await replay('ibmi-pub400-23-signon-record.hex');
+  try {
+    const rows = ses._bufferToRows();
+    assert.equal(rows[5][24].nondisplay, true);   // first password cell
+    assert.equal(rows[5][70].nondisplay, true);   // still inside the 128 long field
+    assert.equal(rows[4][24].nondisplay, false);  // first user ID cell
+    assert.equal(rows[7][10].nondisplay, false);  // text outside any field
+  } finally { stop(); }
+});
