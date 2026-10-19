@@ -1478,18 +1478,28 @@ class Tn3270Session extends EventEmitter {
     this._send(Buffer.from(escaped));
   }
 
+  // Inbound addresses use 12-bit coded form (ADDR12) whenever the buffer fits
+  // in 4096 cells, which is every standard model, and 14-bit binary only above
+  // that. This is what x3270/c3270 send. We used to send 14-bit always, which
+  // real mainframes accept, but PUB400's IBM i gateway does not: it read no
+  // fields out of the record and answered CPF1296 "Sign-on information
+  // required" to a full user and password. The same session with 12-bit
+  // addresses got its fields read (checked live against a made-up user).
+  _encodeAddr(addr) {
+    if (this.buffer.length <= 4096) return [ADDR12[(addr >> 6) & 0x3F], ADDR12[addr & 0x3F]];
+    return [(addr >> 8) & 0x3F, addr & 0xFF];
+  }
+
   _encodeSBA(addr) {
-    // Encode buffer address in 14-bit format (top 2 bits of byte 1 = 00),
-    // preceded by the SBA order byte. 14-bit is unambiguous and universally
-    // accepted; avoids the EBCDIC-table pitfalls of 12-bit encoding.
-    return Buffer.from([ORDER_SBA, (addr >> 8) & 0x3F, addr & 0xFF]);
+    // SBA order byte followed by the buffer address.
+    return Buffer.from([ORDER_SBA, ...this._encodeAddr(addr)]);
   }
 
   _encodeAddrRaw(addr) {
-    // Encode buffer address in 14-bit format WITHOUT the SBA order prefix.
-    // Used for the cursor address in AID responses, which per IBM 3270
-    // spec is sent as raw bytes, not as an SBA order.
-    return Buffer.from([(addr >> 8) & 0x3F, addr & 0xFF]);
+    // Buffer address WITHOUT the SBA order prefix. Used for the cursor
+    // address in AID responses, which per IBM 3270 spec is sent as raw
+    // bytes, not as an SBA order.
+    return Buffer.from(this._encodeAddr(addr));
   }
 
   _sendReadBuffer() {
