@@ -38,7 +38,14 @@ const NOP  = 0xF1;
 const OPT_BINARY        = 0x00;
 const OPT_EOR           = 0x19;
 const OPT_TTYPE         = 0x18;
+const OPT_NEWENV        = 0x27;
 const OPT_TN3270E       = 0x28;
+
+// NEW-ENVIRON sub-option bytes (RFC 1572)
+const ENV_IS            = 0x00;
+const ENV_SEND          = 0x01;
+const ENV_VALUE         = 0x01;
+const ENV_USERVAR       = 0x03;
 
 // TN3270E sub-option function codes
 const TN3E_ASSOCIATE    = 0x00;
@@ -718,6 +725,18 @@ class Tn3270Session extends EventEmitter {
       return;
     }
 
+    // 4. NEW-ENVIRON (RFC 1572 / 4777) — tells the host our code page and
+    // character set. Refusing it (what this did before) left PUB400 guessing
+    // the translation, and a password with punctuation then failed with
+    // CPF1120 even though the same bytes signed in fine from c3270.
+    if (opt === OPT_NEWENV) {
+      if (cmd === DO && !this._newEnvOffered) {
+        this._newEnvOffered = true;
+        this._send(Buffer.from([IAC, WILL, OPT_NEWENV]));
+      }
+      return;
+    }
+
     // Refuse anything else
     if (cmd === DO)   this._send(Buffer.from([IAC, WONT, opt]));
     if (cmd === WILL) this._send(Buffer.from([IAC, DONT, opt]));
@@ -748,6 +767,22 @@ class Tn3270Session extends EventEmitter {
   logger.debug(`[ws:${this.wsId}] TTYPE subneg raw bytes: ${data.toString('hex')}`);
   
   const opt = data[0];
+
+  // NEW-ENVIRON SEND: answer with the three IBM variables a real 3270 client
+  // sends (all USERVARs). Same values as c3270 for a US code page.
+  if (opt === OPT_NEWENV && data[1] === ENV_SEND) {
+    const parts = [IAC, SB, OPT_NEWENV, ENV_IS];
+    const pushVar = (name, value) => {
+      parts.push(ENV_USERVAR, ...Buffer.from(name), ENV_VALUE, ...Buffer.from(String(value)));
+    };
+    pushVar('CODEPAGE', String(this.codepage).padStart(3, '0'));
+    pushVar('CHARSET', '697');
+    pushVar('KBDTYPE', 'USB');
+    parts.push(IAC, SE);
+    this._send(Buffer.from(parts));
+    logger.info(`[ws:${this.wsId}] Sent NEW-ENVIRON IS (codepage=${String(this.codepage).padStart(3, '0')})`);
+    return;
+  }
 
   // Handle TN3270E (RFC 2355)
   if (opt === OPT_TN3270E) {

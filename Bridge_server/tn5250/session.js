@@ -501,13 +501,21 @@ class Tn5250Session extends EventEmitter {
       // (IBMRSEED — password-encryption challenge — is intentionally not
       // answered here; we don't support encrypted signon in this pass.)
       const parts = [IAC, SB, OPT_NEWENV, ENV_IS];
-      const pushVar = (name, value) => {
-        parts.push(ENV_VAR, ...Buffer.from(name));
+      // RFC 4777: the IBM variables (DEVNAME, CODEPAGE, CHARSET, KBDTYPE) are
+      // USERVARs; only USER is a well-known VAR. s3270's trace, which signs
+      // in to PUB400 fine, sends them that way.
+      const pushVar = (type, name, value) => {
+        parts.push(type, ...Buffer.from(name));
         if (value != null) parts.push(ENV_VALUE, ...Buffer.from(String(value)));
       };
-      if (this.deviceName) pushVar('DEVNAME', this.deviceName);
-      pushVar('CODEPAGE', String(this.codepage).padStart(3, '0'));
-      if (this.user) parts.push(ENV_USERVAR, ...Buffer.from('USER'), ENV_VALUE, ...Buffer.from(this.user));
+      if (this.deviceName) pushVar(ENV_USERVAR, 'DEVNAME', this.deviceName);
+      pushVar(ENV_USERVAR, 'CODEPAGE', String(this.codepage).padStart(3, '0'));
+      // Without CHARSET the host guesses the character set, and a password
+      // with punctuation (the "!" at 0x5A) can be read as a different
+      // character. 697 is the Latin-1 set that goes with the US/Intl pages.
+      pushVar(ENV_USERVAR, 'CHARSET', '697');
+      pushVar(ENV_USERVAR, 'KBDTYPE', 'USB');
+      if (this.user) pushVar(ENV_VAR, 'USER', this.user);
       parts.push(IAC, SE);
       this._send(Buffer.from(parts));
       logger.info(`[ws:${this.wsId}] Sent NEW-ENVIRON IS (devname=${this.deviceName || 'any'})`);
