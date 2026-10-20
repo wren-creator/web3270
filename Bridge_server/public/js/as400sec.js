@@ -40,6 +40,7 @@ import {
   OUTQ_STATEMENTS, outqRows, evaluateOutq,
   JOURNAL_GROUPS, JOURNAL_CONFIG, parseJournalDays, journalStatement, parseJournalRows, evaluateJournal,
   EXIT_STATEMENTS, EXIT_JOURNAL_DAYS, EXIT_JOURNAL_TYPES, EXIT_MAX_LIBS, parseExitPrograms, parseLibPublic, evaluateExitPrograms,
+  parseDisplayDataTable, findSqlErrorMessage, mockStatement,
 } from './as400sec-parse.js';
 
 // ── Screen / transport helpers ─────────────────────────────────────────────
@@ -819,7 +820,7 @@ const SQL_TOOLS = {
   },
 };
 
-let sqlrun = { running: false, tool: null, idx: 0, stage: null, tables: [], selected: 0, lastText: '', ctx: null, days: 30 };
+let sqlrun = { running: false, tool: null, idx: 0, stage: null, tables: [], selected: 0, lastText: '', ctx: null, days: 30, real: false, exitSent: false };
 
 // Type a statement into STRSQL, wrapping onto the continuation line when it is
 // longer than one input line (as a real STRSQL statement area does).
@@ -827,12 +828,49 @@ function _fillSqlStatement(stmt) {
   const scr  = state.liveScreen;
   const cols = scr?.cols || 80;
   const inputs = (scr?.fields || []).filter(f => !f.protected);
+  if ((state.liveScreenText || '').includes('Enter SQL Statements')) return _fillSqlReal(stmt, scr, cols);
   const parts = splitSqlStatement(stmt);
-  if (inputs.length < parts.length) { _fillFirstInput(stmt); return; }
+  if (inputs.length < parts.length) return _fillFirstInput(stmt);
   parts.forEach((part, i) => {
     const da = inputs[i].startAddr + 1;
     _send({ type: 'fillField', row: Math.floor(da / cols), col: da % cols, text: part });
   });
+  return true;
+}
+
+// A real STRSQL statement area is a stack of input rows at the bottom of the screen: five on a fresh
+// screen, more after an error, when the host redisplays the failed statement in them and starts the
+// area at its "===>" row. The statement is laid across that whole block from its first row, after
+// blanking whatever the last statement left there. Rows are cut at a space, the space going to the
+// front of the next row, so a host that joins rows end to end and one that joins them with a blank
+// both read the same SQL. False when the block cannot hold it.
+function _fillSqlReal(stmt, scr, cols) {
+  const fields = scr?.fields || [];
+  const rowOf = f => Math.floor(f.startAddr / cols);
+  let last = -1;
+  fields.forEach((f, i) => { if (!f.protected) last = i; });
+  if (last === -1) return false;
+  let first = last;
+  while (first > 0 && !fields[first - 1].protected && rowOf(fields[first]) - rowOf(fields[first - 1]) === 1) first--;
+  const block = fields.slice(first, last + 1);
+  const width = block[0].length || cols - 6;
+  const rows = [];
+  let rest = stmt.trim();
+  while (rest.length > width) {
+    const cut = rest.lastIndexOf(' ', width);
+    const n = cut > 0 ? cut : width;
+    rows.push(rest.slice(0, n));
+    rest = rest.slice(n);
+  }
+  rows.push(rest);
+  if (block.length < rows.length) return false;
+  block.forEach((f, k) => {
+    const da = f.startAddr + 1;
+    const row = Math.floor(da / cols), col = da % cols;
+    if (k < rows.length) _send({ type: 'fillField', row, col, text: rows[k] });
+    else if ((f.content || '').trim()) _send({ type: 'fillField', row, col, text: '' });
+  });
+  return true;
 }
 
 function _sqlStep() {
@@ -840,12 +878,31 @@ function _sqlStep() {
   const q = T.queries[sqlrun.idx];
   if (!q) { _sqlEnd(); return; }
   // A statement may be built from what earlier reads found, and null means skip it.
-  const stmt = typeof q.stmt === 'function' ? q.stmt(sqlrun.ctx) : q.stmt;
-  if (stmt == null) { _sqlAdvance(); return; }
+  const raw = typeof q.stmt === 'function' ? q.stmt(sqlrun.ctx) : q.stmt;
+  if (raw == null) { _sqlAdvance(); return; }
+  // A real IBM i gets the narrowed statement, the mock the plain one it can read.
+  const stmt = (state.liveScreenText || '').includes('Enter SQL Statements') ? raw : mockStatement(raw);
+  sqlrun.stmt = stmt;
+  // Wait for a real prompt's input rows to paint rather than give up on a half-drawn screen.
+  const live = state.liveScreen;
+  if ((state.liveScreenText || '').includes('Enter SQL Statements') && !(live?.fields || []).some(f => !f.protected) && (sqlrun.waits || 0) < 30) {
+    sqlrun.waits = (sqlrun.waits || 0) + 1;
+    setTimeout(() => { if (sqlrun.running) _sqlStep(); }, 150);
+    return;
+  }
+  sqlrun.waits = 0;
+  sqlrun.capped = false;
   _status(sqlrun.tool, `[${sqlrun.idx + 1}/${T.queries.length}] Running ${stmt}…`);
   sqlrun.stage = 'RESULT';
   sqlrun.tables = [];
-  _fillSqlStatement(stmt);
+  if (!_fillSqlStatement(stmt)) {
+    // Pressing Enter on an empty prompt would just wait forever, so stop and say why.
+    sqlrun.running = false;
+    const btn = document.getElementById(T.btn);
+    if (btn) btn.disabled = false;
+    _status(sqlrun.tool, 'Could not find the SQL input line on this screen, nothing was typed. Press F3 to leave STRSQL and try again.', 'error');
+    return;
+  }
   _pressEnter();
 }
 
@@ -856,9 +913,12 @@ function _sqlQueryDone() {
   const q = T.queries[sqlrun.idx];
   const rows = sqlrun.tables.flatMap(t => t.rows);
   const table = { cols: sqlrun.tables[0].cols, rows };
-  const info = { selected: sqlrun.selected, truncated: sqlrun.selected > rows.length };
+  // A real result has no "N rows selected." line, but it is read to End of data, so nothing is cut.
+  const selected = sqlrun.real ? rows.length + (sqlrun.capped ? 1 : 0) : sqlrun.selected;
+  const info = { selected, truncated: selected > rows.length };
   RESULTS[tool].push(...q.collect(table, info, sqlrun.ctx));
   _render(tool);
+  if (sqlrun.real) { sqlrun.stage = 'RETURN'; _send({ type: 'key', aid: 'F12', fields: [] }); return; }
   _sqlAdvance();
 }
 
@@ -875,6 +935,36 @@ function _sqlEnd() {
   _pressF3();
 }
 
+// A real STRSQL screen paints in pieces, so its title can arrive before its input rows. Any other
+// screen, the mock's included, counts as painted.
+function _sqlPainted(msg, text) {
+  return !text.includes('Enter SQL Statements') || (msg.fields || []).some(f => !f.protected);
+}
+
+// Take one page of a result, then ask for the next while the screen says "More...". A page whose rows
+// are all alike reads exactly like the one before it, so "the screen has not changed" cannot be the only
+// sign the key worked: a timer takes whatever is on screen if nothing different arrives.
+function _sqlTakePage(msg) {
+  clearTimeout(sqlrun.pageTimer);
+  const lines = _screenLines(msg);
+  const text  = lines.join('\n');
+  sqlrun.tables.push(sqlrun.real ? (parseDisplayDataTable(lines) || { cols: [], rows: [] }) : parseSqlResultTable(lines));
+  sqlrun.lastText = text;
+  if (text.includes('More...')) {
+    if (sqlrun.tables.length < 60) { _sqlWantPage(); return; }
+    sqlrun.capped = true; // stopped reading with rows left, so the result is marked truncated
+  }
+  _sqlQueryDone();
+}
+function _sqlWantPage() {
+  sqlrun.stage = 'PAGE';
+  clearTimeout(sqlrun.pageTimer);
+  sqlrun.pageTimer = setTimeout(() => {
+    if (sqlrun.running && sqlrun.stage === 'PAGE' && state.liveScreen) _sqlTakePage(state.liveScreen);
+  }, 1200);
+  _pressPgDn();
+}
+
 function _sqlOnScreen(msg) {
   if (!sqlrun.running) return;
   const lines = _screenLines(msg);
@@ -884,8 +974,61 @@ function _sqlOnScreen(msg) {
   const q = T.queries[sqlrun.idx];
 
   if (sqlrun.stage === 'NAV') {
-    if (!text.includes('Interactive SQL')) return; // still the menu echo, keep waiting
+    // The mock titles its screen "Interactive SQL", a real IBM i says "Enter SQL Statements".
+    // "Exit Interactive SQL" is the F3 screen and must not count as ready.
+    // The real screen paints in pieces: the title can arrive before its input rows do.
+    const ready = _sqlPainted(msg, text) && (text.includes('Enter SQL Statements') || (text.includes('Interactive SQL') && !text.includes('Exit Interactive SQL')));
+    if (!ready) return; // still the menu echo, keep waiting
     _sqlStep();
+    return;
+  }
+
+  // Real IBM i: a result is its own Display Data screen, and an error is plain message text on
+  // the SQL screen under the echoed statement (no SQLnnnn id). Paged by Roll Up while "More...".
+  if (sqlrun.stage === 'RESULT' && text.includes('Display Data')) {
+    const t = parseDisplayDataTable(lines);
+    if (!t) return;
+    clearTimeout(sqlrun.errTimer);
+    sqlrun.real = true;
+    // A result wider than the screen has columns off the right edge that this tool never sees.
+    // Say so rather than judge half a table.
+    const dw = /Data width[ .]*:\s*(\d+)/.exec(text);
+    if (dw && parseInt(dw[1], 10) > 76) {
+      RESULTS[tool].push({ name: q.key, value: '—', risk: 'INFO', detail: `result is ${dw[1]} columns wide, past the screen edge, so it was not read. Narrow the SELECT list with CAST(col AS VARCHAR(n)) AS col — skipped` });
+      if (q.onError) q.onError(sqlrun.ctx);
+      _render(tool);
+      sqlrun.stage = 'RETURN';
+      _send({ type: 'key', aid: 'F12', fields: [] });
+      return;
+    }
+    sqlrun.tables.push(t);
+    sqlrun.lastText = text;
+    if (t.more) {
+      if (sqlrun.tables.length < 60) { _sqlWantPage(); return; }
+      sqlrun.capped = true;
+    }
+    _sqlQueryDone();
+    return;
+  }
+  if (sqlrun.stage === 'RESULT' && text.includes('Enter SQL Statements')) {
+    const failure = sqlrun.stmt && findSqlErrorMessage(lines, sqlrun.stmt);
+    if (!failure) return; // the typed-but-not-sent echo, keep waiting
+    // The host can paint this screen once on its way to a Display Data result, so give a result
+    // half a second to arrive before calling it an error. A real error screen just sits there.
+    clearTimeout(sqlrun.errTimer);
+    const at = sqlrun.idx;
+    sqlrun.errTimer = setTimeout(() => {
+      if (!sqlrun.running || sqlrun.stage !== 'RESULT' || sqlrun.idx !== at) return;
+      RESULTS[tool].push({ name: q.key, value: '—', risk: 'INFO', detail: `query failed: ${failure} — skipped` });
+      if (q.onError) q.onError(sqlrun.ctx);
+      _render(tool);
+      _sqlAdvance();
+    }, 500);
+    return;
+  }
+  if (sqlrun.stage === 'RETURN') {
+    // Back at the prompt only counts once its input rows have painted, or the next statement has nowhere to go.
+    if (text.includes('Enter SQL Statements') && _sqlPainted(msg, text)) _sqlAdvance();
     return;
   }
 
@@ -915,21 +1058,25 @@ function _sqlOnScreen(msg) {
     sqlrun.lastText = text;
     // A result longer than a screen says "More...": Roll Up for the rest, so no
     // query is capped at ten rows. Bounded, and a short read shows as truncated.
-    if (text.includes('More...') && sqlrun.tables.length < 60) { sqlrun.stage = 'PAGE'; _pressPgDn(); return; }
+    if (text.includes('More...')) {
+      if (sqlrun.tables.length < 60) { _sqlWantPage(); return; }
+      sqlrun.capped = true;
+    }
     _sqlQueryDone();
     return;
   }
 
   if (sqlrun.stage === 'PAGE') {
-    if (text === sqlrun.lastText) return; // the key has not repainted the grid yet
-    sqlrun.tables.push(parseSqlResultTable(lines));
-    sqlrun.lastText = text;
-    if (text.includes('More...') && sqlrun.tables.length < 60) { _pressPgDn(); return; }
-    _sqlQueryDone();
+    if (text === sqlrun.lastText) return; // the key has not repainted the grid yet, the timer covers identical pages
+    _sqlTakePage(msg);
     return;
   }
 
   if (sqlrun.stage === 'BACK') {
+    // A real F3 asks what to do with the session first: 2 = exit without saving it.
+    if (text.includes('Exit Interactive SQL') && !sqlrun.exitSent) {
+      sqlrun.exitSent = true; _fillFirstInput('2'); _pressEnter(); return;
+    }
     if (!text.includes('Selection or command')) return; // still the SQL screen's own F3 echo
     _sqlFinish();
   }
@@ -959,7 +1106,7 @@ function _startSqlTool(tool) {
   }
   RESULTS[tool] = [];
   _render(tool);
-  sqlrun = { running: true, tool, idx: 0, stage: 'NAV', tables: [], selected: 0, lastText: '', ctx: { incomplete: [], programs: [], publicAuth: [] }, days };
+  sqlrun = { running: true, tool, idx: 0, stage: 'NAV', tables: [], selected: 0, real: false, exitSent: false, lastText: '', ctx: { incomplete: [], programs: [], publicAuth: [] }, days };
   const btn = document.getElementById(SQL_TOOLS[tool].btn);
   if (btn) btn.disabled = true;
   _status(tool, 'Issuing STRSQL…');

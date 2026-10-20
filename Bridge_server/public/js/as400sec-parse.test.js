@@ -14,7 +14,7 @@ import {
   JOURNAL_GROUPS, JOURNAL_CONFIG, parseJournalDays, journalStatement, parseJournalRows, evaluateJournal,
   EXIT_STATEMENTS, EXIT_JOURNAL_DAYS, EXIT_JOURNAL_TYPES, parseExitPrograms, parseLibPublic, evaluateExitPrograms,
   SERVICE_GROUPS, svcStatement, splitSqlStatement, parseNetstatRows, evaluateServiceGroup,
-  parseSqlResultTable, parseCveInfo, evaluateCveRow, parsePtfCurrency, evaluatePtfGroupRow,
+  parseDisplayDataTable, findSqlErrorMessage, mockStatement, parseSqlResultTable, parseCveInfo, evaluateCveRow, parsePtfCurrency, evaluatePtfGroupRow,
 } from './as400sec-parse.js';
 
 test('evaluateShippedProfile: default password is always CRITICAL, even when disabled', () => {
@@ -252,7 +252,7 @@ const _row = (addr, port, state = 'LISTEN') => ({ addr, port, state });
 
 test('svcStatement: real view and columns, and every statement splits into at most two 72 character lines', () => {
   for (const g of SERVICE_GROUPS) {
-    const s = svcStatement(g);
+    const s = mockStatement(svcStatement(g));
     assert.ok(s.startsWith('SELECT LOCAL_ADDRESS, LOCAL_PORT, TCP_STATE FROM QSYS2.NETSTAT_INFO WHERE '), g.key);
     const parts = splitSqlStatement(s);
     assert.ok(parts.length <= 2 && parts.every(p => p.length <= 72), `${g.key}: ${parts.map(p => p.length)}`);
@@ -363,10 +363,10 @@ test('evaluateDftPwd: privileged is CRITICAL, anyone else HIGH, disabled still c
 
 const _tbl = (cols, rows) => ({ cols, rows });
 
-test('GROUP_QUERIES: real views, and every statement fits two 72 character lines', () => {
+test('GROUP_QUERIES: real views, and every statement fits the mock\'s three 72 character lines', () => {
   for (const [k, s] of Object.entries(GROUP_QUERIES)) {
-    const parts = splitSqlStatement(s);
-    assert.ok(parts.length <= 2 && parts.every(p => p.length <= 72), `${k}: ${parts.map(p => p.length)}`);
+    const parts = splitSqlStatement(mockStatement(s));
+    assert.ok(parts.length <= 3 && parts.every(p => p.length <= 72), `${k}: ${parts.map(p => p.length)}`);
   }
   assert.ok(GROUP_QUERIES.SUPP.includes('QSYS2.GROUP_PROFILE_ENTRIES'));
 });
@@ -426,7 +426,7 @@ const _own = (lib, name, type) => ({ lib, name, type });
 
 test('OWNED_STATEMENT: asks the real view for QSECOFR outside Q* libraries, and wraps onto at most three input lines', () => {
   assert.ok(OWNED_STATEMENT.includes('QSYS2.OBJECT_OWNERSHIP') && OWNED_STATEMENT.includes("'QSECOFR'") && OWNED_STATEMENT.includes("NOT LIKE 'Q%'"));
-  const parts = splitSqlStatement(OWNED_STATEMENT);
+  const parts = splitSqlStatement(mockStatement(OWNED_STATEMENT));
   assert.ok(parts.length <= 3 && parts.every(p => p.length <= 72), parts.map(p => p.length).join(','));
 });
 
@@ -492,9 +492,9 @@ test('evaluateLibCrtaut: an authorization list is INFO, and anything unread is I
 test('adopt statements: real views, a library or NOT LIKE Q%, and every one wraps onto at most three 72 character lines', () => {
   for (const lib of [null, 'APPLIB', 'TOOLLIB']) {
     for (const s of [adoptProgramStatement(lib), adoptPublicStatement(lib)]) {
-      const parts = splitSqlStatement(s);
+      const parts = splitSqlStatement(mockStatement(s));
       assert.ok(parts.length <= 3 && parts.every(p => p.length <= 72), `${lib}: ${parts.map(p => p.length)}`);
-      assert.equal(parts.join(' '), s);
+      assert.equal(parts.join(' '), mockStatement(s));
     }
   }
   assert.ok(adoptProgramStatement('APPLIB').includes("USER_PROFILE = '*OWNER'") && adoptProgramStatement('APPLIB').includes("PROGRAM_LIBRARY = 'APPLIB'"));
@@ -553,13 +553,13 @@ test('OUTQ_STATEMENTS: real views, filtered by library, every one wraps onto at 
   for (const lib of [null, 'PAYROLL', 'HRLIB']) {
     for (const k of ['inv1', 'inv2', 'pub']) {
       const s = OUTQ_STATEMENTS[k](lib);
-      const parts = splitSqlStatement(s);
+      const parts = splitSqlStatement(mockStatement(s));
       assert.ok(parts.length <= 3 && parts.every(p => p.length <= 72), `${k} ${lib}: ${parts.map(p => p.length)}`);
       assert.ok(lib ? s.includes(`'${lib}'`) : s.includes("NOT LIKE 'Q%'"), `${k} must filter by library`);
     }
   }
   for (const k of ['remote', 'joblog', 'qprint', 'splctl', 'jobctl', 'audspl', 'audprt']) {
-    const parts = splitSqlStatement(OUTQ_STATEMENTS[k]());
+    const parts = splitSqlStatement(mockStatement(OUTQ_STATEMENTS[k]()));
     assert.ok(parts.length <= 3 && parts.every(p => p.length <= 72), `${k}: ${parts.map(p => p.length)}`);
   }
   assert.ok(OUTQ_STATEMENTS.audspl().includes('SPLFDTA') && OUTQ_STATEMENTS.audprt().includes('PRTDTA'));
@@ -624,11 +624,11 @@ test('journal statements: DISPLAY_JOURNAL on QSYS/QAUDJRN with the types and the
   for (const g of JOURNAL_GROUPS) {
     const s = journalStatement(g.types, 365);
     assert.ok(s.includes("QSYS2.DISPLAY_JOURNAL('QSYS','QAUDJRN'") && s.includes(`JOURNAL_ENTRY_TYPES => '${g.types}'`) && s.includes('CURRENT_TIMESTAMP - 365 DAYS'));
-    const parts = splitSqlStatement(s);
+    const parts = splitSqlStatement(mockStatement(s));
     assert.ok(parts.length <= 3 && parts.every(p => p.length <= 72), `${g.key}: ${parts.map(p => p.length)}`);
   }
   for (const [k, s] of Object.entries(JOURNAL_CONFIG)) {
-    const parts = splitSqlStatement(s);
+    const parts = splitSqlStatement(mockStatement(s));
     assert.ok(parts.length <= 3 && parts.every(p => p.length <= 72), k);
     assert.ok(s.includes('LIKE'), k);
   }
@@ -701,7 +701,7 @@ test('exit program statements: real views, non-Q* filters, an owners read built 
   const stmts = [EXIT_STATEMENTS.programs, EXIT_STATEMENTS.libpub, EXIT_STATEMENTS.owners(['EXITLIB', 'AUDLIB', 'SECLIB', 'APPLIB', 'TOOLLIB', 'HRLIB', 'PAYROLL', 'MYLIB']),
     journalStatement(EXIT_JOURNAL_TYPES, EXIT_JOURNAL_DAYS)];
   for (const s of stmts) {
-    const parts = splitSqlStatement(s);
+    const parts = splitSqlStatement(mockStatement(s));
     assert.ok(parts.length <= 3 && parts.every(p => p.length <= 72), `${s.slice(0, 40)}: ${parts.map(p => p.length)}`);
   }
   assert.ok(EXIT_STATEMENTS.programs.includes('QSYS2.EXIT_PROGRAM_INFO') && EXIT_STATEMENTS.programs.includes("NOT LIKE 'Q%'"));
@@ -771,4 +771,72 @@ test('evaluateOutq and evaluateJournal: every reason in a finding starts a sente
     rows: { restores: [], creates: [], changes: [{ ts: 't', type: 'ZC', user: 'QSECOFR', object: 'A/B' }], spool: [], print: [] }, truncated: {}, incomplete: [] });
   const dj = j.find(x => x.name === 'Changes: QSECOFR').detail;
   assert.ok(dj.includes('. Object auditing (*OBJAUD in QAUDCTL) is not set now') && !/\. [a-z]/.test(dj), dj);
+});
+
+// Captured from a real PUB400 Display Data screen (QSYS2.USER_INFO), heading wrapped over two lines.
+const _pad = (a) => { const l = a.slice(); while (l.length < 24) l.push(''); return l; };
+const REAL_DISPLAY = _pad([
+  '                          Display Data',
+  '                                         Data width . . . . . . :      25',
+  'Position to line  . . . . .           Shift to column  . . . . . .',
+  '....+....1....+....2....+',
+  'Authorization  Status',
+  'Name',
+  ' ENGMTZ        *ENABLED',
+  ' SANDEP981     *ENABLED',
+  ' WREN01        *ENABLED',
+  '********  End of data  ********',
+]);
+REAL_DISPLAY[22] = '                                                          Bottom';
+REAL_DISPLAY[23] = 'F3=Exit      F12=Cancel      F19=Left      F20=Right      F21=Split';
+
+test('parseDisplayDataTable: a real wrapped heading joins to the column name, End of data is not a row', () => {
+  const t = parseDisplayDataTable(REAL_DISPLAY);
+  assert.deepEqual(t.cols, ['AUTHORIZATION_NAME', 'STATUS']);
+  assert.deepEqual(t.rows, [['ENGMTZ', '*ENABLED'], ['SANDEP981', '*ENABLED'], ['WREN01', '*ENABLED']]);
+  assert.equal(t.endOfData, true);
+  assert.equal(t.more, false);
+});
+
+test('parseDisplayDataTable: not a Display Data screen is null, More... sets more', () => {
+  assert.equal(parseDisplayDataTable(['Enter SQL Statements', '===>']), null);
+  const lines = REAL_DISPLAY.slice();
+  lines[22] = '                                                          More...';
+  assert.equal(parseDisplayDataTable(lines).more, true);
+});
+
+test('findSqlErrorMessage: reads the host message under the echoed statement, ignores the unsent echo', () => {
+  const stmt = 'SELECT * FROM QSYS2.NOPE';
+  const sent = ['Enter SQL Statements', '   > 3', '     Session was saved and started again.',
+    '          SELECT * FROM QSYS2.NOPE', '     NOPE in QSYS2 type *FILE not found.', '===>', '', '          SELECT * FROM QSYS2.NOPE'];
+  assert.equal(findSqlErrorMessage(sent, stmt), 'NOPE in QSYS2 type *FILE not found.');
+  const typed = ['Enter SQL Statements', '     Session was saved and started again.', '===>', '', '          SELECT * FROM QSYS2.NOPE'];
+  assert.equal(findSqlErrorMessage(typed, stmt), null);
+});
+
+test('findSqlErrorMessage: a wrapped echo is not mistaken for a message', () => {
+  const stmt = 'SELECT GROUP_PROFILE_NAME, USER_PROFILE_NAME FROM QSYS2.GROUP_PROFILE_ENTRIES';
+  const lines = ['Enter SQL Statements', '   SELECT GROUP_PROFILE_NAME, USER_PROFILE_NAME FROM', '   QSYS2.GROUP_PROFILE_ENTRIES', '===>'];
+  assert.equal(findSqlErrorMessage(lines, stmt), null);
+});
+
+test('mockStatement: narrowed select lists go back to the plain form the mock reads, real ones are untouched', () => {
+  assert.equal(mockStatement("SELECT SUBSTR(OUTPUT_QUEUE_NAME,1,10) OUTQ, SUBSTR(STATUS,1,10) STATUS, CAST(LOCAL_PORT AS VARCHAR(5)) AS LOCAL_PORT FROM QSYS2.X"),
+    'SELECT OUTPUT_QUEUE_NAME OUTQ, STATUS, LOCAL_PORT FROM QSYS2.X');
+  assert.match(mockStatement(journalStatement('CO', 30)), /^SELECT ENTRY_TIMESTAMP,JOURNAL_ENTRY_TYPE,JOB_USER,OBJECT FROM TABLE/);
+  assert.equal(mockStatement('SELECT * FROM SYSTOOLS.CVE_INFO()'), 'SELECT * FROM SYSTOOLS.CVE_INFO()');
+});
+
+test('real statements: every select item is narrowed and named, and each fits the five 68 character input rows', () => {
+  const all = [
+    ...SERVICE_GROUPS.map(g => svcStatement(g)), ...Object.values(GROUP_QUERIES), OWNED_STATEMENT,
+    adoptProgramStatement(null), adoptPublicStatement('APPLIB'), journalStatement('OR,RA,RO,RP', 30),
+    ...Object.values(OUTQ_STATEMENTS).map(f => f('APPLIB')), ...Object.values(JOURNAL_CONFIG),
+    EXIT_STATEMENTS.programs, EXIT_STATEMENTS.libpub, EXIT_STATEMENTS.owners(['A', 'B', 'C']),
+  ];
+  for (const s of all) {
+    const list = /^SELECT (.+?) FROM /.exec(s)[1];
+    assert.ok(!/(^|, )[A-Z_]+(,|$| [A-Z]+$)/.test(list.replace(/\([^)]*\)/g, '()')) || /SUBSTR|CAST/.test(list), s);
+    assert.ok(splitSqlStatement(s, 68).length <= 5, `${s.length}: ${s}`);
+  }
 });
