@@ -18,7 +18,7 @@ server.js  (HTTP + WebSocket on the same port)
 
 - Full TN3270(E) protocol — Telnet negotiation, LU binding, WSF QueryReply, EBCDIC ↔ ASCII
 - IND$FILE file transfer (z/VM upload + download) and TSO EDIT upload (z/OS)
-- Multi-session tabs, LPAR profile dropdown (with CRUD), PF1–PF12 / PA1–PA2 toolbar
+- Multi-session tabs, LPAR profile dropdown (with CRUD), PF1–PF12 / PA1–PA2 toolbar with a 1-12 / 13-24 bank toggle, plus a full PF1–PF24 keypad in the Keys panel
 - Split-screen mode — two live sessions side by side for settings comparison (⊞ toggle)
 - Macro recorder/replayer (screen-synchronised, JSON-persisted)
 - Multi-provider AI Assist panel (Anthropic, OpenAI, Gemini, GitHub Models, Ollama) — live model list auto-loads on provider switch; manual refresh busts cache
