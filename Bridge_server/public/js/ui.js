@@ -146,8 +146,16 @@ export function menuShowShortcuts(){ menuOpenPanel('Keys'); }
 export function menuAbout() { closeAllMenus(); window.showBridgeError?.('WebTerm/3270\nModern web-based IBM mainframe terminal emulator.\n\nProtocol: TN3270 / TN3270E  (RFC 1576 / RFC 2355)\nBridge: Node.js WebSocket · Client: HTML5'); }
 export function menuImportMacro() { closeAllMenus(); window.showAddMacroModal?.(); setTimeout(() => window.importMacroFromFile?.(), 150); }
 
+let pfBank = 1;
+export function togglePfBank() {
+  pfBank = pfBank === 1 ? 2 : 1;
+  document.querySelectorAll('[data-pf-bank]').forEach(el => {
+    el.style.display = Number(el.dataset.pfBank) === pfBank ? '' : 'none';
+  });
+}
+
 Object.assign(window, {
-  switchPanelTab, toggleRightPanel, toggleMenu, closeAllMenus,
+  togglePfBank, switchPanelTab, toggleRightPanel, toggleMenu, closeAllMenus,
   menuDisconnect, menuReconnect, menuCloseActiveSession, menuCaptureScreen,
   menuOpenPanel, menuOpenCopilot, menuOpenTransfer, menuShowShortcuts, menuAbout, menuImportMacro,
 });

@@ -1127,3 +1127,7 @@ body.field-map-overlay .oia-bar::before {
   background: #0d2a1a; border-color: #40d080;
   font-weight: 700;
 }
+
+.pf-grid { display:grid;grid-template-columns:repeat(4,1fr);gap:3px;margin-bottom:6px; }
+.pf-grid .t-btn { padding:3px 0;text-align:center; }
+.pf-grid-aid { grid-template-columns:repeat(5,1fr); }
