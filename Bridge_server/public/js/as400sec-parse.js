@@ -575,6 +575,100 @@ export function parseSqlResultTable(lines, { headerRow = 9, colStart = 3, colWid
   return { cols, rows };
 }
 
+// A select-list item for a real IBM i. The QSYS2 views declare most names VARCHAR(128), so a plain
+// column makes the grid wider than the screen, and a plain column's heading is IBM's wording, not
+// the column name. SUBSTR(col,1,n) keeps it narrow and the alias makes the heading exactly the name.
+// n is the real maximum (an IBM i object or profile name is 10), so nothing is cut that matters.
+// Spaces after the commas matter: PUB400's STRSQL takes a comma as the decimal point, so SUBSTR(c,1,10)
+// reads ",1" as a number and fails with "Token ,1 was not valid".
+const _s = (col, n, alias = col) => `SUBSTR(${col}, 1, ${n}) ${alias}`;
+// A number shown as text, left aligned like its heading (LOCAL_PORT is INTEGER).
+const _n = (col, n, alias = col) => `CAST(${col} AS VARCHAR(${n})) AS ${alias}`;
+
+// The mock's STRSQL has three 72 character input rows and reads plain `col alias` select lists,
+// so it gets the statement without the SUBSTR/CAST narrowing a real IBM i needs.
+export function mockStatement(stmt) {
+  const plain = (_, c, a) => (a === c ? c : `${c} ${a}`);
+  return stmt
+    .replace(LISTEN_ONLY, '')
+    .replace(/SUBSTR\(\s*(?:CHAR\(\s*)?(\w+)\s*\)?\s*,\s*1\s*,\s*\d+\s*\)\s+(\w+)/g, plain)
+    .replace(/CAST\(\s*(\w+)\s+AS\s+VARCHAR\(\d+\)\s*\)\s+AS\s+(\w+)/g, plain)
+    // the journal's short aliases exist only to keep a real grid on the screen
+    .replace(/CHAR\(ENTRY_TIMESTAMP\) TS, JOURNAL_ENTRY_TYPE ETYPE, JOB_USER JUSER, OBJECT OBJ/, 'ENTRY_TIMESTAMP,JOURNAL_ENTRY_TYPE,JOB_USER,OBJECT');
+}
+
+// A real IBM i shows a result on its own "Display Data" screen, not on the SQL screen the
+// way the mock does. Below a "....+....1" ruler the column headings are stacked: line one
+// holds the first piece of every heading, the next lines hold the rest of each ("Authorization"
+// over "Name"), so a heading is its pieces joined with an underscore, AUTHORIZATION_NAME.
+// A heading piece has lowercase letters and a data value usually does not, which is how the
+// continuation lines are told from the first row. Returns null when this is not that screen.
+// Written from a capture of a real PUB400 result, a heading that IBM words differently from
+// its column name will not match, and the caller reports that as a failed query.
+export function parseDisplayDataTable(lines) {
+  const ruler = lines.findIndex(l => /^\s*\.{4}\+\.{4}1/.test(l || ''));
+  if (ruler === -1 || !/Display Data/.test(lines.join('\n'))) return null;
+  const first = lines[ruler + 1] || '';
+  const re = /\S+/g; let m;
+  const starts = [], pieces = [];
+  while ((m = re.exec(first)) !== null) { starts.push(m.index); pieces.push([m[0]]); }
+  if (!starts.length) return null;
+  const isHeadingPiece = l => {
+    const toks = (l || '').trim().split(/\s+/);
+    return toks.length > 0 && toks[0] !== '' && toks.every(t => /^[A-Za-z]+$/.test(t)) && toks.some(t => /[a-z]/.test(t));
+  };
+  let r = ruler + 2;
+  for (let extra = 0; extra < 3 && r < lines.length && isHeadingPiece(lines[r]); extra++, r++) {
+    const re2 = /\S+/g; let w;
+    while ((w = re2.exec(lines[r])) !== null) {
+      let ci = 0;
+      for (let i = 0; i < starts.length; i++) if (starts[i] <= w.index) ci = i;
+      pieces[ci].push(w[0]);
+    }
+  }
+  const cols = pieces.map(p => p.join('_').toUpperCase());
+  const bound = i => (i + 1 < starts.length ? starts[i + 1] : undefined);
+  const rows = [];
+  let endOfData = false, more = false;
+  for (; r < lines.length; r++) {
+    const line = lines[r] || '';
+    if (line.includes('F3=Exit')) break;
+    const t = line.trim();
+    if (!t) continue;
+    if (/^\*{4,}\s*End of data/.test(t)) { endOfData = true; continue; }
+    if (/^More\.\.\.$/.test(t)) { more = true; continue; }
+    if (/^Bottom$/.test(t)) continue;
+    rows.push(starts.map((s0, i) => line.slice(s0, bound(i)).trim()));
+  }
+  return { cols, rows, endOfData, more };
+}
+
+// A real STRSQL error is only message text under the echoed statement, no SQLnnnn id:
+// "NOPE in QSYS2 type *FILE not found." Lines above the last "===>" prompt are history, the
+// statement just typed is echoed there once Enter is pressed. Whatever follows that echo, other
+// than the echo's own wrapped continuation lines, is the host talking back. Returns the message,
+// or null when there is no echo yet (the typed-but-not-sent screen) or nothing follows it.
+export function findSqlErrorMessage(lines, stmt) {
+  let prompt = -1;
+  for (let i = lines.length - 1; i >= 0; i--) if (/^\s*===>/.test(lines[i] || '')) { prompt = i; break; }
+  if (prompt === -1) return null;
+  const probe = stmt.trim().slice(0, 30);
+  let echo = -1;
+  for (let i = prompt - 1; i >= 0; i--) if ((lines[i] || '').includes(probe)) { echo = i; break; }
+  if (echo === -1) return null;
+  const flat = stmt.replace(/\s+/g, ' ');
+  const msg = [];
+  for (let i = echo + 1; i < prompt; i++) {
+    const t = (lines[i] || '').trim();
+    if (!t) continue;
+    if (flat.includes(t.replace(/\s+/g, ' '))) continue;
+    // STRSQL's own status lines are not failures.
+    if (/^(SELECT statement run complete|Session was saved and started again|Current connection is to relational database)/i.test(t)) continue;
+    msg.push(t);
+  }
+  return msg.length ? msg.join(' ') : null;
+}
+
 export function parseCveInfo(cols, rows) {
   return _rowsToObjects(cols, rows);
 }
@@ -697,9 +791,13 @@ export const SERVICE_GROUPS = [
   ] },
 ];
 
+// A real box has a row for every open connection, and a public one has a pile of ESTABLISHED sessions on
+// telnet alone. Only listeners count here, and UDP rows carry no TCP state, so they are kept too.
+const LISTEN_ONLY = " AND (TCP_STATE = 'LISTEN' OR TCP_STATE IS NULL)";
+
 // Build the statement a group runs. Real column names, real view, nothing hardcoded elsewhere.
 export function svcStatement(group) {
-  return `SELECT LOCAL_ADDRESS, LOCAL_PORT, TCP_STATE FROM QSYS2.NETSTAT_INFO WHERE ${group.where}`;
+  return `SELECT ${_s('LOCAL_ADDRESS', 39)}, ${_n('LOCAL_PORT', 5)}, ${_s('TCP_STATE', 12)} FROM QSYS2.NETSTAT_INFO WHERE ${group.where}${LISTEN_ONLY}`;
 }
 
 // Split a statement across STRSQL's input lines at a space, each at most `width` wide.
@@ -819,10 +917,12 @@ export function evaluateDftPwd({ name, status, special }) {
 // Not covered: a group with no members never appears in either membership
 // read, so stale empty groups are not found here.
 export const GROUP_QUERIES = {
-  SUPP:    'SELECT GROUP_PROFILE_NAME, USER_PROFILE_NAME FROM QSYS2.GROUP_PROFILE_ENTRIES',
-  PRIMARY: 'SELECT AUTHORIZATION_NAME, GROUP_PROFILE_NAME FROM QSYS2.USER_INFO WHERE GROUP_PROFILE_NAME IS NOT NULL',
-  ALLOBJ:  "SELECT AUTHORIZATION_NAME, STATUS FROM QSYS2.USER_INFO WHERE SPECIAL_AUTHORITIES LIKE '%ALLOBJ%'",
-  SECADM:  "SELECT AUTHORIZATION_NAME, STATUS FROM QSYS2.USER_INFO WHERE SPECIAL_AUTHORITIES LIKE '%SECADM%'",
+  // Both columns are VARCHAR(128) on a real IBM i, so the grid is 258 wide and the second column sits
+  // off the right edge of the screen. IBM i names are at most 10 characters, so cast them down.
+  SUPP:    `SELECT ${_s('GROUP_PROFILE_NAME', 10)}, ${_s('USER_PROFILE_NAME', 10)} FROM QSYS2.GROUP_PROFILE_ENTRIES`,
+  PRIMARY: `SELECT ${_s('AUTHORIZATION_NAME', 10)}, ${_s('GROUP_PROFILE_NAME', 10)} FROM QSYS2.USER_INFO WHERE GROUP_PROFILE_NAME IS NOT NULL`,
+  ALLOBJ:  `SELECT ${_s('AUTHORIZATION_NAME', 10)}, ${_s('STATUS', 10)} FROM QSYS2.USER_INFO WHERE SPECIAL_AUTHORITIES LIKE '%ALLOBJ%'`,
+  SECADM:  `SELECT ${_s('AUTHORIZATION_NAME', 10)}, ${_s('STATUS', 10)} FROM QSYS2.USER_INFO WHERE SPECIAL_AUTHORITIES LIKE '%SECADM%'`,
 };
 
 // table = { cols, rows } from the paged STRSQL read. Returns null when a needed column is
@@ -892,7 +992,7 @@ export function evaluateGroups({ supp, primary, allobj, secadm, incomplete = [] 
 // confirm them. DSPUSRPRF USRPRF(QSECOFR) TYPE(*OBJOWN) OUTPUT(*OUTFILE) is the CL way.
 export const OWNED_BY = 'QSECOFR';
 export const OWNED_STATEMENT =
-  'SELECT SYSTEM_OBJECT_SCHEMA, SYSTEM_OBJECT_NAME, OBJECT_TYPE FROM QSYS2.OBJECT_OWNERSHIP ' +
+  `SELECT ${_s('SYSTEM_OBJECT_SCHEMA', 10)}, ${_s('SYSTEM_OBJECT_NAME', 10)}, ${_s('OBJECT_TYPE', 8)} FROM QSYS2.OBJECT_OWNERSHIP ` +
   `WHERE AUTHORIZATION_NAME = '${OWNED_BY}' AND SYSTEM_OBJECT_SCHEMA NOT LIKE 'Q%'`;
 
 export function parseOwnedObjects(table) {
@@ -1001,9 +1101,9 @@ export function parseAdoptLibraries(text) {
 }
 const _libPred = (col, lib) => (lib ? `${col} = '${lib}'` : `${col} NOT LIKE 'Q%'`);
 export const adoptProgramStatement = lib =>
-  `SELECT PROGRAM_LIBRARY, PROGRAM_NAME, PROGRAM_OWNER FROM QSYS2.PROGRAM_INFO WHERE USER_PROFILE = '*OWNER' AND ${_libPred('PROGRAM_LIBRARY', lib)}`;
+  `SELECT ${_s('PROGRAM_LIBRARY', 10)}, ${_s('PROGRAM_NAME', 10)}, ${_s('PROGRAM_OWNER', 10)} FROM QSYS2.PROGRAM_INFO WHERE USER_PROFILE = '*OWNER' AND ${_libPred('PROGRAM_LIBRARY', lib)}`;
 export const adoptPublicStatement = lib =>
-  `SELECT SYSTEM_OBJECT_SCHEMA, SYSTEM_OBJECT_NAME, OBJECT_AUTHORITY FROM QSYS2.OBJECT_PRIVILEGES WHERE USER_NAME = '*PUBLIC' AND OBJECT_TYPE = '*PGM' AND ${_libPred('SYSTEM_OBJECT_SCHEMA', lib)}`;
+  `SELECT ${_s('SYSTEM_OBJECT_SCHEMA', 10)}, ${_s('SYSTEM_OBJECT_NAME', 10)}, ${_s('OBJECT_AUTHORITY', 14)} FROM QSYS2.OBJECT_PRIVILEGES WHERE USER_NAME = '*PUBLIC' AND OBJECT_TYPE = '*PGM' AND ${_libPred('SYSTEM_OBJECT_SCHEMA', lib)}`;
 
 function _cols(table, names) {
   const ix = names.map(n => table.cols.indexOf(n));
@@ -1079,18 +1179,18 @@ export function evaluateAdopting({ programs, publicAuth, allobj, secadm, incompl
 const _lq = lib => (lib ? `OUTPUT_QUEUE_LIBRARY_NAME='${lib}'` : "OUTPUT_QUEUE_LIBRARY_NAME NOT LIKE 'Q%'");
 const _lp = lib => (lib ? `SYSTEM_OBJECT_SCHEMA='${lib}'` : "SYSTEM_OBJECT_SCHEMA NOT LIKE 'Q%'");
 export const OUTQ_STATEMENTS = {
-  inv1:    lib => `SELECT OUTPUT_QUEUE_NAME OUTQ, OUTPUT_QUEUE_LIBRARY_NAME LIB, DISPLAY_ANY_FILE DSPDTA FROM QSYS2.OUTPUT_QUEUE_INFO WHERE ${_lq(lib)}`,
-  inv2:    lib => `SELECT OUTPUT_QUEUE_NAME OUTQ, OUTPUT_QUEUE_LIBRARY_NAME LIB, AUTHORITY_TO_CHECK AUTCHK, OPERATOR_CONTROLLED OPRCTL FROM QSYS2.OUTPUT_QUEUE_INFO WHERE ${_lq(lib)}`,
+  inv1:    lib => `SELECT ${_s('OUTPUT_QUEUE_NAME', 10, 'OUTQ')}, ${_s('OUTPUT_QUEUE_LIBRARY_NAME', 10, 'LIB')}, ${_s('DISPLAY_ANY_FILE', 8, 'DSPDTA')} FROM QSYS2.OUTPUT_QUEUE_INFO WHERE ${_lq(lib)}`,
+  inv2:    lib => `SELECT ${_s('OUTPUT_QUEUE_NAME', 10, 'OUTQ')}, ${_s('OUTPUT_QUEUE_LIBRARY_NAME', 10, 'LIB')}, ${_s('AUTHORITY_TO_CHECK', 10, 'AUTCHK')}, ${_s('OPERATOR_CONTROLLED', 6, 'OPRCTL')} FROM QSYS2.OUTPUT_QUEUE_INFO WHERE ${_lq(lib)}`,
   // Remote queues are few, so this one is read once across every library, not per library.
-  remote:  () => 'SELECT OUTPUT_QUEUE_NAME OUTQ, OUTPUT_QUEUE_LIBRARY_NAME LIB, REMOTE_SYSTEM_NAME RMTSYS FROM QSYS2.OUTPUT_QUEUE_INFO WHERE REMOTE_SYSTEM_NAME IS NOT NULL',
-  pub:     lib => `SELECT SYSTEM_OBJECT_SCHEMA, SYSTEM_OBJECT_NAME, OBJECT_AUTHORITY FROM QSYS2.OBJECT_PRIVILEGES WHERE USER_NAME='*PUBLIC' AND OBJECT_TYPE='*OUTQ' AND ${_lp(lib)}`,
+  remote:  () => `SELECT ${_s('OUTPUT_QUEUE_NAME', 10, 'OUTQ')}, ${_s('OUTPUT_QUEUE_LIBRARY_NAME', 10, 'LIB')}, ${_s('REMOTE_SYSTEM_NAME', 30, 'RMTSYS')} FROM QSYS2.OUTPUT_QUEUE_INFO WHERE REMOTE_SYSTEM_NAME IS NOT NULL`,
+  pub:     lib => `SELECT ${_s('SYSTEM_OBJECT_SCHEMA', 10)}, ${_s('SYSTEM_OBJECT_NAME', 10)}, ${_s('OBJECT_AUTHORITY', 14)} FROM QSYS2.OBJECT_PRIVILEGES WHERE USER_NAME='*PUBLIC' AND OBJECT_TYPE='*OUTQ' AND ${_lp(lib)}`,
   // The two special queues, one statement each (together they would not fit three lines).
-  joblog:  () => "SELECT SYSTEM_OBJECT_SCHEMA, SYSTEM_OBJECT_NAME, OBJECT_AUTHORITY FROM QSYS2.OBJECT_PRIVILEGES WHERE USER_NAME='*PUBLIC' AND OBJECT_TYPE='*OUTQ' AND SYSTEM_OBJECT_NAME='QPJOBLOG'",
-  qprint:  () => "SELECT SYSTEM_OBJECT_SCHEMA, SYSTEM_OBJECT_NAME, OBJECT_AUTHORITY FROM QSYS2.OBJECT_PRIVILEGES WHERE USER_NAME='*PUBLIC' AND OBJECT_TYPE='*OUTQ' AND SYSTEM_OBJECT_NAME='QPRINT'",
-  splctl:  () => "SELECT AUTHORIZATION_NAME USR, STATUS FROM QSYS2.USER_INFO WHERE SPECIAL_AUTHORITIES LIKE '%SPLCTL%'",
-  jobctl:  () => "SELECT AUTHORIZATION_NAME USR, STATUS FROM QSYS2.USER_INFO WHERE SPECIAL_AUTHORITIES LIKE '%JOBCTL%'",
-  audspl:  () => "SELECT SYSTEM_VALUE_NAME FROM QSYS2.SYSTEM_VALUE_INFO WHERE SYSTEM_VALUE_NAME = 'QAUDLVL' AND CURRENT_CHARACTER_VALUE LIKE '%SPLFDTA%'",
-  audprt:  () => "SELECT SYSTEM_VALUE_NAME FROM QSYS2.SYSTEM_VALUE_INFO WHERE SYSTEM_VALUE_NAME = 'QAUDLVL' AND CURRENT_CHARACTER_VALUE LIKE '%PRTDTA%'",
+  joblog:  () => `SELECT ${_s('SYSTEM_OBJECT_SCHEMA', 10)}, ${_s('SYSTEM_OBJECT_NAME', 10)}, ${_s('OBJECT_AUTHORITY', 14)} FROM QSYS2.OBJECT_PRIVILEGES WHERE USER_NAME='*PUBLIC' AND OBJECT_TYPE='*OUTQ' AND SYSTEM_OBJECT_NAME='QPJOBLOG'`,
+  qprint:  () => `SELECT ${_s('SYSTEM_OBJECT_SCHEMA', 10)}, ${_s('SYSTEM_OBJECT_NAME', 10)}, ${_s('OBJECT_AUTHORITY', 14)} FROM QSYS2.OBJECT_PRIVILEGES WHERE USER_NAME='*PUBLIC' AND OBJECT_TYPE='*OUTQ' AND SYSTEM_OBJECT_NAME='QPRINT'`,
+  splctl:  () => `SELECT ${_s('AUTHORIZATION_NAME', 10, 'USR')}, ${_s('STATUS', 10)} FROM QSYS2.USER_INFO WHERE SPECIAL_AUTHORITIES LIKE '%SPLCTL%'`,
+  jobctl:  () => `SELECT ${_s('AUTHORIZATION_NAME', 10, 'USR')}, ${_s('STATUS', 10)} FROM QSYS2.USER_INFO WHERE SPECIAL_AUTHORITIES LIKE '%JOBCTL%'`,
+  audspl:  () => `SELECT ${_s('SYSTEM_VALUE_NAME', 10)} FROM QSYS2.SYSTEM_VALUE_INFO WHERE SYSTEM_VALUE_NAME = 'QAUDLVL' AND CURRENT_CHARACTER_VALUE LIKE '%SPLFDTA%'`,
+  audprt:  () => `SELECT ${_s('SYSTEM_VALUE_NAME', 10)} FROM QSYS2.SYSTEM_VALUE_INFO WHERE SYSTEM_VALUE_NAME = 'QAUDLVL' AND CURRENT_CHARACTER_VALUE LIKE '%PRTDTA%'`,
 };
 
 // Rows as objects, or null if a wanted column is missing. A wanted entry is a column name,
@@ -1216,12 +1316,12 @@ export const JOURNAL_GROUPS = [
   { key: 'print',    noun: 'print', label: 'Print',    types: 'PO',          need: 'prt',    needLabel: '*PRTDTA' },
 ];
 export const JOURNAL_CONFIG = {
-  audlvl: "SELECT SYSTEM_VALUE_NAME FROM QSYS2.SYSTEM_VALUE_INFO WHERE SYSTEM_VALUE_NAME='QAUDCTL' AND CURRENT_CHARACTER_VALUE LIKE '%AUDLVL%'",
-  objaud: "SELECT SYSTEM_VALUE_NAME FROM QSYS2.SYSTEM_VALUE_INFO WHERE SYSTEM_VALUE_NAME='QAUDCTL' AND CURRENT_CHARACTER_VALUE LIKE '%OBJAUD%'",
-  savrst: "SELECT SYSTEM_VALUE_NAME FROM QSYS2.SYSTEM_VALUE_INFO WHERE SYSTEM_VALUE_NAME='QAUDLVL' AND CURRENT_CHARACTER_VALUE LIKE '%SAVRST%'",
-  create: "SELECT SYSTEM_VALUE_NAME FROM QSYS2.SYSTEM_VALUE_INFO WHERE SYSTEM_VALUE_NAME='QAUDLVL' AND CURRENT_CHARACTER_VALUE LIKE '%CREATE%'",
-  spl:    "SELECT SYSTEM_VALUE_NAME FROM QSYS2.SYSTEM_VALUE_INFO WHERE SYSTEM_VALUE_NAME='QAUDLVL' AND CURRENT_CHARACTER_VALUE LIKE '%SPLFDTA%'",
-  prt:    "SELECT SYSTEM_VALUE_NAME FROM QSYS2.SYSTEM_VALUE_INFO WHERE SYSTEM_VALUE_NAME='QAUDLVL' AND CURRENT_CHARACTER_VALUE LIKE '%PRTDTA%'",
+  audlvl: `SELECT ${_s('SYSTEM_VALUE_NAME', 10)} FROM QSYS2.SYSTEM_VALUE_INFO WHERE SYSTEM_VALUE_NAME='QAUDCTL' AND CURRENT_CHARACTER_VALUE LIKE '%AUDLVL%'`,
+  objaud: `SELECT ${_s('SYSTEM_VALUE_NAME', 10)} FROM QSYS2.SYSTEM_VALUE_INFO WHERE SYSTEM_VALUE_NAME='QAUDCTL' AND CURRENT_CHARACTER_VALUE LIKE '%OBJAUD%'`,
+  savrst: `SELECT ${_s('SYSTEM_VALUE_NAME', 10)} FROM QSYS2.SYSTEM_VALUE_INFO WHERE SYSTEM_VALUE_NAME='QAUDLVL' AND CURRENT_CHARACTER_VALUE LIKE '%SAVRST%'`,
+  create: `SELECT ${_s('SYSTEM_VALUE_NAME', 10)} FROM QSYS2.SYSTEM_VALUE_INFO WHERE SYSTEM_VALUE_NAME='QAUDLVL' AND CURRENT_CHARACTER_VALUE LIKE '%CREATE%'`,
+  spl:    `SELECT ${_s('SYSTEM_VALUE_NAME', 10)} FROM QSYS2.SYSTEM_VALUE_INFO WHERE SYSTEM_VALUE_NAME='QAUDLVL' AND CURRENT_CHARACTER_VALUE LIKE '%SPLFDTA%'`,
+  prt:    `SELECT ${_s('SYSTEM_VALUE_NAME', 10)} FROM QSYS2.SYSTEM_VALUE_INFO WHERE SYSTEM_VALUE_NAME='QAUDLVL' AND CURRENT_CHARACTER_VALUE LIKE '%PRTDTA%'`,
 };
 export const parseJournalDays = text => {
   const s = String(text ?? '').trim();
@@ -1230,11 +1330,13 @@ export const parseJournalDays = text => {
   return { days: +s };
 };
 export const journalStatement = (types, days) =>
-  `SELECT ENTRY_TIMESTAMP,JOURNAL_ENTRY_TYPE,JOB_USER,OBJECT FROM TABLE(QSYS2.DISPLAY_JOURNAL('QSYS','QAUDJRN', JOURNAL_ENTRY_TYPES => '${types}', STARTING_TIMESTAMP => CURRENT_TIMESTAMP - ${days} DAYS)) AS J`;
+  `SELECT CHAR(ENTRY_TIMESTAMP) TS, ${_s('JOURNAL_ENTRY_TYPE', 2, 'ETYPE')}, ${_s('JOB_USER', 10, 'JUSER')}, ${_s('OBJECT', 26, 'OBJ')} FROM TABLE(QSYS2.DISPLAY_JOURNAL('QSYS','QAUDJRN', JOURNAL_ENTRY_TYPES => '${types}', STARTING_TIMESTAMP => CURRENT_TIMESTAMP - ${days} DAYS)) AS J`;
 
 // table = { cols, rows } -> [{ ts, type, user, object }], or null if a needed column is missing.
 export function parseJournalRows(table) {
-  const ix = ['ENTRY_TIMESTAMP', 'JOURNAL_ENTRY_TYPE', 'JOB_USER', 'OBJECT'].map(c => table.cols.indexOf(c));
+  // The short aliases the real statement asks for, or the full names a plain read of the view gives.
+  const find = (...names) => names.map(n => table.cols.indexOf(n)).find(i => i !== -1) ?? -1;
+  const ix = [find('TS', 'ENTRY_TIMESTAMP'), find('ETYPE', 'JOURNAL_ENTRY_TYPE'), find('JUSER', 'JOB_USER'), find('OBJ', 'OBJECT')];
   if (ix.includes(-1)) return null;
   return table.rows.map(r => ({ ts: r[ix[0]], type: r[ix[1]], user: r[ix[2]], object: r[ix[3]] })).filter(r => r.type);
 }
@@ -1317,9 +1419,9 @@ export function evaluateJournal(d) {
 // EXIT_PROGRAM_INFO columns, the *LIB rows of OBJECT_PRIVILEGES and the DISPLAY_JOURNAL parameters
 // were not run on a live IBM i, confirm them.
 export const EXIT_STATEMENTS = {
-  programs: "SELECT EXIT_POINT_NAME, EXIT_PROGRAM_NAME, EXIT_PROGRAM_LIBRARY FROM QSYS2.EXIT_PROGRAM_INFO WHERE EXIT_PROGRAM_LIBRARY NOT LIKE 'Q%'",
-  libpub:   "SELECT SYSTEM_OBJECT_NAME, OBJECT_AUTHORITY FROM QSYS2.OBJECT_PRIVILEGES WHERE USER_NAME='*PUBLIC' AND OBJECT_TYPE='*LIB' AND SYSTEM_OBJECT_NAME NOT LIKE 'Q%'",
-  owners:   libs => `SELECT PROGRAM_LIBRARY, PROGRAM_NAME, PROGRAM_OWNER FROM QSYS2.PROGRAM_INFO WHERE PROGRAM_LIBRARY IN (${libs.map(l => `'${l}'`).join(', ')})`,
+  programs: `SELECT ${_s('EXIT_POINT_NAME', 20)}, ${_s('EXIT_PROGRAM_NAME', 10)}, ${_s('EXIT_PROGRAM_LIBRARY', 10)} FROM QSYS2.EXIT_PROGRAM_INFO WHERE EXIT_PROGRAM_LIBRARY NOT LIKE 'Q%'`,
+  libpub:   `SELECT ${_s('SYSTEM_OBJECT_NAME', 10)}, ${_s('OBJECT_AUTHORITY', 14)} FROM QSYS2.OBJECT_PRIVILEGES WHERE USER_NAME='*PUBLIC' AND OBJECT_TYPE='*LIB' AND SYSTEM_OBJECT_NAME NOT LIKE 'Q%'`,
+  owners:   libs => `SELECT ${_s('PROGRAM_LIBRARY', 10)}, ${_s('PROGRAM_NAME', 10)}, ${_s('PROGRAM_OWNER', 10)} FROM QSYS2.PROGRAM_INFO WHERE PROGRAM_LIBRARY IN (${libs.map(l => `'${l}'`).join(', ')})`,
 };
 export const EXIT_JOURNAL_DAYS = 90;
 export const EXIT_JOURNAL_TYPES = 'CO,ZC,OR,RP';
