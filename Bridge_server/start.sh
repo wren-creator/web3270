@@ -3,6 +3,7 @@
 # First run: prompts to configure port, then starts.
 # Subsequent runs: starts immediately using saved config.
 # Reconfigure:  ./start.sh --setup
+# Quiet mode:   ./start.sh --no-mocks   (bridge + client only, no mock environments)
 
 # ── Detect container runtime (Docker or Podman) ───────────────────────────
 if command -v docker &>/dev/null; then
@@ -25,8 +26,19 @@ else
   exit 1
 fi
 
+# ── Options ────────────────────────────────────────────────────────────────
+SETUP=0
+SERVICES=""
+for arg in "$@"; do
+  case "$arg" in
+    --setup) SETUP=1 ;;
+    --no-mocks|--quiet) SERVICES="--no-deps tn3270-bridge" ;;
+    *) echo "Unknown option: $arg" >&2; echo "Usage: ./start.sh [--setup] [--no-mocks]" >&2; exit 1 ;;
+  esac
+done
+
 # ── Port configuration ─────────────────────────────────────────────────────
-if [ "$1" = "--setup" ] || [ ! -f .env ]; then
+if [ "$SETUP" = "1" ] || [ ! -f .env ]; then
   sh setup.sh
 fi
 
@@ -57,10 +69,12 @@ PORT=${PORT:-8081}
 $COMPOSE down 2>/dev/null || true
 
 COMPOSE_ERR=$(mktemp)
-if $COMPOSE up -d --build 2>"$COMPOSE_ERR"; then
+# SERVICES is intentionally unquoted so it splits into flag + service name.
+if $COMPOSE up -d --build $SERVICES 2>"$COMPOSE_ERR"; then
   rm -f "$COMPOSE_ERR"
   echo ""
   echo "Bridge started → http://localhost:${PORT}  (runtime: $RUNTIME)"
+  [ -n "$SERVICES" ] && echo "Mock environments skipped (--no-mocks)."
   echo "To stop: ./stop.sh"
   echo ""
 else
