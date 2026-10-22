@@ -104,6 +104,7 @@ cd web3270/Bridge_server
 ```bash
 ./start.sh          # subsequent runs start immediately
 ./start.sh --setup  # reconfigure port
+./start.sh --no-mocks  # bridge and client only, skip the mock environments
 ./stop.sh           # stop
 ```
 

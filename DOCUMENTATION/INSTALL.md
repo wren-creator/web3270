@@ -154,6 +154,8 @@ cd web3270/Bridge_server
 
 First run asks which port to use (default 8081), creates the config files the containers mount, builds the images, and starts everything. Next time `./start.sh` just starts. `./start.sh --setup` reconfigures the port, `./stop.sh` shuts down.
 
+Want it quiet? `./start.sh --no-mocks` (alias `--quiet`) starts only the bridge and the web client and skips every mock environment (mock-lpar, mock-zvm, mock-tpf, mock-as400, mock-claims). Handy when you're pointing at real systems and don't need the practice targets eating memory. Run plain `./start.sh` to bring the mocks back.
+
 Doing it by hand instead:
 
 ```bash
