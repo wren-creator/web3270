@@ -129,7 +129,7 @@ Bridge_server/
 │   │                                       · Left sidebar: LPAR Profiles / Macros / Screen History
 │   │                                       · Right panel — 5 tabs:
 │   │                                           Settings · Keys · Transfer · ⚙ AI · ⬡ Assist
-│   │                                       · PF1–PF12, PA1–PA2, SysReq, Clear toolbar
+│   │                                       · PF1–PF12, PA1–PA2, SysReq, Clear, Reset, Home toolbar
 │   │                                       · 5 colour themes (green/blue/amber/white/teal)
 │   │                                       · OIA status bar with BH watermark
 │   │                                       · Connect modal (host/port/TLS/TN3270E/model)

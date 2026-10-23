@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { renderLiveScreen } from './rendering.js';
+import { renderLiveScreen, updateOIA } from './rendering.js';
 
 export const AID_MAP = {
   'Enter':'ENTER','Escape':'PA1',
@@ -63,6 +63,25 @@ export function sendKey(aid, fields = []) {
   } else {
     session.ws.send(JSON.stringify({ type: 'key', aid, fields }));
   }
+}
+
+// Reset is local on a real 3270: it unlocks the keyboard and sends no AID.
+export function resetKey() {
+  const session = state.sessions.get(state.activeSession);
+  if (!session || session.ws.readyState !== WebSocket.OPEN) return;
+  updateOIA({ kbdLocked: false });
+}
+
+// Home moves the cursor to the first unprotected field, or to row 1 col 1 if
+// the screen has none. No AID is sent.
+export function homeKey() {
+  if (!state.liveScreen) return;
+  const cols = state.liveScreen.cols || 80;
+  const first = (state.liveScreen.fields || []).find(f => !f.protected);
+  const addr = first ? first.startAddr + 1 : 0;
+  state.cursorRow = Math.floor(addr / cols); state.cursorCol = addr % cols;
+  state.liveScreen.cursorRow = state.cursorRow; state.liveScreen.cursorCol = state.cursorCol;
+  renderLiveScreen(state.liveScreen);
 }
 
 export function sendType(row, col, text) {
@@ -140,4 +159,4 @@ export function cmdHistoryRecall(idx) {
     session.ws.send(JSON.stringify({ type: 'fillField', row: targetRow, col: targetCol, text: cmd }));
 }
 
-Object.assign(window, { sendKey, sendType, cmdHistoryRecall, renderCmdHistory });
+Object.assign(window, { sendKey, sendType, resetKey, homeKey, cmdHistoryRecall, renderCmdHistory });
