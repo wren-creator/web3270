@@ -328,6 +328,7 @@ export function handleBridgeMsg(sid, msg) {
         window.sdsfOnScreen?.(msg);
         window.as400OnScreen?.(msg);
         window.fieldDiscOnScreen?.(msg);
+        window.hiddenFieldOnScreen?.(msg);
         window.bufferBleedOnScreen?.(msg);
         window.vmMinidiskOnScreen?.(msg);
         window.zlinuxOnScreen?.(msg);

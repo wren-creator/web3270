@@ -30,6 +30,7 @@ import './esm-fingerprint.js';
 import './sdsf.js';
 import './as400sec.js';
 import './fielddisclosure.js';
+import './hiddenfields.js';
 import './bufferbleed.js';
 import './vmminidisk.js';
 import './zlinux.js';

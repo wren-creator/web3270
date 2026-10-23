@@ -336,8 +336,10 @@ class Tn3270Session extends EventEmitter {
     }));
 
     // Append all modified fields (these DO get SBA prefixes)
+    // An unformatted-screen field goes out as bare data, no SBA (see
+    // getModifiedFields).
     for (const f of decorated) {
-      parts.push(this._encodeSBA(f.addr));
+      if (!f.unformatted) parts.push(this._encodeSBA(f.addr));
       parts.push(Ebcdic.fromAscii(f.data, this.codepage));
     }
 
@@ -473,6 +475,21 @@ class Tn3270Session extends EventEmitter {
    // be present in the AID response even when MDT is not set, otherwise CP
    // falls back to the unformatted CP READ prompt.
    const fields = [];
+
+   // An unformatted screen (no field attributes anywhere, e.g. after CLEAR on
+   // CICS/KICKS) is wholly unprotected. A real 3270 answers Read Modified with
+   // every non-null character in the buffer and no SBA orders, which is what
+   // c3270 does. Without this the loop below treats it all as protected and
+   // ENTER goes out with no data, so the host sees an empty transaction ID.
+   if (!this.buffer.some(cell => cell && cell.fa !== undefined)) {
+     let data = '';
+     for (const cell of this.buffer) {
+       if (cell && cell.char) data += Ebcdic.toAscii(Buffer.from([cell.char]), this.codepage);
+     }
+     if (data.length > 0) fields.push({ addr: 0, data, nondisplay: false, unformatted: true });
+     return fields;
+   }
+
    let isProtected = true;
    let isNonDisplayField = false;
    let fieldAddr = 0;
