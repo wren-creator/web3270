@@ -573,6 +573,17 @@
               <span class="sec-panel-btn-sub">Force all text to visible color — exposes color-on-color hidden content</span>
             </button>
           </div>
+          <div class="sec-panel-hint" style="margin:6px 0">Hidden Field Reveal — lists every nondisplay field on the screen (TN3270 and TN5250) with its position, type and contents. Contents stay in the browser and are never logged or exported.</div>
+          <div class="sec-row" style="gap:6px">
+            <button onclick="hiddenFieldScan()" style="flex:1;background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 8px;cursor:pointer">🔍 Reveal Hidden Fields</button>
+            <button id="hfLiveBtn" class="sec-panel-btn sec-panel-btn-inline" onclick="toggleHiddenFieldLive()" style="flex:1">
+              <span class="sec-panel-btn-label">👁 Live</span>
+            </button>
+            <button id="hfShowBtn" class="sec-panel-btn sec-panel-btn-inline" onclick="hiddenFieldShowOnScreen()" style="flex:1">
+              <span class="sec-panel-btn-label">▦ On Screen</span>
+            </button>
+          </div>
+          <div id="hfResults"></div>
           <div class="sec-panel-hint" style="margin:6px 0">Field Length Disclosure — MDT + buffer-address deltas reveal how many characters were typed into a nondisplay field, even though the characters themselves are masked.</div>
           <div class="sec-row" style="gap:6px">
             <button id="fdScanBtn" onclick="fieldDiscScanOnce()" style="flex:1;background:none;border:1px solid #333;border-radius:3px;color:var(--text-muted);font-family:inherit;font-size:10px;padding:2px 8px;cursor:pointer">🔍 Scan Screen Now</button>
