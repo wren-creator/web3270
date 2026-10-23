@@ -1,7 +1,7 @@
 import { state } from './state.js';
 import { renderLiveScreen } from './rendering.js';
 import { fitScreen, measureCellWidth } from './geometry.js';
-import { sendKey, sendType, AID_MAP, cmdHistoryRecall } from './keyboard.js';
+import { sendKey, sendType, resetKey, homeKey, AID_MAP, cmdHistoryRecall } from './keyboard.js';
 import { cycleSession } from './tabs.js';
 import { collectModifiedFields as collectScreenFields } from './modfields.js';
 
@@ -50,6 +50,8 @@ document.addEventListener('keydown', e => {
   if (e.ctrlKey && e.key === ',') { e.preventDefault(); cycleSession(-1); return; }
   const tag = document.activeElement?.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+  if (e.altKey && e.code === 'KeyR') { e.preventDefault(); resetKey(); return; }
+  if (e.key === 'Home') { e.preventDefault(); homeKey(); return; }
   let mappedKey = e.key;
   if (e.shiftKey && /^F([1-9]|1[0-2])$/.test(e.key)) mappedKey = 'F' + (parseInt(e.key.slice(1)) + 12);
   const aid = AID_MAP[mappedKey];

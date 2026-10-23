@@ -182,6 +182,8 @@
       <button class="t-btn" title="PA2" onclick="sendKey('PA2')">PA2</button>
       <button class="t-btn" title="SysReq" style="color:var(--t-red);border-color:#3a1010" onclick="sendKey('SYSREQ')">SysReq</button>
       <button class="t-btn" title="Clear" onclick="sendKey('CLEAR')">Clear</button>
+      <button class="t-btn" title="Reset (Alt+R)" onclick="resetKey()">Reset</button>
+      <button class="t-btn" title="Home, first input field (Home)" onclick="homeKey()">&#8962;</button>
       <div class="t-spacer"></div>
     </div>
     <div class="screen-wrapper" id="screenWrapper">
@@ -286,7 +288,7 @@
       <div class="setting-group">
         <div class="setting-label">Function Keys</div>
         <div class="pf-grid"><button class="t-btn pf" title="PF1 (F1)" onclick="sendKey('PF1')">PF1</button><button class="t-btn pf" title="PF2 (F2)" onclick="sendKey('PF2')">PF2</button><button class="t-btn pf" title="PF3 (F3)" onclick="sendKey('PF3')">PF3</button><button class="t-btn pf" title="PF4 (F4)" onclick="sendKey('PF4')">PF4</button><button class="t-btn pf" title="PF5 (F5)" onclick="sendKey('PF5')">PF5</button><button class="t-btn pf" title="PF6 (F6)" onclick="sendKey('PF6')">PF6</button><button class="t-btn pf" title="PF7 (F7)" onclick="sendKey('PF7')">PF7</button><button class="t-btn pf" title="PF8 (F8)" onclick="sendKey('PF8')">PF8</button><button class="t-btn pf" title="PF9 (F9)" onclick="sendKey('PF9')">PF9</button><button class="t-btn pf" title="PF10 (F10)" onclick="sendKey('PF10')">PF10</button><button class="t-btn pf" title="PF11 (F11)" onclick="sendKey('PF11')">PF11</button><button class="t-btn pf" title="PF12 (F12)" onclick="sendKey('PF12')">PF12</button><button class="t-btn pf" title="PF13 (Shift+F1)" onclick="sendKey('PF13')">PF13</button><button class="t-btn pf" title="PF14 (Shift+F2)" onclick="sendKey('PF14')">PF14</button><button class="t-btn pf" title="PF15 (Shift+F3)" onclick="sendKey('PF15')">PF15</button><button class="t-btn pf" title="PF16 (Shift+F4)" onclick="sendKey('PF16')">PF16</button><button class="t-btn pf" title="PF17 (Shift+F5)" onclick="sendKey('PF17')">PF17</button><button class="t-btn pf" title="PF18 (Shift+F6)" onclick="sendKey('PF18')">PF18</button><button class="t-btn pf" title="PF19 (Shift+F7)" onclick="sendKey('PF19')">PF19</button><button class="t-btn pf" title="PF20 (Shift+F8)" onclick="sendKey('PF20')">PF20</button><button class="t-btn pf" title="PF21 (Shift+F9)" onclick="sendKey('PF21')">PF21</button><button class="t-btn pf" title="PF22 (Shift+F10)" onclick="sendKey('PF22')">PF22</button><button class="t-btn pf" title="PF23 (Shift+F11)" onclick="sendKey('PF23')">PF23</button><button class="t-btn pf" title="PF24 (Shift+F12)" onclick="sendKey('PF24')">PF24</button></div>
-        <div class="pf-grid pf-grid-aid"><button class="t-btn" onclick="sendKey('PA1')">PA1</button><button class="t-btn" onclick="sendKey('PA2')">PA2</button><button class="t-btn" onclick="sendKey('PA3')">PA3</button><button class="t-btn" onclick="sendKey('SYSREQ')">SysReq</button><button class="t-btn" onclick="sendKey('CLEAR')">Clear</button></div>
+        <div class="pf-grid pf-grid-aid"><button class="t-btn" onclick="sendKey('PA1')">PA1</button><button class="t-btn" onclick="sendKey('PA2')">PA2</button><button class="t-btn" onclick="sendKey('PA3')">PA3</button><button class="t-btn" onclick="sendKey('SYSREQ')">SysReq</button><button class="t-btn" onclick="sendKey('CLEAR')">Clear</button><button class="t-btn" onclick="resetKey()">Reset</button><button class="t-btn" onclick="homeKey()">&#8962; Home</button></div>
       </div>
       <div class="setting-group">
         <div class="setting-label">Key Remapping</div>
@@ -297,6 +299,8 @@
           <div class="shortcut-item"><span class="shortcut-desc">Enter / Transmit</span><span class="shortcut-key">Enter</span></div>
           <div class="shortcut-item"><span class="shortcut-desc">SysReq / Attn</span><span class="shortcut-key">Esc</span></div>
           <div class="shortcut-item"><span class="shortcut-desc">Insert Mode</span><span class="shortcut-key">Ins</span></div>
+          <div class="shortcut-item"><span class="shortcut-desc">Reset (unlock keyboard)</span><span class="shortcut-key">Alt+R</span></div>
+          <div class="shortcut-item"><span class="shortcut-desc">Home (first input field)</span><span class="shortcut-key">Home</span></div>
           <div class="shortcut-item"><span class="shortcut-desc">Clear Screen</span><span class="shortcut-key">Ctrl+L</span></div>
           <div class="shortcut-item"><span class="shortcut-desc">New Session</span><span class="shortcut-key">Ctrl+T</span></div>
           <div class="shortcut-item"><span class="shortcut-desc">Open AI Assist</span><span class="shortcut-key">Ctrl+K</span></div>
