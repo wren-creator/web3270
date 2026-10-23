@@ -345,6 +345,14 @@ class Tn3270Session extends EventEmitter {
 
     const data = Buffer.concat(parts);
 
+    // What really went out, for the Session Viewer. Nondisplay values are
+    // masked here, the same as the log lines below.
+    this.lastSentFields = decorated.map(f => ({
+      row: Math.floor(f.addr / this.cols) + 1, col: (f.addr % this.cols) + 1,
+      len: f.data.length, nondisplay: !!f.nondisplay,
+      data: f.nondisplay ? MASK_CHAR.repeat(f.data.length) : f.data,
+    }));
+
     // ── Detailed outbound diagnostic ──────────────────────────────
     // Always logged when investigating login/AID issues — comment out
     // once login flow is verified working. Nondisplay-field content is

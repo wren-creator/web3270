@@ -270,6 +270,15 @@ class Tn5250Session extends EventEmitter {
     }
 
     const data = Buffer.concat(parts);
+    const hidden = this._nondisplayMask();
+    this.lastSentFields = fields.map(f => {
+      const nd = hidden[f.addr] === 1;
+      return {
+        row: Math.floor(f.addr / this.cols) + 1, col: (f.addr % this.cols) + 1,
+        len: f.data.length, nondisplay: nd,
+        data: nd ? '*'.repeat(f.data.length) : f.data,
+      };
+    });
     logger.info(`[ws:${this.wsId}] ── AID outbound ─── aid=${aidName} (0x${aidByte.toString(16)}) cursor=row${Math.floor(this.cursorAddr/this.cols)+1},col${this.cursorAddr%this.cols+1} fields=${fields.length}`);
     this._sendDataRecord(data);
   }

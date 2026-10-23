@@ -136,6 +136,9 @@ td { padding: 3px 8px; vertical-align: top; overflow: hidden; text-overflow: ell
 /* Expanded row */
 tbody tr.expanded td.col-text { white-space: pre-wrap; word-break: break-all; }
 tbody tr.expanded { background: rgba(255,255,255,0.03); }
+.sent-badge  { color: #5a7a9a; font-weight: 400; margin-left: 4px; }
+.sent-detail { display: none; margin-top: 4px; color: #88aacc; white-space: pre-wrap; }
+tbody tr.expanded .sent-detail { display: block; }
 
 .empty-msg {
   padding: 40px;
@@ -285,16 +288,23 @@ function reapply() {
     const dirHtml = isOut
       ? `<span class="dir-out" title="client → host (you sent this AID key)">→ client→host</span>`
       : `<span class="dir-in"  title="host → client (screen update received)">← host→client</span>`;
+    const sent = Array.isArray(e.sent) ? e.sent : [];
     const aidHtml = e.aid
-      ? `<span class="aid-val">${escHtml(e.aid)}</span>`
+      ? `<span class="aid-val">${escHtml(e.aid)}</span>` +
+        (isOut && e.sent ? `<span class="sent-badge" title="fields transmitted">${sent.length}f</span>` : '')
       : `<span style="color:#2a4a6a">—</span>`;
+    const sentHtml = isOut && e.sent
+      ? `<div class="sent-detail">${sent.length
+          ? sent.map(f => `sent R${f.row}C${f.col} len=${f.len}${f.nondisplay ? ' (nondisplay)' : ''}  "${escHtml(f.data)}"`).join('\n')
+          : 'sent no fields (AID only)'}</div>`
+      : '';
 
     tr.innerHTML =
       `<td class="col-ts ts">${escHtml(shortTs(e.ts))}</td>` +
       `<td class="col-sess sess">${escHtml(String(e.wsId))}</td>` +
       `<td class="col-dir">${dirHtml}</td>` +
       `<td class="col-aid">${aidHtml}</td>` +
-      `<td class="col-text"><span class="screen-text">${escHtml(e.screenText || '')}</span></td>`;
+      `<td class="col-text"><span class="screen-text">${escHtml(e.screenText || '')}</span>${sentHtml}</td>`;
 
     tr.title = 'Click to expand screen text';
     tr.addEventListener('click', () => tr.classList.toggle('expanded'));

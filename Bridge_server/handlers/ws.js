@@ -304,6 +304,7 @@ export function createWsHandler({ config, logger, sessions, Ebcdic }) {
               logTraffic({
                 ts: new Date().toISOString(), wsId, direction: 'client→host', aid: msg.aid,
                 tls: session.tlsVersion || 'PLAIN',
+                sent: session.lastSentFields || [],
                 screenText: session.lastScreen ? screenToLinesMasked(session.lastScreen).filter(l => l.trim()).join(' | ').substring(0, 300) : '',
               });
             }
