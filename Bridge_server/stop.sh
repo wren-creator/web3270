@@ -72,8 +72,9 @@ for PORT in 3270 3271 3274 "$BRIDGE_PORT"; do
     echo "$HOLDER" | while IFS=$'\t' read -r id name ports; do
       warn "  $name ($id) — $ports"
     done
-    echo "$HOLDER" | awk '{print $1}' | xargs $RUNTIME rm -f
-    ok "Removed port-squatting container on :$PORT."
+    # Warn only. Anything else on these ports (a DVCA/Hercules lab container,
+    # say) is the user's own and may hold state, so never rm -f it here.
+    warn "Left it running. If the bridge can't bind :$PORT, stop it yourself."
     FOUND=1
   fi
 done
