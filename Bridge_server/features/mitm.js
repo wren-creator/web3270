@@ -50,7 +50,7 @@ export function release(wsId, ws, session, msg, send, logger, logTraffic) {
   _lastReleased.set(wsId, { aid: held.aid, fields: releaseFields, cursorAddr: held.cursorAddr });
   logger.info(`[ws:${wsId}] MITM: releasing ${held.aid} (${releaseFields.length} fields)`);
   session.sendAid(held.aid, releaseFields);
-  logTraffic({ ts: new Date().toISOString(), wsId, direction: 'client→host', aid: held.aid + ' [MITM]', screenText: '' });
+  logTraffic({ ts: new Date().toISOString(), wsId, direction: 'client→host', aid: held.aid + ' [MITM]', sent: session.lastSentFields || [], screenText: '' });
   send(ws, { type: 'sec.mitm.released', aid: held.aid });
 }
 
@@ -67,7 +67,7 @@ export function replay(wsId, ws, session, send, logger, logTraffic) {
   if (!last) { send(ws, { type: 'sec.mitm.replay-empty' }); return; }
   logger.info(`[ws:${wsId}] MITM: replaying ${last.aid}`);
   session.sendAid(last.aid, last.fields);
-  logTraffic({ ts: new Date().toISOString(), wsId, direction: 'client→host', aid: last.aid + ' [MITM-replay]', screenText: '' });
+  logTraffic({ ts: new Date().toISOString(), wsId, direction: 'client→host', aid: last.aid + ' [MITM-replay]', sent: session.lastSentFields || [], screenText: '' });
   send(ws, { type: 'sec.mitm.replayed', aid: last.aid });
 }
 

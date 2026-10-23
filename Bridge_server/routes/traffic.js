@@ -13,9 +13,10 @@ export function handle(req, res) {
   }
 
   if (req.url === '/api/traffic/csv' && req.method === 'GET') {
-    const rows = [['timestamp', 'wsId', 'direction', 'aid', 'tls', 'screenText']];
+    const rows = [['timestamp', 'wsId', 'direction', 'aid', 'tls', 'screenText', 'sentFields']];
     for (const e of trafficLog) {
-      rows.push([e.ts, String(e.wsId), e.direction, e.aid || '', e.tls || 'PLAIN', (e.screenText || '').replace(/"/g, '""')]);
+      rows.push([e.ts, String(e.wsId), e.direction, e.aid || '', e.tls || 'PLAIN', (e.screenText || '').replace(/"/g, '""'),
+        (e.sent || []).map(f => `R${f.row}C${f.col} len=${f.len}${f.nondisplay ? ' (nondisplay)' : ''} ${f.data}`).join(' ; ').replace(/"/g, '""')]);
     }
     const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\r\n');
     res.writeHead(200, { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename="traffic-log.csv"', 'Access-Control-Allow-Origin': '*' });
