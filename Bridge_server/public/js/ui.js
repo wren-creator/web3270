@@ -1,6 +1,7 @@
 import { state } from './state.js';
 import { renderLiveScreen } from './rendering.js';
 import { fitScreen, measureCellWidth } from './geometry.js';
+import { cleanPaste, pasteRoom } from './paste.js';
 import { sendKey, sendType, resetKey, homeKey, AID_MAP, cmdHistoryRecall } from './keyboard.js';
 import { cycleSession } from './tabs.js';
 import { collectModifiedFields as collectScreenFields } from './modfields.js';
@@ -68,6 +69,16 @@ document.addEventListener('keydown', e => {
     const fields = AIDS_WITH_FIELDS.has(aid) ? collectModifiedFields() : [];
     sendKey(aid, fields); return;
   }
+  if (e.altKey && (e.key === 'PageUp' || e.key === 'PageDown')) {
+    // Step through typed commands without giving up plain PgUp/PgDn, which
+    // page the screen (Roll Up/Down on an AS/400).
+    e.preventDefault();
+    const history = state.sessions.get(state.activeSession)?.cmdHistory || [];
+    if (history.length === 0) return;
+    if (e.key === 'PageUp') { if (state.cmdHistoryIndex === -1) state.cmdHistoryIndex = history.length - 1; else if (state.cmdHistoryIndex > 0) state.cmdHistoryIndex--; }
+    else { if (state.cmdHistoryIndex === -1) return; if (state.cmdHistoryIndex < history.length - 1) state.cmdHistoryIndex++; else { state.cmdHistoryIndex = -1; return; } }
+    cmdHistoryRecall(state.cmdHistoryIndex); return;
+  }
   if (e.key === 'PageUp')   { e.preventDefault(); sendKey('PF7', collectModifiedFields()); return; }
   if (e.key === 'PageDown') { e.preventDefault(); sendKey('PF8', collectModifiedFields()); return; }
   if (e.key === 'ArrowRight') {
@@ -125,6 +136,20 @@ document.addEventListener('keydown', e => {
     return;
   }
   if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) { e.preventDefault(); sendType(state.cursorRow, state.cursorCol, e.key); }
+});
+
+// Ctrl/Cmd+V types the clipboard at the cursor, one character at a time, so the
+// uppercase and nondisplay rules in sendType still apply. It stops at the end of
+// the field instead of spilling into the next one. Inputs in the side panels keep
+// their normal paste.
+document.addEventListener('paste', e => {
+  const tag = document.activeElement?.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+  if (!state.liveScreen) return;
+  e.preventDefault();
+  const text = cleanPaste(e.clipboardData?.getData('text'));
+  const room = pasteRoom(state.liveScreen, state.cursorRow, state.cursorCol);
+  for (const ch of text.slice(0, room)) sendType(state.cursorRow, state.cursorCol, ch);
 });
 
 export function menuDisconnect() { closeAllMenus(); const s = state.sessions.get(state.activeSession); if (!s) return; s.ws.send(JSON.stringify({ type: 'disconnect' })); }
