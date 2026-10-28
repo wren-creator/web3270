@@ -69,6 +69,16 @@ document.addEventListener('keydown', e => {
     const fields = AIDS_WITH_FIELDS.has(aid) ? collectModifiedFields() : [];
     sendKey(aid, fields); return;
   }
+  if (e.altKey && (e.key === 'PageUp' || e.key === 'PageDown')) {
+    // Step through typed commands without giving up plain PgUp/PgDn, which
+    // page the screen (Roll Up/Down on an AS/400).
+    e.preventDefault();
+    const history = state.sessions.get(state.activeSession)?.cmdHistory || [];
+    if (history.length === 0) return;
+    if (e.key === 'PageUp') { if (state.cmdHistoryIndex === -1) state.cmdHistoryIndex = history.length - 1; else if (state.cmdHistoryIndex > 0) state.cmdHistoryIndex--; }
+    else { if (state.cmdHistoryIndex === -1) return; if (state.cmdHistoryIndex < history.length - 1) state.cmdHistoryIndex++; else { state.cmdHistoryIndex = -1; return; } }
+    cmdHistoryRecall(state.cmdHistoryIndex); return;
+  }
   if (e.key === 'PageUp')   { e.preventDefault(); sendKey('PF7', collectModifiedFields()); return; }
   if (e.key === 'PageDown') { e.preventDefault(); sendKey('PF8', collectModifiedFields()); return; }
   if (e.key === 'ArrowRight') {
