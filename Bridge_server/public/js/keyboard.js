@@ -1,5 +1,6 @@
 import { state } from './state.js';
 import { renderLiveScreen, updateOIA } from './rendering.js';
+import { captureCommand } from './cmdcapture.js';
 
 export const AID_MAP = {
   'Enter':'ENTER','Escape':'PA1',
@@ -15,45 +16,13 @@ export function sendKey(aid, fields = []) {
   const session = state.sessions.get(state.activeSession);
   if (!session || session.ws.readyState !== WebSocket.OPEN) return;
   if (aid === 'ENTER' && state.liveScreen && state.liveScreen.rows) {
-    const rows = state.liveScreen.rows;
-    const cmdRow = rows[state.cursorRow];
-    if (cmdRow) {
-      // Walk backward from cursor — crossing row boundaries — to find the FA byte
-      // that opens the field. In 3270 a field starting at col 0 has its FA byte
-      // at the last column of the previous row, so a single-row scan misses it.
-      const FA_PROTECTED = 0x20;
-      let fieldStart = 0;      // col on cursorRow where field content begins
-      let fieldUnprotected = null; // null = FA not found yet
-      outer: for (let ri = state.cursorRow; ri >= 0; ri--) {
-        const r = rows[ri] || [];
-        const startCol = (ri === state.cursorRow) ? state.cursorCol : r.length - 1;
-        for (let ci = startCol; ci >= 0; ci--) {
-          if (r[ci] && r[ci].fa !== undefined) {
-            fieldUnprotected = !(r[ci].fa & FA_PROTECTED);
-            // Field content on cursorRow starts at col 0 if FA is on a prior row
-            if (ri === state.cursorRow) fieldStart = ci + 1;
-            break outer;
-          }
-        }
-      }
-      if (fieldUnprotected) {
-        let fieldEnd = cmdRow.length;
-        for (let i = fieldStart; i < cmdRow.length; i++) {
-          if (cmdRow[i] && cmdRow[i].fa !== undefined) { fieldEnd = i; break; }
-        }
-        const fieldIsNondisplay = cmdRow.slice(fieldStart, fieldEnd).some(c => c && c.nondisplay);
-        if (!fieldIsNondisplay) {
-          const cmd = cmdRow.slice(fieldStart, fieldEnd)
-            .map(c => (c && c.char && c.char !== '\x00') ? c.char : ' ').join('').trimEnd();
-          if (cmd.trim().length > 0) {
-            if (!session.cmdHistory) session.cmdHistory = [];
-            session.cmdHistory.push(cmd);
-            if (session.cmdHistory.length > 100) session.cmdHistory.shift();
-            state.cmdHistoryIndex = -1;
-            renderCmdHistory();
-          }
-        }
-      }
+    const cmd = captureCommand(state.liveScreen, state.cursorRow, state.cursorCol, session.profile?.protocol === '5250');
+    if (cmd && cmd.trim().length > 0) {
+      if (!session.cmdHistory) session.cmdHistory = [];
+      session.cmdHistory.push(cmd);
+      if (session.cmdHistory.length > 100) session.cmdHistory.shift();
+      state.cmdHistoryIndex = -1;
+      renderCmdHistory();
     }
   }
   if (window._broadcastActive) {
