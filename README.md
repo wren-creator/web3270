@@ -45,6 +45,7 @@ server.js  (HTTP + WebSocket on the same port)
 - **Z/LINUX ON Z/VM** — how far a compromised Linux guest can reach into z/VM: CP privilege class check, guest console and `#CP` escape, VSWITCH/VMLAN isolation, a pasted-directory review (IUCV, `LOGONBY`, weak passwords), and a SMAPI exposure check. Mock guests included for practice. See `DOCUMENTATION/zlinux-zvm-audit.md`
 - **Security Macros** — pre-built macro store for common security workflows (RACF auth probing, LISTAPF, TSO READY checks)
 - All tools live behind the 🔒 button in the OIA bar — the Security tab is hidden until a password is entered; clicking 🔒 again re-locks and hides the Security tab (the right panel stays open, switching to Settings); every access attempt is logged server-side with LU name, IP, and timestamp
+- The right panel is resizable: drag its left edge (300px up to 70% of the window) to make the security tool forms and tables easier to read. The width is remembered between visits, and double-clicking the edge resets it to 360px
 
 ---
 
