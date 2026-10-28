@@ -299,7 +299,10 @@ body.color-reveal .field-nondisplay { color: var(--t-green) !important; opacity:
 
 /* ── RIGHT PANEL ───────────────────────────────────────────────── */
 .right-panel { width:360px;min-width:360px;background:var(--bg-panel);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden; }
+.right-panel { position:relative; }
 .right-panel.hidden { display:none; }
+.panel-resizer { position:absolute;top:0;bottom:0;left:0;width:6px;cursor:col-resize;z-index:50;touch-action:none; }
+.panel-resizer:hover,.panel-resizer.dragging { background:var(--accent-cyan);opacity:0.5; }
 .panel-tabs { display:flex;border-bottom:1px solid var(--border);flex-shrink:0; }
 .panel-tab { flex:1;text-align:center;padding:8px 2px;font-size:10px;cursor:pointer;color:var(--text-muted);border-bottom:2px solid transparent;transition:all 0.15s;user-select:none; }
 .panel-tab.active { color:var(--accent-cyan);border-color:var(--accent-cyan); }
