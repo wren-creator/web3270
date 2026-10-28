@@ -1,6 +1,7 @@
 import { state } from './state.js';
 import { renderLiveScreen } from './rendering.js';
 import { fitScreen, measureCellWidth } from './geometry.js';
+import { cleanPaste, pasteRoom } from './paste.js';
 import { sendKey, sendType, resetKey, homeKey, AID_MAP, cmdHistoryRecall } from './keyboard.js';
 import { cycleSession } from './tabs.js';
 import { collectModifiedFields as collectScreenFields } from './modfields.js';
@@ -125,6 +126,20 @@ document.addEventListener('keydown', e => {
     return;
   }
   if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) { e.preventDefault(); sendType(state.cursorRow, state.cursorCol, e.key); }
+});
+
+// Ctrl/Cmd+V types the clipboard at the cursor, one character at a time, so the
+// uppercase and nondisplay rules in sendType still apply. It stops at the end of
+// the field instead of spilling into the next one. Inputs in the side panels keep
+// their normal paste.
+document.addEventListener('paste', e => {
+  const tag = document.activeElement?.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+  if (!state.liveScreen) return;
+  e.preventDefault();
+  const text = cleanPaste(e.clipboardData?.getData('text'));
+  const room = pasteRoom(state.liveScreen, state.cursorRow, state.cursorCol);
+  for (const ch of text.slice(0, room)) sendType(state.cursorRow, state.cursorCol, ch);
 });
 
 export function menuDisconnect() { closeAllMenus(); const s = state.sessions.get(state.activeSession); if (!s) return; s.ws.send(JSON.stringify({ type: 'disconnect' })); }
